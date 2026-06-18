@@ -1,0 +1,113 @@
+/* ============================================================
+ * BOW Sports Capital — global stylesheet
+ * Design tokens first, then base, keyframes, and reveal utilities.
+ * ============================================================ */
+@import "../styles/tokens/fonts.css";
+@import "../styles/tokens/colors.css";
+@import "../styles/tokens/typography.css";
+@import "../styles/tokens/spacing.css";
+@import "../styles/tokens/shape.css";
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+/* ===== Lenis smooth-scroll (Ample-style inertia) ===== */
+html.lenis,
+html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+.lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+.lenis.lenis-stopped { overflow: clip; }
+.lenis.lenis-smooth iframe { pointer-events: none; }
+
+body {
+  margin: 0;
+  background: var(--bow-paper);
+  color: var(--bow-ink);
+  font-family: var(--font-interface);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+img { max-width: 100%; display: block; }
+::selection { background: var(--bow-blue); color: #fff; }
+a { color: inherit; text-decoration: none; }
+input, textarea, select, button { font-family: inherit; }
+
+h1, h2, h3, h4, h5, h6, p, figure, blockquote { margin: 0; }
+
+/* ============================================================
+ * Keyframes (ported from the prototype)
+ * ============================================================ */
+@keyframes bowRise { from { opacity: 0; transform: translateY(46px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes bowRiseSm { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes bowFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bowScaleIn { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: scale(1); } }
+@keyframes bowParaUp { from { transform: translateY(80px); } to { transform: translateY(-80px); } }
+@keyframes bowParaUpBig { from { transform: translateY(140px); } to { transform: translateY(-140px); } }
+@keyframes bowParaDown { from { transform: translateY(-60px); } to { transform: translateY(60px); } }
+@keyframes bowParaSlow { from { transform: translateY(36px); } to { transform: translateY(-36px); } }
+@keyframes bowParaFar { from { transform: translateY(240px); } to { transform: translateY(-240px); } }
+@keyframes bowParaSink { from { transform: translateY(-120px); } to { transform: translateY(120px); } }
+@keyframes bowDrift { from { transform: translateX(-24px); } to { transform: translateX(24px); } }
+@keyframes bowDriftR { from { transform: translateX(120px); } to { transform: translateX(-120px); } }
+@keyframes bowDriftL { from { transform: translateX(-120px); } to { transform: translateX(120px); } }
+@keyframes bowTilt { from { transform: translateY(90px) rotate(-7deg); } to { transform: translateY(-90px) rotate(4deg); } }
+@keyframes bowZoomScroll { from { transform: scale(1.18); } to { transform: scale(1); } }
+@keyframes bowParaUpFade { from { opacity: 0.16; transform: translateY(120px); } to { opacity: 0.66; transform: translateY(-120px); } }
+@keyframes bowDrawCap { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes bowMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes bowMarqueeRev { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+@keyframes bowWipe { from { clip-path: inset(0 0 108% 0); opacity: 0; transform: translateY(26px); } to { clip-path: inset(0 0 -12% 0); opacity: 1; transform: translateY(0); } }
+@keyframes bowHandoff { from { transform: translateY(0) scale(1); opacity: 1; } to { transform: translateY(-60px) scale(0.93); opacity: 0; } }
+
+/* ============================================================
+ * Scroll-driven reveal + parallax utilities.
+ * Where the browser lacks scroll/view timelines, the 0s default
+ * duration snaps elements to their end (visible) state — graceful.
+ * ============================================================ */
+.bow-reveal { animation: bowRise both; animation-timeline: view(); animation-range: entry 0% cover 25%; }
+.bow-reveal-sm { animation: bowRiseSm both; animation-timeline: view(); animation-range: entry 0% cover 26%; }
+.bow-wipe { animation: bowWipe both; animation-timeline: view(); animation-range: entry 10% cover 34%; }
+.bow-fade { animation: bowFade both; animation-timeline: view(); animation-range: entry 0% cover 30%; }
+
+.bow-para-far { animation: bowParaFar linear both; animation-timeline: view(); animation-range: cover 0% cover 100%; }
+.bow-para-sink { animation: bowParaSink linear both; animation-timeline: view(); animation-range: cover 0% cover 100%; }
+.bow-para-up { animation: bowParaUp linear both; animation-timeline: view(); animation-range: cover 0% cover 100%; }
+.bow-para-upbig { animation: bowParaUpBig linear both; animation-timeline: view(); animation-range: cover 0% cover 100%; }
+.bow-para-down { animation: bowParaDown linear both; animation-timeline: view(); animation-range: cover 0% cover 100%; }
+.bow-drift-l { animation: bowDriftL linear both; animation-timeline: view(); animation-range: cover 0% cover 100%; }
+.bow-drift-r { animation: bowDriftR linear both; animation-timeline: view(); animation-range: cover 0% cover 100%; }
+
+/* The one continuous motion BOW allows: the data ticker. */
+.bow-marquee { animation: bowMarquee 38s linear infinite; }
+
+/* Editorial card hover — a restrained 4px nudge + whisper shadow. */
+.bow-card { transition: transform var(--dur-card) var(--ease-out), box-shadow var(--dur-card) var(--ease-out); }
+.bow-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-card); }
+
+/* Layout helpers */
+.bow-container { max-width: var(--content-max); margin: 0 auto; }
+.bow-container-wide { max-width: var(--wide-max); margin: 0 auto; }
+
+/* Editorial link hover (links brighten / shift to franchise blue) */
+.bow-link { transition: color var(--dur-hover) var(--ease-out); }
+.bow-link:hover { color: var(--bow-blue); }
+
+/* ===== Responsive masthead nav (breakpoint 1024px, matching prototype) ===== */
+.bow-nav-desktop { display: flex; }
+.bow-nav-mobile-toggle { display: none; }
+.bow-nav-mobile { display: flex; }
+@media (max-width: 1023px) {
+  .bow-nav-desktop { display: none !important; }
+  .bow-nav-mobile-toggle { display: flex !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    animation-timeline: auto !important;
+  }
+}

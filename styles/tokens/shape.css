@@ -1,0 +1,34 @@
+/* BOW Sports Capital — Shape, Border, Elevation, Motion
+ * Flat, editorial, intentional. Visible 1px rules. Shadows rare.
+ */
+:root {
+  /* ---- Radius ---- */
+  --radius-control: 4px;  /* Buttons, inputs */
+  --radius-card:    6px;  /* Cards (0–6px) */
+  --radius-pill:    999px;/* Tags only */
+  --radius-none:    0px;  /* Images, scoreboard frames */
+
+  /* ---- Borders ---- */
+  --border-hair:     1px solid var(--border-rule);
+  --border-standard: 1px solid var(--border-rule);
+  --border-strong-1: 1px solid var(--border-strong);
+  --border-thick:    2px solid var(--border-strong);
+
+  /* ---- Elevation (rare, restrained) ---- */
+  --shadow-none: none;
+  --shadow-card: 0 1px 2px rgba(10, 10, 11, 0.06), 0 2px 8px rgba(10, 10, 11, 0.04);
+  --shadow-pop:  0 8px 28px rgba(10, 10, 11, 0.14);
+
+  /* ---- Cap Line (signature device) ---- */
+  --cap-line-weight: 6px; /* @kind other */
+  --cap-line-color:  var(--bow-blue); /* @kind color */
+
+  /* ---- Motion ---- */
+  --dur-button: 120ms;   /* @kind other */
+  --dur-hover:  180ms;   /* @kind other */
+  --dur-card:   240ms;   /* @kind other */
+  --dur-reveal: 480ms;   /* @kind other */
+  --dur-result: 850ms;   /* @kind other */
+  --ease-out:   cubic-bezier(0.2, 0.7, 0.2, 1);  /* @kind other */
+  --ease-in-out:cubic-bezier(0.5, 0, 0.2, 1);    /* @kind other */
+}

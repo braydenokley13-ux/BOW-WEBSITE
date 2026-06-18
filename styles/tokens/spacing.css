@@ -1,0 +1,26 @@
+/* BOW Sports Capital — Spacing & Layout
+ * Base unit: 8px. Editorial pacing comes from generous, controlled spacing.
+ */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+
+  /* ---- Layout widths ---- */
+  --content-max: 1240px;  /* Standard content */
+  --wide-max:    1440px;  /* Maximum / full bleed cap */
+  --reading-max: 720px;   /* Reading column */
+
+  /* ---- Grid ---- */
+  --grid-columns-desktop: 12; /* @kind other */
+  --grid-columns-tablet:  8;  /* @kind other */
+  --grid-columns-mobile:  4;  /* @kind other */
+  --gutter-desktop: 32px;
+  --gutter-mobile:  18px;
+}

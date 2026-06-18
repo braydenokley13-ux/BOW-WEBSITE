@@ -1,0 +1,72 @@
+/* BOW Sports Capital — Typography
+ * Four voices: Display (Barlow Condensed), Editorial (Newsreader),
+ * Interface (Inter), Data (IBM Plex Mono).
+ */
+:root {
+  /* ---- Families ---- */
+  --font-display:   "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-editorial: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-interface: "Inter", system-ui, -apple-system, sans-serif;
+  --font-data:      "IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace;
+
+  /* ---- Weights ---- */
+  --fw-regular: 400; /* @kind font */
+  --fw-medium:  500; /* @kind font */
+  --fw-semibold:600; /* @kind font */
+  --fw-bold:    700; /* @kind font */
+  --fw-black:   900; /* @kind font */
+
+  /* ---- Type scale (desktop): size / line-height ---- */
+  --type-campaign:  96px;  /* @kind font */
+  --lh-campaign:  0.88;    /* @kind font */
+  --type-lead:      68px;  /* @kind font */
+  --lh-lead:      0.94;    /* @kind font */
+  --type-page:      52px;  /* @kind font */
+  --lh-page:      1.0;     /* @kind font */
+  --type-section:   36px;  /* @kind font */
+  --lh-section:   1.05;    /* @kind font */
+  --type-card:      24px;  /* @kind font */
+  --lh-card:      1.1;     /* @kind font */
+  --type-body-lead: 21px;  /* @kind font */
+  --lh-body-lead: 1.5;     /* @kind font */
+  --type-body:      17px;  /* @kind font */
+  --lh-body:      1.65;    /* @kind font */
+  --type-meta:      13px;  /* @kind font */
+  --lh-meta:      1.3;     /* @kind font */
+  --type-eyebrow:   12px;  /* @kind font */
+  --lh-eyebrow:   1.0;     /* @kind font */
+
+  /* ---- Tracking ---- */
+  --track-eyebrow: 0.1em;   /* @kind font */
+  --track-display: -0.01em; /* @kind font */
+  --track-data:    0.02em;  /* @kind font */
+}
+
+/* ---- Reusable type roles (optional helpers) ---- */
+.bow-eyebrow {
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--type-eyebrow);
+  line-height: var(--lh-eyebrow);
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+}
+.bow-headline {
+  font-family: var(--font-editorial);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-section);
+  letter-spacing: 0;
+}
+.bow-display {
+  font-family: var(--font-display);
+  font-weight: var(--fw-black);
+  text-transform: uppercase;
+  letter-spacing: var(--track-display);
+  line-height: var(--lh-page);
+}
+.bow-data {
+  font-family: var(--font-data);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--track-data);
+  font-variant-numeric: tabular-nums;
+}

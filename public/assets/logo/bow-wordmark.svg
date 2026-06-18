@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120" fill="none">
+  
+  <text class="bow" x="0" y="78" font-size="92" fill="currentColor">BOW</text>
+  <rect x="2" y="92" width="246" height="5" fill="#3157FF"></rect>
+  <rect x="248" y="92" width="70" height="5" fill="#3157FF" transform="translate(0,9)"></rect>
+  <text class="sc" x="3" y="116" font-size="15" fill="currentColor">SPORTS CAPITAL</text>
+</svg>

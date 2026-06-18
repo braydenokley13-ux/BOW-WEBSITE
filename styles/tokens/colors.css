@@ -1,0 +1,81 @@
+/* BOW Sports Capital — Color System
+ * Foundation: black or cream, white surface/type, ONE dominant accent,
+ * at most ONE additional signal color. Never blue+orange+green+red at once.
+ */
+:root {
+  /* ---- Brand (raw) ---- */
+  --bow-ink: #0a0a0b;          /* Mastheads, dark pages, primary type */
+  --bow-paper: #f3f0e8;        /* Editorial backgrounds */
+  --bow-white: #ffffff;        /* High-contrast surfaces */
+  --bow-blue: #3157ff;         /* Franchise Blue — main accent, links, active */
+  --bow-orange: #ff5a36;       /* Signal Orange — decisions, editorial emphasis */
+
+  /* ---- Neutral (raw) ---- */
+  --bow-slate: #6d7078;        /* Metadata, secondary text */
+  --bow-border: #d8d5ce;       /* Borders, section dividers (on paper/white) */
+  --bow-dark-surface: #151518; /* Charcoal panels in front-office mode */
+  --bow-dark-border: #2a2a2f;  /* Hairline rules on dark */
+
+  /* ---- Functional / semantic (raw) ---- */
+  --bow-positive: #158a55;     /* Positive result */
+  --bow-warning:  #e99a18;     /* Warning / tradeoff */
+  --bow-negative: #d63b3b;     /* Negative consequence */
+  --bow-info:     #3157ff;     /* Information (== Franchise Blue) */
+  --bow-inactive: #8b8d93;     /* Locked / disabled */
+
+  /* ---- Tints used for soft fills (derived) ---- */
+  --bow-blue-tint:     #e7ecff;
+  --bow-orange-tint:   #ffe6e0;
+  --bow-positive-tint: #e1f3ea;
+  --bow-warning-tint:  #fbf0db;
+  --bow-negative-tint: #fbe5e5;
+
+  /* ============================================================
+   * SEMANTIC ALIASES — prefer these in components.
+   * Defaults below are the EDITORIAL (light) surface mode.
+   * ============================================================ */
+  --surface-page:     var(--bow-paper);
+  --surface-raised:   var(--bow-white);
+  --surface-inverse:  var(--bow-ink);
+
+  --text-primary:     var(--bow-ink);
+  --text-secondary:   var(--bow-slate);
+  --text-inverse:     var(--bow-white);
+  --text-link:        var(--bow-blue);
+
+  --accent:           var(--bow-blue);
+  --accent-emphasis:  var(--bow-orange);
+
+  --border-rule:      var(--bow-border);
+  --border-strong:    var(--bow-ink);
+
+  --state-positive:   var(--bow-positive);
+  --state-warning:    var(--bow-warning);
+  --state-negative:   var(--bow-negative);
+  --state-info:       var(--bow-info);
+  --state-inactive:   var(--bow-inactive);
+}
+
+/* ============================================================
+ * FRONT-OFFICE MODE — dark surface, mono data, blue interaction.
+ * Apply to any subtree: <div class="bow-front-office"> … </div>
+ * ============================================================ */
+.bow-front-office {
+  --surface-page:    var(--bow-ink);
+  --surface-raised:  var(--bow-dark-surface);
+  --surface-inverse: var(--bow-paper);
+
+  --text-primary:    var(--bow-white);
+  --text-secondary:  #9a9da6;
+  --text-inverse:    var(--bow-ink);
+  --text-link:       #6f8bff;
+
+  --accent:          var(--bow-blue);
+  --accent-emphasis: var(--bow-orange);
+
+  --border-rule:     var(--bow-dark-border);
+  --border-strong:   #3a3a42;
+
+  background: var(--surface-page);
+  color: var(--text-primary);
+}
