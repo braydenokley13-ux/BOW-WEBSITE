@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { NAV, SITE } from "@/lib/site";
 import Button from "@/components/ds/Button";
 
@@ -14,11 +14,7 @@ function isActive(pathname: string, href: string) {
 export default function Masthead() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-
-  // Close the mobile menu whenever the route changes.
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
+  const closeMenu = () => setMenuOpen(false);
 
   return (
     <header
@@ -42,7 +38,7 @@ export default function Masthead() {
           gap: 24,
         }}
       >
-        <Link href="/" aria-label={`${SITE.name} home`} style={{ display: "flex", flexDirection: "column", lineHeight: 0.8, flexShrink: 0 }}>
+        <Link href="/" onClick={closeMenu} aria-label={`${SITE.name} home`} style={{ display: "flex", flexDirection: "column", lineHeight: 0.8, flexShrink: 0 }}>
           <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
             BOW
           </span>
@@ -132,6 +128,7 @@ export default function Masthead() {
             <Link
               key={n.href}
               href={n.href}
+              onClick={closeMenu}
               style={{
                 fontFamily: "var(--font-display)",
                 fontWeight: 600,
@@ -148,15 +145,16 @@ export default function Masthead() {
           ))}
           <Link
             href="/sign-in"
+            onClick={closeMenu}
             style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 22, letterSpacing: "0.02em", textTransform: "uppercase", padding: "10px 0", borderBottom: "1px solid var(--bow-dark-border)", color: "#c8cad0" }}
           >
             Sign In
           </Link>
           <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <Button href="/programs" variant="primary" size="md" full style={{ height: 44 }}>
+            <Button href="/programs" variant="primary" size="md" full onClick={closeMenu} style={{ height: 44 }}>
               Explore Programs
             </Button>
-            <Button href="/sign-up" variant="secondary" size="md" full style={{ height: 44, color: "#fff", borderColor: "var(--bow-dark-border)" }}>
+            <Button href="/sign-up" variant="secondary" size="md" full onClick={closeMenu} style={{ height: 44, color: "#fff", borderColor: "var(--bow-dark-border)" }}>
               Sign Up
             </Button>
           </div>

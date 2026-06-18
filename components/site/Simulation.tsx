@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Button, DataStrip, DecisionCard } from "@/components/ds";
 import type { DataItem } from "@/components/ds";
@@ -145,13 +146,13 @@ function EntryScreen({ onBegin }: { onBegin: () => void }) {
             color: "#6d7078",
           }}
         >
-          <a href="/programs/track-101" style={{ color: "#6f8bff", textDecoration: "none" }}>
+          <Link href="/programs/track-101" style={{ color: "#6f8bff", textDecoration: "none" }}>
             Track 101
-          </a>
+          </Link>
           <span aria-hidden>/</span>
-          <a href="/lessons" style={{ color: "#6f8bff", textDecoration: "none" }}>
+          <Link href="/lessons" style={{ color: "#6f8bff", textDecoration: "none" }}>
             Lesson 2
-          </a>
+          </Link>
           <span aria-hidden>/</span>
           <span style={{ color: "#fff" }}>Simulation</span>
         </nav>
