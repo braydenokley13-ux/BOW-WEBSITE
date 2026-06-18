@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Masthead from "@/components/site/Masthead";
-import Footer from "@/components/site/Footer";
 import SmoothScroll from "@/components/site/SmoothScroll";
 import { SITE } from "@/lib/site";
 
@@ -41,11 +39,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body>
         <SmoothScroll />
-        <div style={{ background: "var(--bow-paper)", minHeight: "100vh", overflowX: "clip" }}>
-          <Masthead />
-          <main>{children}</main>
-          <Footer />
-        </div>
+        {children}
       </body>
     </html>
   );
