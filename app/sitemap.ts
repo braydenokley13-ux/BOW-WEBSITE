@@ -1,10 +1,8 @@
 import type { MetadataRoute } from "next";
 import { SITE } from "@/lib/site";
+import { lessons } from "@/lib/lessons";
 
-/**
- * Static marketing routes. Lesson-detail routes (`/lessons/[slug]`) are appended
- * during the integration pass once the lesson dataset is in place.
- */
+/** Static marketing routes; lesson-detail routes are appended below. */
 const ROUTES = [
   "/",
   "/programs",
@@ -28,10 +26,17 @@ const ROUTES = [
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
-  return ROUTES.map((path) => ({
+  const staticEntries: MetadataRoute.Sitemap = ROUTES.map((path) => ({
     url: `${SITE.url}${path}`,
     lastModified: now,
     changeFrequency: "monthly",
     priority: path === "/" ? 1 : 0.7,
   }));
+  const lessonEntries: MetadataRoute.Sitemap = lessons.map((l) => ({
+    url: `${SITE.url}/lessons/${l.slug}`,
+    lastModified: now,
+    changeFrequency: "monthly",
+    priority: 0.6,
+  }));
+  return [...staticEntries, ...lessonEntries];
 }
