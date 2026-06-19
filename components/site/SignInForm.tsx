@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useActionState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { CSSProperties } from "react";
+import { signIn, type AuthState } from "@/app/actions/auth";
 
 const labelStyle: CSSProperties = {
   fontFamily: "var(--font-data)",
@@ -24,18 +26,9 @@ const inputStyle: CSSProperties = {
 };
 
 export default function SignInForm() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [banner, setBanner] = useState<{ title: string; body: string } | null>(null);
-
-  const doSignIn = (e: React.FormEvent) => {
-    e.preventDefault();
-    // TODO: wire to auth
-    setBanner({
-      title: "Authentication is coming soon",
-      body: "Sign-in isn’t live yet. We’re building the front office now — check back soon, or sign up to get notified when accounts open.",
-    });
-  };
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") ?? "";
+  const [state, action, pending] = useActionState<AuthState, FormData>(signIn, {});
 
   return (
     <div
@@ -123,13 +116,14 @@ export default function SignInForm() {
             justifyContent: "center",
           }}
         >
-          <form onSubmit={doSignIn} style={{ maxWidth: 400, width: "100%", margin: "0 auto" }}>
-            {banner && (
+          <form action={action} style={{ maxWidth: 400, width: "100%", margin: "0 auto" }}>
+            <input type="hidden" name="next" value={next} />
+            {state.error && (
               <div
                 role="alert"
                 style={{
                   border: "1px solid var(--bow-dark-border)",
-                  borderLeft: "4px solid var(--bow-blue)",
+                  borderLeft: "4px solid var(--bow-negative)",
                   padding: "16px 18px",
                   marginBottom: 22,
                   background: "var(--bow-dark-surface)",
@@ -146,10 +140,10 @@ export default function SignInForm() {
                     marginBottom: 5,
                   }}
                 >
-                  {banner.title}
+                  Couldn’t sign you in
                 </span>
                 <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.55, color: "#b9bcc4" }}>
-                  {banner.body}
+                  {state.error}
                 </p>
               </div>
             )}
@@ -159,9 +153,10 @@ export default function SignInForm() {
             </label>
             <input
               id="si-email"
+              name="email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
               placeholder="you@school.edu"
               style={{ ...inputStyle, marginBottom: 18 }}
             />
@@ -173,9 +168,10 @@ export default function SignInForm() {
             </div>
             <input
               id="si-pw"
+              name="password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
               placeholder="••••••••"
               style={{ ...inputStyle, marginBottom: 8 }}
             />
@@ -193,6 +189,7 @@ export default function SignInForm() {
 
             <button
               type="submit"
+              disabled={pending}
               style={{
                 width: "100%",
                 background: "var(--bow-blue)",
@@ -205,10 +202,11 @@ export default function SignInForm() {
                 letterSpacing: "0.05em",
                 textTransform: "uppercase",
                 borderRadius: 4,
-                cursor: "pointer",
+                cursor: pending ? "wait" : "pointer",
+                opacity: pending ? 0.7 : 1,
               }}
             >
-              Sign In
+              {pending ? "Signing in…" : "Sign In"}
             </button>
 
             <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "22px 0" }}>

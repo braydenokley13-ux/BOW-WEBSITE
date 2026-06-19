@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import {
   type Role,
   type AttendanceState,
@@ -11,9 +11,10 @@ import {
   type Invitation,
   type Inquiry,
   type Cohort,
-  getUser,
-  defaultUserForRole,
+  type AppData,
 } from "@/lib/account";
+import { signOut as signOutAction } from "@/app/actions/auth";
+import * as lms from "@/app/actions/lms";
 
 export type ToastTone = "positive" | "warning" | "negative";
 
@@ -31,11 +32,16 @@ interface ConfirmConfig {
 }
 
 interface AppStateValue {
-  role: Role | null;
-  userId: string | null;
-  me: User | null;
-  signInAs: (role: Role) => void;
+  role: Role;
+  me: User;
   signOut: () => void;
+
+  /** Live dataset loaded from the database on the server. */
+  data: AppData;
+  /** Invitations including any created this session (newest first). */
+  invitations: Invitation[];
+  /** Inquiries (newest first). */
+  inquiries: Inquiry[];
 
   selectedCohortId: string;
   setSelectedCohortId: (id: string) => void;
@@ -48,20 +54,21 @@ interface AppStateValue {
   selectedLessonId: string | null;
   setSelectedLessonId: (id: string | null) => void;
 
-  // effective status (mock overrides layered over seed data)
+  // effective status — database snapshot with optimistic overrides layered on top
   userStatusOf: (u: User) => UserStatus;
   invStatusOf: (iv: Invitation) => InvitationStatus;
   inqStatusOf: (iq: Inquiry) => InquiryStatus;
   cohortCurrentLessonId: (c: Cohort) => string | null;
   attendanceOf: (cohortId: string, userId: string, fallback: AttendanceState) => AttendanceState;
 
-  // mutations (prototype only — no persistence beyond this session)
+  // mutations — optimistic locally, persisted to the database via server actions
   suspendUser: (id: string) => void;
   restoreUser: (id: string) => void;
   setInvStatus: (id: string, status: InvitationStatus) => void;
   setInqStatus: (id: string, status: InquiryStatus) => void;
   setAttendance: (cohortId: string, userId: string, state: AttendanceState) => void;
   advanceCohortLesson: (cohortId: string, nextLessonId: string | null) => void;
+  createInvitation: (input: lms.NewInvitationInput) => void;
 
   toast: Toast | null;
   showToast: (msg: string, tone?: ToastTone) => void;
@@ -74,12 +81,16 @@ interface AppStateValue {
 
 const Ctx = createContext<AppStateValue | null>(null);
 
-const STORAGE_KEY = "bow.app.session";
-
-export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [role, setRole] = useState<Role | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
+export function AppStateProvider({
+  me,
+  data,
+  children,
+}: {
+  me: User;
+  data: AppData;
+  children: React.ReactNode;
+}) {
+  const role = me.role;
 
   const [selectedCohortId, setSelectedCohortId] = useState("coh-1");
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
@@ -87,56 +98,43 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
 
+  // Optimistic overlays so the UI responds instantly; the same change is
+  // also written to the database, so a reload shows the persisted value.
   const [userStatusOverride, setUserStatusOverride] = useState<Record<string, UserStatus>>({});
   const [invStatusOverride, setInvStatusOverride] = useState<Record<string, InvitationStatus>>({});
   const [inqStatusOverride, setInqStatusOverride] = useState<Record<string, InquiryStatus>>({});
   const [cohortLessonOverride, setCohortLessonOverride] = useState<Record<string, string>>({});
   const [attendance, setAttendanceMap] = useState<Record<string, Record<string, AttendanceState>>>({});
+  const [newInvitations, setNewInvitations] = useState<Invitation[]>([]);
 
   const [toast, setToast] = useState<Toast | null>(null);
   const [confirm, setConfirm] = useState<ConfirmConfig | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
-  // Restore the persisted session on mount. This is a legitimate on-mount sync
-  // from an external store (localStorage); doing it in an initializer would
-  // mismatch the SSR render and break hydration.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as { role: Role | null; userId: string | null };
-        if (parsed.role) {
-          setRole(parsed.role);
-          setUserId(parsed.userId);
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-    setHydrated(true);
-  }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ role, userId }));
-    } catch {
-      /* ignore */
-    }
-  }, [role, userId, hydrated]);
-
-  const signInAs = useCallback((r: Role) => {
-    setRole(r);
-    setUserId(defaultUserForRole(r));
-    setSelectedCohortId("coh-1");
-    setSelectedLessonId(null);
-  }, []);
+  // Index the snapshot for O(1) effective-status lookups.
+  const dbUserStatus = useMemo(() => {
+    const m: Record<string, UserStatus> = {};
+    for (const u of data.users) m[u.id] = u.status;
+    return m;
+  }, [data.users]);
+  const dbInvStatus = useMemo(() => {
+    const m: Record<string, InvitationStatus> = {};
+    for (const iv of data.invitations) m[iv.id] = iv.status;
+    return m;
+  }, [data.invitations]);
+  const dbInqStatus = useMemo(() => {
+    const m: Record<string, InquiryStatus> = {};
+    for (const iq of data.inquiries) m[iq.id] = iq.status;
+    return m;
+  }, [data.inquiries]);
+  const dbCohortLesson = useMemo(() => {
+    const m: Record<string, string | null> = {};
+    for (const c of data.cohorts) m[c.id] = c.currentLessonId;
+    return m;
+  }, [data.cohorts]);
 
   const signOut = useCallback(() => {
-    setRole(null);
-    setUserId(null);
+    void signOutAction();
   }, []);
 
   const showToast = useCallback((msg: string, tone: ToastTone = "positive") => {
@@ -154,29 +152,36 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const failToast = useCallback((msg: string) => () => showToast(msg, "negative"), [showToast]);
+
   const suspendUser = useCallback((id: string) => {
     setUserStatusOverride((m) => ({ ...m, [id]: "suspended" }));
     showToast("Access suspended", "negative");
-  }, [showToast]);
+    lms.suspendUser(id).catch(failToast("Couldn't suspend — try again"));
+  }, [showToast, failToast]);
 
   const restoreUser = useCallback((id: string) => {
     setUserStatusOverride((m) => ({ ...m, [id]: "active" }));
     showToast("Access restored");
-  }, [showToast]);
+    lms.restoreUser(id).catch(failToast("Couldn't restore — try again"));
+  }, [showToast, failToast]);
 
   const setInvStatus = useCallback((id: string, status: InvitationStatus) => {
     setInvStatusOverride((m) => ({ ...m, [id]: status }));
     showToast("Invitation " + status, status === "revoked" ? "negative" : "positive");
-  }, [showToast]);
+    lms.setInvitationStatus(id, status).catch(failToast("Couldn't update invitation"));
+  }, [showToast, failToast]);
 
   const setInqStatus = useCallback((id: string, status: InquiryStatus) => {
     setInqStatusOverride((m) => ({ ...m, [id]: status }));
     showToast("Inquiry marked " + status);
-  }, [showToast]);
+    lms.setInquiryStatus(id, status).catch(failToast("Couldn't update inquiry"));
+  }, [showToast, failToast]);
 
   const setAttendance = useCallback((cohortId: string, uid: string, state: AttendanceState) => {
     setAttendanceMap((m) => ({ ...m, [cohortId]: { ...(m[cohortId] ?? {}), [uid]: state } }));
-  }, []);
+    lms.setAttendance(cohortId, uid, state).catch(failToast("Couldn't save attendance"));
+  }, [failToast]);
 
   const advanceCohortLesson = useCallback((cohortId: string, nextLessonId: string | null) => {
     if (!nextLessonId) {
@@ -185,15 +190,31 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     }
     setCohortLessonOverride((m) => ({ ...m, [cohortId]: nextLessonId }));
     showToast("Cohort advanced to the next lesson");
-  }, [showToast]);
+    lms.advanceCohortLesson(cohortId, nextLessonId).catch(failToast("Couldn't advance cohort"));
+  }, [showToast, failToast]);
+
+  const createInvitation = useCallback((input: lms.NewInvitationInput) => {
+    lms.createInvitation(input)
+      .then((inv) => {
+        setNewInvitations((list) => [inv, ...list]);
+        showToast("Invitation created");
+      })
+      .catch(failToast("Couldn't create invitation"));
+  }, [showToast, failToast]);
+
+  const invitations = useMemo(
+    () => [...newInvitations, ...data.invitations],
+    [newInvitations, data.invitations],
+  );
 
   const value: AppStateValue = useMemo(
     () => ({
       role,
-      userId,
-      me: getUser(userId),
-      signInAs,
+      me,
       signOut,
+      data,
+      invitations,
+      inquiries: data.inquiries,
       selectedCohortId,
       setSelectedCohortId,
       selectedStudentId,
@@ -204,17 +225,20 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setSelectedInquiryId,
       selectedLessonId,
       setSelectedLessonId,
-      userStatusOf: (u) => userStatusOverride[u.id] ?? u.status,
-      invStatusOf: (iv) => invStatusOverride[iv.id] ?? iv.status,
-      inqStatusOf: (iq) => inqStatusOverride[iq.id] ?? iq.status,
-      cohortCurrentLessonId: (c) => cohortLessonOverride[c.id] ?? c.currentLessonId,
-      attendanceOf: (cohortId, uid, fallback) => attendance[cohortId]?.[uid] ?? fallback,
+      userStatusOf: (u) => userStatusOverride[u.id] ?? dbUserStatus[u.id] ?? u.status,
+      invStatusOf: (iv) => invStatusOverride[iv.id] ?? dbInvStatus[iv.id] ?? iv.status,
+      inqStatusOf: (iq) => inqStatusOverride[iq.id] ?? dbInqStatus[iq.id] ?? iq.status,
+      cohortCurrentLessonId: (c) =>
+        cohortLessonOverride[c.id] ?? dbCohortLesson[c.id] ?? c.currentLessonId,
+      attendanceOf: (cohortId, uid, fallback) =>
+        attendance[cohortId]?.[uid] ?? data.attendance[cohortId]?.[uid] ?? fallback,
       suspendUser,
       restoreUser,
       setInvStatus,
       setInqStatus,
       setAttendance,
       advanceCohortLesson,
+      createInvitation,
       toast,
       showToast,
       confirm,
@@ -223,10 +247,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       confirmNo,
     }),
     [
-      role, userId, selectedCohortId, selectedStudentId, selectedOrganizationId, selectedInquiryId,
-      selectedLessonId, userStatusOverride, invStatusOverride, inqStatusOverride, cohortLessonOverride,
-      attendance, toast, confirm, signInAs, signOut, showToast, askConfirm, confirmYes, confirmNo,
-      suspendUser, restoreUser, setInvStatus, setInqStatus, setAttendance, advanceCohortLesson,
+      role, me, signOut, data, invitations, selectedCohortId, selectedStudentId, selectedOrganizationId,
+      selectedInquiryId, selectedLessonId, userStatusOverride, invStatusOverride, inqStatusOverride,
+      cohortLessonOverride, attendance, dbUserStatus, dbInvStatus, dbInqStatus, dbCohortLesson,
+      toast, confirm, showToast, askConfirm, confirmYes, confirmNo, suspendUser, restoreUser,
+      setInvStatus, setInqStatus, setAttendance, advanceCohortLesson, createInvitation,
     ],
   );
 

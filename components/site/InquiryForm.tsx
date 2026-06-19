@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ds";
+import { createInquiry } from "@/app/actions/lms";
 import {
   inquiryPaths,
   type InquiryPath,
@@ -127,8 +128,25 @@ export default function InquiryForm({ initialPathId }: { initialPathId?: string 
     setStep(3);
   };
 
-  const submit = () => {
-    // TODO: wire to backend/API — POST { path: path.id, data } to the inquiry endpoint.
+  const submit = async () => {
+    if (!path) return;
+    // Map the path's free-form fields onto the inquiry shape, then persist.
+    const orgName =
+      data.schoolName || data.campName || data.orgName || data.organization || data.publication || "";
+    const detail = path.fields
+      .filter((f) => ["notes", "description", "message"].includes(f.name))
+      .map((f) => (data[f.name] || "").trim())
+      .filter(Boolean)
+      .join(" ");
+    const summary = [`${path.label} inquiry.`, detail].filter(Boolean).join(" ");
+
+    await createInquiry({
+      name: (data.contactName || "").trim(),
+      email: (data.email || "").trim(),
+      type: path.label,
+      orgName,
+      summary,
+    });
     setStatus("unavailable");
   };
 
@@ -275,7 +293,7 @@ export default function InquiryForm({ initialPathId }: { initialPathId?: string 
             <div style={{ border: "1px solid var(--bow-dark-border)", borderLeft: "4px solid var(--bow-positive)", padding: "22px 24px", marginBottom: 24 }} role="status">
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-positive)", display: "block", marginBottom: 10 }}>Inquiry received</span>
               <p style={{ margin: "0 0 14px", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "#b9bcc4" }}>{path.successMessage}</p>
-              <p style={{ margin: "0 0 14px", fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.6, color: "#6d7078" }}>This is a front-end preview — your information is preserved above but is not yet sent to a server. A production endpoint can be connected at submit() in the component source.</p>
+              <p style={{ margin: "0 0 14px", fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.6, color: "#6d7078" }}>Your inquiry has been sent to the BOW front office and will appear in the admin inbox.</p>
               <button onClick={reset} style={ghostButtonStyle}>Start Over</button>
             </div>
           ) : (

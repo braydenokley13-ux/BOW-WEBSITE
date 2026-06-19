@@ -1,9 +1,12 @@
 /* ============================================================
- * Account / LMS mock-data layer (prototype).
+ * Account / LMS data layer.
  *
- * This is the seam a real backend replaces: swap these arrays and
- * lookups for API/DB calls and the screens keep working. No real
- * persistence, auth, or storage lives here. Curriculum is NOT
+ * The arrays below are the SEED for the real backend: on first
+ * boot `lib/db.ts` loads them into a SQLite database, which then
+ * becomes the system of record. The screens keep importing the
+ * types and seed structure from here, while live status, auth, and
+ * new records flow through the database (see lib/db.ts, lib/dal.ts,
+ * and the server actions in app/actions/). Curriculum is NOT
  * duplicated — cohorts reference lesson ids from lib/lessons.
  * ============================================================ */
 
@@ -199,3 +202,50 @@ export const initials = (name: string): string =>
 
 export const lessonProgressLabel = (s: LessonProgress): string =>
   ({ "in-progress": "In Progress", completed: "Completed", "not-started": "Not Started", none: "No Access", waiting: "Waiting for Session" })[s] ?? "Not Started";
+
+/* ============================================================
+ * Backend wiring
+ * ============================================================ */
+
+/**
+ * Development password assigned to every seeded account that has
+ * "active" or "suspended" status. Seeded "invited" users have no
+ * password until they accept their invitation. Real deployments
+ * should rotate these out — they exist so the prototype's seed
+ * accounts can actually sign in.
+ */
+export const SEED_PASSWORD = "bowdemo123";
+
+/** Map of seed user email -> account they can sign in with (active/suspended only). */
+export const signInHint = (): { email: string; password: string }[] =>
+  users
+    .filter((u) => u.status !== "invited")
+    .map((u) => ({ email: u.email, password: SEED_PASSWORD }));
+
+/**
+ * A full snapshot of the LMS dataset, loaded from the database on
+ * the server and handed to the client app shell. This is the shape
+ * the screens read from at request time.
+ */
+export interface AppData {
+  users: User[];
+  organizations: Organization[];
+  cohorts: Cohort[];
+  enrollments: Enrollment[];
+  invitations: Invitation[];
+  inquiries: Inquiry[];
+  activity: Activity[];
+  attendance: Record<string, Record<string, AttendanceState>>;
+}
+
+/** Build the in-memory seed snapshot (used as the DB seed source). */
+export const seedAppData = (): AppData => ({
+  users,
+  organizations,
+  cohorts,
+  enrollments,
+  invitations,
+  inquiries,
+  activity,
+  attendance: {},
+});
