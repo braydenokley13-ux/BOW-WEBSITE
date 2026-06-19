@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ds";
+import { createInquiry } from "@/app/actions/lms";
 
 const ROLE_OPTIONS = ["Student", "Parent", "Educator", "School / Camp", "Other"];
 const INTEREST_OPTIONS = [
@@ -59,13 +60,28 @@ export default function SignUpForm() {
     setError("");
   };
 
-  const submit = (e: React.FormEvent) => {
+  const [pending, setPending] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.email.trim() || !/.+@.+\..+/.test(form.email)) {
       setError("Add your name and a valid email so we can reach you.");
       return;
     }
-    // TODO: wire to auth/backend
+    setPending(true);
+    const summary = [`Interested in ${form.interest}.`, form.message.trim()].filter(Boolean).join(" ");
+    const res = await createInquiry({
+      name: form.name,
+      email: form.email,
+      type: form.role,
+      orgName: form.org,
+      summary,
+    });
+    setPending(false);
+    if (!res.ok) {
+      setError("Something went wrong sending that. Please try again.");
+      return;
+    }
     setSubmitted(true);
     setError("");
   };
@@ -295,13 +311,13 @@ export default function SignUpForm() {
                   </div>
                 )}
                 <div style={{ marginTop: 4 }}>
-                  <Button variant="primary" size="lg" type="submit" full>
-                    Take My Seat
+                  <Button variant="primary" size="lg" type="submit" full disabled={pending}>
+                    {pending ? "Sending…" : "Take My Seat"}
                   </Button>
                 </div>
                 <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 12, lineHeight: 1.5, color: "#6d7078" }}>
-                  By signing up you agree to receive program updates from BOW Sports Capital. Placeholder consent copy —
-                  replace before launch.
+                  By signing up you agree to receive program updates from BOW Sports Capital. Your details are sent to the
+                  BOW front office as an inquiry.
                 </p>
               </form>
             )}

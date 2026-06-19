@@ -54,5 +54,38 @@ The signature device is the **Cap Line**. See `styles/tokens/` and `components/d
 ## Roadmap
 
 - ✅ Public marketing site (this repo)
-- ⏳ Authentication (student / instructor / admin)
-- ⏳ Backend + persistence for cohorts, lessons, and the LMS app shell
+- ✅ Authentication (student / instructor / admin)
+- ✅ Backend + persistence for cohorts, lessons, and the LMS app shell
+
+## Authentication & backend
+
+The front office (`/app`) runs on a real, self-contained backend — no external
+service required:
+
+- **Database** — SQLite via Node's built-in `node:sqlite` driver. The file lives
+  at `data/bow.db` (gitignored) and is created and seeded from `lib/account.ts`
+  on first boot, so the app comes up with the prototype's data already loaded.
+- **Passwords** — hashed with scrypt (`node:crypto`); see `lib/password.ts`.
+- **Sessions** — database-backed opaque tokens stored in an HttpOnly cookie
+  (`lib/session.ts`). Validated against the DB on every request.
+- **Route protection** — `proxy.ts` (Next 16's renamed Middleware) does an
+  optimistic cookie check; the authoritative check is in the app layout and every
+  server action via the Data Access Layer (`lib/dal.ts`).
+- **Mutations** — server actions in `app/actions/` (`auth.ts`, `lms.ts`) persist
+  every change and verify authorization first.
+
+### Signing in
+
+Seeded accounts share the development password **`bowdemo123`**. For example:
+
+| Role        | Email                          |
+| ----------- | ------------------------------ |
+| Admin       | `dana@bowsportscapital.org`    |
+| Instructor  | `marcus.reyes@lincolnhs.edu`   |
+| Student     | `jalen.b@lincolnhs.edu`        |
+
+Invited accounts (e.g. `aisha.o@lincolnhs.edu`) have no password until they
+accept their invitation at `/accept-invitation?token=<id>` (admins can copy the
+link from the Invitations table).
+
+To reset everything, delete the `data/` directory and restart — it re-seeds.

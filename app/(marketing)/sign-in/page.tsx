@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import SignInForm from "@/components/site/SignInForm";
 
 export const metadata = {
@@ -9,7 +10,9 @@ export const metadata = {
 export default function SignInPage() {
   return (
     <div data-screen-label="Sign In">
-      <SignInForm />
+      <Suspense>
+        <SignInForm />
+      </Suspense>
     </div>
   );
 }

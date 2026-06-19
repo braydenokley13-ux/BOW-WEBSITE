@@ -3,19 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/app/AppState";
-import {
-  getCohort,
-  getOrg,
-  cohortRoster,
-  trackLessons,
-  type Cohort,
-  type AttendanceState,
-  type Enrollment,
-  type User,
-} from "@/lib/account";
-import { getLessonById, type Lesson } from "@/lib/lessons";
-
-type AttSave = "idle" | "dirty" | "saving" | "saved" | "error";
+import { nextLessonInTrack, type AttendanceState } from "@/lib/account";
+import { getLessonById } from "@/lib/lessons";
 
 const STAGE_DEFS = [
   "Open the case",
@@ -28,31 +17,6 @@ const STAGE_DEFS = [
   "Close the session",
 ];
 
-const ATT_SAVE_COLOR: Record<AttSave, string> = {
-  idle: "var(--bow-slate)",
-  dirty: "var(--bow-warning)",
-  saving: "var(--bow-slate)",
-  saved: "var(--bow-positive)",
-  error: "var(--bow-negative)",
-};
-const ATT_SAVE_LABEL: Record<AttSave, string> = {
-  idle: "",
-  dirty: "Unsaved changes",
-  saving: "Saving…",
-  saved: "Saved",
-  error: "Save failed",
-};
-
-/** Sort a track's lessons by module then lesson number, return the one after curId (null if last/none). */
-function nextLessonOf(track: string, curId: string | null): Lesson | null {
-  const ordered = [...trackLessons(track)].sort(
-    (a, b) => a.moduleNumber - b.moduleNumber || a.lessonNumber - b.lessonNumber,
-  );
-  const idx = ordered.findIndex((l) => l.id === curId);
-  if (idx === -1) return null;
-  return ordered[idx + 1] ?? null;
-}
-
 interface AttRow {
   id: string;
   name: string;
@@ -63,20 +27,25 @@ export default function InstructorSessionPage() {
   const router = useRouter();
   const {
     selectedCohortId,
+    getCohort,
+    getOrg,
+    cohortRoster,
     cohortCurrentLessonId,
     attendanceOf,
     setAttendance,
     advanceCohortLesson,
+    addSessionNote,
     askConfirm,
     showToast,
   } = useAppState();
 
   const [sessionStarted, setSessionStarted] = useState(false);
   const [sessionStage, setSessionStage] = useState(0);
-  const [attSave, setAttSave] = useState<AttSave>("idle");
   const [noteDraft, setNoteDraft] = useState("");
 
-  const c: Cohort = getCohort(selectedCohortId) ?? getCohort("coh-1")!;
+  const c = getCohort(selectedCohortId) ?? getCohort("coh-1");
+  if (!c) return null;
+
   const org = getOrg(c.orgId);
   const curId = cohortCurrentLessonId(c);
   const L = curId ? getLessonById(curId) ?? null : null;
@@ -84,7 +53,7 @@ export default function InstructorSessionPage() {
   const roster = cohortRoster(c.id);
   const activeRoster = roster.filter((e) => e.enroll === "active" || e.enroll === "suspended");
 
-  const attRows: AttRow[] = activeRoster.map((e: Enrollment & { user: User }) => ({
+  const attRows: AttRow[] = activeRoster.map((e) => ({
     id: e.userId,
     name: e.user.name,
     state: attendanceOf(c.id, e.userId, "none"),
@@ -98,7 +67,7 @@ export default function InstructorSessionPage() {
   };
 
   const noStudents = activeRoster.length === 0;
-  const nextLesson = nextLessonOf(c.track, curId);
+  const nextLesson = nextLessonInTrack(c.track, curId);
 
   const stages = STAGE_DEFS.map((s, i) => ({
     n: String(i + 1).padStart(2, "0"),
@@ -106,33 +75,13 @@ export default function InstructorSessionPage() {
     dot: i < sessionStage ? "var(--bow-positive)" : i === sessionStage ? "var(--bow-blue)" : "var(--bow-inactive)",
   }));
 
-  const mark = (uid: string, state: AttendanceState) => {
-    setAttendance(c.id, uid, state);
-    setAttSave("dirty");
-  };
-
-  const markAllPresent = () => {
-    activeRoster.forEach((e) => setAttendance(c.id, e.userId, "present"));
-    setAttSave("dirty");
-  };
-
-  const saveAttendance = () => {
-    setAttSave("saving");
-    window.setTimeout(() => {
-      setAttSave("saved");
-      showToast("Attendance saved for this session");
-    }, 700);
-  };
-
-  const onStart = () => {
-    setSessionStarted(true);
-    setSessionStage(0);
-  };
+  const mark = (uid: string, state: AttendanceState) => setAttendance(c.id, uid, state);
+  const markAllPresent = () => activeRoster.forEach((e) => setAttendance(c.id, e.userId, "present"));
 
   const onComplete = () =>
     askConfirm({
       title: "Complete this session?",
-      body: "This marks the session done for the cohort. You can still edit attendance afterward.",
+      body: "This wraps the session for the cohort. Attendance is already saved; you can still edit it afterward.",
       confirmLabel: "Complete Session",
       tone: "info",
       onConfirm: () => {
@@ -155,8 +104,8 @@ export default function InstructorSessionPage() {
   const addNote = () => {
     const text = noteDraft.trim();
     if (!text) return;
+    addSessionNote(c.id, "Session · " + c.name, text);
     setNoteDraft("");
-    showToast("Note added — visible to instructors and BOW only");
   };
 
   const goBack = () => router.push("/app/instructor");
@@ -183,7 +132,7 @@ export default function InstructorSessionPage() {
             {sessionStarted ? (
               <button onClick={onComplete} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 24px", border: "none", background: "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Complete Session</button>
             ) : (
-              <button onClick={onStart} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 24px", border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Start Session</button>
+              <button onClick={() => { setSessionStarted(true); setSessionStage(0); }} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 24px", border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Start Session</button>
             )}
           </div>
         </div>
@@ -233,7 +182,7 @@ export default function InstructorSessionPage() {
             {/* attendance */}
             <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Attendance</span>
+                <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Attendance · saves automatically</span>
                 <button onClick={markAllPresent} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 14px", border: "1px solid var(--bow-positive)", background: "transparent", color: "var(--bow-positive)", borderRadius: 4, cursor: "pointer" }}>Mark All Present</button>
               </div>
               {noStudents && (
@@ -258,10 +207,6 @@ export default function InstructorSessionPage() {
                   );
                 })}
               </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border-rule)" }}>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: ATT_SAVE_COLOR[attSave] }}>{ATT_SAVE_LABEL[attSave]}</span>
-                <button onClick={saveAttendance} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.05em", textTransform: "uppercase", padding: "9px 18px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Save Attendance</button>
-              </div>
             </div>
 
             {/* notes */}
@@ -271,7 +216,7 @@ export default function InstructorSessionPage() {
                 <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Instructor &amp; BOW only</span>
               </div>
               <div style={{ display: "flex", gap: 10 }}>
-                <input value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} placeholder="Note from this session…" style={{ flex: 1, background: "var(--bow-paper)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "11px 13px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 }} />
+                <input value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addNote(); }} placeholder="Note from this session…" style={{ flex: 1, background: "var(--bow-paper)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "11px 13px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 }} />
                 <button onClick={addNote} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.05em", textTransform: "uppercase", padding: "0 18px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Add</button>
               </div>
             </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAppState } from "./AppState";
 import { roleLabel as roleLabelFor, roleAccent as roleAccentFor, initials, type Role } from "@/lib/account";
@@ -35,17 +35,13 @@ function isActive(pathname: string, href: string) {
 export default function AuthHeader() {
   const { role, me, signOut } = useAppState();
   const pathname = usePathname();
-  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  if (!role) return null;
 
   const nav = NAV_BY_ROLE[role];
   const accent = roleAccentFor(role);
 
-  const goPublic = () => {
-    signOut();
-    router.push("/");
-  };
+  // Sign out clears the session server-side and redirects to the public site.
+  const goPublic = () => signOut();
 
   return (
     <header style={{ background: "var(--bow-white)", color: "var(--bow-ink)", borderBottom: "1px solid var(--border-rule)", position: "sticky", top: 0, zIndex: 100 }}>

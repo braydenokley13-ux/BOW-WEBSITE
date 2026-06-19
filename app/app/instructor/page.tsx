@@ -2,12 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/app/AppState";
-import {
-  cohortsForInstructor,
-  cohortRoster,
-  getOrg,
-  type Cohort,
-} from "@/lib/account";
+import type { Cohort } from "@/lib/account";
 import { getLessonById } from "@/lib/lessons";
 
 interface TodayCohortVM {
@@ -32,11 +27,11 @@ interface NeedVM {
 
 export default function InstructorTodayPage() {
   const router = useRouter();
-  const { me, setSelectedCohortId, cohortCurrentLessonId } = useAppState();
+  const { me, setSelectedCohortId, cohortCurrentLessonId, cohortsForInstructor, cohortRoster, getOrg, attendanceOf } = useAppState();
 
-  const instructorId = me?.id ?? "u-coach";
+  const myCohorts = cohortsForInstructor(me.id);
 
-  const cohorts: TodayCohortVM[] = cohortsForInstructor(instructorId).map((c: Cohort) => {
+  const cohorts: TodayCohortVM[] = myCohorts.map((c: Cohort) => {
     const roster = cohortRoster(c.id);
     const active = roster.filter((e) => e.enroll === "active" || e.enroll === "suspended").length;
     const pending = roster.filter((e) => e.enroll === "invited").length;
@@ -54,16 +49,20 @@ export default function InstructorTodayPage() {
     };
   });
 
-  const today = cohorts.find((c) => c.id === "coh-1") ?? cohorts[0];
+  const today = cohorts.find((c) => c.studentCount > 0) ?? cohorts[0];
 
-  const tc = (tone: "warning" | "info"): string =>
-    tone === "warning" ? "var(--bow-warning)" : "var(--bow-blue)";
-
-  const needs: NeedVM[] = [
-    { text: "2 students haven’t accepted their invitation", cohort: "Lincoln Fall — Track 101", action: "View invitations", color: tc("warning"), cohortId: "coh-1", go: "cohort" },
-    { text: "Attendance not recorded for last session", cohort: "Eastside — Track 201", action: "Open session", color: tc("warning"), cohortId: "coh-2", go: "session" },
-    { text: "Tyler Nguyen is waiting for access to the current lesson", cohort: "Lincoln Fall — Track 101", action: "Open cohort", color: tc("info"), cohortId: "coh-1", go: "cohort" },
-  ];
+  // Real "needs attention" computed from the live roster, attendance and progress.
+  const needs: NeedVM[] = [];
+  for (const c of myCohorts) {
+    const roster = cohortRoster(c.id);
+    const pending = roster.filter((e) => e.enroll === "invited");
+    const notStarted = roster.filter((e) => e.enroll === "active" && e.lessonStatus === "not-started");
+    const absent = roster.filter((e) => e.enroll === "active" && attendanceOf(c.id, e.userId, "none") === "absent");
+    if (pending.length) needs.push({ text: `${pending.length} student${pending.length > 1 ? "s haven’t" : " hasn’t"} accepted their invitation`, cohort: c.name, action: "View cohort", color: "var(--bow-warning)", cohortId: c.id, go: "cohort" });
+    if (absent.length) needs.push({ text: `${absent.length} marked absent last session`, cohort: c.name, action: "Open session", color: "var(--bow-warning)", cohortId: c.id, go: "session" });
+    if (notStarted.length) needs.push({ text: `${notStarted.length} haven’t started the current lesson`, cohort: c.name, action: "Open cohort", color: "var(--bow-blue)", cohortId: c.id, go: "cohort" });
+  }
+  const topNeeds = needs.slice(0, 4);
 
   const openCohort = (id: string) => {
     setSelectedCohortId(id);
@@ -78,13 +77,18 @@ export default function InstructorTodayPage() {
     <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
       <div style={{ maxWidth: 1040, margin: "0 auto" }}>
         <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
-          Today · {me?.name ?? "Guest"}
+          Today · {me.name}
         </span>
         <h1 style={{ margin: "8px 0 28px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
           What you’re teaching next.
         </h1>
 
-        {/* dominant session card */}
+        {!today && (
+          <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 28 }}>
+            <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)" }}>You’re not assigned to a cohort yet. A BOW administrator will place you with one soon.</p>
+          </div>
+        )}
+
         {today && (
           <div style={{ background: "var(--bow-ink)", color: "#fff", borderRadius: 6, borderTop: "4px solid var(--bow-positive)", padding: "clamp(24px,3.5vw,36px)", marginBottom: 28 }}>
             <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#5fcf99" }}>
@@ -107,43 +111,48 @@ export default function InstructorTodayPage() {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 24 }}>
-          {/* my cohorts */}
-          <div>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 12 }}>My cohorts</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {cohorts.map((c) => (
-                <div key={c.id} onClick={() => openCohort(c.id)} style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: "18px 20px", cursor: "pointer" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                    <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)" }}>{c.name}</span>
-                    <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-positive)" }}>{c.studentCount} students</span>
+        {today && (
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 24 }}>
+            <div>
+              <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 12 }}>My cohorts</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {cohorts.map((c) => (
+                  <div key={c.id} onClick={() => openCohort(c.id)} style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: "18px 20px", cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)" }}>{c.name}</span>
+                      <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-positive)" }}>{c.studentCount} students{c.pending ? ` · ${c.pending} pending` : ""}</span>
+                    </div>
+                    <p style={{ margin: "6px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>{c.org} · {c.track}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border-rule)", flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>Current ·</span>
+                      <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 13, color: "var(--bow-ink)", flex: 1 }}>{c.currentLesson}</span>
+                      <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>{c.nextSession}</span>
+                    </div>
                   </div>
-                  <p style={{ margin: "6px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>{c.org} · {c.track}</p>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border-rule)", flexWrap: "wrap" }}>
-                    <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>Current ·</span>
-                    <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 13, color: "var(--bow-ink)", flex: 1 }}>{c.currentLesson}</span>
-                    <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>{c.nextSession}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 12 }}>Needs attention</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {topNeeds.length === 0 && (
+                  <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 5, padding: "14px 16px" }}>
+                    <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>Nothing needs your attention right now. Nice.</p>
                   </div>
-                </div>
-              ))}
+                )}
+                {topNeeds.map((n, i) => (
+                  <div key={i} style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderLeft: `3px solid ${n.color}`, borderRadius: 5, padding: "14px 16px" }}>
+                    <p style={{ margin: "0 0 4px", fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)", lineHeight: 1.4 }}>{n.text}</p>
+                    <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>{n.cohort}</span>
+                    <div style={{ marginTop: 8 }}>
+                      <span onClick={() => (n.go === "session" ? openSession(n.cohortId) : openCohort(n.cohortId))} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--bow-blue)", cursor: "pointer" }}>{n.action} →</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-          {/* needs attention */}
-          <div>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 12 }}>Needs attention</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {needs.map((n, i) => (
-                <div key={i} style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderLeft: `3px solid ${n.color}`, borderRadius: 5, padding: "14px 16px" }}>
-                  <p style={{ margin: "0 0 4px", fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)", lineHeight: 1.4 }}>{n.text}</p>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>{n.cohort}</span>
-                  <div style={{ marginTop: 8 }}>
-                    <span onClick={() => (n.go === "session" ? openSession(n.cohortId) : openCohort(n.cohortId))} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--bow-blue)", cursor: "pointer" }}>{n.action} →</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

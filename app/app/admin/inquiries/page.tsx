@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 import { Badge } from "@/components/ds";
 import { useAppState } from "@/components/app/AppState";
-import { inquiries, type InquiryStatus } from "@/lib/account";
+import { type InquiryStatus } from "@/lib/account";
 
 type BadgeStatus = "positive" | "warning" | "negative" | "info" | "neutral" | "locked";
 
@@ -38,7 +38,7 @@ const actionBtn: CSSProperties = {
 };
 
 export default function AdminInquiriesPage() {
-  const { inqStatusOf, setInqStatus, showToast } = useAppState();
+  const { inquiries, inqStatusOf, setInqStatus, showToast } = useAppState();
 
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
@@ -46,7 +46,7 @@ export default function AdminInquiriesPage() {
         <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>From the Get Involved funnel</span>
         <h1 style={{ margin: "8px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(30px,4vw,46px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>Inquiries</h1>
         <p style={{ margin: "0 0 26px", fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>
-          Prototype data — submissions are not yet stored on a server (<span style={{ fontFamily: "var(--font-data)", fontSize: 12 }}>PRODUCTION_ENDPOINT_TODO</span>).
+          Submissions from the public sign-up and Get Involved forms land here in real time.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {inquiries.map((iq) => {

@@ -1,9 +1,12 @@
 /* ============================================================
- * Account / LMS mock-data layer (prototype).
+ * Account / LMS data layer.
  *
- * This is the seam a real backend replaces: swap these arrays and
- * lookups for API/DB calls and the screens keep working. No real
- * persistence, auth, or storage lives here. Curriculum is NOT
+ * The arrays below are the SEED for the real backend: on first
+ * boot `lib/db.ts` loads them into a SQLite database, which then
+ * becomes the system of record. The screens keep importing the
+ * types and seed structure from here, while live status, auth, and
+ * new records flow through the database (see lib/db.ts, lib/dal.ts,
+ * and the server actions in app/actions/). Curriculum is NOT
  * duplicated — cohorts reference lesson ids from lib/lessons.
  * ============================================================ */
 
@@ -52,13 +55,36 @@ export interface Cohort {
 export type LessonProgress = "in-progress" | "completed" | "not-started" | "none" | "waiting";
 export type AttendanceState = "present" | "absent" | "late" | "excused" | "none";
 
+export type EnrollState = "active" | "invited" | "suspended" | "inactive";
+
 export interface Enrollment {
   userId: string;
   cohortId: string;
-  enroll: "active" | "invited" | "suspended";
+  enroll: EnrollState;
   lessonStatus: LessonProgress;
   last: string;
   attLast: AttendanceState;
+}
+
+/** Per-student, per-lesson progress detail (source of truth in the DB). */
+export interface LessonProgressDetail {
+  status: "not-started" | "in-progress" | "completed";
+  simulationDone: boolean;
+  reflection: string;
+  challengeDone: boolean;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+/** An instructor/admin note attached to a cohort. */
+export interface SessionNote {
+  id: string;
+  cohortId: string;
+  authorId: string;
+  authorName: string;
+  scope: string;
+  text: string;
+  when: string;
 }
 
 export type InvitationStatus = "pending" | "expired" | "accepted" | "revoked";
@@ -199,3 +225,72 @@ export const initials = (name: string): string =>
 
 export const lessonProgressLabel = (s: LessonProgress): string =>
   ({ "in-progress": "In Progress", completed: "Completed", "not-started": "Not Started", none: "No Access", waiting: "Waiting for Session" })[s] ?? "Not Started";
+
+/* ============================================================
+ * Backend wiring
+ * ============================================================ */
+
+/**
+ * Development password assigned to every seeded account that has
+ * "active" or "suspended" status. Seeded "invited" users have no
+ * password until they accept their invitation. Real deployments
+ * should rotate these out — they exist so the prototype's seed
+ * accounts can actually sign in.
+ */
+export const SEED_PASSWORD = "bowdemo123";
+
+/** Map of seed user email -> account they can sign in with (active/suspended only). */
+export const signInHint = (): { email: string; password: string }[] =>
+  users
+    .filter((u) => u.status !== "invited")
+    .map((u) => ({ email: u.email, password: SEED_PASSWORD }));
+
+/**
+ * A full snapshot of the LMS dataset, loaded from the database on
+ * the server and handed to the client app shell. This is the shape
+ * the screens read from at request time.
+ */
+export interface AppData {
+  users: User[];
+  organizations: Organization[];
+  cohorts: Cohort[];
+  enrollments: Enrollment[];
+  invitations: Invitation[];
+  inquiries: Inquiry[];
+  activity: Activity[];
+  attendance: Record<string, Record<string, AttendanceState>>;
+  /** progress[userId][lessonId] -> detail */
+  progress: Record<string, Record<string, LessonProgressDetail>>;
+  notes: SessionNote[];
+  /** ids of users who have requested account deletion */
+  deletionRequests: string[];
+}
+
+/** Build the in-memory seed snapshot (used as the DB seed source). */
+export const seedAppData = (): AppData => ({
+  users,
+  organizations,
+  cohorts,
+  enrollments,
+  invitations,
+  inquiries,
+  activity,
+  attendance: {},
+  progress: {},
+  notes: [],
+  deletionRequests: [],
+});
+
+/** Ordered lessons for a track (module then lesson number). */
+export const orderedTrackLessons = (track: string): Lesson[] =>
+  [...trackLessons(track)].sort(
+    (a, b) => a.moduleNumber - b.moduleNumber || a.lessonNumber - b.lessonNumber,
+  );
+
+/** The lesson after `lessonId` in a track, or null if last/unknown. */
+export const nextLessonInTrack = (track: string, lessonId: string | null): Lesson | null => {
+  const ordered = orderedTrackLessons(track);
+  const idx = ordered.findIndex((l) => l.id === lessonId);
+  if (idx === -1) return null;
+  return ordered[idx + 1] ?? null;
+};

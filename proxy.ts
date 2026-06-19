@@ -1,0 +1,35 @@
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { SESSION_COOKIE } from "@/lib/session";
+
+/**
+ * Optimistic auth boundary (Next 16 renamed `middleware` -> `proxy`).
+ *
+ * This only checks for the *presence* of the session cookie — fast,
+ * no database access. The real, authoritative check happens in the
+ * app layout and in every server action via the DAL (`requireUser`).
+ */
+export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const hasSession = request.cookies.has(SESSION_COOKIE);
+
+  // Guard the authenticated app.
+  if (pathname === "/app" || pathname.startsWith("/app/")) {
+    if (!hasSession) {
+      const url = new URL("/sign-in", request.url);
+      url.searchParams.set("next", pathname);
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // Signed-in users have no reason to see the sign-in screen.
+  if (pathname === "/sign-in" && hasSession) {
+    return NextResponse.redirect(new URL("/app", request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ["/app/:path*", "/sign-in"],
+};

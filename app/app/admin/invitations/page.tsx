@@ -4,13 +4,7 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { Badge } from "@/components/ds";
 import { useAppState } from "@/components/app/AppState";
-import {
-  invitations,
-  cohorts,
-  organizations,
-  getCohort,
-  type InvitationStatus,
-} from "@/lib/account";
+import { type InvitationStatus } from "@/lib/account";
 
 type BadgeStatus = "positive" | "warning" | "negative" | "info" | "neutral" | "locked";
 type InviteRole = "student" | "instructor";
@@ -72,7 +66,7 @@ const input: CSSProperties = {
 };
 
 export default function AdminInvitationsPage() {
-  const { invStatusOf, setInvStatus, askConfirm, showToast } = useAppState();
+  const { data, invitations, invStatusOf, setInvStatus, askConfirm, showToast, createInvitation, getCohort } = useAppState();
 
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState<InviteRole>("student");
@@ -80,8 +74,8 @@ export default function AdminInvitationsPage() {
   const [cohortId, setCohortId] = useState("");
   const [orgId, setOrgId] = useState("");
 
-  const cohortOptions = cohorts.filter((c) => c.status !== "completed");
-  const orgOptions = organizations.filter((o) => o.type !== "BOW");
+  const cohortOptions = data.cohorts.filter((c) => c.status !== "completed");
+  const orgOptions = data.organizations.filter((o) => o.type !== "BOW");
 
   function openForm(r: InviteRole) {
     setRole(r);
@@ -92,9 +86,14 @@ export default function AdminInvitationsPage() {
   }
 
   function submit() {
-    // TODO: wire to backend
+    if (!valid) return;
+    if (role === "student") {
+      const cohort = getCohort(cohortId);
+      createInvitation({ role, email, orgId: cohort?.orgId ?? "", cohortId });
+    } else {
+      createInvitation({ role, email, orgId, cohortId: null });
+    }
     setOpen(false);
-    showToast("Invitation link created (prototype)");
   }
 
   const valid = role === "student" ? !!email && !!cohortId : !!email && !!orgId;
@@ -137,7 +136,16 @@ export default function AdminInvitationsPage() {
                     <td style={{ padding: "13px 8px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{iv.expires}</td>
                     <td style={{ padding: "13px 8px" }}><Badge status={statusBadge[status]}>{statusLabel[status]}</Badge></td>
                     <td style={{ padding: "13px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button onClick={() => showToast("Invitation link copied")} style={{ ...smallBtn, border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)" }}>Copy link</button>
+                      <button
+                        onClick={() => {
+                          const link = `${window.location.origin}/accept-invitation?token=${iv.id}`;
+                          void navigator.clipboard?.writeText(link);
+                          showToast("Invitation link copied");
+                        }}
+                        style={{ ...smallBtn, border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)" }}
+                      >
+                        Copy link
+                      </button>
                       {canAct && (
                         <>
                           <button onClick={() => setInvStatus(iv.id, "pending")} style={{ ...smallBtn, border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-ink)", marginLeft: 4 }}>Resend</button>
@@ -206,7 +214,7 @@ export default function AdminInvitationsPage() {
             )}
 
             <button onClick={submit} disabled={!valid} style={{ width: "100%", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: 14, border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: valid ? "pointer" : "not-allowed", opacity: valid ? 1 : 0.55, marginTop: 22 }}>Create Invitation</button>
-            <p style={{ margin: "12px 0 0", fontFamily: "var(--font-interface)", fontSize: 11.5, color: "var(--bow-slate)", lineHeight: 1.5 }}>Prototype: generates a demo link. No email is sent and no account is created.</p>
+            <p style={{ margin: "12px 0 0", fontFamily: "var(--font-interface)", fontSize: 11.5, color: "var(--bow-slate)", lineHeight: 1.5 }}>Creates a pending invitation (valid 14 days). Share the accept link from the table; the invitee sets their password to activate the account.</p>
           </div>
         </div>
       )}

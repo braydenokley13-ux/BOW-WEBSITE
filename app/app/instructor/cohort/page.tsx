@@ -5,53 +5,14 @@ import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/app/AppState";
 import { Badge } from "@/components/ds";
 import {
-  getCohort,
-  getOrg,
-  cohortRoster,
-  trackLessons,
   lessonProgressLabel,
   initials,
-  type Cohort,
+  nextLessonInTrack,
   type LessonProgress,
-  type Enrollment,
-  type User,
 } from "@/lib/account";
-import { getLessonById, type Lesson } from "@/lib/lessons";
+import { getLessonById } from "@/lib/lessons";
 
 type BadgeStatus = "positive" | "warning" | "negative";
-
-interface RosterRowVM {
-  id: string;
-  name: string;
-  initial: string;
-  enrollLabel: string;
-  enrollBadge: BadgeStatus;
-  lessonStatus: string;
-  lessonDot: string;
-  last: string;
-}
-
-interface NoteVM {
-  id: string;
-  scope: string;
-  text: string;
-  when: string;
-}
-
-const DEFAULT_NOTES: NoteVM[] = [
-  { id: "n1", scope: "Cohort · Lincoln Fall", text: "Group is strong on opportunity cost — push them harder on the trade-down logic next session.", when: "Jun 12" },
-  { id: "n2", scope: "Student · Tyler Nguyen", text: "Missed last session. Send the recap and check he can access “You’re the GM”.", when: "Jun 10" },
-];
-
-/** Sort a track's lessons by module then lesson number, return the one after curId (null if last/none). */
-function nextLessonOf(track: string, curId: string | null): Lesson | null {
-  const ordered = [...trackLessons(track)].sort(
-    (a, b) => a.moduleNumber - b.moduleNumber || a.lessonNumber - b.lessonNumber,
-  );
-  const idx = ordered.findIndex((l) => l.id === curId);
-  if (idx === -1) return null;
-  return ordered[idx + 1] ?? null;
-}
 
 const lessonDotFor = (s: LessonProgress): string =>
   s === "completed" ? "var(--bow-positive)" : s === "in-progress" ? "var(--bow-blue)" : "var(--bow-inactive)";
@@ -60,23 +21,30 @@ export default function InstructorCohortPage() {
   const router = useRouter();
   const {
     selectedCohortId,
+    getCohort,
+    getOrg,
+    cohortRoster,
     cohortCurrentLessonId,
+    userStatusOf,
     advanceCohortLesson,
+    notesForCohort,
+    addSessionNote,
     askConfirm,
-    showToast,
   } = useAppState();
 
   const [noteDraft, setNoteDraft] = useState("");
-  const [notes, setNotes] = useState<NoteVM[]>(DEFAULT_NOTES);
 
-  const c: Cohort = getCohort(selectedCohortId) ?? getCohort("coh-1")!;
+  const c = getCohort(selectedCohortId) ?? getCohort("coh-1");
+  if (!c) return null;
+
   const org = getOrg(c.orgId);
   const curId = cohortCurrentLessonId(c);
   const L = curId ? getLessonById(curId) ?? null : null;
 
   const roster = cohortRoster(c.id);
-  const rosterVM: RosterRowVM[] = roster.map((e: Enrollment & { user: User }) => {
-    const st = e.user.status === "suspended" ? "suspended" : e.enroll;
+  const rosterVM = roster.map((e) => {
+    const status = userStatusOf(e.user);
+    const st = status === "suspended" ? "suspended" : e.enroll;
     const enrollLabel = st === "invited" ? "Invited" : st === "suspended" ? "Suspended" : "Active";
     const enrollBadge: BadgeStatus = st === "invited" ? "warning" : st === "suspended" ? "negative" : "positive";
     return {
@@ -93,8 +61,8 @@ export default function InstructorCohortPage() {
 
   const activeRoster = roster.filter((e) => e.enroll !== "invited");
   const invited = roster.filter((e) => e.enroll === "invited").length;
-
-  const nextLesson = nextLessonOf(c.track, curId);
+  const nextLesson = nextLessonInTrack(c.track, curId);
+  const notes = notesForCohort(c.id);
 
   const onAdvance = () =>
     askConfirm({
@@ -113,9 +81,8 @@ export default function InstructorCohortPage() {
   const addNote = () => {
     const text = noteDraft.trim();
     if (!text) return;
-    setNotes((prev) => [{ id: "n" + Date.now(), scope: "Cohort · " + c.name, text, when: "Just now" }, ...prev]);
+    addSessionNote(c.id, "Cohort · " + c.name, text);
     setNoteDraft("");
-    showToast("Note added — visible to instructors and BOW only");
   };
 
   return (
@@ -142,7 +109,6 @@ export default function InstructorCohortPage() {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 26 }}>
           <button onClick={openSession} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 22px", border: "none", background: "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Open Current Session</button>
           <button onClick={onAdvance} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 22px", border: "1px solid var(--bow-ink)", background: "transparent", color: "var(--bow-ink)", borderRadius: 4, cursor: "pointer" }}>Advance Lesson</button>
-          <button onClick={() => showToast("Track view — student track preview (prototype)")} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 22px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-ink)", borderRadius: 4, cursor: "pointer" }}>View Track</button>
         </div>
 
         {L && (
@@ -185,10 +151,11 @@ export default function InstructorCohortPage() {
             <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Instructor &amp; BOW administration only</span>
           </div>
           <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-            <input value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} placeholder="Add a note about this cohort…" style={{ flex: 1, background: "var(--bow-white)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "12px 14px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 }} />
+            <input value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addNote(); }} placeholder="Add a note about this cohort…" style={{ flex: 1, background: "var(--bow-white)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "12px 14px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 }} />
             <button onClick={addNote} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "0 20px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Add</button>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {notes.length === 0 && <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>No notes yet.</span>}
             {notes.map((n) => (
               <div key={n.id} style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 5, padding: "14px 16px" }}>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 5 }}><span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--bow-blue)" }}>{n.scope}</span><span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>{n.when}</span></div>
