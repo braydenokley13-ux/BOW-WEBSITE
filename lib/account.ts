@@ -55,13 +55,36 @@ export interface Cohort {
 export type LessonProgress = "in-progress" | "completed" | "not-started" | "none" | "waiting";
 export type AttendanceState = "present" | "absent" | "late" | "excused" | "none";
 
+export type EnrollState = "active" | "invited" | "suspended" | "inactive";
+
 export interface Enrollment {
   userId: string;
   cohortId: string;
-  enroll: "active" | "invited" | "suspended";
+  enroll: EnrollState;
   lessonStatus: LessonProgress;
   last: string;
   attLast: AttendanceState;
+}
+
+/** Per-student, per-lesson progress detail (source of truth in the DB). */
+export interface LessonProgressDetail {
+  status: "not-started" | "in-progress" | "completed";
+  simulationDone: boolean;
+  reflection: string;
+  challengeDone: boolean;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+/** An instructor/admin note attached to a cohort. */
+export interface SessionNote {
+  id: string;
+  cohortId: string;
+  authorId: string;
+  authorName: string;
+  scope: string;
+  text: string;
+  when: string;
 }
 
 export type InvitationStatus = "pending" | "expired" | "accepted" | "revoked";
@@ -236,6 +259,11 @@ export interface AppData {
   inquiries: Inquiry[];
   activity: Activity[];
   attendance: Record<string, Record<string, AttendanceState>>;
+  /** progress[userId][lessonId] -> detail */
+  progress: Record<string, Record<string, LessonProgressDetail>>;
+  notes: SessionNote[];
+  /** ids of users who have requested account deletion */
+  deletionRequests: string[];
 }
 
 /** Build the in-memory seed snapshot (used as the DB seed source). */
@@ -248,4 +276,21 @@ export const seedAppData = (): AppData => ({
   inquiries,
   activity,
   attendance: {},
+  progress: {},
+  notes: [],
+  deletionRequests: [],
 });
+
+/** Ordered lessons for a track (module then lesson number). */
+export const orderedTrackLessons = (track: string): Lesson[] =>
+  [...trackLessons(track)].sort(
+    (a, b) => a.moduleNumber - b.moduleNumber || a.lessonNumber - b.lessonNumber,
+  );
+
+/** The lesson after `lessonId` in a track, or null if last/unknown. */
+export const nextLessonInTrack = (track: string, lessonId: string | null): Lesson | null => {
+  const ordered = orderedTrackLessons(track);
+  const idx = ordered.findIndex((l) => l.id === lessonId);
+  if (idx === -1) return null;
+  return ordered[idx + 1] ?? null;
+};

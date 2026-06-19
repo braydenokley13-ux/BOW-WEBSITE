@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import { useAppState } from "@/components/app/AppState";
-import { cohorts, users, activity } from "@/lib/account";
 
 type Tone = "warning" | "info" | "negative" | "neutral" | "positive";
 
@@ -24,15 +23,13 @@ const eyebrow: CSSProperties = {
   color: "var(--bow-slate)",
 };
 
-const colHead: CSSProperties = {
-  ...eyebrow,
-  display: "block",
-  marginBottom: 12,
-};
+const colHead: CSSProperties = { ...eyebrow, display: "block", marginBottom: 12 };
 
 export default function AdminOverviewPage() {
   const router = useRouter();
-  const { showToast } = useAppState();
+  const { data } = useAppState();
+
+  const { cohorts, users, invitations, inquiries, activity, deletionRequests } = data;
 
   const stats = {
     active: cohorts.filter((c) => c.status === "active").length,
@@ -50,13 +47,21 @@ export default function AdminOverviewPage() {
     { value: stats.students, label: "Students", color: "var(--bow-ink)" },
   ];
 
-  const needs: { tone: Tone; text: string; action: string; onGo: () => void }[] = [
-    { tone: "warning", text: "Summit Spring — Track 101 has no instructor assigned", action: "Assign instructor", onGo: () => router.push("/app/admin/invitations") },
-    { tone: "warning", text: "2 pending student invitations to Lincoln Fall", action: "View invitations", onGo: () => router.push("/app/admin/invitations") },
-    { tone: "neutral", text: "1 invitation expired (Summit camp instructor)", action: "Resend", onGo: () => router.push("/app/admin/invitations") },
-    { tone: "info", text: "New school inquiry from Westview School District", action: "Review", onGo: () => router.push("/app/admin/inquiries") },
-    { tone: "negative", text: "Sofia Ramirez account is suspended", action: "Review person", onGo: () => router.push("/app/admin/people") },
-  ];
+  // Real "needs attention", derived from the live snapshot.
+  const needs: { tone: Tone; text: string; action: string; onGo: () => void }[] = [];
+  cohorts
+    .filter((c) => (c.status === "active" || c.status === "enrolling") && !c.instructorId)
+    .forEach((c) => needs.push({ tone: "warning", text: `${c.name} has no instructor assigned`, action: "Assign", onGo: () => router.push("/app/admin/cohorts") }));
+  const pendingInv = invitations.filter((i) => i.status === "pending").length;
+  if (pendingInv) needs.push({ tone: "info", text: `${pendingInv} pending invitation${pendingInv > 1 ? "s" : ""} awaiting acceptance`, action: "View", onGo: () => router.push("/app/admin/invitations") });
+  const expiredInv = invitations.filter((i) => i.status === "expired").length;
+  if (expiredInv) needs.push({ tone: "neutral", text: `${expiredInv} invitation${expiredInv > 1 ? "s" : ""} expired`, action: "Resend", onGo: () => router.push("/app/admin/invitations") });
+  const newInq = inquiries.filter((i) => i.status === "new").length;
+  if (newInq) needs.push({ tone: "info", text: `${newInq} new inquir${newInq > 1 ? "ies" : "y"} to review`, action: "Review", onGo: () => router.push("/app/admin/inquiries") });
+  const suspended = users.filter((u) => u.status === "suspended").length;
+  if (suspended) needs.push({ tone: "negative", text: `${suspended} suspended account${suspended > 1 ? "s" : ""}`, action: "Review", onGo: () => router.push("/app/admin/people") });
+  if (deletionRequests.length) needs.push({ tone: "negative", text: `${deletionRequests.length} account-deletion request${deletionRequests.length > 1 ? "s" : ""}`, action: "Review", onGo: () => router.push("/app/admin/people") });
+  const topNeeds = needs.slice(0, 6);
 
   const quickActions: { label: string; onGo: () => void }[] = [
     { label: "Create Organization", onGo: () => router.push("/app/admin/organizations") },
@@ -72,7 +77,6 @@ export default function AdminOverviewPage() {
         <span style={eyebrow}>BOW Administration</span>
         <h1 style={{ margin: "8px 0 26px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>Keep every program moving.</h1>
 
-        {/* program stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 1, background: "var(--border-rule)", border: "1px solid var(--border-rule)", borderRadius: 6, overflow: "hidden", marginBottom: 28 }}>
           {statCells.map((s) => (
             <div key={s.label} style={{ background: "var(--bow-white)", padding: "18px 16px" }}>
@@ -83,11 +87,15 @@ export default function AdminOverviewPage() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24 }}>
-          {/* needs attention */}
           <div>
             <span style={colHead}>Needs attention</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {needs.map((n, i) => (
+              {topNeeds.length === 0 && (
+                <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 5, padding: "14px 16px" }}>
+                  <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>Everything’s in order. Nothing needs your attention.</p>
+                </div>
+              )}
+              {topNeeds.map((n, i) => (
                 <div key={i} style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderLeft: `3px solid ${toneColor(n.tone)}`, borderRadius: 5, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)", flex: 1, minWidth: 160 }}>{n.text}</span>
                   <span onClick={n.onGo} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--bow-blue)", cursor: "pointer", whiteSpace: "nowrap" }}>{n.action} →</span>
@@ -107,19 +115,13 @@ export default function AdminOverviewPage() {
             </div>
           </div>
 
-          {/* quick actions */}
           <div>
             <span style={colHead}>Quick actions</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {quickActions.map((q) => (
                 <button
                   key={q.label}
-                  onClick={() => {
-                    if (q.label === "Create Organization") {
-                      showToast("Create Organization — wizard is a later prototype step", "warning");
-                    }
-                    q.onGo();
-                  }}
+                  onClick={q.onGo}
                   style={{ textAlign: "left", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", padding: "15px 18px", border: "1px solid var(--border-rule)", background: "var(--bow-white)", color: "var(--bow-ink)", borderRadius: 5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}
                 >
                   <span>{q.label}</span>

@@ -2,10 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/app/AppState";
-import { enrollments, getCohort, getUser, trackLessons, type LessonProgress } from "@/lib/account";
+import { trackLessons } from "@/lib/account";
 import type { Lesson } from "@/lib/lessons";
 
-type LessonState = "completed" | "current" | "in-development" | "locked";
+type LessonState = "completed" | "current" | "available" | "in-development" | "locked";
 
 interface ProgressRow {
   id: string;
@@ -29,22 +29,44 @@ interface ModuleGroup {
   lessons: ProgressRow[];
 }
 
+const DOT: Record<LessonState, string> = {
+  completed: "var(--bow-positive)",
+  current: "var(--bow-blue)",
+  available: "var(--bow-blue)",
+  "in-development": "var(--bow-warning)",
+  locked: "var(--bow-inactive)",
+};
+const LABEL: Record<LessonState, string> = {
+  completed: "Completed",
+  current: "Current",
+  available: "Available",
+  "in-development": "In Development",
+  locked: "Locked",
+};
+
 export default function StudentTrackPage() {
-  const { me, cohortCurrentLessonId, setSelectedLessonId } = useAppState();
+  const { me, getCohort, activeEnrollmentFor, cohortCurrentLessonId, lessonProgressFor, setSelectedLessonId } = useAppState();
   const router = useRouter();
 
-  const student = me ?? getUser("u-s1");
-  if (!student) return null;
+  const enr = activeEnrollmentFor(me.id);
+  const cohort = enr ? getCohort(enr.cohortId) : null;
 
-  const enr = enrollments.find((e) => e.userId === student.id) ?? enrollments.find((e) => e.userId === "u-s1");
-  if (!enr) return null;
+  if (!enr || !cohort) {
+    return (
+      <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
+        <div style={{ maxWidth: 640, margin: "0 auto" }}>
+          <h1 style={{ margin: "8px 0 14px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(30px,4vw,46px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>Your track</h1>
+          <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 28 }}>
+            <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)" }}>Your track appears once you’re enrolled in a cohort.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const cohort = getCohort(enr.cohortId);
-  if (!cohort) return null;
   const lessons = trackLessons(cohort.track);
   const curId = cohortCurrentLessonId(cohort);
   const curIdx = lessons.findIndex((l) => l.id === curId);
-  const myStatus: LessonProgress = enr.lessonStatus;
 
   const openStudentLesson = (id: string) => {
     setSelectedLessonId(id);
@@ -52,28 +74,21 @@ export default function StudentTrackPage() {
   };
 
   const progress: ProgressRow[] = lessons.map((l: Lesson, i: number) => {
+    const prog = lessonProgressFor(me.id, l.id);
     let st: LessonState;
     let lockReason = "";
-    if (i < curIdx) st = "completed";
-    else if (i === curIdx) st = myStatus === "completed" ? "completed" : "current";
+    if (prog?.status === "completed") st = "completed";
     else if (l.status === "in-development" || l.status === "coming-soon") {
       st = "in-development";
       lockReason = "This lesson is still in development.";
-    } else {
+    } else if (i > curIdx) {
       st = "locked";
       lockReason = i === curIdx + 1 ? "Your instructor will open this lesson next." : "Complete the current lesson first.";
-    }
-    const dot =
-      st === "completed"
-        ? "var(--bow-positive)"
-        : st === "current"
-        ? "var(--bow-blue)"
-        : st === "in-development"
-        ? "var(--bow-warning)"
-        : "var(--bow-inactive)";
-    const stLabel =
-      st === "completed" ? "Completed" : st === "current" ? "Current" : st === "in-development" ? "In Development" : "Locked";
-    const accessible = st === "completed" || st === "current";
+    } else if (i === curIdx) st = "current";
+    else st = "available";
+    const accessible = st === "completed" || st === "current" || st === "available";
+    const action =
+      st === "completed" ? "Review Lesson" : prog?.status === "in-progress" ? "Continue Lesson" : accessible ? "Start Lesson" : null;
     return {
       id: l.id,
       n: "L" + l.lessonNumber,
@@ -83,29 +98,26 @@ export default function StudentTrackPage() {
       centralQuestion: l.centralQuestion || l.summary,
       concepts: (l.concepts || []).join(" · "),
       st,
-      stLabel,
-      dot,
+      stLabel: LABEL[st],
+      dot: DOT[st],
       lockReason,
       accessible,
-      action: st === "completed" ? "Review Lesson" : st === "current" ? (myStatus === "in-progress" ? "Continue Lesson" : "Start Lesson") : null,
+      action,
     };
   });
 
   const completedCount = progress.filter((p) => p.st === "completed").length;
 
-  // group into modules for the track view
   const modMap: Record<number, ModuleGroup> = {};
   progress.forEach((p) => {
     if (!modMap[p.mod]) modMap[p.mod] = { n: "Module " + String(p.mod).padStart(2, "0"), title: p.moduleTitle, lessons: [] };
     modMap[p.mod].lessons.push(p);
   });
-  const modules: ModuleGroup[] = Object.keys(modMap)
-    .sort()
-    .map((k) => modMap[Number(k)]);
+  const modules: ModuleGroup[] = Object.keys(modMap).sort().map((k) => modMap[Number(k)]);
 
   const sv = {
     cohort: cohort.name,
-    grade: student.grade ?? "",
+    grade: me.grade ?? "",
     trackName: cohort.track === "101" ? "Track 101 · Foundations" : "Track 201 · Advanced",
     completedCount,
     total: lessons.length,
@@ -116,7 +128,7 @@ export default function StudentTrackPage() {
     <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
       <div style={{ maxWidth: 880, margin: "0 auto" }}>
         <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
-          {sv.cohort} · {sv.grade}
+          {sv.cohort}{sv.grade ? ` · ${sv.grade}` : ""}
         </span>
         <h1 style={{ margin: "8px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
           {sv.trackName}

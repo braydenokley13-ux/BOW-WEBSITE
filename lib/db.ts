@@ -15,6 +15,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import {
   seedAppData,
+  orderedTrackLessons,
   SEED_PASSWORD,
   type User,
   type Organization,
@@ -23,6 +24,8 @@ import {
   type Invitation,
   type Inquiry,
   type Activity,
+  type LessonProgressDetail,
+  type SessionNote,
   type AppData,
 } from "@/lib/account";
 import { hashPassword } from "@/lib/password";
@@ -49,7 +52,8 @@ CREATE TABLE IF NOT EXISTS users (
   status TEXT NOT NULL,
   last TEXT NOT NULL,
   signin TEXT NOT NULL,
-  password_hash TEXT
+  password_hash TEXT,
+  deletion_requested INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS cohorts (
   id TEXT PRIMARY KEY,
@@ -108,6 +112,26 @@ CREATE TABLE IF NOT EXISTS attendance (
   user_id TEXT NOT NULL,
   state TEXT NOT NULL,
   PRIMARY KEY (cohort_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS lesson_progress (
+  user_id TEXT NOT NULL,
+  lesson_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  simulation_done INTEGER NOT NULL DEFAULT 0,
+  reflection TEXT NOT NULL DEFAULT '',
+  challenge_done INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT,
+  completed_at TEXT,
+  PRIMARY KEY (user_id, lesson_id)
+);
+CREATE TABLE IF NOT EXISTS session_notes (
+  id TEXT PRIMARY KEY,
+  cohort_id TEXT NOT NULL,
+  author_id TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  created_ts INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
@@ -187,6 +211,38 @@ function seed(db: DatabaseSync) {
     "INSERT INTO activity (id, icon, text, when_label, role) VALUES (?, ?, ?, ?, ?)",
   );
   for (const a of data.activity) insertAct.run(a.id, a.icon, a.text, a.when, a.role);
+
+  // Seed per-lesson progress so dashboards and rosters show real history.
+  const insertProg = db.prepare(
+    "INSERT INTO lesson_progress (user_id, lesson_id, status, simulation_done, reflection, challenge_done, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  for (const e of data.enrollments) {
+    if (e.enroll === "invited" || e.enroll === "inactive") continue;
+    const cohort = data.cohorts.find((c) => c.id === e.cohortId);
+    if (!cohort) continue;
+    const ordered = orderedTrackLessons(cohort.track);
+    const curIdx = ordered.findIndex((l) => l.id === cohort.currentLessonId);
+    if (curIdx === -1) continue;
+    ordered.forEach((l, i) => {
+      if (i < curIdx) {
+        insertProg.run(e.userId, l.id, "completed", 1, "Reflected on the trade-off with the cohort.", 1, "Earlier in the term", "Earlier in the term");
+      } else if (i === curIdx && e.lessonStatus !== "not-started" && e.lessonStatus !== "none") {
+        const done = e.lessonStatus === "completed";
+        insertProg.run(
+          e.userId, l.id, done ? "completed" : "in-progress",
+          done ? 1 : 0, done ? "The cost wasn't the salary — it was the win we passed up." : "",
+          done ? 1 : 0, "This week", done ? "This week" : null,
+        );
+      }
+    });
+  }
+
+  // Seed a couple of instructor notes on the flagship cohort.
+  const insertNote = db.prepare(
+    "INSERT INTO session_notes (id, cohort_id, author_id, scope, text, created_at, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  );
+  insertNote.run("note-seed-1", "coh-1", "u-coach", "Cohort · Lincoln Fall — Track 101", "Group is strong on opportunity cost — push them harder on the trade-down logic next session.", "Jun 12, 2026", Date.now() - 6 * 86400000);
+  insertNote.run("note-seed-2", "coh-1", "u-coach", "Student · Tyler Nguyen", "Missed last session. Send the recap and confirm he can access the current lesson.", "Jun 10, 2026", Date.now() - 8 * 86400000);
 }
 
 function init(): DatabaseSync {
@@ -256,6 +312,13 @@ export function rowToInquiry(r: any): Inquiry {
 export function rowToActivity(r: any): Activity {
   return { id: r.id, icon: r.icon, text: r.text, when: r.when_label, role: r.role };
 }
+
+export function rowToNote(r: any): SessionNote {
+  return {
+    id: r.id, cohortId: r.cohort_id, authorId: r.author_id,
+    authorName: r.author_name ?? "BOW", scope: r.scope, text: r.text, when: r.created_at,
+  };
+}
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** Read the full LMS dataset from the database as a typed snapshot. */
@@ -266,15 +329,55 @@ export function readAppData(): AppData {
   for (const a of db.prepare("SELECT * FROM attendance").all() as any[]) {
     (attendance[a.cohort_id] ??= {})[a.user_id] = a.state;
   }
+
+  const progress: Record<string, Record<string, LessonProgressDetail>> = {};
+  for (const p of db.prepare("SELECT * FROM lesson_progress").all() as any[]) {
+    (progress[p.user_id] ??= {})[p.lesson_id] = {
+      status: p.status,
+      simulationDone: !!p.simulation_done,
+      reflection: p.reflection ?? "",
+      challengeDone: !!p.challenge_done,
+      startedAt: p.started_at ?? null,
+      completedAt: p.completed_at ?? null,
+    };
+  }
+
+  const cohorts = (db.prepare("SELECT * FROM cohorts").all() as any[]).map(rowToCohort);
+  const cohortCurrent: Record<string, string | null> = {};
+  for (const c of cohorts) cohortCurrent[c.id] = c.currentLessonId;
+
+  // Enrollment lesson status is derived live from each student's progress on
+  // the cohort's current lesson, so rosters reflect real work.
+  const enrollments = (db.prepare("SELECT * FROM enrollments").all() as any[]).map((r) => {
+    const e = rowToEnrollment(r);
+    if (e.enroll === "invited" || e.enroll === "inactive") {
+      e.lessonStatus = "none";
+      return e;
+    }
+    const curId = cohortCurrent[e.cohortId] ?? null;
+    const det = curId ? progress[e.userId]?.[curId] : undefined;
+    e.lessonStatus = det ? det.status : "not-started";
+    return e;
+  });
+
+  const notes = (db.prepare(
+    "SELECT n.*, u.name AS author_name FROM session_notes n LEFT JOIN users u ON u.id = n.author_id ORDER BY n.created_ts DESC",
+  ).all() as any[]).map(rowToNote);
+
+  const deletionRequests = (db.prepare("SELECT id FROM users WHERE deletion_requested = 1").all() as any[]).map((r) => r.id as string);
+
   return {
     users: (db.prepare("SELECT * FROM users").all() as any[]).map(rowToUser),
     organizations: (db.prepare("SELECT * FROM organizations").all() as any[]).map(rowToOrg),
-    cohorts: (db.prepare("SELECT * FROM cohorts").all() as any[]).map(rowToCohort),
-    enrollments: (db.prepare("SELECT * FROM enrollments").all() as any[]).map(rowToEnrollment),
+    cohorts,
+    enrollments,
     invitations: (db.prepare("SELECT * FROM invitations ORDER BY created DESC").all() as any[]).map(rowToInvitation),
     inquiries: (db.prepare("SELECT * FROM inquiries").all() as any[]).map(rowToInquiry),
     activity: (db.prepare("SELECT * FROM activity").all() as any[]).map(rowToActivity),
     attendance: attendance as AppData["attendance"],
+    progress,
+    notes,
+    deletionRequests,
   };
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }

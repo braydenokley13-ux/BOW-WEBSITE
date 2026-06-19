@@ -4,12 +4,7 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { Badge } from "@/components/ds";
 import { useAppState } from "@/components/app/AppState";
-import {
-  cohorts,
-  organizations,
-  getCohort,
-  type InvitationStatus,
-} from "@/lib/account";
+import { type InvitationStatus } from "@/lib/account";
 
 type BadgeStatus = "positive" | "warning" | "negative" | "info" | "neutral" | "locked";
 type InviteRole = "student" | "instructor";
@@ -71,7 +66,7 @@ const input: CSSProperties = {
 };
 
 export default function AdminInvitationsPage() {
-  const { invitations, invStatusOf, setInvStatus, askConfirm, showToast, createInvitation } = useAppState();
+  const { data, invitations, invStatusOf, setInvStatus, askConfirm, showToast, createInvitation, getCohort } = useAppState();
 
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState<InviteRole>("student");
@@ -79,8 +74,8 @@ export default function AdminInvitationsPage() {
   const [cohortId, setCohortId] = useState("");
   const [orgId, setOrgId] = useState("");
 
-  const cohortOptions = cohorts.filter((c) => c.status !== "completed");
-  const orgOptions = organizations.filter((o) => o.type !== "BOW");
+  const cohortOptions = data.cohorts.filter((c) => c.status !== "completed");
+  const orgOptions = data.organizations.filter((o) => o.type !== "BOW");
 
   function openForm(r: InviteRole) {
     setRole(r);

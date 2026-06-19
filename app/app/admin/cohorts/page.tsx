@@ -4,15 +4,7 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { Badge } from "@/components/ds";
 import { useAppState } from "@/components/app/AppState";
-import {
-  cohorts,
-  organizations,
-  cohortRoster,
-  getOrg,
-  getUser,
-  trackLessons,
-  type Cohort,
-} from "@/lib/account";
+import { trackLessons, nextLessonInTrack, type Cohort } from "@/lib/account";
 import { getLessonById, moduleLabel } from "@/lib/lessons";
 
 type BadgeStatus = "positive" | "warning" | "negative" | "info" | "neutral" | "locked";
@@ -31,45 +23,26 @@ const statusBadge: Record<Cohort["status"], BadgeStatus> = {
   draft: "warning",
 };
 
-const th: CSSProperties = {
-  textAlign: "left",
-  padding: "12px 8px",
-  fontFamily: "var(--font-data)",
-  fontSize: 10,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "var(--bow-slate)",
-  fontWeight: 600,
-};
-
-const label: CSSProperties = {
-  fontFamily: "var(--font-data)",
-  fontSize: 10,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "var(--bow-slate)",
-  display: "block",
-  marginBottom: 6,
-};
-
-const input: CSSProperties = {
-  width: "100%",
-  background: "var(--bow-paper)",
-  border: "1px solid var(--border-rule)",
-  color: "var(--bow-ink)",
-  padding: 12,
-  borderRadius: 4,
-  fontFamily: "var(--font-interface)",
-  fontSize: 14,
-};
+const th: CSSProperties = { textAlign: "left", padding: "12px 8px", fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)", fontWeight: 600 };
+const label: CSSProperties = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 6 };
+const input: CSSProperties = { width: "100%", background: "var(--bow-paper)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: 12, borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 };
+const miniSelect: CSSProperties = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "6px 8px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 12 };
 
 export default function AdminCohortsPage() {
-  const { advanceCohortLesson, cohortCurrentLessonId, userStatusOf, showToast } = useAppState();
+  const {
+    data, getOrg, getUser, getCohort, cohortRoster, cohortCurrentLessonId, userStatusOf,
+    advanceCohortLesson, createCohort, assignInstructor, assignStudent, removeStudent, transferStudent, askConfirm,
+  } = useAppState();
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [ccName, setCcName] = useState("");
   const [ccOrg, setCcOrg] = useState("");
   const [ccTrack, setCcTrack] = useState("");
+  const [addStudentId, setAddStudentId] = useState("");
+
+  const cohorts = data.cohorts;
+  const instructors = data.users.filter((u) => u.role === "instructor");
 
   const rows = cohorts.map((c) => {
     const roster = cohortRoster(c.id);
@@ -83,22 +56,26 @@ export default function AdminCohortsPage() {
     };
   });
 
-  const selected = selectedId ? cohorts.find((c) => c.id === selectedId) ?? null : null;
+  const selected = selectedId ? getCohort(selectedId) : null;
   const selRoster = selected ? cohortRoster(selected.id).filter((e) => e.enroll !== "invited") : [];
+  const selRosterIds = new Set(selRoster.map((e) => e.userId));
   const selLessonId = selected ? cohortCurrentLessonId(selected) : null;
   const selLesson = selLessonId ? getLessonById(selLessonId) ?? null : null;
   const selTrackLessons = selected ? trackLessons(selected.track) : [];
   const selCurIdx = selLessonId ? selTrackLessons.findIndex((l) => l.id === selLessonId) : -1;
-  const selNextLesson = selCurIdx >= 0 ? selTrackLessons[selCurIdx + 1] ?? null : selTrackLessons[0] ?? null;
-  const orgOptions = organizations.filter((o) => o.type !== "BOW");
+  const selNextLesson = selected ? (selCurIdx >= 0 ? nextLessonInTrack(selected.track, selLessonId) : selTrackLessons[0] ?? null) : null;
+  const orgOptions = data.organizations.filter((o) => o.type !== "BOW");
+  // Students who could be added to the selected cohort (not already enrolled here).
+  const addableStudents = selected ? data.users.filter((u) => u.role === "student" && !selRosterIds.has(u.id)) : [];
+  const transferTargets = selected ? cohorts.filter((c) => c.id !== selected.id && c.status !== "completed") : [];
 
   function submitCreate() {
-    // TODO: wire to backend
+    if (!ccName || !ccOrg || !ccTrack) return;
+    createCohort({ name: ccName.trim(), orgId: ccOrg, track: ccTrack });
     setCreateOpen(false);
     setCcName("");
     setCcOrg("");
     setCcTrack("");
-    showToast("Cohort created as a draft (prototype)");
   }
 
   return (
@@ -125,13 +102,13 @@ export default function AdminCohortsPage() {
             </thead>
             <tbody>
               {rows.map((c) => (
-                <tr key={c.id} onClick={() => setSelectedId(c.id)} style={{ borderBottom: "1px solid var(--border-rule)", cursor: "pointer" }}>
+                <tr key={c.id} onClick={() => { setSelectedId(c.id); setAddStudentId(""); }} style={{ borderBottom: "1px solid var(--border-rule)", cursor: "pointer" }}>
                   <td style={{ padding: "14px 16px" }}>
                     <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14.5, color: "var(--bow-ink)" }}>{c.name}</span>
                     <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginTop: 2 }}>{c.orgName} · {c.dates}</span>
                   </td>
                   <td style={{ padding: "14px 8px", fontFamily: "var(--font-data)", fontSize: 12.5, color: "var(--bow-ink)" }}>{`Track ${c.track}`}</td>
-                  <td style={{ padding: "14px 8px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-ink)" }}>{c.instructorLabel}</td>
+                  <td style={{ padding: "14px 8px", fontFamily: "var(--font-interface)", fontSize: 13, color: c.instructorId ? "var(--bow-ink)" : "var(--bow-slate)" }}>{c.instructorLabel}</td>
                   <td style={{ padding: "14px 8px", fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-ink)" }}>{c.enrolled}/{c.cap}</td>
                   <td style={{ padding: "14px 16px" }}><Badge status={statusBadge[c.status]}>{statusLabel[c.status]}</Badge></td>
                 </tr>
@@ -141,16 +118,35 @@ export default function AdminCohortsPage() {
         </div>
       </div>
 
-      {/* cohort detail + roster */}
+      {/* cohort detail + management */}
       {selected && (
         <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 4500, background: "rgba(10,10,11,0.6)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 20px", overflowY: "auto" }} onClick={() => setSelectedId(null)}>
-          <div style={{ background: "var(--bow-white)", maxWidth: 620, width: "100%", borderRadius: 6, borderTop: "4px solid var(--bow-blue)", padding: "clamp(22px,3vw,32px)" }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ background: "var(--bow-white)", maxWidth: 640, width: "100%", borderRadius: 6, borderTop: "4px solid var(--bow-blue)", padding: "clamp(22px,3vw,32px)" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
               <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 26, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)", lineHeight: 1 }}>{selected.name}</h2>
               <span onClick={() => setSelectedId(null)} style={{ fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-slate)", cursor: "pointer" }}>Close ✕</span>
             </div>
             <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{getOrg(selected.orgId)?.name} · Track {selected.track} · {selected.start === "—" ? "Dates TBD" : `${selected.start} – ${selected.end}`}</span>
 
+            {/* instructor */}
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", margin: "22px 0 8px" }}>Instructor</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <select
+                value={selected.instructorId ?? ""}
+                onChange={(e) => assignInstructor(selected.id, e.target.value || null)}
+                style={{ ...input, width: "auto", flex: 1, minWidth: 200 }}
+              >
+                <option value="">Unassigned</option>
+                {instructors.map((i) => (
+                  <option key={i.id} value={i.id}>{i.name}</option>
+                ))}
+              </select>
+              {selected.instructorId && (
+                <button onClick={() => assignInstructor(selected.id, null)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "9px 14px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer" }}>Remove</button>
+              )}
+            </div>
+
+            {/* current lesson */}
             <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", margin: "22px 0 8px" }}>Current lesson</span>
             <div style={{ background: "var(--bow-paper)", border: "1px solid var(--border-rule)", borderRadius: 5, padding: "14px 16px" }}>
               {selLesson ? (
@@ -163,21 +159,59 @@ export default function AdminCohortsPage() {
               )}
             </div>
 
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", margin: "22px 0 10px" }}>Roster · {selRoster.length} students</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 22 }}>
+            {/* roster management */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, margin: "22px 0 10px" }}>
+              <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Roster · {selRoster.length} students</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
               {selRoster.length === 0 && <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>No students enrolled yet.</span>}
               {selRoster.map((e) => {
                 const st = userStatusOf(e.user);
-                const enrollStatus = st === "suspended" ? "suspended" : e.enroll;
-                const badge: BadgeStatus = enrollStatus === "suspended" ? "negative" : "positive";
-                const lbl = enrollStatus === "suspended" ? "Suspended" : "Active";
+                const badge: BadgeStatus = st === "suspended" ? "negative" : "positive";
+                const lbl = st === "suspended" ? "Suspended" : "Active";
                 return (
-                  <div key={e.userId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "12px 14px", border: "1px solid var(--border-rule)", borderRadius: 5 }}>
-                    <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)" }}>{e.user.name}</span>
+                  <div key={e.userId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 14px", border: "1px solid var(--border-rule)", borderRadius: 5, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)", flex: 1, minWidth: 120 }}>{e.user.name}</span>
                     <Badge status={badge}>{lbl}</Badge>
+                    {transferTargets.length > 0 && (
+                      <select
+                        value=""
+                        onChange={(ev) => { if (ev.target.value) transferStudent(e.userId, selected.id, ev.target.value); }}
+                        style={miniSelect}
+                        aria-label={`Transfer ${e.user.name}`}
+                      >
+                        <option value="">Transfer to…</option>
+                        {transferTargets.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      onClick={() => askConfirm({ title: `Remove ${e.user.name}?`, body: "They’ll be removed from this cohort’s roster. Their account and history stay intact.", confirmLabel: "Remove", tone: "negative", onConfirm: () => removeStudent(selected.id, e.userId) })}
+                      style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 11px", border: "1px solid var(--bow-negative)", background: "transparent", color: "var(--bow-negative)", borderRadius: 4, cursor: "pointer" }}
+                    >
+                      Remove
+                    </button>
                   </div>
                 );
               })}
+            </div>
+
+            {/* add student */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 22, flexWrap: "wrap" }}>
+              <select value={addStudentId} onChange={(e) => setAddStudentId(e.target.value)} style={{ ...input, width: "auto", flex: 1, minWidth: 200 }}>
+                <option value="">Add a student…</option>
+                {addableStudents.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} — {getOrg(s.orgId)?.name ?? "—"}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => { if (addStudentId) { assignStudent(selected.id, addStudentId); setAddStudentId(""); } }}
+                disabled={!addStudentId}
+                style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.05em", textTransform: "uppercase", padding: "11px 18px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: addStudentId ? "pointer" : "not-allowed", opacity: addStudentId ? 1 : 0.5 }}
+              >
+                Add
+              </button>
             </div>
 
             <button
@@ -190,7 +224,7 @@ export default function AdminCohortsPage() {
         </div>
       )}
 
-      {/* simplified create cohort */}
+      {/* create cohort */}
       {createOpen && (
         <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 4500, background: "rgba(10,10,11,0.62)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 18px", overflowY: "auto" }} onClick={() => setCreateOpen(false)}>
           <div style={{ background: "var(--bow-white)", maxWidth: 620, width: "100%", borderRadius: 6, borderTop: "4px solid var(--bow-blue)", padding: "clamp(22px,3vw,32px)" }} onClick={(e) => e.stopPropagation()}>
@@ -222,7 +256,7 @@ export default function AdminCohortsPage() {
               })}
             </div>
 
-            <p style={{ margin: "18px 0 0", fontFamily: "var(--font-interface)", fontSize: 12, color: "var(--bow-slate)", lineHeight: 1.5 }}>Prototype: creates a draft cohort. Nothing is persisted to a server.</p>
+            <p style={{ margin: "18px 0 0", fontFamily: "var(--font-interface)", fontSize: 12, color: "var(--bow-slate)", lineHeight: 1.5 }}>Creates a draft cohort. Assign an instructor and students from the cohort’s detail panel.</p>
             <button onClick={submitCreate} disabled={!ccName || !ccOrg || !ccTrack} style={{ width: "100%", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: 14, border: "none", background: "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: ccName && ccOrg && ccTrack ? "pointer" : "not-allowed", opacity: ccName && ccOrg && ccTrack ? 1 : 0.55, marginTop: 16 }}>Create Cohort</button>
           </div>
         </div>

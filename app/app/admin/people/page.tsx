@@ -4,15 +4,7 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { Badge } from "@/components/ds";
 import { useAppState } from "@/components/app/AppState";
-import {
-  users,
-  enrollments,
-  getOrg,
-  getCohort,
-  cohortsForInstructor,
-  type Role,
-  type UserStatus,
-} from "@/lib/account";
+import { type Role, type UserStatus } from "@/lib/account";
 
 type Filter = "students" | "instructors" | "admins";
 type BadgeStatus = "positive" | "warning" | "negative" | "info" | "neutral" | "locked";
@@ -46,19 +38,20 @@ const th: CSSProperties = {
   fontWeight: 600,
 };
 
-function cohortName(userId: string): string {
-  const enr = enrollments.find((e) => e.userId === userId);
-  if (enr) return getCohort(enr.cohortId)?.name ?? "—";
-  const taught = cohortsForInstructor(userId);
-  return taught[0]?.name ?? "—";
-}
-
 export default function AdminPeoplePage() {
-  const { userStatusOf, suspendUser, restoreUser, askConfirm } = useAppState();
+  const { data, getOrg, getCohort, cohortsForInstructor, userStatusOf, suspendUser, restoreUser, dismissDeletionRequest, askConfirm } = useAppState();
   const [filter, setFilter] = useState<Filter>("students");
 
-  const people = users.filter((u) => u.role === filterToRole[filter]);
+  const deletionSet = new Set(data.deletionRequests);
 
+  function cohortName(userId: string): string {
+    const enr = data.enrollments.find((e) => e.userId === userId && e.enroll !== "inactive");
+    if (enr) return getCohort(enr.cohortId)?.name ?? "—";
+    const taught = cohortsForInstructor(userId);
+    return taught[0]?.name ?? "—";
+  }
+
+  const people = data.users.filter((u) => u.role === filterToRole[filter]);
   const tabs: Filter[] = ["students", "instructors", "admins"];
   const tabLabel: Record<Filter, string> = { students: "Students", instructors: "Instructors", admins: "Admins" };
 
@@ -100,16 +93,26 @@ export default function AdminPeoplePage() {
                 const isActive = status === "active";
                 const isSuspended = status === "suspended";
                 const isInvited = status === "invited";
+                const wantsDeletion = deletionSet.has(u.id);
                 return (
                   <tr key={u.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
                     <td style={{ padding: "13px 16px" }}>
                       <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)" }}>{u.name}</span>
                       <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block" }}>{u.email}</span>
+                      {wantsDeletion && <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-negative)", display: "block", marginTop: 3 }}>⚠ Requested account deletion</span>}
                     </td>
                     <td style={{ padding: "13px 8px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-ink)" }}>{getOrg(u.orgId)?.name ?? "—"}</td>
                     <td style={{ padding: "13px 8px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>{cohortName(u.id)}</td>
                     <td style={{ padding: "13px 8px" }}><Badge status={statusBadge[status]}>{statusLabel[status]}</Badge></td>
-                    <td style={{ padding: "13px 16px", textAlign: "right" }}>
+                    <td style={{ padding: "13px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      {wantsDeletion && (
+                        <button
+                          onClick={() => dismissDeletionRequest(u.id)}
+                          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 13px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer", marginRight: 6 }}
+                        >
+                          Dismiss
+                        </button>
+                      )}
                       {isActive && (
                         <button
                           onClick={() => askConfirm({ title: `Suspend ${u.name}?`, body: "They will lose access immediately until restored. This is a privileged action and is logged.", confirmLabel: "Suspend Access", tone: "negative", onConfirm: () => suspendUser(u.id) })}
@@ -126,7 +129,7 @@ export default function AdminPeoplePage() {
                           Restore
                         </button>
                       )}
-                      {isInvited && <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>Awaiting acceptance</span>}
+                      {isInvited && !wantsDeletion && <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>Awaiting acceptance</span>}
                     </td>
                   </tr>
                 );

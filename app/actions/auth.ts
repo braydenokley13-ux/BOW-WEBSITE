@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession } from "@/lib/session";
+import { getCurrentUser } from "@/lib/dal";
 import { roleHomePath, type Role } from "@/lib/account";
 
 export interface AuthState {
@@ -118,4 +119,33 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
 function buildName(first: string, last: string, fallback: string): string {
   const composed = [first, last].filter(Boolean).join(" ").trim();
   return composed || fallback;
+}
+
+/* ---------------- Change password ---------------- */
+
+export interface PasswordState {
+  error?: string;
+  ok?: boolean;
+}
+
+export async function changePassword(_prev: PasswordState, formData: FormData): Promise<PasswordState> {
+  const me = await getCurrentUser();
+  if (!me) return { error: "You need to be signed in." };
+
+  const current = String(formData.get("current") ?? "");
+  const next = String(formData.get("next") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+
+  if (next.length < 8) return { error: "New password must be at least 8 characters." };
+  if (next !== confirm) return { error: "New password and confirmation don't match." };
+
+  const db = getDb();
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  const row = db.prepare("SELECT password_hash FROM users WHERE id = ?").get(me.id) as any;
+  if (!verifyPassword(current, row?.password_hash)) {
+    return { error: "Your current password is incorrect." };
+  }
+
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hashPassword(next), me.id);
+  return { ok: true };
 }
