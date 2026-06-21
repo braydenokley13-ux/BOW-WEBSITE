@@ -1,10 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/app/AppState";
-import { trackLessons, lessonProgressLabel } from "@/lib/account";
+import {
+  trackLessons,
+  lessonProgressLabel,
+  unlockChecklist,
+  reflectionWordCount,
+  MIN_REFLECTION_WORDS,
+  PODCAST_UNLOCK_THRESHOLD,
+  type LessonProgressDetail,
+} from "@/lib/account";
 import { getLessonById } from "@/lib/lessons";
+import { podcastAllEpisodes, podTakeaways } from "@/lib/podcast";
+import PodcastPlayer from "@/components/site/PodcastPlayer";
 
 export default function StudentLessonPage() {
   const {
@@ -16,9 +26,11 @@ export default function StudentLessonPage() {
     lessonProgressFor,
     startLesson,
     setSimulationDone,
-    saveReflection,
     setChallengeDone,
     completeLesson,
+    recordPodcastProgress,
+    checkAndUnlockNextLesson,
+    saveReflectionAndCheck,
   } = useAppState();
   const router = useRouter();
 
@@ -32,6 +44,9 @@ export default function StudentLessonPage() {
 
   const prog = lessonProgressFor(me.id, lid);
   const [reflection, setReflection] = useState(prog?.reflection ?? "");
+  // Local podcast fraction so the checklist reflects playback before a refresh.
+  const [podLocal, setPodLocal] = useState(prog?.podcastProgress ?? 0);
+  const podPersisted = useRef(false);
 
   if (!cohort || !L) {
     return (
@@ -43,14 +58,59 @@ export default function StudentLessonPage() {
     );
   }
 
+  // Self-paced frontier: accessible up to the GREATER of the cohort's current
+  // lesson and the student's own auto-unlocked lesson.
   const lessonIdx = lessons.findIndex((l) => l.id === lid);
   const curIdx = lessons.findIndex((l) => l.id === curId);
+  const selfIdx = enr?.unlockedLessonId ? lessons.findIndex((l) => l.id === enr.unlockedLessonId) : -1;
+  const frontierIdx = Math.max(curIdx, selfIdx);
   const inDev = L.status === "in-development" || L.status === "coming-soon";
-  const locked = inDev || lessonIdx > curIdx;
+  const locked = inDev || lessonIdx > frontierIdx;
   const status = prog?.status ?? "not-started";
   const completed = status === "completed";
 
   const primaryLabel = completed ? "Review Lesson" : status === "in-progress" ? "Continue Lesson" : "Start Lesson";
+
+  // A live view of progress that folds in local podcast playback + reflection draft.
+  const liveDetail: LessonProgressDetail = {
+    status,
+    simulationDone: !!prog?.simulationDone,
+    reflection: reflection || prog?.reflection || "",
+    challengeDone: !!prog?.challengeDone,
+    podcastProgress: Math.max(prog?.podcastProgress ?? 0, podLocal),
+    startedAt: prog?.startedAt ?? null,
+    completedAt: prog?.completedAt ?? null,
+  };
+  const check = unlockChecklist(liveDetail);
+  const liveWords = reflectionWordCount(reflection || prog?.reflection || "");
+
+  // Resolve a podcast episode for this lesson (fall back to a Track 101 staple).
+  const ep =
+    (L.podcastEpisode ? podcastAllEpisodes.find((e) => e.num === L.podcastEpisode) : undefined) ??
+    podcastAllEpisodes.find((e) => e.num === "EP 04");
+  const runtimeMin = ep ? parseInt(ep.runtime, 10) || 33 : 33;
+  const podLengthSec = runtimeMin * 60;
+  const podLengthLabel = `${runtimeMin}:00`;
+  const podTitle = L.podcastTitle ?? ep?.title ?? "The economics behind this decision";
+  const podDesc = ep?.desc ?? "The front-office breakdown that frames this lesson’s call.";
+  const podEyebrow = `${ep?.concept ?? L.concepts?.[0] ?? "BOW"} · Lesson podcast`;
+
+  const handleReflectionSave = async () => {
+    // Persist first, then run the unlock check — a 75-word reflection may be the
+    // final condition. saveReflectionAndCheck orders the two so there's no race.
+    await saveReflectionAndCheck(lid, reflection);
+  };
+
+  const handlePodProgress = (fraction: number) => {
+    setPodLocal((prev) => (fraction > prev ? fraction : prev));
+    if (fraction >= PODCAST_UNLOCK_THRESHOLD && !podPersisted.current) {
+      podPersisted.current = true;
+      void (async () => {
+        await recordPodcastProgress(lid, fraction);
+        await checkAndUnlockNextLesson(lid);
+      })();
+    }
+  };
 
   const steps: { key: string; label: string; desc: string; done: boolean; render: () => React.ReactNode }[] = [
     {
@@ -78,20 +138,48 @@ export default function StudentLessonPage() {
         ),
     },
     {
+      key: "podcast",
+      label: "Listen to the episode",
+      desc: `Play the lesson podcast past ${Math.round(PODCAST_UNLOCK_THRESHOLD * 100)}% to unlock what’s next.`,
+      done: check.podcastMet,
+      render: () => (
+        <div style={{ width: "100%" }}>
+          <PodcastPlayer
+            episode={ep?.num ?? "EP 04"}
+            eyebrow={podEyebrow}
+            title={podTitle}
+            desc={podDesc}
+            lengthSec={podLengthSec}
+            lengthLabel={podLengthLabel}
+            takeaways={podTakeaways}
+            onProgress={handlePodProgress}
+          />
+          <span style={{ ...doneTag, display: "inline-block", marginTop: 8, color: check.podcastMet ? "var(--bow-positive)" : "var(--bow-slate)" }}>
+            {Math.round(liveDetail.podcastProgress * 100)}% played{check.podcastMet ? " · counted" : ""}
+          </span>
+        </div>
+      ),
+    },
+    {
       key: "reflect",
       label: "Name the economics",
-      desc: "In a sentence or two, explain the trade-off you just made.",
-      done: !!prog?.reflection?.trim(),
+      desc: `Explain the trade-off you just made — at least ${MIN_REFLECTION_WORDS} words.`,
+      done: check.reflectionMet,
       render: () => (
         <div style={{ width: "100%" }}>
           <textarea
             value={reflection}
             onChange={(e) => setReflection(e.target.value)}
-            rows={3}
+            rows={4}
             placeholder="The cost wasn't the salary — it was the win we passed up…"
             style={{ width: "100%", background: "var(--bow-paper)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "11px 13px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14, resize: "vertical" }}
           />
-          <button onClick={() => saveReflection(lid, reflection)} style={{ ...primaryBtn, marginTop: 10 }}>Save reflection</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+            <button onClick={handleReflectionSave} style={primaryBtn}>Save reflection</button>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.04em", color: liveWords >= MIN_REFLECTION_WORDS ? "var(--bow-positive)" : "var(--bow-slate)" }}>
+              {liveWords} / {MIN_REFLECTION_WORDS} words
+            </span>
+          </div>
         </div>
       ),
     },
@@ -110,6 +198,13 @@ export default function StudentLessonPage() {
   ];
 
   const allDone = status !== "not-started" && !!prog?.simulationDone && !!prog?.reflection?.trim() && !!prog?.challengeDone;
+
+  // Auto-unlock checklist (the default path): simulation + 75-word reflection + 80% podcast.
+  const unlockItems = [
+    { label: "Simulation complete", done: check.simulationDone },
+    { label: `Reflection ≥ ${MIN_REFLECTION_WORDS} words`, done: check.reflectionMet },
+    { label: `Podcast played past ${Math.round(PODCAST_UNLOCK_THRESHOLD * 100)}%`, done: check.podcastMet },
+  ];
 
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(20px,3vw,36px) clamp(16px,4vw,32px) 96px" }}>
@@ -137,7 +232,7 @@ export default function StudentLessonPage() {
         {locked ? (
           <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 24 }}>
             <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "var(--bow-slate)" }}>
-              {inDev ? "This lesson is still in development." : "This lesson opens when your instructor advances the cohort. Finish your current lesson in the meantime."}
+              {inDev ? "This lesson is still in development." : "This lesson unlocks automatically once you finish the previous one — complete its simulation, reflection, and podcast. Your instructor can also open it manually."}
             </p>
           </div>
         ) : (
@@ -146,6 +241,24 @@ export default function StudentLessonPage() {
               <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Work through this lesson</span>
               {completed && <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-positive)" }}>Completed{prog?.completedAt ? ` · ${prog.completedAt}` : ""}</span>}
             </div>
+
+            {/* auto-unlock status */}
+            {!completed && (
+              <div style={{ background: "var(--bow-ink)", color: "#fff", borderRadius: 6, padding: "16px 18px", marginBottom: 18 }}>
+                <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#6f8bff" }}>Self-paced unlock</span>
+                <p style={{ margin: "6px 0 12px", fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, color: "#b9bcc4" }}>
+                  Finish all three and the next lesson opens for you automatically — no waiting on the cohort.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {unlockItems.map((it) => (
+                    <div key={it.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span aria-hidden style={{ width: 16, height: 16, borderRadius: 999, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#fff", background: it.done ? "var(--bow-positive)" : "transparent", border: it.done ? "none" : "1px solid var(--bow-dark-border)" }}>{it.done ? "✓" : ""}</span>
+                      <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: it.done ? "#fff" : "#9a9da6", textDecoration: it.done ? "none" : "none" }}>{it.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div style={{ display: "flex", flexDirection: "column" }}>
               {steps.map((s) => (

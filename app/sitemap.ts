@@ -12,6 +12,7 @@ const ROUTES = [
   "/lessons",
   "/simulation",
   "/podcast",
+  "/feed",
   "/highway-world",
   "/about",
   "/get-involved",

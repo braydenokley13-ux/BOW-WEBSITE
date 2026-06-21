@@ -18,6 +18,8 @@ interface PodcastPlayerProps {
   lengthLabel: string;
   /** Transcript / key-takeaways list. */
   takeaways: PodTakeaway[];
+  /** Optional: fired with the played fraction (0–1) as playback advances. */
+  onProgress?: (fraction: number) => void;
 }
 
 const TICK_MS = 500;
@@ -38,11 +40,20 @@ export default function PodcastPlayer({
   lengthSec,
   lengthLabel,
   takeaways,
+  onProgress,
 }: PodcastPlayerProps) {
   const [playing, setPlaying] = useState(false);
   const [sec, setSec] = useState(0);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Report the played fraction as it changes (used by the lesson auto-unlock).
+  useEffect(() => {
+    onProgress?.(lengthSec > 0 ? Math.min(1, sec / lengthSec) : 0);
+    // onProgress intentionally omitted from deps: callers pass a stable callback
+    // and we only want to fire on a real time change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sec, lengthSec]);
 
   useEffect(() => {
     if (!playing) {

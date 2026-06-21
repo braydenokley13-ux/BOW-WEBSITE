@@ -92,11 +92,11 @@ export default function InstructorSessionPage() {
 
   const onAdvance = () =>
     askConfirm({
-      title: "Advance the cohort?",
+      title: "Manually unlock the next lesson?",
       body: nextLesson
-        ? `Students will get access to “${nextLesson.title}”. The current lesson stays available for review.`
+        ? `Students unlock “${nextLesson.title}” on their own once they finish the simulation, a 75-word reflection, and 80% of the podcast. You can override and open it for the whole cohort now.`
         : "This is the final lesson.",
-      confirmLabel: "Advance Lesson",
+      confirmLabel: "Unlock for cohort",
       tone: "info",
       onConfirm: () => advanceCohortLesson(c.id, nextLesson ? nextLesson.id : null),
     });
@@ -221,8 +221,11 @@ export default function InstructorSessionPage() {
               </div>
             </div>
 
-            {/* session actions */}
-            <button onClick={onAdvance} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: 15, border: "1px solid var(--bow-ink)", background: "transparent", color: "var(--bow-ink)", borderRadius: 4, cursor: "pointer" }}>Advance to Next Lesson</button>
+            {/* session actions — students auto-advance; this is a manual override */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <button onClick={onAdvance} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: 13, border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer" }}>Manually unlock next lesson</button>
+              <span style={{ fontFamily: "var(--font-interface)", fontSize: 12, fontStyle: "italic", color: "var(--bow-slate)", textAlign: "center" }}>Students unlock the next lesson automatically as they finish their work.</span>
+            </div>
           </div>
         </div>
       </div>

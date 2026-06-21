@@ -101,6 +101,11 @@ interface AppStateValue {
   saveReflection: (lessonId: string, text: string) => void;
   setChallengeDone: (lessonId: string, done: boolean) => void;
   completeLesson: (lessonId: string) => void;
+  // self-paced unlock (Proposal 1)
+  recordPodcastProgress: (lessonId: string, progress: number) => Promise<void>;
+  checkAndUnlockNextLesson: (lessonId: string) => Promise<lms.UnlockResult>;
+  /** Persist a reflection, then run the unlock check — ordered so there's no race. */
+  saveReflectionAndCheck: (lessonId: string, text: string) => Promise<lms.UnlockResult>;
 
   toast: Toast | null;
   showToast: (msg: string, tone?: ToastTone) => void;
@@ -299,6 +304,43 @@ export function AppStateProvider({
     run(lms.completeLesson(lessonId), "Lesson completed", "Couldn't complete lesson");
   }, [run]);
 
+  /* ---- self-paced unlock (Proposal 1) ---- */
+  const recordPodcastProgress = useCallback(async (lessonId: string, progress: number) => {
+    try {
+      await lms.setPodcastProgress(lessonId, progress);
+    } catch {
+      /* progress is best-effort; a dropped tick will be re-sent on the next one */
+    }
+  }, []);
+
+  const checkAndUnlockNextLesson = useCallback(async (lessonId: string): Promise<lms.UnlockResult> => {
+    try {
+      const result = await lms.checkAndUnlockNextLesson(lessonId);
+      if (result.unlocked) {
+        showToast("Next lesson unlocked — nice work", "positive");
+        router.refresh();
+      }
+      return result;
+    } catch {
+      return { unlocked: false, nextLessonId: null, conditionsMet: false };
+    }
+  }, [showToast, router]);
+
+  const saveReflectionAndCheck = useCallback(async (lessonId: string, text: string): Promise<lms.UnlockResult> => {
+    try {
+      // Await the write first so the unlock check sees the saved reflection.
+      await lms.saveReflection(lessonId, text);
+      showToast("Reflection saved");
+      const result = await lms.checkAndUnlockNextLesson(lessonId);
+      if (result.unlocked) showToast("Next lesson unlocked — nice work", "positive");
+      router.refresh();
+      return result;
+    } catch {
+      showToast("Couldn't save reflection", "negative");
+      return { unlocked: false, nextLessonId: null, conditionsMet: false };
+    }
+  }, [showToast, router]);
+
   /* ---- lookups bound to the live snapshot ---- */
   const getUser = useCallback((id: string | null) => data.users.find((u) => u.id === id) ?? null, [data.users]);
   const getOrg = useCallback((id: string | null) => data.organizations.find((o) => o.id === id) ?? null, [data.organizations]);
@@ -390,6 +432,9 @@ export function AppStateProvider({
       saveReflection,
       setChallengeDone,
       completeLesson,
+      recordPodcastProgress,
+      checkAndUnlockNextLesson,
+      saveReflectionAndCheck,
       toast,
       showToast,
       confirm,
@@ -405,7 +450,8 @@ export function AppStateProvider({
       setInvStatus, setInqStatus, setAttendance, advanceCohortLesson, createInvitation, createCohort,
       createOrganization, assignInstructor, assignStudent, removeStudent, transferStudent, addSessionNote,
       requestAccountDeletion, dismissDeletionRequest, startLesson, setSimulationDone, saveReflection,
-      setChallengeDone, completeLesson, getUser, getOrg, getCohort, cohortRoster, cohortsForInstructor,
+      setChallengeDone, completeLesson, recordPodcastProgress, checkAndUnlockNextLesson, saveReflectionAndCheck,
+      getUser, getOrg, getCohort, cohortRoster, cohortsForInstructor,
       activeEnrollmentFor, lessonProgressFor, notesForCohort,
     ],
   );

@@ -8,6 +8,10 @@ import {
   lessonProgressLabel,
   initials,
   nextLessonInTrack,
+  trackLessons,
+  unlockChecklist,
+  isInactive,
+  INACTIVE_FLAG_DAYS,
   type LessonProgress,
 } from "@/lib/account";
 import { getLessonById } from "@/lib/lessons";
@@ -16,6 +20,54 @@ type BadgeStatus = "positive" | "warning" | "negative";
 
 const lessonDotFor = (s: LessonProgress): string =>
   s === "completed" ? "var(--bow-positive)" : s === "in-progress" ? "var(--bow-blue)" : "var(--bow-inactive)";
+
+const thStyle: React.CSSProperties = {
+  textAlign: "left",
+  padding: "12px 16px",
+  fontFamily: "var(--font-data)",
+  fontSize: 10,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "var(--bow-slate)",
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+};
+
+/** A small SIM/POD/REF condition pip, filled when the condition is met. */
+function ConditionPip({ label, on }: { label: string; on: boolean }) {
+  return (
+    <span
+      title={on ? `${label} complete` : `${label} not yet`}
+      style={{
+        fontFamily: "var(--font-data)",
+        fontSize: 9.5,
+        letterSpacing: "0.04em",
+        padding: "3px 6px",
+        borderRadius: 3,
+        background: on ? "var(--bow-positive-tint)" : "var(--bow-paper)",
+        color: on ? "var(--bow-positive)" : "var(--bow-inactive)",
+        border: `1px solid ${on ? "var(--bow-positive)" : "var(--border-rule)"}`,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+/** Compact relative "last active" label from a real timestamp. */
+function fmtLastActive(ts?: number | null): string {
+  if (ts == null) return "Never";
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "Just now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d} day${d > 1 ? "s" : ""} ago`;
+  const w = Math.floor(d / 7);
+  return `${w} wk${w > 1 ? "s" : ""} ago`;
+}
 
 export default function InstructorCohortPage() {
   const router = useRouter();
@@ -27,6 +79,7 @@ export default function InstructorCohortPage() {
     cohortCurrentLessonId,
     userStatusOf,
     advanceCohortLesson,
+    lessonProgressFor,
     notesForCohort,
     addSessionNote,
     askConfirm,
@@ -40,6 +93,7 @@ export default function InstructorCohortPage() {
   const org = getOrg(c.orgId);
   const curId = cohortCurrentLessonId(c);
   const L = curId ? getLessonById(curId) ?? null : null;
+  const trackAll = trackLessons(c.track);
 
   const roster = cohortRoster(c.id);
   const rosterVM = roster.map((e) => {
@@ -47,6 +101,12 @@ export default function InstructorCohortPage() {
     const st = status === "suspended" ? "suspended" : e.enroll;
     const enrollLabel = st === "invited" ? "Invited" : st === "suspended" ? "Suspended" : "Active";
     const enrollBadge: BadgeStatus = st === "invited" ? "warning" : st === "suspended" ? "negative" : "positive";
+    // Monitoring: completion across the track + the three self-paced conditions
+    // on the student's current lesson.
+    const completed = trackAll.filter((l) => lessonProgressFor(e.userId, l.id)?.status === "completed").length;
+    const curDetail = curId ? lessonProgressFor(e.userId, curId) : null;
+    const check = unlockChecklist(curDetail);
+    const inactive = e.enroll !== "invited" && isInactive(e.user.lastActiveAt);
     return {
       id: e.userId,
       name: e.user.name,
@@ -55,22 +115,30 @@ export default function InstructorCohortPage() {
       enrollBadge,
       lessonStatus: lessonProgressLabel(e.lessonStatus),
       lessonDot: lessonDotFor(e.lessonStatus),
-      last: e.last,
+      completed,
+      total: trackAll.length,
+      sim: check.simulationDone,
+      podcast: check.podcastMet,
+      reflection: check.reflectionMet,
+      invited: e.enroll === "invited",
+      lastActive: e.enroll === "invited" ? "—" : fmtLastActive(e.user.lastActiveAt),
+      inactive,
     };
   });
 
   const activeRoster = roster.filter((e) => e.enroll !== "invited");
   const invited = roster.filter((e) => e.enroll === "invited").length;
+  const flagged = rosterVM.filter((r) => r.inactive).length;
   const nextLesson = nextLessonInTrack(c.track, curId);
   const notes = notesForCohort(c.id);
 
   const onAdvance = () =>
     askConfirm({
-      title: "Advance the cohort?",
+      title: "Manually unlock the next lesson?",
       body: nextLesson
-        ? `Students will get access to “${nextLesson.title}”. The current lesson stays available for review.`
+        ? `Students unlock “${nextLesson.title}” on their own once they finish the simulation, a 75-word reflection, and 80% of the podcast. You can override and open it for the whole cohort now.`
         : "This is the final lesson.",
-      confirmLabel: "Advance Lesson",
+      confirmLabel: "Unlock for cohort",
       tone: "info",
       onConfirm: () => advanceCohortLesson(c.id, nextLesson ? nextLesson.id : null),
     });
@@ -108,41 +176,87 @@ export default function InstructorCohortPage() {
         {/* actions */}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 26 }}>
           <button onClick={openSession} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 22px", border: "none", background: "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Open Current Session</button>
-          <button onClick={onAdvance} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 22px", border: "1px solid var(--bow-ink)", background: "transparent", color: "var(--bow-ink)", borderRadius: 4, cursor: "pointer" }}>Advance Lesson</button>
         </div>
 
         {L && (
           <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: "18px 20px", marginBottom: 26 }}>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Current lesson</span>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 20, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)" }}>{L.title}</span>
-            <p style={{ margin: "4px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>{"Module " + String(L.moduleNumber).padStart(2, "0") + " · " + L.moduleTitle}</p>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Current lesson · students auto-advance</span>
+                <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 20, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)" }}>{L.title}</span>
+                <p style={{ margin: "4px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>{"Module " + String(L.moduleNumber).padStart(2, "0") + " · " + L.moduleTitle}</p>
+              </div>
+              <button onClick={onAdvance} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "9px 14px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer", flexShrink: 0 }}>Manually unlock next ↦</button>
+            </div>
           </div>
         )}
 
-        {/* roster table */}
-        <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 12 }}>Roster</span>
-        <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        {/* monitoring view — replaces the old "advance cohort" control */}
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Student monitor</span>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.04em", color: flagged ? "var(--bow-negative)" : "var(--bow-slate)" }}>
+            {flagged > 0 ? `⚑ ${flagged} inactive ${INACTIVE_FLAG_DAYS}+ days` : "Everyone active in the last week"}
+          </span>
+        </div>
+        <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, overflowX: "auto" }}>
+          <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border-rule)" }}>
-                <th style={{ textAlign: "left", padding: "12px 16px", fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)", fontWeight: 600 }}>Student</th>
-                <th style={{ textAlign: "left", padding: "12px 8px", fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)", fontWeight: 600 }}>Enrollment</th>
-                <th style={{ textAlign: "left", padding: "12px 8px", fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)", fontWeight: 600 }}>Lesson</th>
-                <th style={{ textAlign: "left", padding: "12px 16px", fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)", fontWeight: 600 }}>Last active</th>
+                <th style={thStyle}>Student</th>
+                <th style={thStyle}>Track progress</th>
+                <th style={thStyle}>Current lesson</th>
+                <th style={thStyle}>Last active</th>
               </tr>
             </thead>
             <tbody>
               {rosterVM.map((r) => (
-                <tr key={r.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
-                  <td style={{ padding: "13px 16px" }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><span style={{ width: 28, height: 28, borderRadius: 999, background: "var(--bow-paper)", border: "1px solid var(--border-rule)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, color: "var(--bow-ink)", flexShrink: 0 }}>{r.initial}</span><span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)" }}>{r.name}</span></div></td>
-                  <td style={{ padding: "13px 8px" }}><Badge status={r.enrollBadge} style={{ height: 22 }}>{r.enrollLabel}</Badge></td>
-                  <td style={{ padding: "13px 8px" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 8, height: 8, borderRadius: 999, background: r.lessonDot }} /><span style={{ fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-ink)" }}>{r.lessonStatus}</span></div></td>
-                  <td style={{ padding: "13px 16px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{r.last}</td>
+                <tr key={r.id} style={{ borderBottom: "1px solid var(--border-rule)", background: r.inactive ? "var(--bow-negative-tint)" : undefined }}>
+                  <td style={{ padding: "13px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ width: 28, height: 28, borderRadius: 999, background: "var(--bow-paper)", border: "1px solid var(--border-rule)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, color: "var(--bow-ink)", flexShrink: 0 }}>{r.initial}</span>
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                        <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)" }}>{r.name}</span>
+                        <Badge status={r.enrollBadge} style={{ height: 18, alignSelf: "flex-start" }}>{r.enrollLabel}</Badge>
+                      </span>
+                    </div>
+                  </td>
+                  <td style={{ padding: "13px 8px" }}>
+                    {r.invited ? (
+                      <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>—</span>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-ink)", minWidth: 34 }}>{r.completed}/{r.total}</span>
+                        <span style={{ flex: 1, minWidth: 56, height: 5, background: "var(--bow-paper)", borderRadius: 999, overflow: "hidden", display: "inline-block" }}>
+                          <span style={{ display: "block", height: "100%", width: `${r.total ? (r.completed / r.total) * 100 : 0}%`, background: "var(--bow-positive)" }} />
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: "13px 8px" }}>
+                    {r.invited ? (
+                      <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>Waiting on invite</span>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <ConditionPip label="SIM" on={r.sim} />
+                        <ConditionPip label="POD" on={r.podcast} />
+                        <ConditionPip label="REF" on={r.reflection} />
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: "13px 16px", fontFamily: "var(--font-data)", fontSize: 12, color: r.inactive ? "var(--bow-negative)" : "var(--bow-slate)", whiteSpace: "nowrap" }}>
+                    {r.inactive && <span aria-label={`Inactive ${INACTIVE_FLAG_DAYS}+ days`} title={`Inactive ${INACTIVE_FLAG_DAYS}+ days`} style={{ marginRight: 6 }}>⚑</span>}
+                    {r.lastActive}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* condition legend */}
+        <p style={{ margin: "10px 2px 0", fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.04em", color: "var(--bow-slate)" }}>
+          SIM simulation · POD podcast 80%+ · REF reflection 75+ words — the three conditions that auto-unlock the next lesson.
+        </p>
 
         {/* notes */}
         <div style={{ marginTop: 28 }}>

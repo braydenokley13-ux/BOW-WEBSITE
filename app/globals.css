@@ -94,6 +94,15 @@ h1, h2, h3, h4, h5, h6, p, figure, blockquote { margin: 0; }
 .bow-link { transition: color var(--dur-hover) var(--ease-out); }
 .bow-link:hover { color: var(--bow-blue); }
 
+/* ===== Loading skeletons ===== */
+@keyframes bowSkeleton { 0% { opacity: 0.45; } 50% { opacity: 0.9; } 100% { opacity: 0.45; } }
+.bow-skeleton {
+  background: var(--bow-border);
+  border-radius: 4px;
+  animation: bowSkeleton 1.3s ease-in-out infinite;
+}
+.bow-front-office .bow-skeleton { background: var(--bow-dark-border); }
+
 /* ===== Responsive masthead nav (breakpoint 1024px, matching prototype) ===== */
 .bow-nav-desktop { display: flex; }
 .bow-nav-mobile-toggle { display: none; }

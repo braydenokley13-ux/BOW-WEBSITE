@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, DataStrip, DecisionCard } from "@/components/ds";
 import type { DataItem } from "@/components/ds";
 import {
@@ -53,12 +53,25 @@ function tone(v: number | undefined): DataItem["tone"] {
 
 const SECTION_PAD_ENTRY = "clamp(24px,3vw,36px) clamp(18px,4vw,40px) clamp(48px,7vw,96px)";
 
-export default function Simulation() {
+interface SimulationProps {
+  /** Fires once the simulation reaches its debrief — used by embedders (e.g. the Daily Feed). */
+  onComplete?: () => void;
+  /** Optional footer to render on the completed screen in place of the marketing CTAs. */
+  completedFooter?: React.ReactNode;
+}
+
+export default function Simulation({ onComplete, completedFooter }: SimulationProps = {}) {
   const [started, setStarted] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [step, setStep] = useState(0);
   const [choices, setChoices] = useState<Choices>({});
   const [revealed, setRevealed] = useState<Revealed>({});
+
+  useEffect(() => {
+    if (completed) onComplete?.();
+    // Fire only on the completed transition; onComplete is treated as stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completed]);
 
   const scrollTop = () => {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "auto" });
@@ -112,7 +125,7 @@ export default function Simulation() {
           onReviewBrief={reviewBrief}
         />
       )}
-      {completed && <CompletedScreen choices={choices} onReplay={replay} />}
+      {completed && <CompletedScreen choices={choices} onReplay={replay} footer={completedFooter} />}
     </div>
   );
 }
@@ -554,7 +567,7 @@ function DetailCell({
 }
 
 /* ===================== COMPLETED ===================== */
-function CompletedScreen({ choices, onReplay }: { choices: Choices; onReplay: () => void }) {
+function CompletedScreen({ choices, onReplay, footer }: { choices: Choices; onReplay: () => void; footer?: React.ReactNode }) {
   const axisSum = Object.keys(choices).reduce(
     (a, k) => a + ((SIM_AXIS[Number(k)] && SIM_AXIS[Number(k)][choices[Number(k)]]) || 0),
     0,
@@ -721,22 +734,26 @@ function CompletedScreen({ choices, onReplay }: { choices: Choices; onReplay: ()
           <AnalysisCell label="Another Exec Would Say" labelColor="#6f8bff" text={otherExec} />
         </div>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 32 }}>
-          <Button href="/lessons" variant="primary" size="lg">
-            Return to the Lesson
-          </Button>
-          <Button href="/lessons" variant="emphasis" size="lg">
-            Continue to Lesson 3
-          </Button>
-          <Button
-            variant="secondary"
-            size="lg"
-            onClick={onReplay}
-            style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}
-          >
-            Replay Simulation
-          </Button>
-        </div>
+        {footer ? (
+          <div style={{ marginTop: 32 }}>{footer}</div>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 32 }}>
+            <Button href="/lessons" variant="primary" size="lg">
+              Return to the Lesson
+            </Button>
+            <Button href="/lessons" variant="emphasis" size="lg">
+              Continue to Lesson 3
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={onReplay}
+              style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}
+            >
+              Replay Simulation
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );

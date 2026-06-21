@@ -26,6 +26,8 @@ export interface User {
   status: UserStatus;
   last: string;
   signin: string;
+  /** Real epoch-ms timestamp of the user's last authenticated activity (null = never signed in). */
+  lastActiveAt?: number | null;
 }
 
 export interface Organization {
@@ -64,6 +66,12 @@ export interface Enrollment {
   lessonStatus: LessonProgress;
   last: string;
   attLast: AttendanceState;
+  /**
+   * Furthest lesson this student has unlocked on their own via the self-paced
+   * path (Proposal 1). `null` falls back to the cohort's current lesson — so a
+   * student is never gated behind their own frontier OR the instructor's.
+   */
+  unlockedLessonId?: string | null;
 }
 
 /** Per-student, per-lesson progress detail (source of truth in the DB). */
@@ -72,9 +80,45 @@ export interface LessonProgressDetail {
   simulationDone: boolean;
   reflection: string;
   challengeDone: boolean;
+  /** Fraction (0–1) of the lesson's podcast episode the student has played. */
+  podcastProgress: number;
   startedAt: string | null;
   completedAt: string | null;
 }
+
+/* ---------------- Self-paced unlock (Proposal 1) ---------------- */
+
+/** Minimum words a reflection must contain to count toward auto-unlock. */
+export const MIN_REFLECTION_WORDS = 75;
+/** Fraction of the podcast episode that must be played to count toward auto-unlock. */
+export const PODCAST_UNLOCK_THRESHOLD = 0.8;
+
+/** Count whitespace-delimited words in a reflection. */
+export const reflectionWordCount = (text: string): number =>
+  text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
+
+/** The three self-paced conditions for a lesson's progress detail. */
+export interface UnlockChecklist {
+  simulationDone: boolean;
+  reflectionMet: boolean;
+  podcastMet: boolean;
+  reflectionWords: number;
+  allMet: boolean;
+}
+
+export const unlockChecklist = (p: LessonProgressDetail | null): UnlockChecklist => {
+  const reflectionWords = reflectionWordCount(p?.reflection ?? "");
+  const simulationDone = !!p?.simulationDone;
+  const reflectionMet = reflectionWords >= MIN_REFLECTION_WORDS;
+  const podcastMet = (p?.podcastProgress ?? 0) >= PODCAST_UNLOCK_THRESHOLD;
+  return {
+    simulationDone,
+    reflectionMet,
+    podcastMet,
+    reflectionWords,
+    allMet: simulationDone && reflectionMet && podcastMet,
+  };
+};
 
 /** An instructor/admin note attached to a cohort. */
 export interface SessionNote {
@@ -226,6 +270,139 @@ export const initials = (name: string): string =>
 export const lessonProgressLabel = (s: LessonProgress): string =>
   ({ "in-progress": "In Progress", completed: "Completed", "not-started": "Not Started", none: "No Access", waiting: "Waiting for Session" })[s] ?? "Not Started";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Convert a prototype "last seen" string ("2 h ago", "3 days ago", "—") into an
+ * approximate epoch-ms timestamp relative to `now`, so the seed has real
+ * timestamps the instructor monitoring view can compute a 7-day flag from.
+ * Returns null for users who have never signed in.
+ */
+export const parseLastSeen = (last: string, now: number = Date.now()): number | null => {
+  const s = last.trim().toLowerCase();
+  if (!s || s === "—") return null;
+  if (s === "today" || s === "just now") return now - 30 * 60 * 1000;
+  if (s === "yesterday") return now - DAY_MS;
+  const m = s.match(/^(\d+)\s*(min|h|hour|hours|day|days|week|weeks|month|months)\b/);
+  if (m) {
+    const n = Number(m[1]);
+    const unit = m[2];
+    if (unit.startsWith("min")) return now - n * 60 * 1000;
+    if (unit === "h" || unit.startsWith("hour")) return now - n * 60 * 60 * 1000;
+    if (unit.startsWith("day")) return now - n * DAY_MS;
+    if (unit.startsWith("week")) return now - n * 7 * DAY_MS;
+    if (unit.startsWith("month")) return now - n * 30 * DAY_MS;
+  }
+  return null;
+};
+
+/** Days since a last-active timestamp, or null when never active. */
+export const daysSince = (ts: number | null | undefined, now: number = Date.now()): number | null =>
+  ts == null ? null : Math.floor((now - ts) / DAY_MS);
+
+/** A student is flagged when they haven't been active for 7+ days (or never). */
+export const INACTIVE_FLAG_DAYS = 7;
+export const isInactive = (ts: number | null | undefined, now: number = Date.now()): boolean => {
+  const d = daysSince(ts, now);
+  return d === null || d >= INACTIVE_FLAG_DAYS;
+};
+
+/* ============================================================
+ * BOW Daily Feed (Proposal 3) — standalone, no cohort required.
+ * ============================================================ */
+
+/** A single Daily Feed story card. */
+export interface FeedStory {
+  id: string;
+  /** Display order in the feed. */
+  ordinal: number;
+  /** Sport-business headline. */
+  headline: string;
+  /** Two-sentence paragraph framing the event against a BOW concept. */
+  framing: string;
+  /** Decision prompt, always in the "You're the GM — what do you do?" voice. */
+  prompt: string;
+  /** The BOW concept the story illustrates. */
+  concept: string;
+  /** What actually happened in the real world. */
+  outcome: string;
+  /** One-sentence explanation tying the outcome to the concept. */
+  explanation: string;
+}
+
+/**
+ * Exactly four Daily Feed stories, seeded on first boot (see lib/db.ts).
+ * Each maps a real sport-business event to a BOW economics concept.
+ */
+export const feedStories: FeedStory[] = [
+  {
+    id: "feed-brown-surplus",
+    ordinal: 1,
+    headline: "Boston Hands Jaylen Brown the Richest Deal in NBA History",
+    framing:
+      "In 2023 the Celtics signed Jaylen Brown to a five-year supermax worth roughly $304 million — the largest contract the league had ever seen. Surplus value asks a blunt question: is a player producing more on the floor than the salary you're paying him, or are you paying for the name on the jersey?",
+    prompt: "You're the GM — do you pay an All-Star the absolute max to keep your core together, or let him test the market and protect your flexibility?",
+    concept: "Surplus value",
+    outcome:
+      "Boston paid him. A year later the Celtics won the 2024 title and Brown was named Finals MVP — the supermax bet returned a championship.",
+    explanation:
+      "Surplus value isn't only about the price tag; a max salary can still be a bargain when the production it buys wins you a title.",
+  },
+  {
+    id: "feed-athletics-oppcost",
+    ordinal: 2,
+    headline: "The A's Leave Oakland for a Minor-League Park in Sacramento",
+    framing:
+      "After more than fifty years in Oakland, the Athletics opened the 2025 season in a Triple-A ballpark in West Sacramento while chasing a future in Las Vegas. Opportunity cost is what you give up to get something else — and every relocation trades one city's loss against another's gain.",
+    prompt: "You're the GM — do you abandon a loyal but shrinking market for a temporary home and a bigger long-term payday, or stay and fight for a new stadium where you are?",
+    concept: "Opportunity cost",
+    outcome:
+      "The A's moved. Oakland lost its last major pro franchise, while Sacramento gained an MLB tenant and a national spotlight it had never held.",
+    explanation:
+      "The real cost of the move wasn't the rent in Sacramento — it was the decades of fan equity Oakland gave up for a shot at Las Vegas.",
+  },
+  {
+    id: "feed-sundayticket-inefficiency",
+    ordinal: 3,
+    headline: "A Jury Says the NFL's Sunday Ticket Broke Antitrust Law",
+    framing:
+      "In 2024 a federal jury found the NFL illegally restricted how out-of-market games were sold, bundling them into one pricey Sunday Ticket package. A market inefficiency appears when a seller with enough power charges far above what a competitive market would allow.",
+    prompt: "You're the GM — make that the league office: do you keep forcing every game into one expensive package, or let teams and networks sell games separately at competitive prices?",
+    concept: "Market inefficiency",
+    outcome:
+      "The jury sided with consumers and awarded roughly $4.7 billion — but weeks later the judge threw the verdict out, leaving the league's bundle intact for now.",
+    explanation:
+      "By forcing every out-of-market fan into a single package, the league captured value a competitive market would have handed back to consumers.",
+  },
+  {
+    id: "feed-giannis-luxurytax",
+    ordinal: 4,
+    headline: "Giannis Signs a Supermax to Stay in Milwaukee",
+    framing:
+      "Antetokounmpo's extension locked a generational star into a small-market roster at the very top of the pay scale. The luxury tax penalizes teams whose payroll climbs past a league threshold — so keeping a superstar quietly raises the price of everyone around him.",
+    prompt: "You're the GM — do you commit supermax money to your franchise player and pay an escalating tax bill, or trade him at peak value to stay under the line?",
+    concept: "Luxury tax",
+    outcome:
+      "Milwaukee paid the man and the tax, operating deep into luxury-tax territory and tighter apron rules to keep its title window open.",
+    explanation:
+      "Re-signing one star doesn't just cost his salary — the luxury tax multiplies every dollar above the threshold, shrinking the room to build around him.",
+  },
+];
+
+/** Number of feed decisions a visitor must complete before the Track 101 preview unlocks. */
+export const FEED_DECISIONS_TO_UNLOCK = 4;
+
+/** A minimal Daily Feed visitor — no cohort, instructor, or school. */
+export interface FeedUser {
+  id: string;
+  email: string;
+  displayName: string;
+  createdAt: number;
+  decisionsCompleted: number;
+  simCompleted: boolean;
+  certificateId: string | null;
+}
+
 /* ============================================================
  * Backend wiring
  * ============================================================ */
@@ -235,9 +412,9 @@ export const lessonProgressLabel = (s: LessonProgress): string =>
  * "active" or "suspended" status. Seeded "invited" users have no
  * password until they accept their invitation. Real deployments
  * should rotate these out — they exist so the prototype's seed
- * accounts can actually sign in.
+ * accounts can actually sign in. Override with the SEED_PASSWORD env var.
  */
-export const SEED_PASSWORD = "bowdemo123";
+export const SEED_PASSWORD = process.env.SEED_PASSWORD || "bowdemo123";
 
 /** Map of seed user email -> account they can sign in with (active/suspended only). */
 export const signInHint = (): { email: string; password: string }[] =>

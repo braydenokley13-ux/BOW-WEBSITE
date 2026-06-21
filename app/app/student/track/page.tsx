@@ -66,7 +66,11 @@ export default function StudentTrackPage() {
 
   const lessons = trackLessons(cohort.track);
   const curId = cohortCurrentLessonId(cohort);
-  const curIdx = lessons.findIndex((l) => l.id === curId);
+  const cohortIdx = lessons.findIndex((l) => l.id === curId);
+  // Self-paced frontier: the greater of the cohort's lesson and the student's
+  // own auto-unlocked lesson (Proposal 1).
+  const selfIdx = enr.unlockedLessonId ? lessons.findIndex((l) => l.id === enr.unlockedLessonId) : -1;
+  const curIdx = Math.max(cohortIdx, selfIdx);
 
   const openStudentLesson = (id: string) => {
     setSelectedLessonId(id);
@@ -83,7 +87,7 @@ export default function StudentTrackPage() {
       lockReason = "This lesson is still in development.";
     } else if (i > curIdx) {
       st = "locked";
-      lockReason = i === curIdx + 1 ? "Your instructor will open this lesson next." : "Complete the current lesson first.";
+      lockReason = i === curIdx + 1 ? "Finish your current lesson’s simulation, reflection, and podcast to unlock this." : "Complete the current lesson first.";
     } else if (i === curIdx) st = "current";
     else st = "available";
     const accessible = st === "completed" || st === "current" || st === "available";
