@@ -9,7 +9,8 @@ export const SITE = {
   description:
     "BOW Sports Capital helps middle and high school students learn economics, finance, leadership, and strategy by making the same decisions that shape teams, leagues, and the business of sports.",
   blurb: "The front office for the next generation. Read the game. Run the business. Make the decision.",
-  url: "https://bowsportscapital.com",
+  // Canonical site origin. Override per-environment with NEXT_PUBLIC_SITE_URL.
+  url: process.env.NEXT_PUBLIC_SITE_URL || "https://bowsportscapital.com",
 } as const;
 
 export interface NavItem {

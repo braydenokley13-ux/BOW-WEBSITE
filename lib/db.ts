@@ -16,6 +16,8 @@ import path from "node:path";
 import {
   seedAppData,
   orderedTrackLessons,
+  parseLastSeen,
+  feedStories,
   SEED_PASSWORD,
   type User,
   type Organization,
@@ -53,7 +55,8 @@ CREATE TABLE IF NOT EXISTS users (
   last TEXT NOT NULL,
   signin TEXT NOT NULL,
   password_hash TEXT,
-  deletion_requested INTEGER NOT NULL DEFAULT 0
+  deletion_requested INTEGER NOT NULL DEFAULT 0,
+  last_active_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS cohorts (
   id TEXT PRIMARY KEY,
@@ -77,6 +80,7 @@ CREATE TABLE IF NOT EXISTS enrollments (
   lesson_status TEXT NOT NULL,
   last TEXT NOT NULL,
   att_last TEXT NOT NULL,
+  unlocked_lesson_id TEXT,
   PRIMARY KEY (user_id, cohort_id)
 );
 CREATE TABLE IF NOT EXISTS invitations (
@@ -120,6 +124,7 @@ CREATE TABLE IF NOT EXISTS lesson_progress (
   simulation_done INTEGER NOT NULL DEFAULT 0,
   reflection TEXT NOT NULL DEFAULT '',
   challenge_done INTEGER NOT NULL DEFAULT 0,
+  podcast_progress REAL NOT NULL DEFAULT 0,
   started_at TEXT,
   completed_at TEXT,
   PRIMARY KEY (user_id, lesson_id)
@@ -138,6 +143,38 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id TEXT NOT NULL,
   expires_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS feed_stories (
+  id TEXT PRIMARY KEY,
+  ordinal INTEGER NOT NULL,
+  headline TEXT NOT NULL,
+  framing TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  concept TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  explanation TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS feed_users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  decisions_completed INTEGER NOT NULL DEFAULT 0,
+  sim_completed INTEGER NOT NULL DEFAULT 0,
+  certificate_id TEXT
+);
+CREATE TABLE IF NOT EXISTS feed_responses (
+  id TEXT PRIMARY KEY,
+  feed_user_id TEXT NOT NULL,
+  story_id TEXT NOT NULL,
+  response TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (feed_user_id, story_id)
+);
+CREATE TABLE IF NOT EXISTS feed_sessions (
+  token TEXT PRIMARY KEY,
+  feed_user_id TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
 `;
 
 function seed(db: DatabaseSync) {
@@ -150,7 +187,7 @@ function seed(db: DatabaseSync) {
   for (const o of data.organizations) insertOrg.run(o.id, o.name, o.type, o.location, o.status);
 
   const insertUser = db.prepare(
-    "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   for (const u of data.users) {
     insertUser.run(
@@ -165,6 +202,9 @@ function seed(db: DatabaseSync) {
       u.last,
       u.signin,
       u.status === "invited" ? null : seedHash,
+      // Real timestamp derived from the prototype "last seen" string, so the
+      // instructor monitoring view can flag students inactive for 7+ days.
+      u.status === "invited" ? null : parseLastSeen(u.last),
     );
   }
 
@@ -214,8 +254,12 @@ function seed(db: DatabaseSync) {
 
   // Seed per-lesson progress so dashboards and rosters show real history.
   const insertProg = db.prepare(
-    "INSERT INTO lesson_progress (user_id, lesson_id, status, simulation_done, reflection, challenge_done, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO lesson_progress (user_id, lesson_id, status, simulation_done, reflection, challenge_done, podcast_progress, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
+  // A full-length seed reflection (>= 75 words) so completed lessons satisfy the
+  // self-paced unlock checklist (sim + 75-word reflection + 80% podcast).
+  const seedReflection =
+    "The cost here was never the salary on the cap sheet — it was the win we quietly passed up somewhere else on the roster. Every yes is a no in disguise: signing the veteran meant not developing the rookie, and spending the exception meant losing flexibility at the deadline. The trade-off only becomes visible when you name the option you didn't take, and weigh it honestly against the one you did.";
   for (const e of data.enrollments) {
     if (e.enroll === "invited" || e.enroll === "inactive") continue;
     const cohort = data.cohorts.find((c) => c.id === e.cohortId);
@@ -225,13 +269,13 @@ function seed(db: DatabaseSync) {
     if (curIdx === -1) continue;
     ordered.forEach((l, i) => {
       if (i < curIdx) {
-        insertProg.run(e.userId, l.id, "completed", 1, "Reflected on the trade-off with the cohort.", 1, "Earlier in the term", "Earlier in the term");
+        insertProg.run(e.userId, l.id, "completed", 1, seedReflection, 1, 1, "Earlier in the term", "Earlier in the term");
       } else if (i === curIdx && e.lessonStatus !== "not-started" && e.lessonStatus !== "none") {
         const done = e.lessonStatus === "completed";
         insertProg.run(
           e.userId, l.id, done ? "completed" : "in-progress",
-          done ? 1 : 0, done ? "The cost wasn't the salary — it was the win we passed up." : "",
-          done ? 1 : 0, "This week", done ? "This week" : null,
+          done ? 1 : 0, done ? seedReflection : "",
+          done ? 1 : 0, done ? 1 : 0, "This week", done ? "This week" : null,
         );
       }
     });
@@ -243,6 +287,37 @@ function seed(db: DatabaseSync) {
   );
   insertNote.run("note-seed-1", "coh-1", "u-coach", "Cohort · Lincoln Fall — Track 101", "Group is strong on opportunity cost — push them harder on the trade-down logic next session.", "Jun 12, 2026", Date.now() - 6 * 86400000);
   insertNote.run("note-seed-2", "coh-1", "u-coach", "Student · Tyler Nguyen", "Missed last session. Send the recap and confirm he can access the current lesson.", "Jun 10, 2026", Date.now() - 8 * 86400000);
+
+  // The four BOW Daily Feed stories (defined in lib/account.ts) seed on first boot.
+  seedFeedStories(db);
+}
+
+/** Idempotently load the four Daily Feed stories. Safe to call on every boot. */
+function seedFeedStories(db: DatabaseSync) {
+  const insert = db.prepare(
+    "INSERT OR IGNORE INTO feed_stories (id, ordinal, headline, framing, prompt, concept, outcome, explanation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  for (const s of feedStories) {
+    insert.run(s.id, s.ordinal, s.headline, s.framing, s.prompt, s.concept, s.outcome, s.explanation);
+  }
+}
+
+/**
+ * Idempotent column migrations for databases created before a feature landed.
+ * `data/` is gitignored and usually re-created fresh, but this keeps an existing
+ * file from going stale. SQLite has no "ADD COLUMN IF NOT EXISTS", so we probe.
+ */
+function migrate(db: DatabaseSync) {
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const hasColumn = (table: string, column: string): boolean =>
+    (db.prepare(`PRAGMA table_info(${table})`).all() as any[]).some((c) => c.name === column);
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  const add = (table: string, column: string, def: string) => {
+    if (!hasColumn(table, column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+  };
+  add("users", "last_active_at", "INTEGER");
+  add("enrollments", "unlocked_lesson_id", "TEXT");
+  add("lesson_progress", "podcast_progress", "REAL NOT NULL DEFAULT 0");
 }
 
 function init(): DatabaseSync {
@@ -251,9 +326,13 @@ function init(): DatabaseSync {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  migrate(db);
 
   const row = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
   if (row.n === 0) seed(db);
+  // Feed stories are reference data — ensure they exist even on an older DB
+  // that was seeded before the Daily Feed shipped.
+  seedFeedStories(db);
 
   return db;
 }
@@ -273,6 +352,7 @@ export function rowToUser(r: any): User {
   return {
     id: r.id, name: r.name, first: r.first, email: r.email, role: r.role,
     orgId: r.org_id, grade: r.grade ?? undefined, status: r.status, last: r.last, signin: r.signin,
+    lastActiveAt: r.last_active_at ?? null,
   };
 }
 
@@ -292,6 +372,7 @@ export function rowToEnrollment(r: any): Enrollment {
   return {
     userId: r.user_id, cohortId: r.cohort_id, enroll: r.enroll,
     lessonStatus: r.lesson_status, last: r.last, attLast: r.att_last,
+    unlockedLessonId: r.unlocked_lesson_id ?? null,
   };
 }
 
@@ -337,6 +418,7 @@ export function readAppData(): AppData {
       simulationDone: !!p.simulation_done,
       reflection: p.reflection ?? "",
       challengeDone: !!p.challenge_done,
+      podcastProgress: typeof p.podcast_progress === "number" ? p.podcast_progress : 0,
       startedAt: p.started_at ?? null,
       completedAt: p.completed_at ?? null,
     };

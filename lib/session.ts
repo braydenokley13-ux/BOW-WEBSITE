@@ -20,9 +20,10 @@ const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // one week
 export async function createSession(userId: string): Promise<void> {
   const token = randomBytes(32).toString("hex");
   const expiresAt = Date.now() + MAX_AGE_SECONDS * 1000;
-  getDb()
-    .prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)")
-    .run(token, userId, expiresAt);
+  const db = getDb();
+  db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)").run(token, userId, expiresAt);
+  // Stamp a real last-active time so the instructor monitoring view stays honest.
+  db.prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(Date.now(), userId);
 
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {

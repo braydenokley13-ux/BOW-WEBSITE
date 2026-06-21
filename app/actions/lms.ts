@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { requireRole } from "@/lib/dal";
-import { orderedTrackLessons } from "@/lib/account";
+import {
+  orderedTrackLessons,
+  unlockChecklist,
+  type LessonProgressDetail,
+} from "@/lib/account";
 import type {
   AttendanceState,
   InquiryStatus,
@@ -221,16 +225,39 @@ export async function addSessionNote(cohortId: string, scope: string, text: stri
 /* ---------------- Lesson progress (student) ---------------- */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function assertAccessible(uid: string, lessonId: string): boolean {
+
+interface StudentFrontier {
+  enr: any;
+  cohort: any;
+  ordered: ReturnType<typeof orderedTrackLessons>;
+  /** Furthest accessible lesson index: max of the cohort's lesson and the student's own unlock. */
+  frontierIdx: number;
+}
+
+/**
+ * The student's effective lesson frontier. A lesson is accessible when its
+ * index is at or below the GREATER of two frontiers: the cohort's current
+ * lesson (instructor manual unlock) and the student's own self-paced unlock.
+ * Auto-unlock is the default path; instructor advancement still works as a floor.
+ */
+function studentFrontier(uid: string): StudentFrontier | null {
   const db = getDb();
   const enr = db.prepare("SELECT * FROM enrollments WHERE user_id = ? AND enroll = 'active'").get(uid) as any;
-  if (!enr) return false;
+  if (!enr) return null;
   const cohort = db.prepare("SELECT * FROM cohorts WHERE id = ?").get(enr.cohort_id) as any;
-  if (!cohort) return false;
+  if (!cohort) return null;
   const ordered = orderedTrackLessons(cohort.track);
-  const curIdx = ordered.findIndex((l) => l.id === cohort.current_lesson_id);
-  const lessonIdx = ordered.findIndex((l) => l.id === lessonId);
-  return lessonIdx !== -1 && curIdx !== -1 && lessonIdx <= curIdx;
+  const cohortIdx = ordered.findIndex((l) => l.id === cohort.current_lesson_id);
+  const selfIdx = ordered.findIndex((l) => l.id === enr.unlocked_lesson_id);
+  const frontierIdx = Math.max(cohortIdx, selfIdx);
+  return { enr, cohort, ordered, frontierIdx };
+}
+
+function assertAccessible(uid: string, lessonId: string): boolean {
+  const f = studentFrontier(uid);
+  if (!f) return false;
+  const lessonIdx = f.ordered.findIndex((l) => l.id === lessonId);
+  return lessonIdx !== -1 && f.frontierIdx !== -1 && lessonIdx <= f.frontierIdx;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -240,6 +267,27 @@ function touchProgress(uid: string, lessonId: string) {
   db.prepare(
     "INSERT INTO lesson_progress (user_id, lesson_id, status, started_at) VALUES (?, ?, 'in-progress', ?) ON CONFLICT(user_id, lesson_id) DO UPDATE SET status = CASE WHEN lesson_progress.status = 'not-started' THEN 'in-progress' ELSE lesson_progress.status END, started_at = COALESCE(lesson_progress.started_at, excluded.started_at)",
   ).run(uid, lessonId, fmtDateTime(new Date()));
+  touchActive(uid);
+}
+
+/** Record a real "last active" timestamp for the instructor monitoring view. */
+function touchActive(uid: string) {
+  getDb().prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(Date.now(), uid);
+}
+
+function progressDetail(uid: string, lessonId: string): LessonProgressDetail | null {
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  const p = getDb().prepare("SELECT * FROM lesson_progress WHERE user_id = ? AND lesson_id = ?").get(uid, lessonId) as any;
+  if (!p) return null;
+  return {
+    status: p.status,
+    simulationDone: !!p.simulation_done,
+    reflection: p.reflection ?? "",
+    challengeDone: !!p.challenge_done,
+    podcastProgress: typeof p.podcast_progress === "number" ? p.podcast_progress : 0,
+    startedAt: p.started_at ?? null,
+    completedAt: p.completed_at ?? null,
+  };
 }
 
 export async function startLesson(lessonId: string): Promise<void> {
@@ -276,6 +324,7 @@ export async function setChallengeDone(lessonId: string, done: boolean): Promise
 export async function completeLesson(lessonId: string): Promise<void> {
   const me = await requireRole("student");
   if (!assertAccessible(me.id, lessonId)) return;
+  touchActive(me.id);
   const now = fmtDateTime(new Date());
   getDb()
     .prepare(
@@ -283,6 +332,77 @@ export async function completeLesson(lessonId: string): Promise<void> {
     )
     .run(me.id, lessonId, now, now);
   refreshApp();
+}
+
+/* ---------------- Self-paced unlock (Proposal 1) ---------------- */
+
+/**
+ * Record how far the student has played the lesson's podcast episode, as a
+ * fraction between 0 and 1. Called client-side as the player progresses.
+ */
+export async function setPodcastProgress(lessonId: string, progress: number): Promise<void> {
+  const me = await requireRole("student");
+  if (!assertAccessible(me.id, lessonId)) return;
+  const clamped = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0));
+  touchProgress(me.id, lessonId);
+  // Never let a stored value go backwards (e.g. a scrub to the start).
+  getDb()
+    .prepare("UPDATE lesson_progress SET podcast_progress = MAX(podcast_progress, ?) WHERE user_id = ? AND lesson_id = ?")
+    .run(clamped, me.id, lessonId);
+  refreshApp();
+}
+
+export interface UnlockResult {
+  /** True only when this call advanced the student's frontier to a new lesson. */
+  unlocked: boolean;
+  /** The next lesson id, if any. */
+  nextLessonId: string | null;
+  /** Whether all three self-paced conditions are currently met for this lesson. */
+  conditionsMet: boolean;
+}
+
+/**
+ * The default self-paced path: when a student has marked the simulation
+ * complete, written a reflection of at least 75 words, AND played the podcast
+ * past {@link PODCAST_UNLOCK_THRESHOLD}, the current lesson is marked complete
+ * and the next lesson unlocks for them automatically — no instructor needed.
+ *
+ * Called client-side after the podcast crosses 0.8 and after reflection submit.
+ */
+export async function checkAndUnlockNextLesson(lessonId: string): Promise<UnlockResult> {
+  const me = await requireRole("student");
+  touchActive(me.id);
+  const f = studentFrontier(me.id);
+  if (!f) return { unlocked: false, nextLessonId: null, conditionsMet: false };
+
+  const detail = progressDetail(me.id, lessonId);
+  const check = unlockChecklist(detail);
+  if (!check.allMet) return { unlocked: false, nextLessonId: null, conditionsMet: false };
+
+  const lessonIdx = f.ordered.findIndex((l) => l.id === lessonId);
+  if (lessonIdx === -1) return { unlocked: false, nextLessonId: null, conditionsMet: true };
+
+  const db = getDb();
+  // The three core conditions are satisfied — lock in completion.
+  const now = fmtDateTime(new Date());
+  db.prepare(
+    "INSERT INTO lesson_progress (user_id, lesson_id, status, started_at, completed_at) VALUES (?, ?, 'completed', ?, ?) ON CONFLICT(user_id, lesson_id) DO UPDATE SET status = 'completed', started_at = COALESCE(lesson_progress.started_at, excluded.started_at), completed_at = COALESCE(lesson_progress.completed_at, excluded.completed_at)",
+  ).run(me.id, lessonId, now, now);
+
+  const next = f.ordered[lessonIdx + 1] ?? null;
+  const nextIdx = lessonIdx + 1;
+  const newlyUnlocked = !!next && nextIdx > f.frontierIdx;
+
+  if (next) {
+    const selfIdx = f.ordered.findIndex((l) => l.id === f.enr.unlocked_lesson_id);
+    if (nextIdx > selfIdx) {
+      db.prepare("UPDATE enrollments SET unlocked_lesson_id = ? WHERE user_id = ? AND cohort_id = ?")
+        .run(next.id, me.id, f.cohort.id);
+    }
+  }
+
+  refreshApp();
+  return { unlocked: newlyUnlocked, nextLessonId: next ? next.id : null, conditionsMet: true };
 }
 
 /* ---------------- Account deletion requests ---------------- */
