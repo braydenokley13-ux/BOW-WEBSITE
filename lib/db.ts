@@ -19,6 +19,8 @@ import {
   parseLastSeen,
   feedStories,
   selfModules,
+  dailyScenarios,
+  quizQuestions,
   reflectionWordCount,
   SEED_PASSWORD,
   SELF_PACED_ORG_ID,
@@ -215,6 +217,43 @@ CREATE TABLE IF NOT EXISTS self_attendance (
   present INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (cohort_id, student_id, session_no)
 );
+CREATE TABLE IF NOT EXISTS daily_scenarios (
+  id TEXT PRIMARY KEY,
+  ordinal INTEGER NOT NULL,
+  concept TEXT NOT NULL,
+  scenario TEXT NOT NULL,
+  explanation TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS scenario_responses (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  scenario_id TEXT NOT NULL,
+  response_text TEXT NOT NULL,
+  submitted_at INTEGER NOT NULL,
+  UNIQUE (student_id, scenario_id)
+);
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  id TEXT PRIMARY KEY,
+  module_unlock INTEGER NOT NULL,
+  question_type TEXT NOT NULL,
+  question_text TEXT NOT NULL,
+  choice_a TEXT,
+  choice_b TEXT,
+  choice_c TEXT,
+  choice_d TEXT,
+  correct_answer TEXT,
+  explanation TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS quiz_responses (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  response_text TEXT,
+  selected_choice TEXT,
+  is_correct INTEGER,
+  submitted_at INTEGER NOT NULL,
+  UNIQUE (student_id, question_id)
+);
 `;
 
 function seed(db: DatabaseSync) {
@@ -342,12 +381,41 @@ function seedFeedStories(db: DatabaseSync) {
   }
 }
 
-/** Idempotently load the six self-paced modules + the default async cohort. */
+/** Idempotently load the eight BOW Daily scenarios (Feature 2). Reference data. */
+function seedDailyScenarios(db: DatabaseSync) {
+  const insert = db.prepare(
+    `INSERT INTO daily_scenarios (id, ordinal, concept, scenario, explanation) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, concept = excluded.concept, scenario = excluded.scenario, explanation = excluded.explanation`,
+  );
+  for (const s of dailyScenarios) insert.run(s.id, s.ordinal, s.concept, s.scenario, s.explanation);
+}
+
+/** Idempotently load the Econ Quiz bank (Feature 3). Reference data. */
+function seedQuizQuestions(db: DatabaseSync) {
+  const insert = db.prepare(
+    `INSERT INTO quiz_questions (id, module_unlock, question_type, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET module_unlock = excluded.module_unlock, question_type = excluded.question_type, question_text = excluded.question_text, choice_a = excluded.choice_a, choice_b = excluded.choice_b, choice_c = excluded.choice_c, choice_d = excluded.choice_d, correct_answer = excluded.correct_answer, explanation = excluded.explanation`,
+  );
+  for (const q of quizQuestions) {
+    insert.run(
+      q.id, q.moduleUnlock, q.type, q.question,
+      q.choiceA, q.choiceB, q.choiceC, q.choiceD, q.correctAnswer, q.explanation,
+    );
+  }
+}
+
+/** Idempotently load the four self-paced modules + the default async cohort. */
 function seedSelfModulesAndCohort(db: DatabaseSync) {
+  // Upsert so the module copy stays authoritative across boots (titles match
+  // the Econ Quiz module names so completing a module unlocks its questions).
   const insertMod = db.prepare(
-    "INSERT OR IGNORE INTO self_modules (id, ordinal, title, summary, concept, central_question) VALUES (?, ?, ?, ?, ?, ?)",
+    `INSERT INTO self_modules (id, ordinal, title, summary, concept, central_question) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, title = excluded.title, summary = excluded.summary, concept = excluded.concept, central_question = excluded.central_question`,
   );
   for (const m of selfModules) insertMod.run(m.id, m.ordinal, m.title, m.summary, m.concept, m.centralQuestion);
+  // Track 101 is four modules — drop any stale modules from an older seed.
+  db.prepare("DELETE FROM self_modules WHERE ordinal > ?").run(selfModules.length);
 
   // The default async cohort. Instructor u-coach (Marcus Reyes) manages it so
   // the instructor dashboard (Feature 2) always has a roster to work with.
@@ -403,6 +471,22 @@ function seedSelfPacedDemo(db: DatabaseSync) {
   insertResp.run("sfr-seed-1", "u-self1", "feed-brown-surplus", "I pay him — a healthy All-Star core is worth the supermax.", now - 4 * DAY);
   insertResp.run("sfr-seed-2", "u-self1", "feed-athletics-oppcost", "I stay and fight for a new building before abandoning the market.", now - 3 * DAY);
 
+  // BOW Daily scenario responses (Feature 2) so the dashboard shows history.
+  const insertScn = db.prepare(
+    "INSERT OR IGNORE INTO scenario_responses (id, student_id, scenario_id, response_text, submitted_at) VALUES (?, ?, ?, ?, ?)",
+  );
+  insertScn.run("scnr-seed-1", "u-self1", "scn-1", "I take the center — you can't coach size, and a bigger need hurts more if you leave it open.", now - 4 * DAY);
+  insertScn.run("scnr-seed-2", "u-self1", "scn-2", "We priced past what fans would pay. I'd walk the ticket back toward $120 and find the seat that fills the building.", now - 3 * DAY);
+
+  // Econ Quiz responses (Feature 3) — Jordan has modules 1 & 2 done, so those
+  // questions are unlocked; seed a couple so the score tracker isn't empty.
+  const insertQuiz = db.prepare(
+    "INSERT OR IGNORE INTO quiz_responses (id, student_id, question_id, response_text, selected_choice, is_correct, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  );
+  insertQuiz.run("qr-seed-1", "u-self1", "q-m1-mc1", null, "B", 1, now - 4 * DAY);
+  insertQuiz.run("qr-seed-2", "u-self1", "q-m1-mc2", null, "B", 1, now - 4 * DAY);
+  insertQuiz.run("qr-seed-3", "u-self1", "q-m1-fr1", "I chose practice over a movie — the opportunity cost was the movie I skipped.", null, null, now - 4 * DAY);
+
   const insertAtt = db.prepare(
     "INSERT OR IGNORE INTO self_attendance (cohort_id, student_id, session_no, present) VALUES (?, ?, ?, ?)",
   );
@@ -411,7 +495,7 @@ function seedSelfPacedDemo(db: DatabaseSync) {
 
   db.prepare(
     "INSERT OR IGNORE INTO session_notes (id, cohort_id, author_id, student_id, scope, text, created_at, created_ts) VALUES (?, ?, 'u-coach', ?, ?, ?, ?, ?)",
-  ).run("note-self-1", SELF_PACED_COHORT_ID, "u-self1", "Student · Jordan Avery", "Flying through the early modules — nudge toward the Module 3 marginal-value sim.", "Jun 20, 2026", now - DAY);
+  ).run("note-self-1", SELF_PACED_COHORT_ID, "u-self1", "Student · Jordan Avery", "Flying through the early modules — strong on opportunity cost. Nudge toward the Module 3 quiz once it unlocks.", "Jun 20, 2026", now - DAY);
 }
 
 /**
@@ -448,9 +532,13 @@ function init(): DatabaseSync {
   // Feed stories are reference data — ensure they exist even on an older DB
   // that was seeded before the Daily Feed shipped.
   seedFeedStories(db);
-  // Self-paced Track 101 (Feature 1): the six modules and the default async
+  // Self-paced Track 101 (Feature 1): the four modules and the default async
   // cohort are reference data; the demo students only seed a fresh database.
   seedSelfModulesAndCohort(db);
+  // BOW Daily scenarios (Feature 2) and the Econ Quiz bank (Feature 3) are
+  // reference data — ensure they exist on every boot, fresh or not.
+  seedDailyScenarios(db);
+  seedQuizQuestions(db);
   if (fresh) seedSelfPacedDemo(db);
 
   return db;

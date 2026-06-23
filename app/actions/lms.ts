@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { requireRole } from "@/lib/dal";
-import { isSelfModuleUnlocked } from "@/lib/self-paced";
+import { isSelfModuleUnlocked, getSelfModuleViews } from "@/lib/self-paced";
 import {
   orderedTrackLessons,
   unlockChecklist,
@@ -508,6 +508,97 @@ export async function submitDailyDecision(storyId: string, response: string): Pr
   touchActive(me.id);
   refreshDashboard();
   return { ok: true, outcome: story.outcome, explanation: story.explanation, concept: story.concept };
+}
+
+/* ---------------- BOW Daily scenario (Feature 2) ---------------- */
+
+export interface ScenarioResult {
+  ok: boolean;
+  /** Revealed only after a response is submitted. */
+  explanation?: string;
+  concept?: string;
+}
+
+/**
+ * Save a student's response to a BOW Daily scenario (one per scenario) and
+ * reveal the plain-English explanation. Low-friction by design — the response
+ * is open-ended and is never graded.
+ */
+export async function submitDailyScenario(scenarioId: string, response: string): Promise<ScenarioResult> {
+  const me = await requireRole("student");
+  const text = response.trim();
+  if (!text) return { ok: false };
+
+  const db = getDb();
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  const scenario = db.prepare("SELECT * FROM daily_scenarios WHERE id = ?").get(scenarioId) as any;
+  if (!scenario) return { ok: false };
+
+  db.prepare(
+    "INSERT OR IGNORE INTO scenario_responses (id, student_id, scenario_id, response_text, submitted_at) VALUES (?, ?, ?, ?, ?)",
+  ).run(`scnr-${randomUUID().slice(0, 12)}`, me.id, scenarioId, text, Date.now());
+  touchActive(me.id);
+  refreshDashboard();
+  return { ok: true, explanation: scenario.explanation, concept: scenario.concept };
+}
+
+/* ---------------- Econ Quiz (Feature 3) ---------------- */
+
+export interface QuizSubmitResult {
+  ok: boolean;
+  /** MC only — true/false; null for free response (self-checked). */
+  isCorrect?: boolean | null;
+  /** MC only — the correct choice letter. */
+  correctAnswer?: string | null;
+  /** MC explanation, or the FR model answer to self-check against. */
+  explanation?: string;
+}
+
+/**
+ * Submit an answer to one quiz question. Gated: the question's module must be
+ * marked complete by this student, so questions can't be answered before they
+ * unlock (even via a direct request). MC answers are auto-checked against the
+ * stored key; FR answers are saved and the model answer is returned for the
+ * student to self-check — never auto-graded.
+ */
+export async function submitQuizResponse(
+  questionId: string,
+  selectedChoice: string | null,
+  responseText: string | null,
+): Promise<QuizSubmitResult> {
+  const me = await requireRole("student");
+  const db = getDb();
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  const q = db.prepare("SELECT * FROM quiz_questions WHERE id = ?").get(questionId) as any;
+  if (!q) return { ok: false };
+
+  // Gate: the question's module must be completed by this student.
+  const moduleOrdinal = Number(q.module_unlock);
+  const view = getSelfModuleViews(me.id).find((v) => v.module.ordinal === moduleOrdinal);
+  if (!view?.completed) return { ok: false };
+
+  const now = Date.now();
+  if (q.question_type === "mc") {
+    const choice = String(selectedChoice ?? "").toUpperCase();
+    if (!["A", "B", "C", "D"].includes(choice)) return { ok: false };
+    const correct = String(q.correct_answer ?? "").toUpperCase();
+    const isCorrect = choice === correct;
+    db.prepare(
+      "INSERT OR IGNORE INTO quiz_responses (id, student_id, question_id, response_text, selected_choice, is_correct, submitted_at) VALUES (?, ?, ?, NULL, ?, ?, ?)",
+    ).run(`qr-${randomUUID().slice(0, 12)}`, me.id, questionId, choice, isCorrect ? 1 : 0, now);
+    touchActive(me.id);
+    refreshDashboard();
+    return { ok: true, isCorrect, correctAnswer: q.correct_answer ?? null, explanation: q.explanation };
+  }
+
+  const text = String(responseText ?? "").trim();
+  if (!text) return { ok: false };
+  db.prepare(
+    "INSERT OR IGNORE INTO quiz_responses (id, student_id, question_id, response_text, selected_choice, is_correct, submitted_at) VALUES (?, ?, ?, ?, NULL, NULL, ?)",
+  ).run(`qr-${randomUUID().slice(0, 12)}`, me.id, questionId, text, now);
+  touchActive(me.id);
+  refreshDashboard();
+  return { ok: true, isCorrect: null, correctAnswer: null, explanation: q.explanation };
 }
 
 /* ---------------- Instructor controls (instructor + admin) ---------------- */
