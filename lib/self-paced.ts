@@ -149,6 +149,7 @@ export function getDailyScenarios(): DailyScenario[] {
     concept: r.concept,
     scenario: r.scenario,
     explanation: r.explanation,
+    difficulty: Number(r.difficulty) || 1,
   }));
 }
 
@@ -175,6 +176,7 @@ function scenarioView(s: DailyScenario, answer: ScenarioAnswer | undefined): Dai
       ordinal: s.ordinal,
       concept: s.concept,
       scenario: s.scenario,
+      difficulty: s.difficulty,
       answered: true,
       response: answer.response,
       explanation: s.explanation,
@@ -186,11 +188,34 @@ function scenarioView(s: DailyScenario, answer: ScenarioAnswer | undefined): Dai
     ordinal: s.ordinal,
     concept: s.concept,
     scenario: s.scenario,
+    difficulty: s.difficulty,
     answered: false,
     response: null,
     explanation: null,
     submittedAt: null,
   };
+}
+
+/**
+ * "How others answered" — the total number of students who have submitted this
+ * scenario, plus up to three anonymized 60-char excerpts from OTHER students.
+ * Makes the platform feel alive even with a small early user base.
+ */
+function scenarioCommunity(scenarioId: string, excludeStudentId: string): { totalResponses: number; othersExcerpts: string[] } {
+  const db = getDb();
+  const { n } = db.prepare("SELECT COUNT(*) AS n FROM scenario_responses WHERE scenario_id = ?").get(scenarioId) as any;
+  const rows = db
+    .prepare(
+      "SELECT response_text FROM scenario_responses WHERE scenario_id = ? AND student_id != ? ORDER BY submitted_at DESC LIMIT 3",
+    )
+    .all(scenarioId, excludeStudentId) as any[];
+  const othersExcerpts = rows
+    .map((r) => {
+      const t = String(r.response_text ?? "").trim().replace(/\s+/g, " ");
+      return t.length > 60 ? `${t.slice(0, 60)}…` : t;
+    })
+    .filter((t) => t.length > 0);
+  return { totalResponses: Number(n) || 0, othersExcerpts };
 }
 
 /** The id of this week's active scenario (rotates by week number). */
@@ -205,7 +230,51 @@ export function getActiveScenario(studentId: string): DailyScenarioView | null {
   const scenarios = getDailyScenarios();
   if (scenarios.length === 0) return null;
   const active = scenarios[activeScenarioIndex(scenarios.length)];
-  return scenarioView(active, scenarioResponses(studentId)[active.id]);
+  const view = scenarioView(active, scenarioResponses(studentId)[active.id]);
+  // Attach the "How others answered" community data once the student has submitted.
+  if (view.answered) {
+    const community = scenarioCommunity(active.id, studentId);
+    view.totalResponses = community.totalResponses;
+    view.othersExcerpts = community.othersExcerpts;
+  }
+  return view;
+}
+
+/**
+ * Scenario Archive (Feature 5). Every scenario except this week's active one:
+ * answered scenarios show the student's response + the explanation (newest
+ * first); scenarios they haven't submitted yet appear locked with only the
+ * concept and difficulty visible (the prompt is hidden so it isn't spoiled).
+ */
+export function getScenarioArchive(studentId: string): DailyScenarioView[] {
+  const scenarios = getDailyScenarios();
+  if (scenarios.length === 0) return [];
+  const activeId = scenarios[activeScenarioIndex(scenarios.length)].id;
+  const answers = scenarioResponses(studentId);
+  return scenarios
+    .filter((s) => s.id !== activeId)
+    .map((s): DailyScenarioView => {
+      const ans = answers[s.id];
+      if (ans) return scenarioView(s, ans);
+      return {
+        id: s.id,
+        ordinal: s.ordinal,
+        concept: s.concept,
+        scenario: "",
+        difficulty: s.difficulty,
+        answered: false,
+        response: null,
+        explanation: null,
+        submittedAt: null,
+        locked: true,
+      };
+    })
+    .sort((a, b) => {
+      // Answered (newest first) on top, then locked scenarios by order.
+      if (!!a.locked !== !!b.locked) return a.locked ? 1 : -1;
+      if (!a.locked) return (b.submittedAt ?? 0) - (a.submittedAt ?? 0);
+      return a.ordinal - b.ordinal;
+    });
 }
 
 /** Previously answered scenarios (excluding this week's), newest first. */
@@ -237,6 +306,7 @@ export function getQuizQuestions(): QuizQuestion[] {
     choiceD: r.choice_d ?? null,
     correctAnswer: r.correct_answer ?? null,
     explanation: r.explanation,
+    difficulty: Number(r.difficulty) || 1,
   }));
 }
 
@@ -279,6 +349,7 @@ function quizQuestionView(q: QuizQuestion, ans: QuizAnswer | undefined): QuizQue
       id: q.id,
       type: q.type,
       question: q.question,
+      difficulty: q.difficulty,
       choices,
       answered: true,
       selectedChoice: ans.selectedChoice,
@@ -292,6 +363,7 @@ function quizQuestionView(q: QuizQuestion, ans: QuizAnswer | undefined): QuizQue
     id: q.id,
     type: q.type,
     question: q.question,
+    difficulty: q.difficulty,
     choices,
     answered: false,
     selectedChoice: null,
@@ -315,10 +387,28 @@ export function getQuizModuleSections(studentId: string): QuizModuleSection[] {
 
   return modules.map((mv) => {
     const ordinal = mv.module.ordinal;
-    const inModule = questions.filter((q) => q.moduleUnlock === ordinal);
+    // Deliberate order within a module: multiple choice first, then written;
+    // easier difficulty first; ids as a stable tiebreak.
+    const inModule = questions
+      .filter((q) => q.moduleUnlock === ordinal)
+      .sort(
+        (a, b) =>
+          (a.type === b.type ? 0 : a.type === "mc" ? -1 : 1) ||
+          a.difficulty - b.difficulty ||
+          a.id.localeCompare(b.id),
+      );
     const mc = inModule.filter((q) => q.type === "mc");
     const fr = inModule.filter((q) => q.type === "fr");
     const unlocked = mv.completed;
+
+    const mcByDifficulty = [1, 2, 3].map((difficulty) => {
+      const inTier = mc.filter((q) => q.difficulty === difficulty);
+      return {
+        difficulty,
+        total: inTier.length,
+        correct: inTier.filter((q) => answers[q.id]?.isCorrect === 1).length,
+      };
+    });
 
     return {
       moduleOrdinal: ordinal,
@@ -331,6 +421,8 @@ export function getQuizModuleSections(studentId: string): QuizModuleSection[] {
       mcCorrect: mc.filter((q) => answers[q.id]?.isCorrect === 1).length,
       frTotal: fr.length,
       frSubmitted: fr.filter((q) => answers[q.id]).length,
+      mcByDifficulty,
+      mcAllAnswered: mc.length > 0 && mc.every((q) => answers[q.id]),
     };
   });
 }

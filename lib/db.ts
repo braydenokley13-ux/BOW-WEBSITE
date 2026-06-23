@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS users (
   signin TEXT NOT NULL,
   password_hash TEXT,
   deletion_requested INTEGER NOT NULL DEFAULT 0,
-  last_active_at INTEGER
+  last_active_at INTEGER,
+  created_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS cohorts (
   id TEXT PRIMARY KEY,
@@ -222,7 +223,8 @@ CREATE TABLE IF NOT EXISTS daily_scenarios (
   ordinal INTEGER NOT NULL,
   concept TEXT NOT NULL,
   scenario TEXT NOT NULL,
-  explanation TEXT NOT NULL
+  explanation TEXT NOT NULL,
+  difficulty INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS scenario_responses (
   id TEXT PRIMARY KEY,
@@ -242,7 +244,8 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
   choice_c TEXT,
   choice_d TEXT,
   correct_answer TEXT,
-  explanation TEXT NOT NULL
+  explanation TEXT NOT NULL,
+  difficulty INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS quiz_responses (
   id TEXT PRIMARY KEY,
@@ -254,6 +257,26 @@ CREATE TABLE IF NOT EXISTS quiz_responses (
   submitted_at INTEGER NOT NULL,
   UNIQUE (student_id, question_id)
 );
+CREATE TABLE IF NOT EXISTS certificates (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  issued_at INTEGER NOT NULL,
+  track TEXT NOT NULL,
+  UNIQUE (student_id, track)
+);
+CREATE TABLE IF NOT EXISTS simulations (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  turn INTEGER NOT NULL DEFAULT 1,
+  cap_space INTEGER NOT NULL,
+  team_record TEXT NOT NULL,
+  decisions TEXT NOT NULL DEFAULT '[]',
+  completed INTEGER NOT NULL DEFAULT 0,
+  final_score INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_sim
+  ON simulations (student_id) WHERE completed = 0;
 `;
 
 function seed(db: DatabaseSync) {
@@ -381,26 +404,26 @@ function seedFeedStories(db: DatabaseSync) {
   }
 }
 
-/** Idempotently load the eight BOW Daily scenarios (Feature 2). Reference data. */
+/** Idempotently load the twenty BOW Daily scenarios (Feature 2). Reference data. */
 function seedDailyScenarios(db: DatabaseSync) {
   const insert = db.prepare(
-    `INSERT INTO daily_scenarios (id, ordinal, concept, scenario, explanation) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, concept = excluded.concept, scenario = excluded.scenario, explanation = excluded.explanation`,
+    `INSERT INTO daily_scenarios (id, ordinal, concept, scenario, explanation, difficulty) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, concept = excluded.concept, scenario = excluded.scenario, explanation = excluded.explanation, difficulty = excluded.difficulty`,
   );
-  for (const s of dailyScenarios) insert.run(s.id, s.ordinal, s.concept, s.scenario, s.explanation);
+  for (const s of dailyScenarios) insert.run(s.id, s.ordinal, s.concept, s.scenario, s.explanation, s.difficulty);
 }
 
 /** Idempotently load the Econ Quiz bank (Feature 3). Reference data. */
 function seedQuizQuestions(db: DatabaseSync) {
   const insert = db.prepare(
-    `INSERT INTO quiz_questions (id, module_unlock, question_type, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET module_unlock = excluded.module_unlock, question_type = excluded.question_type, question_text = excluded.question_text, choice_a = excluded.choice_a, choice_b = excluded.choice_b, choice_c = excluded.choice_c, choice_d = excluded.choice_d, correct_answer = excluded.correct_answer, explanation = excluded.explanation`,
+    `INSERT INTO quiz_questions (id, module_unlock, question_type, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, difficulty)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET module_unlock = excluded.module_unlock, question_type = excluded.question_type, question_text = excluded.question_text, choice_a = excluded.choice_a, choice_b = excluded.choice_b, choice_c = excluded.choice_c, choice_d = excluded.choice_d, correct_answer = excluded.correct_answer, explanation = excluded.explanation, difficulty = excluded.difficulty`,
   );
   for (const q of quizQuestions) {
     insert.run(
       q.id, q.moduleUnlock, q.type, q.question,
-      q.choiceA, q.choiceB, q.choiceC, q.choiceD, q.correctAnswer, q.explanation,
+      q.choiceA, q.choiceB, q.choiceC, q.choiceD, q.correctAnswer, q.explanation, q.difficulty,
     );
   }
 }
@@ -445,13 +468,14 @@ function seedSelfPacedDemo(db: DatabaseSync) {
     { id: "u-self3", name: "Casey Kim", first: "Casey", email: "casey.kim@example.com", last: "Just now", lastActive: now - 20 * 60 * 1000 },
   ];
   const insertUser = db.prepare(
-    "INSERT OR IGNORE INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', ?, 'Email + password', ?, ?)",
+    "INSERT OR IGNORE INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', ?, 'Email + password', ?, ?, ?)",
   );
   const insertEnr = db.prepare(
     "INSERT OR IGNORE INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last) VALUES (?, ?, 'active', 'not-started', ?, 'none')",
   );
   for (const s of students) {
-    insertUser.run(s.id, s.name, s.first, s.email, SELF_PACED_ORG_ID, s.last, seedHash, s.lastActive);
+    // Joined roughly two weeks before their last activity (demo data).
+    insertUser.run(s.id, s.name, s.first, s.email, SELF_PACED_ORG_ID, s.last, seedHash, s.lastActive, s.lastActive - 14 * DAY);
     insertEnr.run(s.id, SELF_PACED_COHORT_ID, s.last);
   }
 
@@ -517,6 +541,11 @@ function migrate(db: DatabaseSync) {
   // Per-student instructor notes reuse the session_notes table with a
   // structured student link (Feature 2). Older DBs get the column added.
   add("session_notes", "student_id", "TEXT");
+  // Difficulty tags on scenarios and quiz questions (Features 5 & 6).
+  add("daily_scenarios", "difficulty", "INTEGER NOT NULL DEFAULT 1");
+  add("quiz_questions", "difficulty", "INTEGER NOT NULL DEFAULT 1");
+  // Signup timestamp for the student profile (Feature 3).
+  add("users", "created_at", "INTEGER");
 }
 
 function init(): DatabaseSync {
@@ -560,6 +589,7 @@ export function rowToUser(r: any): User {
     id: r.id, name: r.name, first: r.first, email: r.email, role: r.role,
     orgId: r.org_id, grade: r.grade ?? undefined, status: r.status, last: r.last, signin: r.signin,
     lastActiveAt: r.last_active_at ?? null,
+    createdAt: r.created_at ?? null,
   };
 }
 

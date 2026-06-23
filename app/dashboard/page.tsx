@@ -3,7 +3,7 @@ import {
   getSelfModuleViews,
   getQuizModuleSections,
   getActiveScenario,
-  getScenarioHistory,
+  getScenarioArchive,
 } from "@/lib/self-paced";
 import StudentDashboard from "@/components/selfpaced/StudentDashboard";
 
@@ -13,7 +13,7 @@ export default async function DashboardPage() {
   const modules = getSelfModuleViews(me.id);
   const quizSections = getQuizModuleSections(me.id);
   const activeScenario = getActiveScenario(me.id);
-  const scenarioHistory = getScenarioHistory(me.id);
+  const scenarioArchive = getScenarioArchive(me.id);
 
   return (
     <StudentDashboard
@@ -21,7 +21,7 @@ export default async function DashboardPage() {
       modules={modules}
       quizSections={quizSections}
       activeScenario={activeScenario}
-      scenarioHistory={scenarioHistory}
+      scenarioArchive={scenarioArchive}
     />
   );
 }

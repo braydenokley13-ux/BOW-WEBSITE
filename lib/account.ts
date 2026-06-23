@@ -28,6 +28,8 @@ export interface User {
   signin: string;
   /** Real epoch-ms timestamp of the user's last authenticated activity (null = never signed in). */
   lastActiveAt?: number | null;
+  /** Epoch-ms timestamp the account was created (null for older seed accounts). */
+  createdAt?: number | null;
 }
 
 export interface Organization {
@@ -623,6 +625,8 @@ export interface DailyScenario {
   scenario: string;
   /** Revealed only after the student submits a response. */
   explanation: string;
+  /** 1 = straightforward, 2 = applied, 3 = multi-step reasoning. */
+  difficulty: number;
 }
 
 /** Milliseconds in one week. */
@@ -635,11 +639,12 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 export const activeScenarioIndex = (count: number, now: number = Date.now()): number =>
   count <= 0 ? 0 : Math.floor(now / WEEK_MS) % count;
 
-/** The eight BOW Daily scenarios, seeded on first boot. */
+/** The twenty BOW Daily scenarios, seeded on first boot. */
 export const dailyScenarios: DailyScenario[] = [
   {
     id: "scn-1",
     ordinal: 1,
+    difficulty: 1,
     concept: "Opportunity Cost",
     scenario:
       "The Lakers have $8M left to spend. They can sign a backup point guard or a backup center — but not both. The point guard helps with passing. The center fills a bigger need. What do you pick and why?",
@@ -649,6 +654,7 @@ export const dailyScenarios: DailyScenario[] = [
   {
     id: "scn-2",
     ordinal: 2,
+    difficulty: 2,
     concept: "Supply and Demand",
     scenario:
       "Your arena has 20,000 seats. Last year at $120 a ticket you sold every seat. This year you charged $160 and 4,000 seats are empty every night. What went wrong?",
@@ -658,6 +664,7 @@ export const dailyScenarios: DailyScenario[] = [
   {
     id: "scn-3",
     ordinal: 3,
+    difficulty: 2,
     concept: "Incentives",
     scenario:
       "Your star player has one year left on his deal and is playing the best basketball of his life. Your other teammate has five years guaranteed and is barely trying. Why?",
@@ -667,6 +674,7 @@ export const dailyScenarios: DailyScenario[] = [
   {
     id: "scn-4",
     ordinal: 4,
+    difficulty: 1,
     concept: "Scarcity",
     scenario:
       "There are only 30 GM jobs in the entire NBA. Thousands of people want one. Because of that, teams can be really picky about who they hire. What does this tell you about getting a job in sports?",
@@ -676,6 +684,7 @@ export const dailyScenarios: DailyScenario[] = [
   {
     id: "scn-5",
     ordinal: 5,
+    difficulty: 2,
     concept: "Monopoly",
     scenario:
       "Your city has one NBA team. The nearest other team is four hours away. Your team charges 40% more for tickets than the average team in the league. Why can they do that?",
@@ -685,6 +694,7 @@ export const dailyScenarios: DailyScenario[] = [
   {
     id: "scn-6",
     ordinal: 6,
+    difficulty: 2,
     concept: "Inflation",
     scenario:
       "In 2010 the average NBA player made $5M a year. In 2025 the average is $10M. Does that mean players today are twice as good?",
@@ -694,6 +704,7 @@ export const dailyScenarios: DailyScenario[] = [
   {
     id: "scn-7",
     ordinal: 7,
+    difficulty: 3,
     concept: "Multiplier Effect",
     scenario:
       "A new basketball arena gets built downtown. Thousands of construction workers get hired. On game nights, restaurants nearby are packed, parking lots fill up, and hotels sell out. How does one building affect so many businesses?",
@@ -703,11 +714,132 @@ export const dailyScenarios: DailyScenario[] = [
   {
     id: "scn-8",
     ordinal: 8,
+    difficulty: 3,
     concept: "Fiscal Policy",
     scenario:
       "A city offers an NFL team $500 million in taxpayer money to help build a new stadium. Supporters say it'll create jobs and grow the local economy. Critics say that money should go to schools and roads instead. Who's right?",
     explanation:
       "This is one of the most debated questions in sports economics. Governments spending money to boost the economy is called fiscal policy. Most economic studies actually show that stadiums don't generate as much economic benefit as teams claim. But the debate is real — reasonable people disagree.",
+  },
+  {
+    id: "scn-9",
+    ordinal: 9,
+    difficulty: 2,
+    concept: "Price Elasticity",
+    scenario:
+      "A team sells hot dogs for $5 and sells 1,000 a game. They raise the price to $6 and now sell only 500. But when they raised parking from $20 to $24, almost nobody stopped paying. Why did fans quit hot dogs but keep paying for parking?",
+    explanation:
+      "This is price elasticity — how much people change what they buy when the price changes. Hot dogs are \"elastic\": fans can eat before the game or skip the snack, so a higher price scares a lot of them off. Parking is \"inelastic\": fans need somewhere to put the car, so they pay even when it costs more.",
+  },
+  {
+    id: "scn-10",
+    ordinal: 10,
+    difficulty: 3,
+    concept: "Comparative Advantage",
+    scenario:
+      "Your star is the best passer AND the best scorer on the team — but he can't do both on the same play. Your new teammate is a good passer and a weak scorer. Who should bring the ball up the court, and who should finish the shot?",
+    explanation:
+      "This is comparative advantage — letting each person do the job they give up the least by doing. Your star should score, because that's where he is far better than anyone else. Let the teammate handle the passing. Even when one person is better at everything, the team wins more by splitting up the work.",
+  },
+  {
+    id: "scn-11",
+    ordinal: 11,
+    difficulty: 2,
+    concept: "Externalities",
+    scenario:
+      "A team builds a new stadium downtown. Nearby restaurants get packed on game nights and make more money, even though they never paid for the stadium. But neighbors deal with loud crowds and traffic they never asked for. What do these two effects have in common?",
+    explanation:
+      "Both are externalities — side effects of a choice that land on people who weren't part of it. The busy restaurants are a positive externality (a good side effect). The traffic and noise are a negative externality (a bad side effect). Smart cities try to grow the good side effects and shrink the bad ones.",
+  },
+  {
+    id: "scn-12",
+    ordinal: 12,
+    difficulty: 2,
+    concept: "Public Goods",
+    scenario:
+      "A city wants free fireworks after every home game. Anyone in the city can watch from their yard, and one person watching doesn't stop anyone else from watching. Why would a private company almost never pay for this on its own?",
+    explanation:
+      "Fireworks like this are a public good — something everyone can use and no one can be blocked from. A company can't sell tickets to a sky that everyone sees for free, so it can't make money on it. That's why governments, not businesses, usually pay for public goods like parks, streetlights, and clean air.",
+  },
+  {
+    id: "scn-13",
+    ordinal: 13,
+    difficulty: 3,
+    concept: "Market Failure",
+    scenario:
+      "Only one company sells tickets to every game in your city, and it adds big hidden fees at checkout. Fans are angry but have nowhere else to buy. The free market is supposed to punish bad sellers — so why isn't it working here?",
+    explanation:
+      "This is a market failure — when a market doesn't reach a fair result on its own. Normally competition would punish the company, but here there's no competition, so fans are stuck. When markets fail like this, governments sometimes step in with rules to protect buyers.",
+  },
+  {
+    id: "scn-14",
+    ordinal: 14,
+    difficulty: 3,
+    concept: "The Federal Reserve",
+    scenario:
+      "Prices everywhere are rising fast — tickets, food, even player salaries. The country's central bank, called the Federal Reserve, decides to make borrowing money more expensive for everyone. Why would it slow the economy down on purpose?",
+    explanation:
+      "The Federal Reserve, or \"the Fed,\" is the bank that manages the country's money. When prices rise too fast (that's inflation), the Fed raises interest rates so loans cost more. People and businesses then borrow and spend less, which cools prices down. It's like tapping the brakes on a car going too fast.",
+  },
+  {
+    id: "scn-15",
+    ordinal: 15,
+    difficulty: 2,
+    concept: "Budget Deficit",
+    scenario:
+      "A team brings in $200 million a year but spends $230 million on players, staff, and travel. To cover the gap, the owner borrows money every season. What is the team running, and why can't it keep this up forever?",
+    explanation:
+      "The team is running a budget deficit — spending more than it brings in. To cover a deficit you borrow, and borrowing builds up debt that must be paid back with interest. A little debt can be fine, but spending more than you earn year after year eventually catches up with you.",
+  },
+  {
+    id: "scn-16",
+    ordinal: 16,
+    difficulty: 2,
+    concept: "Trade Deficit",
+    scenario:
+      "Your team buys star players from clubs in other countries every year, but those clubs almost never buy players from you. More talent flows in than flows out. People call this a \"trade deficit.\" Is that automatically a bad thing?",
+    explanation:
+      "A trade deficit means you buy more from others than they buy from you. It sounds bad, but it isn't always — you might be getting exactly the talent you need to win. What matters is whether the trades leave you better off, not just which direction more players move.",
+  },
+  {
+    id: "scn-17",
+    ordinal: 17,
+    difficulty: 3,
+    concept: "Unemployment Types",
+    scenario:
+      "Three coaches are out of work. One just quit and is picking his next job. One coached a sport the league cancelled, so his skills aren't needed anymore. One lost his job because the whole league is losing money this year. Are they all unemployed for the same reason?",
+    explanation:
+      "No — economists name three kinds. The coach choosing his next job is \"frictional\" (between jobs for a short time). The coach whose sport ended is \"structural\" (his skills no longer match the jobs that exist). The coach hurt by a league-wide slump is \"cyclical\" (jobless because the economy is down). Each kind needs a different fix.",
+  },
+  {
+    id: "scn-18",
+    ordinal: 18,
+    difficulty: 1,
+    concept: "Cost-Benefit Analysis",
+    scenario:
+      "You can spend $3 million on a fancy new scoreboard. You figure it brings in about $1 million in extra ticket and ad sales. A coach you trust says, \"List what it costs and what you get, then compare.\" What is she telling you to do?",
+    explanation:
+      "She's describing cost-benefit analysis — listing the costs and the benefits of a choice, then comparing them. Here the cost ($3 million) is bigger than the benefit ($1 million), so the scoreboard isn't worth it yet. This simple compare-the-two step stops you from making expensive mistakes.",
+  },
+  {
+    id: "scn-19",
+    ordinal: 19,
+    difficulty: 2,
+    concept: "Economic Growth",
+    scenario:
+      "Ten years ago your league had 20 teams, small arenas, and tiny TV deals. Today it has 30 teams, packed arenas, and huge TV money. The whole league earns far more than before. What is this called, and what usually drives it?",
+    explanation:
+      "This is economic growth — the whole \"economy\" (here, the league) producing and earning more over time. Growth usually comes from more people taking part, better technology like streaming, and smarter ways of doing things. When an economy grows, there's more value to go around for everyone in it.",
+  },
+  {
+    id: "scn-20",
+    ordinal: 20,
+    difficulty: 2,
+    concept: "Business Cycle",
+    scenario:
+      "Your league booms for a few years — sold-out games and rising salaries. Then it slumps: empty seats and pay cuts. A few years later it booms again. This up-and-down pattern keeps repeating. What are you watching happen?",
+    explanation:
+      "You're watching the business cycle — the natural pattern of an economy speeding up and slowing down over time. The good stretches are called expansions, and the slow stretches are called recessions. Because the cycle repeats, smart teams save money during the booms so they can survive the slumps.",
   },
 ];
 
@@ -717,11 +849,18 @@ export interface DailyScenarioView {
   ordinal: number;
   concept: string;
   scenario: string;
+  difficulty: number;
   answered: boolean;
   response: string | null;
   /** Revealed only after submission. */
   explanation: string | null;
   submittedAt: number | null;
+  /** Total students (incl. this one) who have submitted this scenario. */
+  totalResponses?: number;
+  /** Up to 3 anonymized excerpts (first 60 chars) of other students' responses. */
+  othersExcerpts?: string[];
+  /** True when the student has not yet submitted (used by the locked archive). */
+  locked?: boolean;
 }
 
 /* ============================================================
@@ -750,14 +889,17 @@ export interface QuizQuestion {
   correctAnswer: string | null;
   /** MC: why the answer is right. FR: a strong model answer to self-check against. */
   explanation: string;
+  /** 1 = recall, 2 = application, 3 = analysis. */
+  difficulty: number;
 }
 
-/** 24 seed questions — six per module (4 multiple choice + 2 free response). */
+/** 48 seed questions — twelve per module (8 multiple choice + 4 free response). */
 export const quizQuestions: QuizQuestion[] = [
   /* ---- Module 1 — What Is Economics? ---- */
   {
     id: "q-m1-mc1",
     moduleUnlock: 1,
+    difficulty: 1,
     type: "mc",
     question:
       "You have $10 and you can buy a pizza slice or a smoothie but not both. You pick the pizza. What is the opportunity cost?",
@@ -772,6 +914,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m1-mc2",
     moduleUnlock: 1,
+    difficulty: 1,
     type: "mc",
     question: "There are only 10 front-row concert tickets and 500 people want them. What word describes this situation?",
     choiceA: "Inflation",
@@ -785,6 +928,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m1-mc3",
     moduleUnlock: 1,
+    difficulty: 1,
     type: "mc",
     question: "When the price of something goes up, most people buy:",
     choiceA: "More of it",
@@ -798,6 +942,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m1-mc4",
     moduleUnlock: 1,
+    difficulty: 2,
     type: "mc",
     question:
       "A lemonade stand sells out every day at $1 a cup. The owner raises the price to $3. Now half the cups are left over at the end of the day. What happened?",
@@ -812,6 +957,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m1-fr1",
     moduleUnlock: 1,
+    difficulty: 1,
     type: "fr",
     question:
       "Think of a choice you made this week — buying something, spending time on something, or picking one thing over another. What was the opportunity cost of that choice?",
@@ -826,6 +972,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m1-fr2",
     moduleUnlock: 1,
+    difficulty: 1,
     type: "fr",
     question: "Why can't everyone have everything they want? Use the word scarcity in your answer.",
     choiceA: null,
@@ -841,6 +988,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m2-mc1",
     moduleUnlock: 2,
+    difficulty: 2,
     type: "mc",
     question:
       "A store is the only place in town that sells winter coats. They charge $200 per coat. A second store opens across the street selling the same coat for $150. What will the first store probably do?",
@@ -855,6 +1003,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m2-mc2",
     moduleUnlock: 2,
+    difficulty: 1,
     type: "mc",
     question: "When supply of something goes up and demand stays the same, the price usually:",
     choiceA: "Goes up",
@@ -868,6 +1017,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m2-mc3",
     moduleUnlock: 2,
+    difficulty: 2,
     type: "mc",
     question:
       "A price ceiling is when the government sets a maximum price sellers can charge. If the ceiling is set below the normal market price, what happens?",
@@ -882,6 +1032,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m2-mc4",
     moduleUnlock: 2,
+    difficulty: 1,
     type: "mc",
     question: "Which of these is an example of an incentive?",
     choiceA: "The weather outside",
@@ -895,6 +1046,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m2-fr1",
     moduleUnlock: 2,
+    difficulty: 2,
     type: "fr",
     question: "Explain why competition between businesses is usually good for customers. Give a real example.",
     choiceA: null,
@@ -908,6 +1060,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m2-fr2",
     moduleUnlock: 2,
+    difficulty: 2,
     type: "fr",
     question: "What is a monopoly and why can it be a problem? Use an example that isn't sports.",
     choiceA: null,
@@ -923,6 +1076,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m3-mc1",
     moduleUnlock: 3,
+    difficulty: 1,
     type: "mc",
     question: "GDP measures:",
     choiceA: "How much gold a country has",
@@ -936,6 +1090,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m3-mc2",
     moduleUnlock: 3,
+    difficulty: 1,
     type: "mc",
     question: "Inflation means prices are:",
     choiceA: "Falling",
@@ -949,6 +1104,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m3-mc3",
     moduleUnlock: 3,
+    difficulty: 2,
     type: "mc",
     question:
       "The government decides to build new highways and hire thousands of workers to do it. This is an example of:",
@@ -963,6 +1119,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m3-mc4",
     moduleUnlock: 3,
+    difficulty: 1,
     type: "mc",
     question: "During a recession, what usually happens to unemployment?",
     choiceA: "It goes down",
@@ -976,6 +1133,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m3-fr1",
     moduleUnlock: 3,
+    difficulty: 2,
     type: "fr",
     question: "What is inflation and how does it affect regular people? Give a specific example.",
     choiceA: null,
@@ -989,6 +1147,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m3-fr2",
     moduleUnlock: 3,
+    difficulty: 3,
     type: "fr",
     question: "Why would a government spend more money during a recession instead of saving money? Does that make sense?",
     choiceA: null,
@@ -1004,6 +1163,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m4-mc1",
     moduleUnlock: 4,
+    difficulty: 2,
     type: "mc",
     question:
       "Your school cafeteria raises lunch prices from $3 to $5. A lot of students start bringing lunch from home. This is an example of:",
@@ -1018,6 +1178,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m4-mc2",
     moduleUnlock: 4,
+    difficulty: 2,
     type: "mc",
     question:
       "A new phone comes out and everyone wants it. The company only made 500,000 of them but 2 million people want to buy one. What will most likely happen to the price?",
@@ -1032,6 +1193,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m4-mc3",
     moduleUnlock: 4,
+    difficulty: 2,
     type: "mc",
     question:
       "Which of these best describes the trade-off a government faces when deciding to spend money on a new stadium?",
@@ -1046,6 +1208,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m4-mc4",
     moduleUnlock: 4,
+    difficulty: 2,
     type: "mc",
     question:
       "If the Federal Reserve raises interest rates, borrowing money becomes more expensive. What effect does this most likely have on spending?",
@@ -1060,6 +1223,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m4-fr1",
     moduleUnlock: 4,
+    difficulty: 3,
     type: "fr",
     question:
       "A city is deciding between spending $200 million on a new sports arena or on fixing every public school in the city. Walk through the trade-offs on both sides. What would you choose and why?",
@@ -1074,6 +1238,7 @@ export const quizQuestions: QuizQuestion[] = [
   {
     id: "q-m4-fr2",
     moduleUnlock: 4,
+    difficulty: 2,
     type: "fr",
     question:
       "Explain the difference between a want and a need, and describe how scarcity forces people to make hard choices between them.",
@@ -1085,6 +1250,374 @@ export const quizQuestions: QuizQuestion[] = [
     explanation:
       "A need is something you must have to survive or function — food, shelter, clothing. A want is something you'd like to have but don't need — a new phone, sneakers, a vacation. Scarcity means most people can't have everything on both lists. So they have to prioritize. A family with limited income might have to choose between fixing the car (a need) or going on vacation (a want). Scarcity is what forces every individual, business, and government to make trade-offs.",
   },
+
+  /* ---- Module 1 — What Is Economics? (added: application & analysis) ---- */
+  {
+    id: "q-m1-mc5",
+    moduleUnlock: 1,
+    difficulty: 2,
+    type: "mc",
+    question:
+      "A concert ticket costs $50. To go, you also skip a babysitting job that would have paid you $40. What is the true cost of going to the concert?",
+    choiceA: "$50",
+    choiceB: "$40",
+    choiceC: "$90",
+    choiceD: "$10",
+    correctAnswer: "C",
+    explanation:
+      "The real cost is everything you give up: the $50 you spent plus the $40 you could have earned. That's $90. Opportunity cost includes money you spend AND money or time you give up by choosing one thing over another.",
+  },
+  {
+    id: "q-m1-mc6",
+    moduleUnlock: 1,
+    difficulty: 2,
+    type: "mc",
+    question:
+      "You have one free hour. You decide that one more hour of studying is worth more to you than one more hour of gaming, so you study. Weighing \"one more\" like this is called:",
+    choiceA: "Inflation",
+    choiceB: "Marginal thinking",
+    choiceC: "A monopoly",
+    choiceD: "A surplus",
+    correctAnswer: "B",
+    explanation:
+      "Marginal thinking means weighing one more — one more hour, one more dollar, one more cookie — instead of all or nothing. Most good decisions come from asking \"Is one more worth it?\" rather than \"Should I ever do this at all?\"",
+  },
+  {
+    id: "q-m1-mc7",
+    moduleUnlock: 1,
+    difficulty: 3,
+    type: "mc",
+    question:
+      "A store pays workers a bonus for every sale. Sales go up, but workers start pushing items customers don't need. This shows that incentives:",
+    choiceA: "Never change what people do",
+    choiceB: "Can change behavior in ways you didn't plan",
+    choiceC: "Only matter when money is involved",
+    choiceD: "Are against the law",
+    correctAnswer: "B",
+    explanation:
+      "Incentives are powerful, but people respond to exactly what you reward. Reward raw sales and you may get pushy workers. Smart leaders think ahead about every behavior a reward might cause, not just the one they hope for.",
+  },
+  {
+    id: "q-m1-mc8",
+    moduleUnlock: 1,
+    difficulty: 3,
+    type: "mc",
+    question:
+      "Front-row tickets are scarce, so something has to decide who gets them. Which of these is NOT a real way to deal with scarcity?",
+    choiceA: "Raising the price",
+    choiceB: "First-come, first-served lines",
+    choiceC: "A random lottery",
+    choiceD: "Making the tickets unlimited",
+    correctAnswer: "D",
+    explanation:
+      "Scarcity means there isn't enough for everyone, so price, waiting in line, or luck has to decide who gets it. \"Making them unlimited\" isn't an option — if they were unlimited, they wouldn't be scarce in the first place.",
+  },
+  {
+    id: "q-m1-fr3",
+    moduleUnlock: 1,
+    difficulty: 2,
+    type: "fr",
+    question:
+      "Name something your family treats as scarce — money, time, the car, the TV. Describe one rule your family uses to decide who gets it, and explain whether you think that rule is fair.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "A strong answer names a scarce resource and a real rule for sharing it. For example: \"The TV is scarce on game nights. The rule is whoever asks first picks the show. It's mostly fair because everyone gets a turn, but it's unfair to the youngest kid who doesn't always know to ask early.\" The key idea is that scarcity forces a rule, and every rule has trade-offs.",
+  },
+  {
+    id: "q-m1-fr4",
+    moduleUnlock: 1,
+    difficulty: 3,
+    type: "fr",
+    question:
+      "A friend says, \"If something is free, it has no cost.\" Use opportunity cost to explain why that isn't really true. Give an example of a \"free\" thing that still costs something.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "Even free things cost you the next-best use of your time or space. A free two-hour movie still costs the two hours you could have spent doing homework, sleeping, or earning money. That lost option is the opportunity cost. So \"free\" usually means free of money, not free of all cost.",
+  },
+
+  /* ---- Module 2 — How Markets Work (added: application & analysis) ---- */
+  {
+    id: "q-m2-mc5",
+    moduleUnlock: 2,
+    difficulty: 2,
+    type: "mc",
+    question:
+      "A popular toy is priced so low that stores sell out in minutes and long lines form. There isn't nearly enough to go around. Economists call this a:",
+    choiceA: "Surplus",
+    choiceB: "Shortage",
+    choiceC: "Monopoly",
+    choiceD: "Profit",
+    correctAnswer: "B",
+    explanation:
+      "A shortage happens when the price is set below the point where supply meets demand — buyers want more than sellers have. Raising the price usually shrinks a shortage, because fewer people buy and sellers are willing to make more.",
+  },
+  {
+    id: "q-m2-mc6",
+    moduleUnlock: 2,
+    difficulty: 2,
+    type: "mc",
+    question:
+      "A bakery makes 200 cupcakes a day but only sells 120 at its current price, leaving 80 unsold every day. What does it most likely have, and what would fix it?",
+    choiceA: "A shortage; raise the price",
+    choiceB: "A surplus; lower the price",
+    choiceC: "A monopoly; do nothing",
+    choiceD: "Inflation; bake even more",
+    correctAnswer: "B",
+    explanation:
+      "Leftovers mean a surplus — the price sits above the point where buyers and sellers meet, so supply is bigger than demand. Lowering the price brings in more buyers and clears the extra cupcakes.",
+  },
+  {
+    id: "q-m2-mc7",
+    moduleUnlock: 2,
+    difficulty: 3,
+    type: "mc",
+    question:
+      "The price of beef jumps, so many people buy chicken instead. Chicken is a \"substitute\" for beef. What will most likely happen to the price of chicken?",
+    choiceA: "It falls",
+    choiceB: "It rises, because demand for chicken went up",
+    choiceC: "It stays exactly the same",
+    choiceD: "Chicken disappears from stores",
+    correctAnswer: "B",
+    explanation:
+      "A substitute is something you buy instead of another thing. When beef gets pricey, demand shifts to chicken. More demand for chicken, with the same supply, usually pushes the price of chicken up too.",
+  },
+  {
+    id: "q-m2-mc8",
+    moduleUnlock: 2,
+    difficulty: 3,
+    type: "mc",
+    question:
+      "Two gas stations sit right across the street from each other. One quietly raises its price by 30 cents a gallon. What most likely happens?",
+    choiceA: "Both stations make more money",
+    choiceB: "It loses customers to the cheaper station across the street",
+    choiceC: "The other station is forced to raise prices too",
+    choiceD: "Nothing — drivers won't notice",
+    correctAnswer: "B",
+    explanation:
+      "When buyers can easily switch, a seller who raises prices loses customers to the competition. That fear of losing business is exactly what keeps prices down in a competitive market.",
+  },
+  {
+    id: "q-m2-fr3",
+    moduleUnlock: 2,
+    difficulty: 2,
+    type: "fr",
+    question:
+      "Pick a product you buy that has lots of competing brands. Explain how that competition affects the price and quality you get, compared with a product that has only one seller.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "A strong answer shows that competition pushes prices down and quality up. For example: \"There are dozens of sneaker brands, so they fight for me with sales and better designs. But my town has one internet company, so it charges a lot and the service is slow — there's nowhere else to go.\" Competition gives sellers a reason to keep improving; a single seller doesn't have that pressure.",
+  },
+  {
+    id: "q-m2-fr4",
+    moduleUnlock: 2,
+    difficulty: 3,
+    type: "fr",
+    question:
+      "A city sets a maximum rent far below the normal market price to help renters. Explain one way this could backfire and actually create a shortage of apartments.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "When rent is forced below the market price, more people want apartments (they're cheap) but landlords offer fewer (they earn less and may not build or maintain new ones). That gap between how many people want apartments and how many are available is a shortage. The rule helps the renters who get an apartment but can leave many others with nowhere to rent.",
+  },
+
+  /* ---- Module 3 — The Big Picture Economy (added: application & analysis) ---- */
+  {
+    id: "q-m3-mc5",
+    moduleUnlock: 3,
+    difficulty: 2,
+    type: "mc",
+    question:
+      "A worker's pay went up 3% this year, but prices went up 5%. Can she actually buy more than before?",
+    choiceA: "Yes — her pay went up",
+    choiceB: "No — prices rose faster than her pay",
+    choiceC: "Prices don't matter, only pay does",
+    choiceD: "It's impossible to tell",
+    correctAnswer: "B",
+    explanation:
+      "What matters is how much your money can buy, not just the number on your paycheck. If prices rise faster than pay, you can actually buy less — even though your pay went up. Economists call this losing \"buying power.\"",
+  },
+  {
+    id: "q-m3-mc6",
+    moduleUnlock: 3,
+    difficulty: 2,
+    type: "mc",
+    question:
+      "The central bank cuts interest rates, making loans cheaper. What is this mainly trying to get people and businesses to do?",
+    choiceA: "Save more and spend less",
+    choiceB: "Borrow more and spend more",
+    choiceC: "Stop working",
+    choiceD: "Pay higher taxes",
+    correctAnswer: "B",
+    explanation:
+      "Cheaper loans make borrowing easier, so people buy houses and cars and businesses expand. That extra spending speeds the economy up. Central banks cut rates when they want to give a slow economy a push.",
+  },
+  {
+    id: "q-m3-mc7",
+    moduleUnlock: 3,
+    difficulty: 3,
+    type: "mc",
+    question:
+      "Congress passes a law to spend $1 billion building bridges to boost the economy. This is an example of:",
+    choiceA: "Monetary policy",
+    choiceB: "Fiscal policy",
+    choiceC: "A trade deficit",
+    choiceD: "Inflation",
+    correctAnswer: "B",
+    explanation:
+      "Fiscal policy is the government using its spending and taxes to steer the economy. (Monetary policy is the central bank changing interest rates.) Spending government money on bridges is a classic fiscal-policy move.",
+  },
+  {
+    id: "q-m3-mc8",
+    moduleUnlock: 3,
+    difficulty: 3,
+    type: "mc",
+    question:
+      "For six months in a row, a country produces fewer goods and services, its GDP shrinks, and businesses cut jobs. What is the country most likely in?",
+    choiceA: "A boom",
+    choiceB: "A recession",
+    choiceC: "A surplus",
+    choiceD: "A trade deficit",
+    correctAnswer: "B",
+    explanation:
+      "A recession is a stretch where the economy shrinks instead of grows — GDP falls and unemployment usually rises. It's the \"down\" part of the business cycle, the opposite of an expansion.",
+  },
+  {
+    id: "q-m3-fr3",
+    moduleUnlock: 3,
+    difficulty: 2,
+    type: "fr",
+    question:
+      "In your own words, explain what GDP measures and why a country might care whether its GDP is growing or shrinking.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "GDP measures the total value of all the goods and services a country produces in a year. A country cares because growing GDP usually means more jobs, more income, and more things being made and sold. Shrinking GDP usually means the opposite — fewer jobs and less money going around — which is why a falling GDP worries leaders.",
+  },
+  {
+    id: "q-m3-fr4",
+    moduleUnlock: 3,
+    difficulty: 3,
+    type: "fr",
+    question:
+      "Explain the difference between fiscal policy (government spending and taxes) and monetary policy (the central bank changing interest rates). Give one example of each.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "Fiscal policy is run by the government using spending and taxes — for example, building schools or cutting taxes to put money in people's pockets. Monetary policy is run by the central bank using interest rates and the money supply — for example, raising rates to slow down rising prices. Both try to steer the economy, but they use different tools and different people control them.",
+  },
+
+  /* ---- Module 4 — Applied Economics (added: application & analysis) ---- */
+  {
+    id: "q-m4-mc5",
+    moduleUnlock: 4,
+    difficulty: 3,
+    type: "mc",
+    question:
+      "A bus company raises fares 20%. Most riders have no car and no other way to get to work, so almost all keep riding. The total money the company collects will most likely:",
+    choiceA: "Fall a lot",
+    choiceB: "Rise, because riders can't easily quit",
+    choiceC: "Stay exactly the same",
+    choiceD: "Drop to zero",
+    correctAnswer: "B",
+    explanation:
+      "When buyers can't easily switch or quit, demand is \"inelastic\" — they keep buying even at a higher price. So raising the fare brings in more money. This is why prices for hard-to-replace things like gas or medicine can climb so high.",
+  },
+  {
+    id: "q-m4-mc6",
+    moduleUnlock: 4,
+    difficulty: 3,
+    type: "mc",
+    question:
+      "A factory pollutes a river for free while making its product, harming people downstream. Which government action targets this negative side effect most directly?",
+    choiceA: "Giving the factory an award",
+    choiceB: "Making the factory pay a fee for the pollution it causes",
+    choiceC: "Lowering the factory's taxes",
+    choiceD: "Doing nothing at all",
+    correctAnswer: "B",
+    explanation:
+      "Pollution is a negative externality — a cost the factory pushes onto others. Making the factory pay for the harm forces it to count that cost in its decisions, so it pollutes less. Economists call this \"making the polluter pay.\"",
+  },
+  {
+    id: "q-m4-mc7",
+    moduleUnlock: 4,
+    difficulty: 2,
+    type: "mc",
+    question:
+      "Country A can make both shirts and phones more cheaply than Country B. Should the two countries still trade with each other?",
+    choiceA: "No — A should just make everything itself",
+    choiceB: "Yes — each should focus on what it gives up the least to make, then trade",
+    choiceC: "Only if the two countries are friends",
+    choiceD: "No — trade never helps anyone",
+    correctAnswer: "B",
+    explanation:
+      "Even when one country is better at making everything, both gain by each focusing on what it is relatively best at and trading for the rest. That's comparative advantage, and it's why almost every country trades.",
+  },
+  {
+    id: "q-m4-mc8",
+    moduleUnlock: 4,
+    difficulty: 3,
+    type: "mc",
+    question:
+      "A city wants fewer cars downtown. Which plan uses an incentive to get that result, instead of simply banning cars?",
+    choiceA: "Charging a fee to drive downtown during busy hours",
+    choiceB: "Just hoping people choose to drive less",
+    choiceC: "Building lots more parking",
+    choiceD: "Lowering the price of gas",
+    correctAnswer: "A",
+    explanation:
+      "An incentive changes the costs or rewards of a choice so people decide differently on their own. A busy-hour driving fee makes driving downtown more expensive, so more people take the train or carpool — without an outright ban.",
+  },
+  {
+    id: "q-m4-fr3",
+    moduleUnlock: 4,
+    difficulty: 3,
+    type: "fr",
+    question:
+      "A streaming service raises its price by $3 a month. Some customers quit and some stay. Use the idea of price elasticity to explain who is most likely to quit and who is most likely to stay.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "Customers who have lots of other options — other streaming services, free shows, or who barely watch — have \"elastic\" demand and are most likely to quit over $3. Customers who love this service, share it with family, or have no good substitute have \"inelastic\" demand and are most likely to stay. Elasticity is really about how easy it is to walk away.",
+  },
+  {
+    id: "q-m4-fr4",
+    moduleUnlock: 4,
+    difficulty: 3,
+    type: "fr",
+    question:
+      "You're the GM of a team with a fixed budget. Walk through how you'd use BOTH cost-benefit analysis and opportunity cost to decide between signing one expensive star or three solid role players.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "A strong answer lists the costs and benefits of each option (cost-benefit analysis): the star brings star power and ticket sales but eats most of the budget; three role players add depth but no superstar. Then it names the opportunity cost: signing the star means giving up the depth, and signing the role players means giving up the star. The best GM picks the option whose benefits beat its costs by the most, knowing every dollar spent one way can't be spent the other.",
+  },
 ];
 
 /** A quiz question as the dashboard renders it. Answer keys present only when answered. */
@@ -1092,6 +1625,7 @@ export interface QuizQuestionView {
   id: string;
   type: QuizQuestionType;
   question: string;
+  difficulty: number;
   /** Labeled choices for MC (empty for FR). */
   choices: { key: string; text: string }[];
   answered: boolean;
@@ -1122,4 +1656,8 @@ export interface QuizModuleSection {
   mcCorrect: number;
   frTotal: number;
   frSubmitted: number;
+  /** MC score split by difficulty (1=Easy, 2=Medium, 3=Hard) for the tracker. */
+  mcByDifficulty: { difficulty: number; correct: number; total: number }[];
+  /** True once every MC question in the module has been answered (enables Review Mode). */
+  mcAllAnswered: boolean;
 }

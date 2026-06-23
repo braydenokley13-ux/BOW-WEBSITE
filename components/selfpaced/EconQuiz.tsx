@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { QuizModuleSection, QuizQuestionView } from "@/lib/account";
 import { submitQuizResponse, type QuizSubmitResult } from "@/app/actions/lms";
+import { DifficultyDots } from "@/components/selfpaced/DailyScenarios";
 
 interface Props {
   sections: QuizModuleSection[];
@@ -12,9 +13,11 @@ interface Props {
 const FR_REVEAL_LABEL = "Here’s a strong answer — how did yours compare?";
 
 /**
- * Econ Quiz Bank (Feature 3). One block per module; a block's questions unlock
- * once the matching module is completed. Multiple choice is auto-checked and
- * tracked as a score; free response is self-checked against a model answer.
+ * Econ Quiz Bank (Features 3 & 6). One block per module; a block's questions
+ * unlock once the matching module is completed. Multiple choice is auto-checked
+ * and tracked as a score (split by difficulty); free response is self-checked
+ * against a model answer. Once every MC question is answered, Review Mode shows
+ * every question, the student's answer, the correct answer, and the explanation.
  */
 export default function EconQuiz({ sections }: Props) {
   return (
@@ -26,7 +29,7 @@ export default function EconQuiz({ sections }: Props) {
         Test what you know.
       </h2>
       <p style={{ margin: "0 0 18px", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 580 }}>
-        Plain-language economics — no sports needed. Finish a module to unlock its questions. Multiple choice is checked for you; written answers come with a model answer to compare against.
+        Plain-language economics — no sports needed. Finish a module to unlock its twelve questions. Multiple choice is checked for you; written answers come with a model answer to compare against.
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -40,6 +43,9 @@ export default function EconQuiz({ sections }: Props) {
 
 function QuizModuleBlock({ section }: { section: QuizModuleSection }) {
   const accent = section.unlocked ? "var(--bow-blue)" : "var(--bow-inactive)";
+  const [reviewing, setReviewing] = useState(false);
+  const tiers = section.mcByDifficulty.filter((t) => t.total > 0);
+  const tierName = (d: number) => (d === 1 ? "Easy" : d === 2 ? "Medium" : "Hard");
 
   return (
     <div
@@ -82,10 +88,89 @@ function QuizModuleBlock({ section }: { section: QuizModuleSection }) {
           {section.lockedReason}
         </p>
       ) : (
-        <div style={{ marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--border-rule)", display: "flex", flexDirection: "column", gap: 14 }}>
-          {section.questions.map((q, i) => (
-            <QuizQuestionCard key={q.id} question={q} number={i + 1} />
-          ))}
+        <>
+          {/* Difficulty breakdown + Review Mode toggle */}
+          <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            {tiers.length > 0 && (
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontFamily: "var(--font-data)", fontSize: 11.5 }}>
+                {tiers.map((t) => {
+                  const full = t.correct === t.total;
+                  return (
+                    <span key={t.difficulty} style={{ color: full ? "var(--bow-positive)" : "var(--bow-slate)" }}>
+                      {tierName(t.difficulty)}: {t.correct}/{t.total}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            {section.mcAllAnswered && (
+              <button
+                onClick={() => setReviewing((r) => !r)}
+                style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", padding: "7px 14px", border: "1px solid var(--border-strong)", background: reviewing ? "var(--bow-ink)" : "transparent", color: reviewing ? "#fff" : "var(--bow-ink)", borderRadius: 4, cursor: "pointer" }}
+              >
+                {reviewing ? "Exit Review" : "Review Answers"}
+              </button>
+            )}
+          </div>
+
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border-rule)", display: "flex", flexDirection: "column", gap: 14 }}>
+            {reviewing
+              ? section.questions.map((q, i) => <ReviewCard key={q.id} question={q} number={i + 1} />)
+              : section.questions.map((q, i) => <QuizQuestionCard key={q.id} question={q} number={i + 1} />)}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Read-only Review Mode card — question, your answer, correct answer, explanation. */
+function ReviewCard({ question, number }: { question: QuizQuestionView; number: number }) {
+  const typeLabel = question.type === "mc" ? "Multiple choice" : "Written answer";
+  const yourChoice = question.selectedChoice;
+  const correct = question.correctAnswer;
+  const choiceText = (key: string | null) => question.choices.find((c) => c.key === key)?.text ?? "—";
+  const wasCorrect = question.isCorrect;
+
+  return (
+    <div style={{ border: "1px solid var(--border-rule)", borderRadius: 5, padding: "clamp(14px,2vw,18px)", background: "var(--bow-paper)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>Q{number}</span>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{typeLabel}</span>
+        </span>
+        <DifficultyDots difficulty={question.difficulty} />
+      </div>
+      <p style={{ margin: "8px 0 0", fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 15.5, lineHeight: 1.45, color: "var(--bow-ink)" }}>
+        {question.question}
+      </p>
+
+      {question.type === "mc" ? (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: wasCorrect ? "var(--bow-positive)" : "var(--bow-negative)" }}>
+            Your answer: <strong>{yourChoice ?? "—"}</strong> · {choiceText(yourChoice)} {wasCorrect ? "✓" : "✕"}
+          </span>
+          {!wasCorrect && (
+            <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-positive)" }}>
+              Correct answer: <strong>{correct ?? "—"}</strong> · {choiceText(correct)}
+            </span>
+          )}
+        </div>
+      ) : (
+        <div style={{ marginTop: 10 }}>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Your answer</span>
+          <p style={{ margin: "4px 0 0", fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.5, color: "var(--bow-ink)", whiteSpace: "pre-wrap" }}>
+            {question.responseText?.trim() ? question.responseText : "Not answered yet."}
+          </p>
+        </div>
+      )}
+
+      {question.explanation && (
+        <div style={{ marginTop: 10, border: "1px solid var(--border-rule)", borderTop: "3px solid var(--bow-positive)", background: "var(--bow-white)", borderRadius: 4, padding: "10px 12px" }}>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-positive)" }}>
+            {question.type === "mc" ? "Why" : "Model answer"}
+          </span>
+          <p style={{ margin: "5px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.55, color: "var(--bow-ink)" }}>{question.explanation}</p>
         </div>
       )}
     </div>
@@ -118,9 +203,12 @@ function QuizQuestionCard({ question, number }: { question: QuizQuestionView; nu
 
   return (
     <div style={{ border: "1px solid var(--border-rule)", borderRadius: 5, padding: "clamp(14px,2vw,18px)", background: "var(--bow-paper)" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", flexShrink: 0 }}>Q{number}</span>
-        <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{typeLabel}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", flexShrink: 0 }}>Q{number}</span>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{typeLabel}</span>
+        </span>
+        <DifficultyDots difficulty={question.difficulty} />
       </div>
       <p style={{ margin: "8px 0 0", fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 15.5, lineHeight: 1.45, color: "var(--bow-ink)" }}>
         {question.question}
@@ -253,6 +341,7 @@ function FreeResponse({
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={3}
+        aria-label={`Your written answer to question: ${question.question}`}
         placeholder="Write your answer here…"
         style={{ width: "100%", marginTop: 12, background: "var(--bow-white)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "10px 12px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.5, resize: "vertical", outline: "none" }}
       />

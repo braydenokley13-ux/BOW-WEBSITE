@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { requireRole } from "@/lib/dal";
-import { isSelfModuleUnlocked, getSelfModuleViews } from "@/lib/self-paced";
+import { isSelfModuleUnlocked, getSelfModuleViews, hasCompletedAllModules } from "@/lib/self-paced";
+import {
+  issueCertificate,
+  buildCertificateHtml,
+  certificateFilename,
+  CERT_TRACK,
+} from "@/lib/certificate";
 import {
   orderedTrackLessons,
   unlockChecklist,
@@ -135,6 +141,8 @@ export interface NewCohortInput {
   name: string;
   orgId: string;
   track: string;
+  /** Optional instructor assigned at creation (used by the /admin form). */
+  instructorId?: string | null;
 }
 
 export async function createCohort(input: NewCohortInput): Promise<void> {
@@ -142,10 +150,39 @@ export async function createCohort(input: NewCohortInput): Promise<void> {
   const id = `coh-${randomUUID().slice(0, 8)}`;
   getDb()
     .prepare(
-      "INSERT INTO cohorts (id, name, org_id, track, instructor_id, current_lesson_id, status, format, schedule, start, end_date, cap, next_session) VALUES (?, ?, ?, ?, NULL, NULL, 'draft', '—', '—', '—', '—', 20, '—')",
+      "INSERT INTO cohorts (id, name, org_id, track, instructor_id, current_lesson_id, status, format, schedule, start, end_date, cap, next_session) VALUES (?, ?, ?, ?, ?, NULL, 'draft', '—', '—', '—', '—', 20, '—')",
     )
-    .run(id, input.name.trim(), input.orgId, input.track);
+    .run(id, input.name.trim(), input.orgId, input.track, input.instructorId ?? null);
   refreshApp();
+  revalidatePath("/admin");
+}
+
+export type RoleToggle = "student" | "instructor";
+
+export interface UpdateRoleResult {
+  ok: boolean;
+  error?: "self" | "admin" | "invalid" | "not-found";
+}
+
+/**
+ * Toggle a user between student and instructor (Feature 9). An admin cannot
+ * change their own role, and admin accounts cannot be demoted through here.
+ */
+export async function updateUserRole(userId: string, role: RoleToggle): Promise<UpdateRoleResult> {
+  const me = await requireRole("admin");
+  if (userId === me.id) return { ok: false, error: "self" };
+  if (role !== "student" && role !== "instructor") return { ok: false, error: "invalid" };
+
+  const db = getDb();
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  const u = db.prepare("SELECT role FROM users WHERE id = ?").get(userId) as any;
+  if (!u) return { ok: false, error: "not-found" };
+  if (u.role === "admin") return { ok: false, error: "admin" };
+
+  db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, userId);
+  refreshApp();
+  revalidatePath("/admin");
+  return { ok: true };
 }
 
 export async function assignInstructor(cohortId: string, instructorId: string | null): Promise<void> {
@@ -473,6 +510,39 @@ export async function saveSelfReflection(moduleId: string, text: string): Promis
     .run(me.id, moduleId, clean, words, Date.now());
   touchActive(me.id);
   refreshDashboard();
+}
+
+/* ---------------- Certificate (Feature 2) ---------------- */
+
+export interface CertificateResult {
+  ok: boolean;
+  /** A self-contained HTML certificate, present only when issued. */
+  html?: string;
+  /** Suggested download filename, e.g. BOW-Certificate-Jordan-Avery.html. */
+  filename?: string;
+  /** Stable credential id (idempotent — same on every call once issued). */
+  certId?: string;
+}
+
+/**
+ * Generate (or re-fetch) the student's Track 101 certificate. Verifies all four
+ * modules are complete on the server before issuing, records an idempotent
+ * certificate row, and returns a downloadable self-contained HTML file. The
+ * completion date is locked to when the certificate was first issued.
+ */
+export async function generateCertificate(): Promise<CertificateResult> {
+  const me = await requireRole("student");
+  if (!hasCompletedAllModules(me.id)) return { ok: false };
+
+  const cert = issueCertificate(me.id, CERT_TRACK);
+  const dateLabel = new Date(cert.issuedAt).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const html = buildCertificateHtml({ name: me.name, dateLabel, certId: cert.id });
+  touchActive(me.id);
+  return { ok: true, html, filename: certificateFilename(me.name), certId: cert.id };
 }
 
 /* ---------------- BOW Daily decision (student) ---------------- */

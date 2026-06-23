@@ -56,6 +56,26 @@ The signature device is the **Cap Line**. See `styles/tokens/` and `components/d
 - ✅ Public marketing site (this repo)
 - ✅ Authentication (student / instructor / admin)
 - ✅ Backend + persistence for cohorts, lessons, and the LMS app shell
+- ✅ Expanded self-paced Track 101 (below)
+
+## Expanded Track 101 experience
+
+The self-paced product runs on the same SQLite backend (no new dependencies and
+no new environment variables — `SEED_PASSWORD` is still the only optional one):
+
+| Route | Who | What |
+| ----- | --- | ---- |
+| `/dashboard` | student | Modules, BOW Daily (20 scenarios, difficulty + archive + "how others answered"), Econ Quiz (12/module, difficulty + Review Mode), certificate download |
+| `/dashboard/certificate` | student | Self-contained navy/gold certificate (idempotent, all 4 modules required) |
+| `/profile` | student | BOW Rank, BOW Score, modules, reflections, quiz %, share button |
+| `/profile/[id]` | public | Privacy-safe shareable record + Open Graph image |
+| `/leaderboard` | any signed-in | Top 25 by BOW Score with cohort + time filters |
+| `/simulation-room` | student (after Module 2) | 10-turn GM economics game + BOW Economics Grade |
+| `/instructor` | instructor | Roster, Class Analytics, Weekly Report, Cohort Leaderboard |
+| `/admin` | admin | Platform overview, cohort/user management, content overview, health |
+
+**BOW Score** = modules×100 + MC-correct×10 + scenarios×15 + reflections×20 +
+certificate×200 + simulation×150. **Ranks**: Rookie → Scout → Analyst → Front Office.
 
 ## Authentication & backend
 
