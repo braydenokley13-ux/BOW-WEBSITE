@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { requireRole } from "@/lib/dal";
-import { isSelfModuleUnlocked, getSelfModuleViews } from "@/lib/self-paced";
+import { isSelfModuleUnlocked, getSelfModuleViews, hasCompletedAllModules } from "@/lib/self-paced";
+import {
+  issueCertificate,
+  buildCertificateHtml,
+  certificateFilename,
+  CERT_TRACK,
+} from "@/lib/certificate";
 import {
   orderedTrackLessons,
   unlockChecklist,
@@ -473,6 +479,39 @@ export async function saveSelfReflection(moduleId: string, text: string): Promis
     .run(me.id, moduleId, clean, words, Date.now());
   touchActive(me.id);
   refreshDashboard();
+}
+
+/* ---------------- Certificate (Feature 2) ---------------- */
+
+export interface CertificateResult {
+  ok: boolean;
+  /** A self-contained HTML certificate, present only when issued. */
+  html?: string;
+  /** Suggested download filename, e.g. BOW-Certificate-Jordan-Avery.html. */
+  filename?: string;
+  /** Stable credential id (idempotent — same on every call once issued). */
+  certId?: string;
+}
+
+/**
+ * Generate (or re-fetch) the student's Track 101 certificate. Verifies all four
+ * modules are complete on the server before issuing, records an idempotent
+ * certificate row, and returns a downloadable self-contained HTML file. The
+ * completion date is locked to when the certificate was first issued.
+ */
+export async function generateCertificate(): Promise<CertificateResult> {
+  const me = await requireRole("student");
+  if (!hasCompletedAllModules(me.id)) return { ok: false };
+
+  const cert = issueCertificate(me.id, CERT_TRACK);
+  const dateLabel = new Date(cert.issuedAt).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const html = buildCertificateHtml({ name: me.name, dateLabel, certId: cert.id });
+  touchActive(me.id);
+  return { ok: true, html, filename: certificateFilename(me.name), certId: cert.id };
 }
 
 /* ---------------- BOW Daily decision (student) ---------------- */

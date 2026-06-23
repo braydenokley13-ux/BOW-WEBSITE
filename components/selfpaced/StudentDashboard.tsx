@@ -9,7 +9,7 @@ import {
   type QuizModuleSection,
   type SelfModuleView,
 } from "@/lib/account";
-import { markSelfModuleComplete, saveSelfReflection } from "@/app/actions/lms";
+import { markSelfModuleComplete, saveSelfReflection, generateCertificate } from "@/app/actions/lms";
 import EconQuiz from "@/components/selfpaced/EconQuiz";
 import DailyScenarios from "@/components/selfpaced/DailyScenarios";
 
@@ -89,7 +89,37 @@ export default function StudentDashboard({ firstName, modules, quizSections, act
 /* ---------------- certificate ---------------- */
 
 function CertificatePrompt({ firstName }: { firstName: string }) {
-  const [clicked, setClicked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState(false);
+
+  const onGet = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(false);
+    try {
+      const res = await generateCertificate();
+      if (res.ok && res.html && res.filename) {
+        const blob = new Blob([res.html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = res.filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setDone(true);
+      } else {
+        setError(true);
+      }
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div style={{ background: "var(--bow-ink)", color: "#fff", borderRadius: 6, borderTop: "4px solid var(--bow-positive)", padding: "clamp(24px,3.5vw,36px)", marginBottom: 28 }}>
       <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#5fcf99" }}>
@@ -99,17 +129,33 @@ function CertificatePrompt({ firstName }: { firstName: string }) {
         Nicely run, {firstName}.
       </h2>
       <p style={{ margin: "0 0 20px", fontFamily: "var(--font-interface)", fontSize: 15.5, lineHeight: 1.6, color: "#b9bcc4", maxWidth: 520 }}>
-        You finished all four modules and reflected on every one. Claim your certificate of completion.
+        You finished all four modules and reflected on every one. Claim your certificate of completion — it’s yours to download, print, and post.
       </p>
-      <button
-        onClick={() => setClicked(true)}
-        style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "none", background: "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: "pointer" }}
-      >
-        Get My Certificate
-      </button>
-      {clicked && (
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <button
+          onClick={onGet}
+          disabled={busy}
+          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "none", background: busy ? "var(--bow-inactive)" : "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: busy ? "wait" : "pointer" }}
+        >
+          {busy ? "Generating…" : "Download My Certificate"}
+        </button>
+        <a
+          href="/dashboard/certificate"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "1px solid rgba(255,255,255,0.35)", background: "transparent", color: "#fff", borderRadius: 4, cursor: "pointer", textDecoration: "none" }}
+        >
+          View &amp; Print
+        </a>
+      </div>
+      {done && (
         <p style={{ margin: "14px 0 0", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#5fcf99" }}>
-          Certificate generation is coming soon — we’ll email it to you the moment it’s ready.
+          ✓ Downloaded. Open the file to print it or save it as a PDF.
+        </p>
+      )}
+      {error && (
+        <p style={{ margin: "14px 0 0", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "var(--bow-warning)" }}>
+          Something went wrong generating your certificate. Please try again.
         </p>
       )}
     </div>
