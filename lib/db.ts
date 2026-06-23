@@ -222,7 +222,8 @@ CREATE TABLE IF NOT EXISTS daily_scenarios (
   ordinal INTEGER NOT NULL,
   concept TEXT NOT NULL,
   scenario TEXT NOT NULL,
-  explanation TEXT NOT NULL
+  explanation TEXT NOT NULL,
+  difficulty INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS scenario_responses (
   id TEXT PRIMARY KEY,
@@ -242,7 +243,8 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
   choice_c TEXT,
   choice_d TEXT,
   correct_answer TEXT,
-  explanation TEXT NOT NULL
+  explanation TEXT NOT NULL,
+  difficulty INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS quiz_responses (
   id TEXT PRIMARY KEY,
@@ -254,6 +256,26 @@ CREATE TABLE IF NOT EXISTS quiz_responses (
   submitted_at INTEGER NOT NULL,
   UNIQUE (student_id, question_id)
 );
+CREATE TABLE IF NOT EXISTS certificates (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  issued_at INTEGER NOT NULL,
+  track TEXT NOT NULL,
+  UNIQUE (student_id, track)
+);
+CREATE TABLE IF NOT EXISTS simulations (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  turn INTEGER NOT NULL DEFAULT 1,
+  cap_space INTEGER NOT NULL,
+  team_record TEXT NOT NULL,
+  decisions TEXT NOT NULL DEFAULT '[]',
+  completed INTEGER NOT NULL DEFAULT 0,
+  final_score INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_sim
+  ON simulations (student_id) WHERE completed = 0;
 `;
 
 function seed(db: DatabaseSync) {
@@ -381,26 +403,26 @@ function seedFeedStories(db: DatabaseSync) {
   }
 }
 
-/** Idempotently load the eight BOW Daily scenarios (Feature 2). Reference data. */
+/** Idempotently load the twenty BOW Daily scenarios (Feature 2). Reference data. */
 function seedDailyScenarios(db: DatabaseSync) {
   const insert = db.prepare(
-    `INSERT INTO daily_scenarios (id, ordinal, concept, scenario, explanation) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, concept = excluded.concept, scenario = excluded.scenario, explanation = excluded.explanation`,
+    `INSERT INTO daily_scenarios (id, ordinal, concept, scenario, explanation, difficulty) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, concept = excluded.concept, scenario = excluded.scenario, explanation = excluded.explanation, difficulty = excluded.difficulty`,
   );
-  for (const s of dailyScenarios) insert.run(s.id, s.ordinal, s.concept, s.scenario, s.explanation);
+  for (const s of dailyScenarios) insert.run(s.id, s.ordinal, s.concept, s.scenario, s.explanation, s.difficulty);
 }
 
 /** Idempotently load the Econ Quiz bank (Feature 3). Reference data. */
 function seedQuizQuestions(db: DatabaseSync) {
   const insert = db.prepare(
-    `INSERT INTO quiz_questions (id, module_unlock, question_type, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET module_unlock = excluded.module_unlock, question_type = excluded.question_type, question_text = excluded.question_text, choice_a = excluded.choice_a, choice_b = excluded.choice_b, choice_c = excluded.choice_c, choice_d = excluded.choice_d, correct_answer = excluded.correct_answer, explanation = excluded.explanation`,
+    `INSERT INTO quiz_questions (id, module_unlock, question_type, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, difficulty)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET module_unlock = excluded.module_unlock, question_type = excluded.question_type, question_text = excluded.question_text, choice_a = excluded.choice_a, choice_b = excluded.choice_b, choice_c = excluded.choice_c, choice_d = excluded.choice_d, correct_answer = excluded.correct_answer, explanation = excluded.explanation, difficulty = excluded.difficulty`,
   );
   for (const q of quizQuestions) {
     insert.run(
       q.id, q.moduleUnlock, q.type, q.question,
-      q.choiceA, q.choiceB, q.choiceC, q.choiceD, q.correctAnswer, q.explanation,
+      q.choiceA, q.choiceB, q.choiceC, q.choiceD, q.correctAnswer, q.explanation, q.difficulty,
     );
   }
 }
@@ -517,6 +539,9 @@ function migrate(db: DatabaseSync) {
   // Per-student instructor notes reuse the session_notes table with a
   // structured student link (Feature 2). Older DBs get the column added.
   add("session_notes", "student_id", "TEXT");
+  // Difficulty tags on scenarios and quiz questions (Features 5 & 6).
+  add("daily_scenarios", "difficulty", "INTEGER NOT NULL DEFAULT 1");
+  add("quiz_questions", "difficulty", "INTEGER NOT NULL DEFAULT 1");
 }
 
 function init(): DatabaseSync {
