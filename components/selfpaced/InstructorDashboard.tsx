@@ -3,12 +3,18 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { SelfModule, SelfModuleView, SelfRosterEntry } from "@/lib/account";
+import type { CohortAnalytics } from "@/lib/analytics";
+import type { StudentScore } from "@/lib/scoring";
 import {
   instructorUnlockModule,
   instructorRelockModule,
   saveStudentNote,
   setSessionAttendance,
 } from "@/app/actions/lms";
+import ClassAnalytics from "@/components/selfpaced/ClassAnalytics";
+import LeaderboardTable from "@/components/leaderboard/LeaderboardTable";
+
+type Tab = "roster" | "analytics" | "leaderboard";
 
 interface Props {
   instructorName: string;
@@ -16,14 +22,17 @@ interface Props {
   roster: SelfRosterEntry[];
   modules: SelfModule[];
   sessions: number;
+  analytics: CohortAnalytics;
+  leaderboard: StudentScore[];
 }
 
 const EMAIL_SUBJECT = "A note from your BOW Sports Capital instructor";
 
-export default function InstructorDashboard({ instructorName, cohortName, roster, modules, sessions }: Props) {
+export default function InstructorDashboard({ instructorName, cohortName, roster, modules, sessions, analytics, leaderboard }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [tab, setTab] = useState<Tab>("roster");
 
   const refresh = () => startTransition(() => router.refresh());
 
@@ -59,10 +68,46 @@ export default function InstructorDashboard({ instructorName, cohortName, roster
         <h1 style={{ margin: "8px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
           {cohortName} roster.
         </h1>
-        <p style={{ margin: "0 0 24px", fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)" }}>
+        <p style={{ margin: "0 0 18px", fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)" }}>
           {roster.length} student{roster.length === 1 ? "" : "s"} · manage modules, notes, and attendance without touching the database.
         </p>
 
+        {/* TABS */}
+        <div role="tablist" aria-label="Instructor views" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24, borderBottom: "1px solid var(--border-rule)", paddingBottom: 0 }}>
+          {([
+            { key: "roster", label: "Roster" },
+            { key: "analytics", label: "Class Analytics" },
+            { key: "leaderboard", label: "Cohort Leaderboard" },
+          ] as { key: Tab; label: string }[]).map((t) => {
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setTab(t.key)}
+                style={{ fontFamily: "var(--font-data)", fontSize: 11.5, letterSpacing: "0.06em", textTransform: "uppercase", padding: "10px 16px", border: "none", borderBottom: `2px solid ${active ? "var(--bow-blue)" : "transparent"}`, background: "transparent", color: active ? "var(--bow-ink)" : "var(--bow-slate)", cursor: "pointer", marginBottom: -1 }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {tab === "analytics" && <ClassAnalytics analytics={analytics} instructorName={instructorName} />}
+
+        {tab === "leaderboard" && (
+          <div className="bow-front-office" style={{ background: "var(--bow-ink)", color: "#fff", borderRadius: 6, padding: "clamp(20px,3vw,28px)" }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+              <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)" }}>Cohort Leaderboard</span>
+              <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "#6d7078" }}>Full names — your cohort only</span>
+            </div>
+            <LeaderboardTable rows={leaderboard.slice(0, 25)} fullName />
+          </div>
+        )}
+
+        {tab === "roster" && (
+        <>
         {/* BULK EMAIL BAR */}
         <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderLeft: "4px solid var(--bow-blue)", borderRadius: 6, padding: "14px 18px", marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-ink)" }}>
@@ -104,6 +149,8 @@ export default function InstructorDashboard({ instructorName, cohortName, roster
               />
             ))}
           </div>
+        )}
+        </>
         )}
       </div>
     </div>
