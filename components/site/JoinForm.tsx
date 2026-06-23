@@ -26,8 +26,8 @@ const inputStyle: CSSProperties = {
 
 const POINTS = [
   "Start Track 101 tonight — no instructor code, no cohort",
-  "Six modules that unlock as you go, at your own pace",
-  "A daily sports-business briefing to keep you sharp",
+  "Four modules that unlock as you go, at your own pace",
+  "A weekly sports-business scenario to keep you sharp",
 ];
 
 export default function JoinForm() {

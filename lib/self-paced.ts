@@ -14,7 +14,10 @@
 import { getDb } from "@/lib/db";
 import {
   selfModules as selfModuleSeed,
+  dailyScenarios as scenarioSeed,
+  quizQuestions as quizSeed,
   reflectionWordCount,
+  activeScenarioIndex,
   SELF_MIN_REFLECTION_WORDS,
   SELF_PACED_COHORT_ID,
   SELF_PACED_SESSIONS,
@@ -23,13 +26,18 @@ import {
   type SelfModuleView,
   type SelfRosterEntry,
   type StudentNote,
+  type DailyScenario,
+  type DailyScenarioView,
+  type QuizQuestion,
+  type QuizQuestionView,
+  type QuizModuleSection,
 } from "@/lib/account";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /* ---------------- modules ---------------- */
 
-/** The six self-paced modules, ordered (DB first, falling back to the seed). */
+/** The four self-paced modules, ordered (DB first, falling back to the seed). */
 export function getSelfModules(): SelfModule[] {
   const rows = getDb().prepare("SELECT * FROM self_modules ORDER BY ordinal ASC").all() as any[];
   if (rows.length === 0) return [...selfModuleSeed].sort((a, b) => a.ordinal - b.ordinal);
@@ -113,7 +121,7 @@ export function isSelfModuleUnlocked(studentId: string, moduleId: string): boole
   return getSelfModuleViews(studentId).find((v) => v.module.id === moduleId)?.unlocked ?? false;
 }
 
-/** True once the student has completed all six modules (certificate-eligible). */
+/** True once the student has completed all four modules (certificate-eligible). */
 export function hasCompletedAllModules(studentId: string): boolean {
   const views = getSelfModuleViews(studentId);
   return views.length > 0 && views.every((v) => v.completed);
@@ -127,6 +135,204 @@ export function getStudentFeedResponses(studentId: string): Record<string, strin
   const map: Record<string, string> = {};
   for (const r of rows) map[r.story_id] = r.response;
   return map;
+}
+
+/* ---------------- BOW Daily scenarios (Feature 2) ---------------- */
+
+/** The daily scenarios, ordered (DB first, falling back to the seed). */
+export function getDailyScenarios(): DailyScenario[] {
+  const rows = getDb().prepare("SELECT * FROM daily_scenarios ORDER BY ordinal ASC").all() as any[];
+  if (rows.length === 0) return [...scenarioSeed].sort((a, b) => a.ordinal - b.ordinal);
+  return rows.map((r) => ({
+    id: r.id,
+    ordinal: Number(r.ordinal),
+    concept: r.concept,
+    scenario: r.scenario,
+    explanation: r.explanation,
+  }));
+}
+
+interface ScenarioAnswer {
+  response: string;
+  submittedAt: number;
+}
+
+/** Map of scenario id -> the student's saved response + timestamp. */
+function scenarioResponses(studentId: string): Record<string, ScenarioAnswer> {
+  const rows = getDb()
+    .prepare("SELECT scenario_id, response_text, submitted_at FROM scenario_responses WHERE student_id = ?")
+    .all(studentId) as any[];
+  const map: Record<string, ScenarioAnswer> = {};
+  for (const r of rows) map[r.scenario_id] = { response: r.response_text, submittedAt: Number(r.submitted_at) || 0 };
+  return map;
+}
+
+/** Build a scenario view — explanation/response present only once answered. */
+function scenarioView(s: DailyScenario, answer: ScenarioAnswer | undefined): DailyScenarioView {
+  if (answer) {
+    return {
+      id: s.id,
+      ordinal: s.ordinal,
+      concept: s.concept,
+      scenario: s.scenario,
+      answered: true,
+      response: answer.response,
+      explanation: s.explanation,
+      submittedAt: answer.submittedAt,
+    };
+  }
+  return {
+    id: s.id,
+    ordinal: s.ordinal,
+    concept: s.concept,
+    scenario: s.scenario,
+    answered: false,
+    response: null,
+    explanation: null,
+    submittedAt: null,
+  };
+}
+
+/** The id of this week's active scenario (rotates by week number). */
+export function activeScenarioId(): string {
+  const scenarios = getDailyScenarios();
+  if (scenarios.length === 0) return "";
+  return scenarios[activeScenarioIndex(scenarios.length)].id;
+}
+
+/** The active (this week's) scenario for a student, with their answer if any. */
+export function getActiveScenario(studentId: string): DailyScenarioView | null {
+  const scenarios = getDailyScenarios();
+  if (scenarios.length === 0) return null;
+  const active = scenarios[activeScenarioIndex(scenarios.length)];
+  return scenarioView(active, scenarioResponses(studentId)[active.id]);
+}
+
+/** Previously answered scenarios (excluding this week's), newest first. */
+export function getScenarioHistory(studentId: string): DailyScenarioView[] {
+  const scenarios = getDailyScenarios();
+  if (scenarios.length === 0) return [];
+  const activeId = scenarios[activeScenarioIndex(scenarios.length)].id;
+  const answers = scenarioResponses(studentId);
+  return scenarios
+    .filter((s) => s.id !== activeId && answers[s.id])
+    .map((s) => scenarioView(s, answers[s.id]))
+    .sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0));
+}
+
+/* ---------------- Econ Quiz bank (Feature 3) ---------------- */
+
+/** All quiz questions, ordered by module then id (DB first, seed fallback). */
+export function getQuizQuestions(): QuizQuestion[] {
+  const rows = getDb().prepare("SELECT * FROM quiz_questions ORDER BY module_unlock ASC, id ASC").all() as any[];
+  if (rows.length === 0) return [...quizSeed];
+  return rows.map((r) => ({
+    id: r.id,
+    moduleUnlock: Number(r.module_unlock),
+    type: r.question_type,
+    question: r.question_text,
+    choiceA: r.choice_a ?? null,
+    choiceB: r.choice_b ?? null,
+    choiceC: r.choice_c ?? null,
+    choiceD: r.choice_d ?? null,
+    correctAnswer: r.correct_answer ?? null,
+    explanation: r.explanation,
+  }));
+}
+
+interface QuizAnswer {
+  selectedChoice: string | null;
+  responseText: string | null;
+  isCorrect: number | null;
+}
+
+/** Map of question id -> the student's saved quiz response. */
+function quizResponses(studentId: string): Record<string, QuizAnswer> {
+  const rows = getDb()
+    .prepare("SELECT question_id, selected_choice, response_text, is_correct FROM quiz_responses WHERE student_id = ?")
+    .all(studentId) as any[];
+  const map: Record<string, QuizAnswer> = {};
+  for (const r of rows) {
+    map[r.question_id] = {
+      selectedChoice: r.selected_choice ?? null,
+      responseText: r.response_text ?? null,
+      isCorrect: r.is_correct == null ? null : Number(r.is_correct),
+    };
+  }
+  return map;
+}
+
+/** Build a question view — the answer key is revealed only once answered. */
+function quizQuestionView(q: QuizQuestion, ans: QuizAnswer | undefined): QuizQuestionView {
+  const choices =
+    q.type === "mc"
+      ? [
+          { key: "A", text: q.choiceA },
+          { key: "B", text: q.choiceB },
+          { key: "C", text: q.choiceC },
+          { key: "D", text: q.choiceD },
+        ]
+          .filter((c): c is { key: string; text: string } => c.text != null)
+      : [];
+  if (ans) {
+    return {
+      id: q.id,
+      type: q.type,
+      question: q.question,
+      choices,
+      answered: true,
+      selectedChoice: ans.selectedChoice,
+      isCorrect: ans.isCorrect == null ? null : ans.isCorrect === 1,
+      responseText: ans.responseText,
+      correctAnswer: q.correctAnswer,
+      explanation: q.explanation,
+    };
+  }
+  return {
+    id: q.id,
+    type: q.type,
+    question: q.question,
+    choices,
+    answered: false,
+    selectedChoice: null,
+    isCorrect: null,
+    responseText: null,
+    correctAnswer: null,
+    explanation: null,
+  };
+}
+
+/**
+ * The quiz grouped into one section per module (1..N). A section unlocks once
+ * the matching module is marked complete; locked sections never ship their
+ * questions to the client, so the answer keys can't be peeked. Per-section
+ * trackers cover the MC score and FR completion.
+ */
+export function getQuizModuleSections(studentId: string): QuizModuleSection[] {
+  const modules = getSelfModuleViews(studentId);
+  const questions = getQuizQuestions();
+  const answers = quizResponses(studentId);
+
+  return modules.map((mv) => {
+    const ordinal = mv.module.ordinal;
+    const inModule = questions.filter((q) => q.moduleUnlock === ordinal);
+    const mc = inModule.filter((q) => q.type === "mc");
+    const fr = inModule.filter((q) => q.type === "fr");
+    const unlocked = mv.completed;
+
+    return {
+      moduleOrdinal: ordinal,
+      moduleTitle: mv.module.title,
+      unlocked,
+      lockedReason: unlocked ? null : `Complete “${mv.module.title}” to unlock these questions.`,
+      questions: unlocked ? inModule.map((q) => quizQuestionView(q, answers[q.id])) : [],
+      mcTotal: mc.length,
+      mcAnswered: mc.filter((q) => answers[q.id]).length,
+      mcCorrect: mc.filter((q) => answers[q.id]?.isCorrect === 1).length,
+      frTotal: fr.length,
+      frSubmitted: fr.filter((q) => answers[q.id]).length,
+    };
+  });
 }
 
 /* ---------------- notes ---------------- */

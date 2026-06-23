@@ -464,7 +464,7 @@ export const seedAppData = (): AppData => ({
  * A student who finds BOW through press or social can sign up at
  * /join with just a name, email, and password, get the `student`
  * role, and be placed in the default async cohort below — no
- * instructor code and no live cohort required. Track 101 runs as six
+ * instructor code and no live cohort required. Track 101 runs as four
  * modules that unlock in order: module 1 is open on signup, and each
  * next module unlocks once the student marks the prior one complete
  * AND writes a reflection of at least SELF_MIN_REFLECTION_WORDS words.
@@ -478,14 +478,14 @@ export const SELF_PACED_ORG_ID = "org-bow";
 export const SELF_PACED_COHORT_ID = "coh-self";
 export const SELF_PACED_COHORT_NAME = "BOW Self-Paced";
 /** Lessons counted for the instructor attendance rate — one per module. */
-export const SELF_PACED_SESSIONS = 6;
+export const SELF_PACED_SESSIONS = 4;
 /** Minimum words a module reflection needs to unlock the next module. */
 export const SELF_MIN_REFLECTION_WORDS = 50;
 
-/** One of the six self-paced Track 101 modules (reference data). */
+/** One of the four self-paced Track 101 modules (reference data). */
 export interface SelfModule {
   id: string;
-  /** Display + unlock order, 1..6. */
+  /** Display + unlock order, 1..4. */
   ordinal: number;
   title: string;
   summary: string;
@@ -494,58 +494,43 @@ export interface SelfModule {
 }
 
 /**
- * The six Track 101 modules, drawn from the real curriculum themes in
- * lib/lessons. Seeded on first boot and the source of truth for the
+ * The four Track 101 modules. Titles match the four Econ Quiz module
+ * names so completing a module unlocks that module's quiz questions
+ * (Feature 3). Seeded on first boot and the source of truth for the
  * self-paced unlock sequence.
  */
 export const selfModules: SelfModule[] = [
   {
     id: "sm-1",
     ordinal: 1,
-    title: "Scarcity in the Standings",
-    summary: "Why you can’t have everything, and how to choose what to fund first.",
+    title: "What Is Economics?",
+    summary: "Scarcity, choices, and the cost of every decision a front office makes.",
     concept: "Scarcity & Opportunity Cost",
-    centralQuestion: "Every team wants everything. Which one thing do you buy first?",
+    centralQuestion: "Every team wants everything. Which one thing do you fund first?",
   },
   {
     id: "sm-2",
     ordinal: 2,
-    title: "Opportunity Cost, in Trades",
-    summary: "Every yes is a no somewhere else on the roster.",
-    concept: "Opportunity Cost",
-    centralQuestion: "Win sooner, or keep the cheap young asset everyone is calling about?",
+    title: "How Markets Work",
+    summary: "Why prices move, what competition does, and how supply meets demand.",
+    concept: "Supply, Demand & Competition",
+    centralQuestion: "Why does the same seat cost more some nights than others?",
   },
   {
     id: "sm-3",
     ordinal: 3,
-    title: "The Value of a Win",
-    summary: "What one more win is actually worth — and when it stops being worth it.",
-    concept: "Marginal Value & Diminishing Returns",
-    centralQuestion: "When does the next win stop being worth the price?",
+    title: "The Big Picture Economy",
+    summary: "GDP, inflation, and the policy levers that move a whole economy.",
+    concept: "Growth, Inflation & Policy",
+    centralQuestion: "When the whole economy shifts, what happens to the league?",
   },
   {
     id: "sm-4",
     ordinal: 4,
-    title: "Building the Roster",
-    summary: "Spread one budget across four real problems you can’t all fix.",
-    concept: "Budget Allocation",
-    centralQuestion: "One budget, four problems. Which one do you actually fix?",
-  },
-  {
-    id: "sm-5",
-    ordinal: 5,
-    title: "The Money Behind the Game",
-    summary: "Read the cap rules that shape every move a front office makes.",
-    concept: "Cap Mechanics & Constraints",
-    centralQuestion: "The rules say no. How do you still get to yes?",
-  },
-  {
-    id: "sm-6",
-    ordinal: 6,
-    title: "Owning the Franchise",
-    summary: "The business above the bench — revenue, risk, and the long game.",
-    concept: "Revenue & Long-Term Value",
-    centralQuestion: "Build for next year, or the next decade?",
+    title: "Applied Economics",
+    summary: "Putting it together — real trade-offs in the business of sport and life.",
+    concept: "Decisions in the Real World",
+    centralQuestion: "One budget, real trade-offs. What do you actually choose?",
   },
 ];
 
@@ -617,3 +602,524 @@ export const nextLessonInTrack = (track: string, lessonId: string | null): Lesso
   if (idx === -1) return null;
   return ordered[idx + 1] ?? null;
 };
+
+/* ============================================================
+ * BOW Daily Sports Scenarios (Feature 2).
+ *
+ * Eight open-ended sports scenarios. One is "active" per week, rotated
+ * by week number, and it is always available on the student dashboard
+ * regardless of module progress. The explanation is revealed only AFTER
+ * the student submits a response; responses persist per student per
+ * scenario in `scenario_responses`. Seeded on first boot (see lib/db.ts).
+ * ============================================================ */
+
+export interface DailyScenario {
+  id: string;
+  /** Rotation order, 1..N. */
+  ordinal: number;
+  /** The economics concept the scenario illustrates. */
+  concept: string;
+  /** The open-ended prompt shown to the student. */
+  scenario: string;
+  /** Revealed only after the student submits a response. */
+  explanation: string;
+}
+
+/** Milliseconds in one week. */
+export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Index (0-based) of the active scenario for the current week. Rotates by
+ * week number so a different scenario surfaces each week, looping forever.
+ */
+export const activeScenarioIndex = (count: number, now: number = Date.now()): number =>
+  count <= 0 ? 0 : Math.floor(now / WEEK_MS) % count;
+
+/** The eight BOW Daily scenarios, seeded on first boot. */
+export const dailyScenarios: DailyScenario[] = [
+  {
+    id: "scn-1",
+    ordinal: 1,
+    concept: "Opportunity Cost",
+    scenario:
+      "The Lakers have $8M left to spend. They can sign a backup point guard or a backup center — but not both. The point guard helps with passing. The center fills a bigger need. What do you pick and why?",
+    explanation:
+      "When you pick one thing, you give up another. That thing you gave up is called the opportunity cost. Every GM decision is really just a trade-off — what are you willing to give up?",
+  },
+  {
+    id: "scn-2",
+    ordinal: 2,
+    concept: "Supply and Demand",
+    scenario:
+      "Your arena has 20,000 seats. Last year at $120 a ticket you sold every seat. This year you charged $160 and 4,000 seats are empty every night. What went wrong?",
+    explanation:
+      "When something gets more expensive, fewer people buy it. That's the law of demand. You raised the price past the point where enough fans were willing to pay. The sweet spot where supply and demand meet is called equilibrium.",
+  },
+  {
+    id: "scn-3",
+    ordinal: 3,
+    concept: "Incentives",
+    scenario:
+      "Your star player has one year left on his deal and is playing the best basketball of his life. Your other teammate has five years guaranteed and is barely trying. Why?",
+    explanation:
+      "People respond to incentives — reasons to work hard or not. The player with one year left is playing for his next contract. The player with five guaranteed years doesn't have the same pressure. Good contracts try to keep players motivated the whole way through.",
+  },
+  {
+    id: "scn-4",
+    ordinal: 4,
+    concept: "Scarcity",
+    scenario:
+      "There are only 30 GM jobs in the entire NBA. Thousands of people want one. Because of that, teams can be really picky about who they hire. What does this tell you about getting a job in sports?",
+    explanation:
+      "Scarcity means there isn't enough of something for everyone who wants it. Because GM jobs are so rare, the competition is intense. The people who get them usually spent years proving they could make good decisions under pressure.",
+  },
+  {
+    id: "scn-5",
+    ordinal: 5,
+    concept: "Monopoly",
+    scenario:
+      "Your city has one NBA team. The nearest other team is four hours away. Your team charges 40% more for tickets than the average team in the league. Why can they do that?",
+    explanation:
+      "When there's only one seller of something and buyers have no other option, that's called a monopoly. Your city's team knows you can't just go watch a different local NBA game. So they can charge more. Competition is what keeps prices fair.",
+  },
+  {
+    id: "scn-6",
+    ordinal: 6,
+    concept: "Inflation",
+    scenario:
+      "In 2010 the average NBA player made $5M a year. In 2025 the average is $10M. Does that mean players today are twice as good?",
+    explanation:
+      "Not exactly. Over time, prices for everything go up — that's called inflation. A dollar in 2010 bought more than a dollar today. So some of that salary increase is just inflation, not players getting better. Economists compare salaries across years by adjusting for inflation.",
+  },
+  {
+    id: "scn-7",
+    ordinal: 7,
+    concept: "Multiplier Effect",
+    scenario:
+      "A new basketball arena gets built downtown. Thousands of construction workers get hired. On game nights, restaurants nearby are packed, parking lots fill up, and hotels sell out. How does one building affect so many businesses?",
+    explanation:
+      "This is called the multiplier effect. When money gets spent in one place, it ripples through the whole local economy. The construction worker spends his paycheck at a local restaurant. That restaurant hires more staff. Each dollar spent creates more than one dollar of economic activity.",
+  },
+  {
+    id: "scn-8",
+    ordinal: 8,
+    concept: "Fiscal Policy",
+    scenario:
+      "A city offers an NFL team $500 million in taxpayer money to help build a new stadium. Supporters say it'll create jobs and grow the local economy. Critics say that money should go to schools and roads instead. Who's right?",
+    explanation:
+      "This is one of the most debated questions in sports economics. Governments spending money to boost the economy is called fiscal policy. Most economic studies actually show that stadiums don't generate as much economic benefit as teams claim. But the debate is real — reasonable people disagree.",
+  },
+];
+
+/** A scenario as the dashboard renders it. Explanation/response present only when answered. */
+export interface DailyScenarioView {
+  id: string;
+  ordinal: number;
+  concept: string;
+  scenario: string;
+  answered: boolean;
+  response: string | null;
+  /** Revealed only after submission. */
+  explanation: string | null;
+  submittedAt: number | null;
+}
+
+/* ============================================================
+ * Econ Quiz Bank (Feature 3).
+ *
+ * Plain-language economics questions (no sports framing) gated by
+ * module: completing a module unlocks that module's questions. A mix of
+ * multiple choice (auto-checked) and free response (self-checked against
+ * a model answer). Seeded on first boot (see lib/db.ts).
+ * ============================================================ */
+
+export type QuizQuestionType = "mc" | "fr";
+
+export interface QuizQuestion {
+  id: string;
+  /** Which module (1..4) must be completed to unlock this question. */
+  moduleUnlock: number;
+  type: QuizQuestionType;
+  question: string;
+  /** MC only — null for free response. */
+  choiceA: string | null;
+  choiceB: string | null;
+  choiceC: string | null;
+  choiceD: string | null;
+  /** MC only — the correct choice letter ("A".."D"); null for free response. */
+  correctAnswer: string | null;
+  /** MC: why the answer is right. FR: a strong model answer to self-check against. */
+  explanation: string;
+}
+
+/** 24 seed questions — six per module (4 multiple choice + 2 free response). */
+export const quizQuestions: QuizQuestion[] = [
+  /* ---- Module 1 — What Is Economics? ---- */
+  {
+    id: "q-m1-mc1",
+    moduleUnlock: 1,
+    type: "mc",
+    question:
+      "You have $10 and you can buy a pizza slice or a smoothie but not both. You pick the pizza. What is the opportunity cost?",
+    choiceA: "The $10 you spent",
+    choiceB: "The smoothie you didn't get",
+    choiceC: "The store you bought from",
+    choiceD: "Nothing, you got what you wanted",
+    correctAnswer: "B",
+    explanation:
+      "Opportunity cost is what you give up when you make a choice. You chose pizza, so the smoothie is what you gave up. Every choice has an opportunity cost.",
+  },
+  {
+    id: "q-m1-mc2",
+    moduleUnlock: 1,
+    type: "mc",
+    question: "There are only 10 front-row concert tickets and 500 people want them. What word describes this situation?",
+    choiceA: "Inflation",
+    choiceB: "Scarcity",
+    choiceC: "Profit",
+    choiceD: "Supply",
+    correctAnswer: "B",
+    explanation:
+      "Scarcity means there isn't enough of something for everyone who wants it. Because the tickets are scarce, people will compete for them — by paying more, waiting in line, or entering a lottery.",
+  },
+  {
+    id: "q-m1-mc3",
+    moduleUnlock: 1,
+    type: "mc",
+    question: "When the price of something goes up, most people buy:",
+    choiceA: "More of it",
+    choiceB: "Less of it",
+    choiceC: "The same amount",
+    choiceD: "Twice as much",
+    correctAnswer: "B",
+    explanation:
+      "This is the law of demand. Higher prices mean fewer people are willing or able to buy. Think about it — if your school lunch suddenly cost $20, a lot of kids would bring food from home instead.",
+  },
+  {
+    id: "q-m1-mc4",
+    moduleUnlock: 1,
+    type: "mc",
+    question:
+      "A lemonade stand sells out every day at $1 a cup. The owner raises the price to $3. Now half the cups are left over at the end of the day. What happened?",
+    choiceA: "Supply went down",
+    choiceB: "Demand went up",
+    choiceC: "The price went above what most customers were willing to pay",
+    choiceD: "The lemonade got worse",
+    correctAnswer: "C",
+    explanation:
+      "The price crossed the point where supply meets demand. At $1 everyone was happy to buy. At $3 fewer people thought it was worth it. That crossing point is called the equilibrium price.",
+  },
+  {
+    id: "q-m1-fr1",
+    moduleUnlock: 1,
+    type: "fr",
+    question:
+      "Think of a choice you made this week — buying something, spending time on something, or picking one thing over another. What was the opportunity cost of that choice?",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "If I chose to play video games instead of doing homework, the opportunity cost was the homework I didn't finish. Opportunity cost is always about what you gave up, not what you paid for.",
+  },
+  {
+    id: "q-m1-fr2",
+    moduleUnlock: 1,
+    type: "fr",
+    question: "Why can't everyone have everything they want? Use the word scarcity in your answer.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "Not everyone can have everything they want because resources are scarce — there's a limited amount of money, time, materials, and space. Because things are scarce, people have to make choices about what they want most. That's basically what economics is about.",
+  },
+
+  /* ---- Module 2 — How Markets Work ---- */
+  {
+    id: "q-m2-mc1",
+    moduleUnlock: 2,
+    type: "mc",
+    question:
+      "A store is the only place in town that sells winter coats. They charge $200 per coat. A second store opens across the street selling the same coat for $150. What will the first store probably do?",
+    choiceA: "Raise their prices",
+    choiceB: "Close immediately",
+    choiceC: "Lower their prices to compete",
+    choiceD: "Nothing, people will still pay $200",
+    correctAnswer: "C",
+    explanation:
+      "Competition pushes prices down. When only one store exists they can charge whatever they want. When a second store shows up, they have to compete for customers. That's why competition is good for buyers.",
+  },
+  {
+    id: "q-m2-mc2",
+    moduleUnlock: 2,
+    type: "mc",
+    question: "When supply of something goes up and demand stays the same, the price usually:",
+    choiceA: "Goes up",
+    choiceB: "Goes down",
+    choiceC: "Stays the same",
+    choiceD: "Doubles",
+    correctAnswer: "B",
+    explanation:
+      "More supply with the same number of buyers means sellers have to lower prices to move their product. Think about what happens to strawberry prices in summer when farms are producing at full capacity.",
+  },
+  {
+    id: "q-m2-mc3",
+    moduleUnlock: 2,
+    type: "mc",
+    question:
+      "A price ceiling is when the government sets a maximum price sellers can charge. If the ceiling is set below the normal market price, what happens?",
+    choiceA: "More goods get produced",
+    choiceB: "There is a shortage because demand goes up but supply goes down",
+    choiceC: "Prices rise further",
+    choiceD: "Nothing changes",
+    correctAnswer: "B",
+    explanation:
+      "Price ceilings sound helpful but they cause shortages. When sellers can't charge what the market would normally pay, they produce less. But buyers want more because the price is low. That gap between supply and demand is a shortage.",
+  },
+  {
+    id: "q-m2-mc4",
+    moduleUnlock: 2,
+    type: "mc",
+    question: "Which of these is an example of an incentive?",
+    choiceA: "The weather outside",
+    choiceB: "Getting a bonus at work for hitting a sales goal",
+    choiceC: "The color of your shirt",
+    choiceD: "How far away the store is",
+    correctAnswer: "B",
+    explanation:
+      "An incentive is something that motivates you to act a certain way. A bonus for hitting a goal gives you a reason to work harder. Economists study incentives because they explain why people make the choices they do.",
+  },
+  {
+    id: "q-m2-fr1",
+    moduleUnlock: 2,
+    type: "fr",
+    question: "Explain why competition between businesses is usually good for customers. Give a real example.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "Competition is good for customers because it pushes prices down and quality up. If two coffee shops are next to each other, they'll compete on price, taste, and service to win customers. If only one coffee shop exists in town, they can charge whatever they want and customers have no choice. Competition gives sellers a reason to keep improving.",
+  },
+  {
+    id: "q-m2-fr2",
+    moduleUnlock: 2,
+    type: "fr",
+    question: "What is a monopoly and why can it be a problem? Use an example that isn't sports.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "A monopoly is when one company is the only seller of a product or service in a market. It can be a problem because without competition, the company can charge high prices and doesn't have much reason to improve. An example is a cable company that's the only internet provider in a neighborhood — customers have to pay whatever the company charges because there's no alternative.",
+  },
+
+  /* ---- Module 3 — The Big Picture Economy ---- */
+  {
+    id: "q-m3-mc1",
+    moduleUnlock: 3,
+    type: "mc",
+    question: "GDP measures:",
+    choiceA: "How much gold a country has",
+    choiceB: "The total value of everything a country produces in a year",
+    choiceC: "How much the government spends",
+    choiceD: "Average income per person",
+    correctAnswer: "B",
+    explanation:
+      "GDP stands for Gross Domestic Product. It adds up the value of all goods and services produced in a country. When GDP grows the economy is getting bigger. When it shrinks we call it a recession.",
+  },
+  {
+    id: "q-m3-mc2",
+    moduleUnlock: 3,
+    type: "mc",
+    question: "Inflation means prices are:",
+    choiceA: "Falling",
+    choiceB: "Staying the same",
+    choiceC: "Rising over time",
+    choiceD: "Controlled by consumers",
+    correctAnswer: "C",
+    explanation:
+      "Inflation means your money buys less than it used to. If a candy bar cost $1 last year and $1.10 this year, that's inflation. A little inflation is normal. Too much inflation is a problem because it makes it hard to afford things.",
+  },
+  {
+    id: "q-m3-mc3",
+    moduleUnlock: 3,
+    type: "mc",
+    question:
+      "The government decides to build new highways and hire thousands of workers to do it. This is an example of:",
+    choiceA: "Monetary policy",
+    choiceB: "Fiscal policy",
+    choiceC: "Trade policy",
+    choiceD: "Inflation",
+    correctAnswer: "B",
+    explanation:
+      "Fiscal policy is when the government uses spending or taxes to affect the economy. Building highways creates jobs and puts money into the economy. Governments often do this during recessions to get things moving again.",
+  },
+  {
+    id: "q-m3-mc4",
+    moduleUnlock: 3,
+    type: "mc",
+    question: "During a recession, what usually happens to unemployment?",
+    choiceA: "It goes down",
+    choiceB: "It stays the same",
+    choiceC: "It goes up",
+    choiceD: "The government fixes it immediately",
+    correctAnswer: "C",
+    explanation:
+      "A recession means the economy is shrinking — businesses are making less money, so they hire fewer people or lay people off. That's why unemployment rises during recessions.",
+  },
+  {
+    id: "q-m3-fr1",
+    moduleUnlock: 3,
+    type: "fr",
+    question: "What is inflation and how does it affect regular people? Give a specific example.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "Inflation is when prices rise over time, which means your money buys less than it used to. For example, if gas cost $3 a gallon last year and costs $4 this year, your family has to spend more money to fill the same tank. Inflation hits hardest for people whose income doesn't rise as fast as prices do.",
+  },
+  {
+    id: "q-m3-fr2",
+    moduleUnlock: 3,
+    type: "fr",
+    question: "Why would a government spend more money during a recession instead of saving money? Does that make sense?",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "It seems backwards but it makes sense economically. During a recession, people and businesses are spending less. If the government also cuts spending, the economy can spiral downward. By spending more — on roads, schools, or aid programs — the government puts money into people's hands, which they spend at businesses, which hire more workers. This is called a stimulus. The tradeoff is the government goes into debt to do it, which has its own costs.",
+  },
+
+  /* ---- Module 4 — Applied Economics ---- */
+  {
+    id: "q-m4-mc1",
+    moduleUnlock: 4,
+    type: "mc",
+    question:
+      "Your school cafeteria raises lunch prices from $3 to $5. A lot of students start bringing lunch from home. This is an example of:",
+    choiceA: "Inflation",
+    choiceB: "Consumers responding to a price change",
+    choiceC: "A government policy",
+    choiceD: "A monopoly",
+    correctAnswer: "B",
+    explanation:
+      "When prices rise, consumers look for substitutes — alternatives that give them what they need at a lower cost. Bringing lunch from home is the substitute for buying cafeteria food. This is basic demand behavior.",
+  },
+  {
+    id: "q-m4-mc2",
+    moduleUnlock: 4,
+    type: "mc",
+    question:
+      "A new phone comes out and everyone wants it. The company only made 500,000 of them but 2 million people want to buy one. What will most likely happen to the price?",
+    choiceA: "It will drop",
+    choiceB: "It will stay the same",
+    choiceC: "It will rise",
+    choiceD: "The company will give them away",
+    correctAnswer: "C",
+    explanation:
+      "When demand is much higher than supply, sellers can charge more because buyers are competing with each other. This is why new sneakers or concert tickets sometimes sell for way more than the original price.",
+  },
+  {
+    id: "q-m4-mc3",
+    moduleUnlock: 4,
+    type: "mc",
+    question:
+      "Which of these best describes the trade-off a government faces when deciding to spend money on a new stadium?",
+    choiceA: "There is no trade-off",
+    choiceB: "The trade-off is between the stadium and other things that money could fund",
+    choiceC: "The trade-off is only about construction costs",
+    choiceD: "There is no opportunity cost because stadiums grow the economy",
+    correctAnswer: "B",
+    explanation:
+      "Every dollar spent on a stadium is a dollar not spent on schools, hospitals, or roads. That's the opportunity cost. Good economic thinking always asks: what else could this money have done?",
+  },
+  {
+    id: "q-m4-mc4",
+    moduleUnlock: 4,
+    type: "mc",
+    question:
+      "If the Federal Reserve raises interest rates, borrowing money becomes more expensive. What effect does this most likely have on spending?",
+    choiceA: "People spend more",
+    choiceB: "People spend less",
+    choiceC: "Spending stays the same",
+    choiceD: "Only businesses are affected",
+    correctAnswer: "B",
+    explanation:
+      "Higher interest rates mean loans cost more. People and businesses borrow less, which means they spend less. The Federal Reserve raises rates on purpose when inflation is too high — slowing spending helps bring prices back down.",
+  },
+  {
+    id: "q-m4-fr1",
+    moduleUnlock: 4,
+    type: "fr",
+    question:
+      "A city is deciding between spending $200 million on a new sports arena or on fixing every public school in the city. Walk through the trade-offs on both sides. What would you choose and why?",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "The arena could bring in jobs, tourism, and tax revenue, and give the city a major venue for events. But most economic research shows arenas don't generate as much value as teams claim. Fixing schools improves education for thousands of kids, which has long-term economic benefits — better-educated workers earn more and contribute more to the economy. I would choose the schools because the long-term return is more reliable and affects more people directly. The opportunity cost of the arena is too high.",
+  },
+  {
+    id: "q-m4-fr2",
+    moduleUnlock: 4,
+    type: "fr",
+    question:
+      "Explain the difference between a want and a need, and describe how scarcity forces people to make hard choices between them.",
+    choiceA: null,
+    choiceB: null,
+    choiceC: null,
+    choiceD: null,
+    correctAnswer: null,
+    explanation:
+      "A need is something you must have to survive or function — food, shelter, clothing. A want is something you'd like to have but don't need — a new phone, sneakers, a vacation. Scarcity means most people can't have everything on both lists. So they have to prioritize. A family with limited income might have to choose between fixing the car (a need) or going on vacation (a want). Scarcity is what forces every individual, business, and government to make trade-offs.",
+  },
+];
+
+/** A quiz question as the dashboard renders it. Answer keys present only when answered. */
+export interface QuizQuestionView {
+  id: string;
+  type: QuizQuestionType;
+  question: string;
+  /** Labeled choices for MC (empty for FR). */
+  choices: { key: string; text: string }[];
+  answered: boolean;
+  /** MC answered: the choice the student picked. */
+  selectedChoice: string | null;
+  /** MC answered: whether it was correct. */
+  isCorrect: boolean | null;
+  /** FR answered: the student's saved text. */
+  responseText: string | null;
+  /** Revealed only when answered — the correct MC letter. */
+  correctAnswer: string | null;
+  /** Revealed only when answered — MC explanation or FR model answer. */
+  explanation: string | null;
+}
+
+/** One module's quiz section as the dashboard renders it. */
+export interface QuizModuleSection {
+  moduleOrdinal: number;
+  moduleTitle: string;
+  /** Module completed → questions unlocked. */
+  unlocked: boolean;
+  /** Plain-English reason the section is locked, or null when open. */
+  lockedReason: string | null;
+  /** Empty when locked (locked questions are never sent to the client). */
+  questions: QuizQuestionView[];
+  mcTotal: number;
+  mcAnswered: number;
+  mcCorrect: number;
+  frTotal: number;
+  frSubmitted: number;
+}
