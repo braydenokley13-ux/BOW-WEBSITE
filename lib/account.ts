@@ -28,6 +28,8 @@ export interface User {
   signin: string;
   /** Real epoch-ms timestamp of the user's last authenticated activity (null = never signed in). */
   lastActiveAt?: number | null;
+  /** Epoch-ms timestamp the account was created (null for older seed accounts). */
+  createdAt?: number | null;
 }
 
 export interface Organization {

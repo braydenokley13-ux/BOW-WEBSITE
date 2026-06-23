@@ -82,9 +82,10 @@ export async function joinSelfPaced(_prev: AuthState, formData: FormData): Promi
   const first = name.split(/\s+/)[0] || name;
   const passwordHash = hashPassword(password);
 
+  const now = Date.now();
   db.prepare(
-    "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', 'Just now', 'Email + password', ?, ?)",
-  ).run(userId, name, first, email, SELF_PACED_ORG_ID, passwordHash, Date.now());
+    "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', 'Just now', 'Email + password', ?, ?, ?)",
+  ).run(userId, name, first, email, SELF_PACED_ORG_ID, passwordHash, now, now);
 
   // Place them in the default async cohort so the instructor roster and the
   // self-paced module sequence both pick them up.
@@ -145,8 +146,8 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
     userId = `u-${randomUUID().slice(0, 8)}`;
     const name = buildName(first, last, email.split("@")[0]);
     db.prepare(
-      "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'Just now', 'Email + password', ?)",
-    ).run(userId, name, first || name, email, inv.role, inv.org_id, grade || null, passwordHash);
+      "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'Just now', 'Email + password', ?, ?)",
+    ).run(userId, name, first || name, email, inv.role, inv.org_id, grade || null, passwordHash, Date.now());
   }
 
   // Enroll students into their invited cohort if not already enrolled.

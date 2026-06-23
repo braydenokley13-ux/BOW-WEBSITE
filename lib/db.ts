@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS users (
   signin TEXT NOT NULL,
   password_hash TEXT,
   deletion_requested INTEGER NOT NULL DEFAULT 0,
-  last_active_at INTEGER
+  last_active_at INTEGER,
+  created_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS cohorts (
   id TEXT PRIMARY KEY,
@@ -467,13 +468,14 @@ function seedSelfPacedDemo(db: DatabaseSync) {
     { id: "u-self3", name: "Casey Kim", first: "Casey", email: "casey.kim@example.com", last: "Just now", lastActive: now - 20 * 60 * 1000 },
   ];
   const insertUser = db.prepare(
-    "INSERT OR IGNORE INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', ?, 'Email + password', ?, ?)",
+    "INSERT OR IGNORE INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', ?, 'Email + password', ?, ?, ?)",
   );
   const insertEnr = db.prepare(
     "INSERT OR IGNORE INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last) VALUES (?, ?, 'active', 'not-started', ?, 'none')",
   );
   for (const s of students) {
-    insertUser.run(s.id, s.name, s.first, s.email, SELF_PACED_ORG_ID, s.last, seedHash, s.lastActive);
+    // Joined roughly two weeks before their last activity (demo data).
+    insertUser.run(s.id, s.name, s.first, s.email, SELF_PACED_ORG_ID, s.last, seedHash, s.lastActive, s.lastActive - 14 * DAY);
     insertEnr.run(s.id, SELF_PACED_COHORT_ID, s.last);
   }
 
@@ -542,6 +544,8 @@ function migrate(db: DatabaseSync) {
   // Difficulty tags on scenarios and quiz questions (Features 5 & 6).
   add("daily_scenarios", "difficulty", "INTEGER NOT NULL DEFAULT 1");
   add("quiz_questions", "difficulty", "INTEGER NOT NULL DEFAULT 1");
+  // Signup timestamp for the student profile (Feature 3).
+  add("users", "created_at", "INTEGER");
 }
 
 function init(): DatabaseSync {
@@ -585,6 +589,7 @@ export function rowToUser(r: any): User {
     id: r.id, name: r.name, first: r.first, email: r.email, role: r.role,
     orgId: r.org_id, grade: r.grade ?? undefined, status: r.status, last: r.last, signin: r.signin,
     lastActiveAt: r.last_active_at ?? null,
+    createdAt: r.created_at ?? null,
   };
 }
 

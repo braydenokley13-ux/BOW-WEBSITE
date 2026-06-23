@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   reflectionWordCount,
   SELF_MIN_REFLECTION_WORDS,
@@ -32,6 +33,8 @@ export default function StudentDashboard({ firstName, modules, quizSections, act
   const total = modules.length;
   const pct = total ? Math.round((completedCount / total) * 100) : 0;
   const allDone = total > 0 && completedCount === total;
+  // Simulation Room unlocks once Module 2 is complete (Feature 7).
+  const simUnlocked = modules.find((m) => m.module.ordinal === 2)?.completed ?? false;
 
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "100vh", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
@@ -42,9 +45,26 @@ export default function StudentDashboard({ firstName, modules, quizSections, act
         <h1 style={{ margin: "8px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
           Good to see you, {firstName}.
         </h1>
-        <p style={{ margin: "0 0 26px", fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 560 }}>
+        <p style={{ margin: "0 0 16px", fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 560 }}>
           Four modules, unlocked one decision at a time. Finish a module and write a short reflection to open the next.
         </p>
+
+        {/* QUICK NAV */}
+        <nav style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 26 }}>
+          {[
+            { href: "/profile", label: "My Profile" },
+            { href: "/leaderboard", label: "Leaderboard" },
+            ...(simUnlocked ? [{ href: "/simulation-room", label: "Simulation Room" }] : []),
+          ].map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              style={{ fontFamily: "var(--font-data)", fontSize: 11.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-ink)", textDecoration: "none", border: "1px solid var(--border-strong)", borderRadius: 999, padding: "8px 16px" }}
+            >
+              {l.label} →
+            </Link>
+          ))}
+        </nav>
 
         {/* PROGRESS */}
         <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 24, marginBottom: 28 }}>
