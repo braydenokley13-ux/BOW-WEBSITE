@@ -4,9 +4,13 @@ import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { requireRole } from "@/lib/dal";
+import { isSelfModuleUnlocked } from "@/lib/self-paced";
 import {
   orderedTrackLessons,
   unlockChecklist,
+  reflectionWordCount,
+  SELF_PACED_COHORT_ID,
+  SELF_PACED_SESSIONS,
   type LessonProgressDetail,
 } from "@/lib/account";
 import type {
@@ -417,6 +421,156 @@ export async function dismissDeletionRequest(userId: string): Promise<void> {
   await requireRole("admin");
   getDb().prepare("UPDATE users SET deletion_requested = 0 WHERE id = ?").run(userId);
   refreshApp();
+}
+
+/* ============================================================
+ * Self-Paced Track 101 (Features 1 & 2).
+ * ============================================================ */
+
+function refreshDashboard() {
+  revalidatePath("/dashboard");
+}
+
+function refreshInstructor() {
+  revalidatePath("/instructor");
+}
+
+/* ---------------- Module progression (student) ---------------- */
+
+/**
+ * Mark a self-paced module complete. Gated: a student can only complete a
+ * module that is currently unlocked for them, so they can't skip ahead by
+ * calling the action directly.
+ */
+export async function markSelfModuleComplete(moduleId: string): Promise<void> {
+  const me = await requireRole("student");
+  if (!isSelfModuleUnlocked(me.id, moduleId)) return;
+  const now = Date.now();
+  getDb()
+    .prepare(
+      "INSERT INTO self_progress (student_id, module_id, completed, completed_at, updated_at) VALUES (?, ?, 1, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET completed = 1, completed_at = COALESCE(self_progress.completed_at, excluded.completed_at), updated_at = excluded.updated_at",
+    )
+    .run(me.id, moduleId, now, now);
+  touchActive(me.id);
+  refreshDashboard();
+}
+
+/**
+ * Save (or update) the student's written reflection for a module. The next
+ * module unlocks automatically once this clears the 50-word minimum AND the
+ * module is marked complete — the rule is computed in lib/self-paced.ts, so we
+ * just persist the text and its word count here.
+ */
+export async function saveSelfReflection(moduleId: string, text: string): Promise<void> {
+  const me = await requireRole("student");
+  if (!isSelfModuleUnlocked(me.id, moduleId)) return;
+  const clean = text.trim();
+  const words = reflectionWordCount(clean);
+  getDb()
+    .prepare(
+      "INSERT INTO self_progress (student_id, module_id, reflection, reflection_words, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET reflection = excluded.reflection, reflection_words = excluded.reflection_words, updated_at = excluded.updated_at",
+    )
+    .run(me.id, moduleId, clean, words, Date.now());
+  touchActive(me.id);
+  refreshDashboard();
+}
+
+/* ---------------- BOW Daily decision (student) ---------------- */
+
+export interface DailyDecisionResult {
+  ok: boolean;
+  /** What actually happened, revealed after the student commits a decision. */
+  outcome?: string;
+  /** Why that was the economically sound call. */
+  explanation?: string;
+  /** The BOW concept the scenario illustrates. */
+  concept?: string;
+}
+
+/**
+ * Save a student's BOW Daily decision (one per scenario) and reveal what
+ * actually happened plus the economics behind it. Low-friction by design — a
+ * daily briefing, not graded homework.
+ */
+export async function submitDailyDecision(storyId: string, response: string): Promise<DailyDecisionResult> {
+  const me = await requireRole("student");
+  const text = response.trim();
+  if (!text) return { ok: false };
+
+  const db = getDb();
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  const story = db.prepare("SELECT * FROM feed_stories WHERE id = ?").get(storyId) as any;
+  if (!story) return { ok: false };
+
+  db.prepare(
+    "INSERT OR IGNORE INTO self_feed_responses (id, student_id, story_id, response, created_at) VALUES (?, ?, ?, ?, ?)",
+  ).run(`sfr-${randomUUID().slice(0, 12)}`, me.id, storyId, text, Date.now());
+  touchActive(me.id);
+  refreshDashboard();
+  return { ok: true, outcome: story.outcome, explanation: story.explanation, concept: story.concept };
+}
+
+/* ---------------- Instructor controls (instructor + admin) ---------------- */
+
+/**
+ * Manual module override: unlock any module for any student regardless of the
+ * auto-unlock conditions. Stored as the `instructor_unlocked` flag on the
+ * student's progress row.
+ */
+export async function instructorUnlockModule(studentId: string, moduleId: string): Promise<void> {
+  await requireRole("instructor", "admin");
+  const now = Date.now();
+  getDb()
+    .prepare(
+      "INSERT INTO self_progress (student_id, module_id, instructor_unlocked, updated_at) VALUES (?, ?, 1, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET instructor_unlocked = 1, updated_at = excluded.updated_at",
+    )
+    .run(studentId, moduleId, now);
+  refreshInstructor();
+}
+
+/** Reverse a manual override (does not touch the student's own progress). */
+export async function instructorRelockModule(studentId: string, moduleId: string): Promise<void> {
+  await requireRole("instructor", "admin");
+  getDb()
+    .prepare("UPDATE self_progress SET instructor_unlocked = 0, updated_at = ? WHERE student_id = ? AND module_id = ?")
+    .run(Date.now(), studentId, moduleId);
+  refreshInstructor();
+}
+
+/** Save a per-student session note (stored student-scoped in session_notes). */
+export async function saveStudentNote(studentId: string, note: string): Promise<void> {
+  const me = await requireRole("instructor", "admin");
+  const body = note.trim();
+  if (!body) return;
+  const db = getDb();
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  const student = db.prepare("SELECT name FROM users WHERE id = ?").get(studentId) as any;
+  const id = `note-${randomUUID().slice(0, 8)}`;
+  db.prepare(
+    "INSERT INTO session_notes (id, cohort_id, author_id, student_id, scope, text, created_at, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    id,
+    SELF_PACED_COHORT_ID,
+    me.id,
+    studentId,
+    student ? `Student · ${student.name}` : "Student",
+    body,
+    fmtDate(new Date()),
+    Date.now(),
+  );
+  refreshInstructor();
+}
+
+/** Toggle a student's attendance for one session of the self-paced cohort. */
+export async function setSessionAttendance(studentId: string, sessionNo: number, present: boolean): Promise<void> {
+  await requireRole("instructor", "admin");
+  if (!Number.isInteger(sessionNo) || sessionNo < 1 || sessionNo > SELF_PACED_SESSIONS) return;
+  getDb()
+    .prepare(
+      "INSERT INTO self_attendance (cohort_id, student_id, session_no, present) VALUES (?, ?, ?, ?) ON CONFLICT(cohort_id, student_id, session_no) DO UPDATE SET present = excluded.present",
+    )
+    .run(SELF_PACED_COHORT_ID, studentId, sessionNo, present ? 1 : 0);
+  refreshInstructor();
 }
 
 function fmtDate(d: Date): string {

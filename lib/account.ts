@@ -458,6 +458,152 @@ export const seedAppData = (): AppData => ({
   deletionRequests: [],
 });
 
+/* ============================================================
+ * Self-Paced Track 101 (async student experience).
+ *
+ * A student who finds BOW through press or social can sign up at
+ * /join with just a name, email, and password, get the `student`
+ * role, and be placed in the default async cohort below — no
+ * instructor code and no live cohort required. Track 101 runs as six
+ * modules that unlock in order: module 1 is open on signup, and each
+ * next module unlocks once the student marks the prior one complete
+ * AND writes a reflection of at least SELF_MIN_REFLECTION_WORDS words.
+ * Seeded on first boot (see lib/db.ts); progress is the system of
+ * record in the `self_progress` table, read through lib/self-paced.ts.
+ * ============================================================ */
+
+/** Org the self-paced cohort belongs to (BOW runs it directly). */
+export const SELF_PACED_ORG_ID = "org-bow";
+/** The default async cohort every /join signup is placed in. */
+export const SELF_PACED_COHORT_ID = "coh-self";
+export const SELF_PACED_COHORT_NAME = "BOW Self-Paced";
+/** Lessons counted for the instructor attendance rate — one per module. */
+export const SELF_PACED_SESSIONS = 6;
+/** Minimum words a module reflection needs to unlock the next module. */
+export const SELF_MIN_REFLECTION_WORDS = 50;
+
+/** One of the six self-paced Track 101 modules (reference data). */
+export interface SelfModule {
+  id: string;
+  /** Display + unlock order, 1..6. */
+  ordinal: number;
+  title: string;
+  summary: string;
+  concept: string;
+  centralQuestion: string;
+}
+
+/**
+ * The six Track 101 modules, drawn from the real curriculum themes in
+ * lib/lessons. Seeded on first boot and the source of truth for the
+ * self-paced unlock sequence.
+ */
+export const selfModules: SelfModule[] = [
+  {
+    id: "sm-1",
+    ordinal: 1,
+    title: "Scarcity in the Standings",
+    summary: "Why you can’t have everything, and how to choose what to fund first.",
+    concept: "Scarcity & Opportunity Cost",
+    centralQuestion: "Every team wants everything. Which one thing do you buy first?",
+  },
+  {
+    id: "sm-2",
+    ordinal: 2,
+    title: "Opportunity Cost, in Trades",
+    summary: "Every yes is a no somewhere else on the roster.",
+    concept: "Opportunity Cost",
+    centralQuestion: "Win sooner, or keep the cheap young asset everyone is calling about?",
+  },
+  {
+    id: "sm-3",
+    ordinal: 3,
+    title: "The Value of a Win",
+    summary: "What one more win is actually worth — and when it stops being worth it.",
+    concept: "Marginal Value & Diminishing Returns",
+    centralQuestion: "When does the next win stop being worth the price?",
+  },
+  {
+    id: "sm-4",
+    ordinal: 4,
+    title: "Building the Roster",
+    summary: "Spread one budget across four real problems you can’t all fix.",
+    concept: "Budget Allocation",
+    centralQuestion: "One budget, four problems. Which one do you actually fix?",
+  },
+  {
+    id: "sm-5",
+    ordinal: 5,
+    title: "The Money Behind the Game",
+    summary: "Read the cap rules that shape every move a front office makes.",
+    concept: "Cap Mechanics & Constraints",
+    centralQuestion: "The rules say no. How do you still get to yes?",
+  },
+  {
+    id: "sm-6",
+    ordinal: 6,
+    title: "Owning the Franchise",
+    summary: "The business above the bench — revenue, risk, and the long game.",
+    concept: "Revenue & Long-Term Value",
+    centralQuestion: "Build for next year, or the next decade?",
+  },
+];
+
+/** Per-student, per-module progress (source of truth in `self_progress`). */
+export interface SelfModuleProgress {
+  completed: boolean;
+  reflection: string;
+  reflectionWords: number;
+  instructorUnlocked: boolean;
+  completedAt: number | null;
+}
+
+/** A module as the student dashboard renders it (derived, serializable). */
+export interface SelfModuleView {
+  module: SelfModule;
+  unlocked: boolean;
+  completed: boolean;
+  reflection: string;
+  reflectionWords: number;
+  reflectionMet: boolean;
+  instructorUnlocked: boolean;
+  /** Plain-English reason the module is still locked, or null when open. */
+  lockedReason: string | null;
+}
+
+/** An instructor's per-student note (stored in `session_notes`, student-scoped). */
+export interface StudentNote {
+  id: string;
+  studentId: string;
+  authorId: string;
+  authorName: string;
+  note: string;
+  createdAt: number;
+  createdLabel: string;
+}
+
+/** One student row in the instructor roster (fully serializable for the client). */
+export interface SelfRosterEntry {
+  studentId: string;
+  name: string;
+  first: string;
+  email: string;
+  /** Furthest unlocked module (1..6). */
+  currentModuleOrdinal: number;
+  currentModuleTitle: string;
+  completedCount: number;
+  totalModules: number;
+  reflectionCount: number;
+  lastActiveLabel: string;
+  lastActiveAt: number | null;
+  attendancePresent: number;
+  attendanceTotal: number;
+  notes: StudentNote[];
+  modules: SelfModuleView[];
+  /** Present/absent per session, length SELF_PACED_SESSIONS. */
+  attendance: boolean[];
+}
+
 /** Ordered lessons for a track (module then lesson number). */
 export const orderedTrackLessons = (track: string): Lesson[] =>
   [...trackLessons(track)].sort(

@@ -18,7 +18,12 @@ import {
   orderedTrackLessons,
   parseLastSeen,
   feedStories,
+  selfModules,
+  reflectionWordCount,
   SEED_PASSWORD,
+  SELF_PACED_ORG_ID,
+  SELF_PACED_COHORT_ID,
+  SELF_PACED_COHORT_NAME,
   type User,
   type Organization,
   type Cohort,
@@ -133,6 +138,7 @@ CREATE TABLE IF NOT EXISTS session_notes (
   id TEXT PRIMARY KEY,
   cohort_id TEXT NOT NULL,
   author_id TEXT NOT NULL,
+  student_id TEXT,
   scope TEXT NOT NULL,
   text TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -174,6 +180,40 @@ CREATE TABLE IF NOT EXISTS feed_sessions (
   token TEXT PRIMARY KEY,
   feed_user_id TEXT NOT NULL,
   expires_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS self_modules (
+  id TEXT PRIMARY KEY,
+  ordinal INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  concept TEXT NOT NULL,
+  central_question TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS self_progress (
+  student_id TEXT NOT NULL,
+  module_id TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0,
+  reflection TEXT NOT NULL DEFAULT '',
+  reflection_words INTEGER NOT NULL DEFAULT 0,
+  instructor_unlocked INTEGER NOT NULL DEFAULT 0,
+  completed_at INTEGER,
+  updated_at INTEGER,
+  PRIMARY KEY (student_id, module_id)
+);
+CREATE TABLE IF NOT EXISTS self_feed_responses (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  story_id TEXT NOT NULL,
+  response TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (student_id, story_id)
+);
+CREATE TABLE IF NOT EXISTS self_attendance (
+  cohort_id TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  session_no INTEGER NOT NULL,
+  present INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (cohort_id, student_id, session_no)
 );
 `;
 
@@ -302,6 +342,78 @@ function seedFeedStories(db: DatabaseSync) {
   }
 }
 
+/** Idempotently load the six self-paced modules + the default async cohort. */
+function seedSelfModulesAndCohort(db: DatabaseSync) {
+  const insertMod = db.prepare(
+    "INSERT OR IGNORE INTO self_modules (id, ordinal, title, summary, concept, central_question) VALUES (?, ?, ?, ?, ?, ?)",
+  );
+  for (const m of selfModules) insertMod.run(m.id, m.ordinal, m.title, m.summary, m.concept, m.centralQuestion);
+
+  // The default async cohort. Instructor u-coach (Marcus Reyes) manages it so
+  // the instructor dashboard (Feature 2) always has a roster to work with.
+  db.prepare(
+    "INSERT OR IGNORE INTO cohorts (id, name, org_id, track, instructor_id, current_lesson_id, status, format, schedule, start, end_date, cap, next_session) VALUES (?, ?, ?, '101', 'u-coach', 't101-m1-l1', 'active', 'Self-paced · Async', 'Anytime · On your schedule', 'Rolling', '—', 9999, 'Whenever you’re ready')",
+  ).run(SELF_PACED_COHORT_ID, SELF_PACED_COHORT_NAME, SELF_PACED_ORG_ID);
+}
+
+/**
+ * First-boot demo data for the self-paced experience: a few async students
+ * with varied progress, reflections, Daily decisions, attendance, and a note —
+ * so both dashboards (Features 1 & 2) are populated out of the box.
+ */
+function seedSelfPacedDemo(db: DatabaseSync) {
+  const seedHash = hashPassword(SEED_PASSWORD);
+  const now = Date.now();
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+  const reflection =
+    "Funding the wing meant leaving the bench thin, and I felt that trade-off the whole way through. The real cost of the signing was not the salary on the sheet but the depth I quietly gave up, the rookie I stopped developing, and the flexibility I lost at the deadline. Naming the option I passed on made the decision honest instead of comfortable.";
+  const fullWords = reflectionWordCount(reflection);
+  const shortReflection = "Tough call but I funded the star.";
+
+  const students = [
+    { id: "u-self1", name: "Jordan Avery", first: "Jordan", email: "jordan.avery@example.com", last: "2 h ago", lastActive: now - 2 * HOUR },
+    { id: "u-self2", name: "Sam Rivera", first: "Sam", email: "sam.rivera@example.com", last: "Yesterday", lastActive: now - DAY },
+    { id: "u-self3", name: "Casey Kim", first: "Casey", email: "casey.kim@example.com", last: "Just now", lastActive: now - 20 * 60 * 1000 },
+  ];
+  const insertUser = db.prepare(
+    "INSERT OR IGNORE INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', ?, 'Email + password', ?, ?)",
+  );
+  const insertEnr = db.prepare(
+    "INSERT OR IGNORE INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last) VALUES (?, ?, 'active', 'not-started', ?, 'none')",
+  );
+  for (const s of students) {
+    insertUser.run(s.id, s.name, s.first, s.email, SELF_PACED_ORG_ID, s.last, seedHash, s.lastActive);
+    insertEnr.run(s.id, SELF_PACED_COHORT_ID, s.last);
+  }
+
+  const insertProg = db.prepare(
+    "INSERT OR IGNORE INTO self_progress (student_id, module_id, completed, reflection, reflection_words, instructor_unlocked, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  // Jordan: modules 1 & 2 complete with full reflections — module 3 is unlocked.
+  insertProg.run("u-self1", "sm-1", 1, reflection, fullWords, 0, now - 5 * DAY, now - 5 * DAY);
+  insertProg.run("u-self1", "sm-2", 1, reflection, fullWords, 0, now - 2 * DAY, now - 2 * DAY);
+  // Sam: module 1 marked complete but the reflection is too short — module 2 stays locked.
+  insertProg.run("u-self2", "sm-1", 1, shortReflection, reflectionWordCount(shortReflection), 0, now - DAY, now - DAY);
+  // Casey: brand new — no rows yet, so only module 1 is open.
+
+  const insertResp = db.prepare(
+    "INSERT OR IGNORE INTO self_feed_responses (id, student_id, story_id, response, created_at) VALUES (?, ?, ?, ?, ?)",
+  );
+  insertResp.run("sfr-seed-1", "u-self1", "feed-brown-surplus", "I pay him — a healthy All-Star core is worth the supermax.", now - 4 * DAY);
+  insertResp.run("sfr-seed-2", "u-self1", "feed-athletics-oppcost", "I stay and fight for a new building before abandoning the market.", now - 3 * DAY);
+
+  const insertAtt = db.prepare(
+    "INSERT OR IGNORE INTO self_attendance (cohort_id, student_id, session_no, present) VALUES (?, ?, ?, ?)",
+  );
+  for (const n of [1, 2, 3, 4]) insertAtt.run(SELF_PACED_COHORT_ID, "u-self1", n, 1);
+  for (const n of [1, 2]) insertAtt.run(SELF_PACED_COHORT_ID, "u-self2", n, 1);
+
+  db.prepare(
+    "INSERT OR IGNORE INTO session_notes (id, cohort_id, author_id, student_id, scope, text, created_at, created_ts) VALUES (?, ?, 'u-coach', ?, ?, ?, ?, ?)",
+  ).run("note-self-1", SELF_PACED_COHORT_ID, "u-self1", "Student · Jordan Avery", "Flying through the early modules — nudge toward the Module 3 marginal-value sim.", "Jun 20, 2026", now - DAY);
+}
+
 /**
  * Idempotent column migrations for databases created before a feature landed.
  * `data/` is gitignored and usually re-created fresh, but this keeps an existing
@@ -318,6 +430,9 @@ function migrate(db: DatabaseSync) {
   add("users", "last_active_at", "INTEGER");
   add("enrollments", "unlocked_lesson_id", "TEXT");
   add("lesson_progress", "podcast_progress", "REAL NOT NULL DEFAULT 0");
+  // Per-student instructor notes reuse the session_notes table with a
+  // structured student link (Feature 2). Older DBs get the column added.
+  add("session_notes", "student_id", "TEXT");
 }
 
 function init(): DatabaseSync {
@@ -328,11 +443,15 @@ function init(): DatabaseSync {
   db.exec(SCHEMA);
   migrate(db);
 
-  const row = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
-  if (row.n === 0) seed(db);
+  const fresh = (db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n === 0;
+  if (fresh) seed(db);
   // Feed stories are reference data — ensure they exist even on an older DB
   // that was seeded before the Daily Feed shipped.
   seedFeedStories(db);
+  // Self-paced Track 101 (Feature 1): the six modules and the default async
+  // cohort are reference data; the demo students only seed a fresh database.
+  seedSelfModulesAndCohort(db);
+  if (fresh) seedSelfPacedDemo(db);
 
   return db;
 }
