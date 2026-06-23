@@ -6,7 +6,8 @@ import { getDb } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession } from "@/lib/session";
 import { getCurrentUser } from "@/lib/dal";
-import { roleHomePath, type Role } from "@/lib/account";
+import { isEnrolledSelfPaced } from "@/lib/self-paced";
+import { roleHomePath, SELF_PACED_COHORT_ID, SELF_PACED_ORG_ID, type Role } from "@/lib/account";
 
 export interface AuthState {
   error?: string;
@@ -41,8 +42,58 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
 
   await createSession(user.id);
 
-  const dest = next && next.startsWith("/app") ? next : roleHomePath(user.role as Role);
+  // Honor an explicit ?next, otherwise send self-paced students to their
+  // async dashboard and everyone else to their role's front-office home.
+  let dest: string;
+  if (next && (next.startsWith("/app") || next === "/dashboard" || next === "/instructor")) {
+    dest = next;
+  } else if (user.role === "student" && isEnrolledSelfPaced(user.id)) {
+    dest = "/dashboard";
+  } else {
+    dest = roleHomePath(user.role as Role);
+  }
   redirect(dest);
+}
+
+/* ---------------- Self-paced sign-up (/join) ---------------- */
+
+/**
+ * Create a self-learning student account with just a name, email, and
+ * password — no instructor code. The account gets the `student` role, is
+ * placed in the default "BOW Self-Paced" async cohort, and is signed in
+ * immediately (same accounts/sessions tables and cookie session as every
+ * other user). Module 1 of Track 101 is open the moment they land on
+ * /dashboard.
+ */
+export async function joinSelfPaced(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+
+  if (name.length < 2) return { error: "Enter your name so we know what to call you." };
+  if (!/.+@.+\..+/.test(email)) return { error: "Enter a valid email address." };
+  if (password.length < 8) return { error: "Choose a password with at least 8 characters." };
+
+  const db = getDb();
+  const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
+  if (existing) return { error: "An account with that email already exists. Try signing in instead." };
+
+  const userId = `u-${randomUUID().slice(0, 8)}`;
+  const first = name.split(/\s+/)[0] || name;
+  const passwordHash = hashPassword(password);
+
+  db.prepare(
+    "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', 'Just now', 'Email + password', ?, ?)",
+  ).run(userId, name, first, email, SELF_PACED_ORG_ID, passwordHash, Date.now());
+
+  // Place them in the default async cohort so the instructor roster and the
+  // self-paced module sequence both pick them up.
+  db.prepare(
+    "INSERT OR IGNORE INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last) VALUES (?, ?, 'active', 'not-started', 'Just now', 'none')",
+  ).run(userId, SELF_PACED_COHORT_ID);
+
+  await createSession(userId);
+  redirect("/dashboard");
 }
 
 /* ---------------- Sign out ---------------- */

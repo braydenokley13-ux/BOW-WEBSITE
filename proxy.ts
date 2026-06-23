@@ -13,8 +13,15 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = request.cookies.has(SESSION_COOKIE);
 
-  // Guard the authenticated app.
-  if (pathname === "/app" || pathname.startsWith("/app/")) {
+  // Guard the authenticated app and the self-paced student/instructor surfaces.
+  const guarded =
+    pathname === "/app" ||
+    pathname.startsWith("/app/") ||
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/") ||
+    pathname === "/instructor" ||
+    pathname.startsWith("/instructor/");
+  if (guarded) {
     if (!hasSession) {
       const url = new URL("/sign-in", request.url);
       url.searchParams.set("next", pathname);
@@ -31,5 +38,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/sign-in"],
+  matcher: ["/app/:path*", "/dashboard", "/dashboard/:path*", "/instructor", "/instructor/:path*", "/sign-in"],
 };
