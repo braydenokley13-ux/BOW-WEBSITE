@@ -20,11 +20,11 @@ interface Props {
   quizSections: QuizModuleSection[];
   /** This week's active BOW Daily scenario (Feature 2). */
   activeScenario: DailyScenarioView | null;
-  /** Previously answered scenarios, newest first. */
-  scenarioHistory: DailyScenarioView[];
+  /** Every other scenario: answered (full) or locked (Feature 5 archive). */
+  scenarioArchive: DailyScenarioView[];
 }
 
-export default function StudentDashboard({ firstName, modules, quizSections, activeScenario, scenarioHistory }: Props) {
+export default function StudentDashboard({ firstName, modules, quizSections, activeScenario, scenarioArchive }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
@@ -79,8 +79,8 @@ export default function StudentDashboard({ firstName, modules, quizSections, act
         {/* ECON QUIZ (Feature 3) */}
         <EconQuiz sections={quizSections} />
 
-        {/* BOW DAILY SCENARIOS (Feature 2) */}
-        <DailyScenarios active={activeScenario} history={scenarioHistory} />
+        {/* BOW DAILY SCENARIOS (Features 2 & 5) */}
+        <DailyScenarios active={activeScenario} archive={scenarioArchive} />
       </div>
     </div>
   );

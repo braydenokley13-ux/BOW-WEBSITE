@@ -8,16 +8,20 @@ import { submitDailyScenario } from "@/app/actions/lms";
 interface Props {
   /** This week's active scenario (always available), or null if none seeded. */
   active: DailyScenarioView | null;
-  /** Previously answered scenarios (excluding this week's), newest first. */
-  history: DailyScenarioView[];
+  /** Every other scenario: answered (full) or locked (Feature 5 archive). */
+  archive: DailyScenarioView[];
 }
 
 /**
- * BOW Daily Sports Scenarios (Feature 2). One scenario is active each week and
- * is always available regardless of module progress. The explanation reveals
- * only after the student submits a response; prior responses persist.
+ * BOW Daily Sports Scenarios (Features 2 & 5). One scenario is active each week
+ * and is always available regardless of module progress. The explanation reveals
+ * only after the student submits; afterward they see how others answered. Past
+ * scenarios live in an archive — answered ones are re-readable, the rest locked.
  */
-export default function DailyScenarios({ active, history }: Props) {
+export default function DailyScenarios({ active, archive }: Props) {
+  const answeredArchive = archive.filter((s) => s.answered);
+  const lockedArchive = archive.filter((s) => s.locked);
+
   return (
     <section
       className="bow-front-office"
@@ -48,19 +52,43 @@ export default function DailyScenarios({ active, history }: Props) {
         </div>
       )}
 
-      {history.length > 0 && (
-        <div style={{ marginTop: 26 }}>
-          <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#6d7078", display: "block", marginBottom: 12 }}>
-            Scenarios you’ve answered
-          </span>
+      {/* SCENARIO ARCHIVE (Feature 5) */}
+      {archive.length > 0 && (
+        <div style={{ marginTop: 30 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9a9da6" }}>
+              Scenario Archive
+            </span>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "#6d7078" }}>
+              {answeredArchive.length} answered · {lockedArchive.length} locked
+            </span>
+          </div>
+
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {history.map((s) => (
+            {answeredArchive.map((s) => (
               <article key={s.id} style={{ border: "1px solid var(--bow-dark-border)", background: "var(--bow-dark-surface)", borderRadius: 4, padding: "clamp(18px,2.4vw,24px)" }}>
-                <ConceptTag concept={s.concept} />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <ConceptTag concept={s.concept} />
+                  <DifficultyDots difficulty={s.difficulty} />
+                </div>
                 <p style={{ margin: "12px 0 0", fontFamily: "var(--font-editorial)", fontSize: "clamp(15px,1.7vw,17px)", lineHeight: 1.5, color: "#d4d6db" }}>
                   {s.scenario}
                 </p>
                 <Reveal response={s.response ?? ""} explanation={s.explanation ?? ""} compact />
+              </article>
+            ))}
+
+            {lockedArchive.map((s) => (
+              <article key={s.id} style={{ border: "1px dashed var(--bow-dark-border)", background: "transparent", borderRadius: 4, padding: "clamp(16px,2.2vw,20px)", opacity: 0.78 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "#9a9da6" }}>
+                    <span aria-hidden>🔒</span> {s.concept}
+                  </span>
+                  <DifficultyDots difficulty={s.difficulty} />
+                </div>
+                <p style={{ margin: "10px 0 0", fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.5, color: "#6d7078" }}>
+                  Locked. This scenario unlocks when it rotates in as the active scenario — answer it then to add it to your archive.
+                </p>
               </article>
             ))}
           </div>
@@ -93,14 +121,20 @@ function ActiveScenario({ scenario }: { scenario: DailyScenarioView }) {
 
   return (
     <article style={{ border: "1px solid var(--bow-dark-border)", background: "var(--bow-dark-surface)", borderTop: "4px solid var(--bow-orange)", borderRadius: 4, padding: "clamp(20px,3vw,28px)" }}>
-      <ConceptTag concept={scenario.concept} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <ConceptTag concept={scenario.concept} />
+        <DifficultyDots difficulty={scenario.difficulty} />
+      </div>
       <p style={{ margin: "14px 0 0", fontFamily: "var(--font-editorial)", fontSize: "clamp(15.5px,1.7vw,18px)", lineHeight: 1.5, color: "#d4d6db" }}>
         {scenario.scenario}
       </p>
 
       {answered ? (
         // Already answered on a prior visit — show their saved response + explanation.
-        <Reveal response={scenario.response ?? ""} explanation={scenario.explanation ?? ""} />
+        <>
+          <Reveal response={scenario.response ?? ""} explanation={scenario.explanation ?? ""} />
+          <HowOthersAnswered total={scenario.totalResponses ?? 1} excerpts={scenario.othersExcerpts ?? []} />
+        </>
       ) : revealed ? (
         // Just submitted this session.
         <Reveal response={response} explanation={revealed.explanation} />
@@ -116,6 +150,7 @@ function ActiveScenario({ scenario }: { scenario: DailyScenarioView }) {
             value={response}
             onChange={(e) => setResponse(e.target.value)}
             rows={3}
+            aria-label={`Your response to the ${scenario.concept} scenario`}
             placeholder="Write your answer here…"
             style={{ width: "100%", marginTop: 14, background: "var(--bow-ink)", border: "1px solid var(--bow-dark-border)", color: "#fff", padding: "12px 14px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14.5, lineHeight: 1.55, resize: "vertical", outline: "none" }}
           />
@@ -132,10 +167,54 @@ function ActiveScenario({ scenario }: { scenario: DailyScenarioView }) {
   );
 }
 
+/** "How others answered" — total count + up to 3 anonymized excerpts (Feature 5). */
+function HowOthersAnswered({ total, excerpts }: { total: number; excerpts: string[] }) {
+  return (
+    <div style={{ marginTop: 14, border: "1px solid var(--bow-dark-border)", borderRadius: 4, padding: "14px 16px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9a9da6" }}>How others answered</span>
+        <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "#6f8bff" }}>
+          {total} {total === 1 ? "student has" : "students have"} answered
+        </span>
+      </div>
+      {excerpts.length > 0 ? (
+        <ul style={{ margin: "10px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+          {excerpts.map((e, i) => (
+            <li key={i} style={{ fontFamily: "var(--font-editorial)", fontSize: 13.5, lineHeight: 1.5, color: "#b9bcc4", fontStyle: "italic", borderLeft: "2px solid var(--bow-dark-border)", paddingLeft: 12 }}>
+              “{e}”
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p style={{ margin: "8px 0 0", fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.5, color: "#6d7078" }}>
+          You’re one of the first to answer this one. Check back as more students weigh in.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ConceptTag({ concept }: { concept: string }) {
   return (
     <span style={{ display: "inline-block", fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "#0a0a0b", background: "var(--bow-orange)", padding: "3px 9px", borderRadius: 3 }}>
       {concept}
+    </span>
+  );
+}
+
+/** A simple 1/2/3 dot difficulty indicator with a plain-English label. */
+export function DifficultyDots({ difficulty }: { difficulty: number }) {
+  const d = Math.max(1, Math.min(3, difficulty || 1));
+  const label = d === 1 ? "Easy" : d === 2 ? "Medium" : "Hard";
+  const color = d === 1 ? "var(--bow-positive)" : d === 2 ? "var(--bow-warning)" : "var(--bow-orange)";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }} title={`Difficulty: ${label}`}>
+      <span style={{ display: "inline-flex", gap: 3 }} aria-hidden>
+        {[1, 2, 3].map((n) => (
+          <span key={n} style={{ width: 7, height: 7, borderRadius: 999, background: n <= d ? color : "var(--bow-dark-border)" }} />
+        ))}
+      </span>
+      <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color }}>{label}</span>
     </span>
   );
 }
