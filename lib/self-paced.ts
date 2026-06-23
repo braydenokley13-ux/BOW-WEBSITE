@@ -203,14 +203,12 @@ function scenarioView(s: DailyScenario, answer: ScenarioAnswer | undefined): Dai
  */
 function scenarioCommunity(scenarioId: string, excludeStudentId: string): { totalResponses: number; othersExcerpts: string[] } {
   const db = getDb();
-  /* eslint-disable @typescript-eslint/no-explicit-any */
   const { n } = db.prepare("SELECT COUNT(*) AS n FROM scenario_responses WHERE scenario_id = ?").get(scenarioId) as any;
   const rows = db
     .prepare(
       "SELECT response_text FROM scenario_responses WHERE scenario_id = ? AND student_id != ? ORDER BY submitted_at DESC LIMIT 3",
     )
     .all(scenarioId, excludeStudentId) as any[];
-  /* eslint-enable @typescript-eslint/no-explicit-any */
   const othersExcerpts = rows
     .map((r) => {
       const t = String(r.response_text ?? "").trim().replace(/\s+/g, " ");

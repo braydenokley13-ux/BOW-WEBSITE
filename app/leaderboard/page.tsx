@@ -1,21 +1,18 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/dal";
-import { getLeaderboard, getLeaderboardCohorts } from "@/lib/scoring";
+import { getLeaderboard, getLeaderboardCohorts, rangeSince, type LeaderboardRange } from "@/lib/scoring";
 import LeaderboardFilters from "@/components/leaderboard/LeaderboardFilters";
 import LeaderboardTable from "@/components/leaderboard/LeaderboardTable";
-
-const DAY = 24 * 60 * 60 * 1000;
 
 type SP = Promise<{ range?: string; cohort?: string }>;
 
 export default async function LeaderboardPage({ searchParams }: { searchParams: SP }) {
   const me = await requireUser();
   const sp = await searchParams;
-  const range = sp.range === "month" || sp.range === "week" ? sp.range : "all";
+  const range: LeaderboardRange = sp.range === "month" || sp.range === "week" ? sp.range : "all";
   const cohortId = sp.cohort ?? "";
 
-  const now = Date.now();
-  const sinceTs = range === "week" ? now - 7 * DAY : range === "month" ? now - 30 * DAY : 0;
+  const sinceTs = rangeSince(range);
 
   const board = getLeaderboard({ sinceTs, cohortId: cohortId || null });
   const cohorts = getLeaderboardCohorts();

@@ -191,6 +191,17 @@ export function getLeaderboard({ sinceTs = 0, cohortId = null }: LeaderboardOpti
   return scores;
 }
 
+export type LeaderboardRange = "all" | "month" | "week";
+
+/** The epoch-ms cutoff for a leaderboard time window (0 = all time). */
+export function rangeSince(range: LeaderboardRange): number {
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  if (range === "week") return now - 7 * DAY;
+  if (range === "month") return now - 30 * DAY;
+  return 0;
+}
+
 /** Cohorts that currently have at least one eligible student (for the filter). */
 export function getLeaderboardCohorts(): { id: string; name: string }[] {
   const rows = getDb()
