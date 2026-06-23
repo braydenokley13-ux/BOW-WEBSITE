@@ -8,6 +8,10 @@ import { DifficultyDots } from "@/components/selfpaced/DailyScenarios";
 
 interface Props {
   sections: QuizModuleSection[];
+  /** Optional header overrides so the same block can render per-track. */
+  eyebrow?: string;
+  heading?: string;
+  blurb?: string;
 }
 
 const FR_REVEAL_LABEL = "Here’s a strong answer — how did yours compare?";
@@ -19,17 +23,17 @@ const FR_REVEAL_LABEL = "Here’s a strong answer — how did yours compare?";
  * against a model answer. Once every MC question is answered, Review Mode shows
  * every question, the student's answer, the correct answer, and the explanation.
  */
-export default function EconQuiz({ sections }: Props) {
+export default function EconQuiz({ sections, eyebrow = "Econ Quiz", heading = "Test what you know.", blurb }: Props) {
   return (
     <section style={{ marginBottom: 40 }}>
       <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 8 }}>
-        Econ Quiz
+        {eyebrow}
       </span>
       <h2 style={{ margin: "0 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(24px,3.4vw,38px)", lineHeight: 0.96, letterSpacing: "-0.01em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
-        Test what you know.
+        {heading}
       </h2>
       <p style={{ margin: "0 0 18px", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 580 }}>
-        Plain-language economics — no sports needed. Finish a module to unlock its twelve questions. Multiple choice is checked for you; written answers come with a model answer to compare against.
+        {blurb ?? "Plain-language economics — no sports needed. Finish a module to unlock its twelve questions. Multiple choice is checked for you; written answers come with a model answer to compare against."}
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

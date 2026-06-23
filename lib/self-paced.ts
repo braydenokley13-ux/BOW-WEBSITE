@@ -21,6 +21,8 @@ import {
   SELF_MIN_REFLECTION_WORDS,
   SELF_PACED_COHORT_ID,
   SELF_PACED_SESSIONS,
+  TRACK_101,
+  TRACK_201,
   type SelfModule,
   type SelfModuleProgress,
   type SelfModuleView,
@@ -37,10 +39,14 @@ import {
 
 /* ---------------- modules ---------------- */
 
-/** The four self-paced modules, ordered (DB first, falling back to the seed). */
-export function getSelfModules(): SelfModule[] {
-  const rows = getDb().prepare("SELECT * FROM self_modules ORDER BY ordinal ASC").all() as any[];
-  if (rows.length === 0) return [...selfModuleSeed].sort((a, b) => a.ordinal - b.ordinal);
+/** Self-paced modules for a track, ordered (DB first, falling back to the seed). */
+export function getSelfModules(track: string = TRACK_101): SelfModule[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM self_modules WHERE COALESCE(track, '101') = ? ORDER BY ordinal ASC")
+    .all(track) as any[];
+  if (rows.length === 0) {
+    return [...selfModuleSeed].filter((m) => m.track === track).sort((a, b) => a.ordinal - b.ordinal);
+  }
   return rows.map((r) => ({
     id: r.id,
     ordinal: Number(r.ordinal),
@@ -48,7 +54,16 @@ export function getSelfModules(): SelfModule[] {
     summary: r.summary,
     concept: r.concept,
     centralQuestion: r.central_question,
+    track: r.track ?? TRACK_101,
   }));
+}
+
+/** Look up a single module's track from its id (seed first, then DB). */
+export function trackForModule(moduleId: string): string {
+  const seed = selfModuleSeed.find((m) => m.id === moduleId);
+  if (seed) return seed.track;
+  const row = getDb().prepare("SELECT track FROM self_modules WHERE id = ?").get(moduleId) as any;
+  return row?.track ?? TRACK_101;
 }
 
 /* ---------------- progress ---------------- */
@@ -70,17 +85,33 @@ export function getSelfProgressMap(studentId: string): Record<string, SelfModule
   return map;
 }
 
+/** True once the student has been issued a certificate for a track. */
+export function hasCertificate(studentId: string, track: string = TRACK_101): boolean {
+  const row = getDb()
+    .prepare("SELECT 1 FROM certificates WHERE student_id = ? AND track = ? LIMIT 1")
+    .get(studentId, track);
+  return !!row;
+}
+
 /**
- * The student's modules with the unlock rule applied. Module 1 is always open.
- * Every later module unlocks when the one before it is marked complete AND its
- * reflection clears {@link SELF_MIN_REFLECTION_WORDS} — or when an instructor
- * has manually unlocked it (the `instructor_unlocked` override).
+ * The student's modules for a track with the unlock rule applied.
+ *
+ * Track 101: Module 1 is always open. Every later module unlocks when the one
+ * before it is marked complete AND its reflection clears
+ * {@link SELF_MIN_REFLECTION_WORDS} — or when an instructor has manually
+ * unlocked it (the `instructor_unlocked` override).
+ *
+ * Track 201: the whole track stays locked until the student has earned their
+ * Track 101 certificate. Once earned, Module 201-1 opens and the same sequential
+ * rule applies.
  */
-export function getSelfModuleViews(studentId: string): SelfModuleView[] {
-  const mods = getSelfModules();
+export function getSelfModuleViews(studentId: string, track: string = TRACK_101): SelfModuleView[] {
+  const mods = getSelfModules(track);
   const prog = getSelfProgressMap(studentId);
   const views: SelfModuleView[] = [];
-  let prevGateMet = false; // module 1 ignores this (it's first)
+  // Track 201's gate is the Track 101 certificate.
+  const trackGateOpen = track === TRACK_201 ? hasCertificate(studentId, TRACK_101) : true;
+  let prevGateMet = false; // first module ignores this (it's first)
 
   mods.forEach((m, i) => {
     const p = prog[m.id];
@@ -90,12 +121,16 @@ export function getSelfModuleViews(studentId: string): SelfModuleView[] {
     const reflectionMet = reflectionWords >= SELF_MIN_REFLECTION_WORDS;
     const instructorUnlocked = !!p?.instructorUnlocked;
     const isFirst = i === 0;
-    const unlocked = isFirst || instructorUnlocked || prevGateMet;
+    const unlocked = trackGateOpen && (isFirst || instructorUnlocked || prevGateMet);
 
     let lockedReason: string | null = null;
     if (!unlocked) {
-      const prev = mods[i - 1];
-      lockedReason = `Complete “${prev.title}” and add a ${SELF_MIN_REFLECTION_WORDS}-word reflection to unlock this module.`;
+      if (!trackGateOpen) {
+        lockedReason = "Earn your Track 101 certificate to unlock Track 201.";
+      } else {
+        const prev = mods[i - 1];
+        lockedReason = `Complete “${prev.title}” and add a ${SELF_MIN_REFLECTION_WORDS}-word reflection to unlock this module.`;
+      }
     }
 
     views.push({
@@ -118,12 +153,13 @@ export function getSelfModuleViews(studentId: string): SelfModuleView[] {
 
 /** True when a specific module is currently accessible to the student. */
 export function isSelfModuleUnlocked(studentId: string, moduleId: string): boolean {
-  return getSelfModuleViews(studentId).find((v) => v.module.id === moduleId)?.unlocked ?? false;
+  const track = trackForModule(moduleId);
+  return getSelfModuleViews(studentId, track).find((v) => v.module.id === moduleId)?.unlocked ?? false;
 }
 
-/** True once the student has completed all four modules (certificate-eligible). */
-export function hasCompletedAllModules(studentId: string): boolean {
-  const views = getSelfModuleViews(studentId);
+/** True once the student has completed every module in a track (certificate-eligible). */
+export function hasCompletedAllModules(studentId: string, track: string = TRACK_101): boolean {
+  const views = getSelfModuleViews(studentId, track);
   return views.length > 0 && views.every((v) => v.completed);
 }
 
@@ -291,10 +327,12 @@ export function getScenarioHistory(studentId: string): DailyScenarioView[] {
 
 /* ---------------- Econ Quiz bank (Feature 3) ---------------- */
 
-/** All quiz questions, ordered by module then id (DB first, seed fallback). */
-export function getQuizQuestions(): QuizQuestion[] {
-  const rows = getDb().prepare("SELECT * FROM quiz_questions ORDER BY module_unlock ASC, id ASC").all() as any[];
-  if (rows.length === 0) return [...quizSeed];
+/** Quiz questions for a track, ordered by module then id (DB first, seed fallback). */
+export function getQuizQuestions(track: string = TRACK_101): QuizQuestion[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM quiz_questions WHERE COALESCE(track, '101') = ? ORDER BY module_unlock ASC, id ASC")
+    .all(track) as any[];
+  if (rows.length === 0) return quizSeed.filter((q) => (q.track ?? TRACK_101) === track);
   return rows.map((r) => ({
     id: r.id,
     moduleUnlock: Number(r.module_unlock),
@@ -307,6 +345,7 @@ export function getQuizQuestions(): QuizQuestion[] {
     correctAnswer: r.correct_answer ?? null,
     explanation: r.explanation,
     difficulty: Number(r.difficulty) || 1,
+    track: r.track ?? TRACK_101,
   }));
 }
 
@@ -380,9 +419,9 @@ function quizQuestionView(q: QuizQuestion, ans: QuizAnswer | undefined): QuizQue
  * questions to the client, so the answer keys can't be peeked. Per-section
  * trackers cover the MC score and FR completion.
  */
-export function getQuizModuleSections(studentId: string): QuizModuleSection[] {
-  const modules = getSelfModuleViews(studentId);
-  const questions = getQuizQuestions();
+export function getQuizModuleSections(studentId: string, track: string = TRACK_101): QuizModuleSection[] {
+  const modules = getSelfModuleViews(studentId, track);
+  const questions = getQuizQuestions(track);
   const answers = quizResponses(studentId);
 
   return modules.map((mv) => {

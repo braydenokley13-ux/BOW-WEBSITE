@@ -30,6 +30,8 @@ export interface User {
   lastActiveAt?: number | null;
   /** Epoch-ms timestamp the account was created (null for older seed accounts). */
   createdAt?: number | null;
+  /** True once the student finished the first-time onboarding flow (Feature 7). */
+  onboardingCompleted?: boolean;
 }
 
 export interface Organization {
@@ -484,15 +486,22 @@ export const SELF_PACED_SESSIONS = 4;
 /** Minimum words a module reflection needs to unlock the next module. */
 export const SELF_MIN_REFLECTION_WORDS = 50;
 
-/** One of the four self-paced Track 101 modules (reference data). */
+/** The self-paced track keys. Track 201 unlocks after the Track 101 certificate. */
+export const TRACK_101 = "101";
+export const TRACK_201 = "201";
+export type TrackKey = "101" | "201";
+
+/** One self-paced module (reference data). Modules belong to a track. */
 export interface SelfModule {
   id: string;
-  /** Display + unlock order, 1..4. */
+  /** Display + unlock order WITHIN the track, 1..4. */
   ordinal: number;
   title: string;
   summary: string;
   concept: string;
   centralQuestion: string;
+  /** Which track this module belongs to ("101" or "201"). */
+  track: string;
 }
 
 /**
@@ -505,6 +514,7 @@ export const selfModules: SelfModule[] = [
   {
     id: "sm-1",
     ordinal: 1,
+    track: TRACK_101,
     title: "What Is Economics?",
     summary: "Scarcity, choices, and the cost of every decision a front office makes.",
     concept: "Scarcity & Opportunity Cost",
@@ -513,6 +523,7 @@ export const selfModules: SelfModule[] = [
   {
     id: "sm-2",
     ordinal: 2,
+    track: TRACK_101,
     title: "How Markets Work",
     summary: "Why prices move, what competition does, and how supply meets demand.",
     concept: "Supply, Demand & Competition",
@@ -521,6 +532,7 @@ export const selfModules: SelfModule[] = [
   {
     id: "sm-3",
     ordinal: 3,
+    track: TRACK_101,
     title: "The Big Picture Economy",
     summary: "GDP, inflation, and the policy levers that move a whole economy.",
     concept: "Growth, Inflation & Policy",
@@ -529,10 +541,48 @@ export const selfModules: SelfModule[] = [
   {
     id: "sm-4",
     ordinal: 4,
+    track: TRACK_101,
     title: "Applied Economics",
     summary: "Putting it together — real trade-offs in the business of sport and life.",
     concept: "Decisions in the Real World",
     centralQuestion: "One budget, real trade-offs. What do you actually choose?",
+  },
+  /* ---- Track 201 — Front Office Fundamentals (Feature 1) ---- */
+  {
+    id: "sm-201-1",
+    ordinal: 1,
+    track: TRACK_201,
+    title: "The Salary Cap Machine",
+    summary: "How the cap is set, Bird Rights, the MLE and BAE, hard-cap triggers, and why contracts are built the way they are.",
+    concept: "Cap Mechanics & Exceptions",
+    centralQuestion: "If you're already over the cap, how do you still add the player you need?",
+  },
+  {
+    id: "sm-201-2",
+    ordinal: 2,
+    track: TRACK_201,
+    title: "Revenue, Rights, and Power",
+    summary: "Media rights, gate revenue, sponsorship, revenue sharing, and the economics of market size.",
+    concept: "League Revenue & Market Size",
+    centralQuestion: "Why is the national TV deal the most important event in sports?",
+  },
+  {
+    id: "sm-201-3",
+    ordinal: 3,
+    track: TRACK_201,
+    title: "The Analytics Edge",
+    summary: "Finding undervalued players, WAR, box score vs. advanced stats, and why market inefficiencies close.",
+    concept: "Analytics & Market Inefficiency",
+    centralQuestion: "How do you find $10M of value in a $5M player — before everyone else does?",
+  },
+  {
+    id: "sm-201-4",
+    ordinal: 4,
+    track: TRACK_201,
+    title: "Draft Economics and Roster Windows",
+    summary: "Rookie-deal surplus value, the draft as the cheapest path to winning, roster windows, and pick-value decay.",
+    concept: "Surplus Value & Roster Windows",
+    centralQuestion: "When do you push every chip in — and when do you trade the star?",
   },
 ];
 
@@ -891,6 +941,8 @@ export interface QuizQuestion {
   explanation: string;
   /** 1 = recall, 2 = application, 3 = analysis. */
   difficulty: number;
+  /** Which track this question belongs to ("101" or "201"). Defaults to "101". */
+  track?: string;
 }
 
 /** 48 seed questions — twelve per module (8 multiple choice + 4 free response). */
@@ -1618,6 +1670,435 @@ export const quizQuestions: QuizQuestion[] = [
     explanation:
       "A strong answer lists the costs and benefits of each option (cost-benefit analysis): the star brings star power and ticket sales but eats most of the budget; three role players add depth but no superstar. Then it names the opportunity cost: signing the star means giving up the depth, and signing the role players means giving up the star. The best GM picks the option whose benefits beat its costs by the most, knowing every dollar spent one way can't be spent the other.",
   },
+
+  /* ============================================================
+   * Track 201 — Front Office Fundamentals (Feature 1).
+   * 48 questions, twelve per module (8 MC + 4 FR), difficulty 2–3.
+   * ============================================================ */
+
+  /* ---- Module 201-1 — The Salary Cap Machine ---- */
+  {
+    id: "q-t201-m1-mc1", moduleUnlock: 1, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "The NBA salary cap is based on:",
+    choiceA: "How much the richest team earns",
+    choiceB: "A percentage of total league revenue split among all teams",
+    choiceC: "What the commissioner decides each year",
+    choiceD: "Ticket sales from the prior season",
+    correctAnswer: "B",
+    explanation: "The cap is set as a share of Basketball Related Income — the total money the league makes. When the league signs a bigger TV deal, the cap goes up for every team.",
+  },
+  {
+    id: "q-t201-m1-mc2", moduleUnlock: 1, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "Bird Rights let a team:",
+    choiceA: "Draft any player they want",
+    choiceB: "Sign their own free agent for more money than other teams can offer",
+    choiceC: "Trade without using cap space",
+    choiceD: "Avoid the luxury tax",
+    correctAnswer: "B",
+    explanation: "Bird Rights are earned after a player has been with the same team for three years. They let the team go over the cap to re-sign him. This is why superstars usually stay with the team that drafted them.",
+  },
+  {
+    id: "q-t201-m1-mc3", moduleUnlock: 1, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "A hard cap means:",
+    choiceA: "The team can spend as much as they want",
+    choiceB: "The team cannot go above a specific number under any circumstances",
+    choiceC: "Only rookies are affected",
+    choiceD: "The cap only applies in the playoffs",
+    correctAnswer: "B",
+    explanation: "Most teams have a soft cap — they can go over it by using exceptions. A hard cap is triggered by certain moves and means the team absolutely cannot exceed the threshold. No exceptions. No workarounds.",
+  },
+  {
+    id: "q-t201-m1-mc4", moduleUnlock: 1, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "The Mid-Level Exception lets teams:",
+    choiceA: "Sign a player to a max contract",
+    choiceB: "Sign a player even if they are already over the salary cap, up to a set dollar amount",
+    choiceC: "Trade a player without his consent",
+    choiceD: "Cut a player without paying them",
+    correctAnswer: "B",
+    explanation: "The MLE is one of the most important tools in roster building. It gives over-cap teams a pool of money they can use to add a player. Most role players on contenders are signed using the MLE.",
+  },
+  {
+    id: "q-t201-m1-mc5", moduleUnlock: 1, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "If a team is $20M over the luxury tax line, they pay:",
+    choiceA: "Nothing",
+    choiceB: "Exactly $20M",
+    choiceC: "A penalty amount calculated by how far over the line they are, which increases the further over they go",
+    choiceD: "A flat $5M fine",
+    correctAnswer: "C",
+    explanation: "The luxury tax is progressive — the further over the line you go, the higher the rate. The first $5M over costs one rate. The next $5M costs more. Teams deep in the tax pay dollar amounts many times their overage.",
+  },
+  {
+    id: "q-t201-m1-mc6", moduleUnlock: 1, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "Rookie contracts are valuable because:",
+    choiceA: "Rookies are always the best players",
+    choiceB: "Teams control them for four years at below-market salaries",
+    choiceC: "Rookies never get injured",
+    choiceD: "They count as exceptions",
+    correctAnswer: "B",
+    explanation: "The NBA sets rookie salaries by draft slot. A first overall pick makes around $12M — far below what a player that good would earn as a free agent. That gap between salary and value is called surplus value.",
+  },
+  {
+    id: "q-t201-m1-mc7", moduleUnlock: 1, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "The Bi-Annual Exception can be used:",
+    choiceA: "Every year",
+    choiceB: "Only every other year",
+    choiceC: "Only during the draft",
+    choiceD: "Only for international players",
+    correctAnswer: "B",
+    explanation: "Unlike the Mid-Level Exception which resets annually, the BAE can only be used once every two years. Teams have to decide whether to use it now or save it for a better opportunity next offseason.",
+  },
+  {
+    id: "q-t201-m1-mc8", moduleUnlock: 1, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "When a team signs a free agent using an exception that triggers a hard cap, what happens?",
+    choiceA: "They get extra cap room",
+    choiceB: "They cannot sign any more players for the rest of the year",
+    choiceC: "They cannot exceed a specific cap number for the rest of the season, no matter what",
+    choiceD: "The player's contract is voided",
+    correctAnswer: "C",
+    explanation: "Certain signings — like using the full MLE or signing a player via sign-and-trade — trigger a hard cap. From that moment on, the team's total payroll cannot exceed the apron. This limits roster moves for the rest of the year.",
+  },
+  {
+    id: "q-t201-m1-fr1", moduleUnlock: 1, track: TRACK_201, difficulty: 2, type: "fr",
+    question: "In your own words, explain what Bird Rights are and why a team would want them.",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "Bird Rights let a team re-sign their own player for more money than other teams are allowed to offer. Teams want them because it means they don't have to let a player they developed walk away just because another team has more cap room. It rewards loyalty and helps teams keep players long-term.",
+  },
+  {
+    id: "q-t201-m1-fr2", moduleUnlock: 1, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "Why do you think the NBA uses a soft cap instead of a hard cap for most teams? What are the pros and cons of each?",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "A soft cap lets teams keep their own players using exceptions, which helps competitive teams stay together. A hard cap gives every team a truly equal spending limit. The pros of soft cap: better teams can stay together, fans see continuity. The cons: rich teams can stack rosters by paying the luxury tax. Hard cap pros: more parity. Hard cap cons: teams might lose players they developed to cap constraints.",
+  },
+  {
+    id: "q-t201-m1-fr3", moduleUnlock: 1, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "A team has $8M in cap space and wants to sign two free agents. One costs $6M and one costs $5M. They can't afford both with cap space. Name one tool they could use to sign the second player and explain how it works.",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "They could use the Mid-Level Exception, which gives teams a pool of money to sign players even when they're over the cap. It doesn't come from cap space — it's a separate allowance. So the team signs the first player with cap space and uses the MLE to sign the second.",
+  },
+  {
+    id: "q-t201-m1-fr4", moduleUnlock: 1, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "Explain what surplus value means in the context of a rookie contract. Why does it matter for building a team?",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "Surplus value is the gap between what a player is worth on the court and what they're actually paid. Rookie contracts create huge surplus value because stars get paid at pre-set slot salaries — far below market rate. Teams that draft well get great production for cheap, which frees up cap space to sign more veterans. That's why the draft is so valuable — you're getting top talent at a discount.",
+  },
+
+  /* ---- Module 201-2 — Revenue, Rights, and Power ---- */
+  {
+    id: "q-t201-m2-mc1", moduleUnlock: 2, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "The single biggest source of NBA revenue is:",
+    choiceA: "Ticket sales",
+    choiceB: "Merchandise",
+    choiceC: "National TV and media rights deals",
+    choiceD: "Sponsorship patches on jerseys",
+    correctAnswer: "C",
+    explanation: "The NBA's national TV deal — currently with ESPN and Amazon — is worth billions per year and funds a massive share of every team's budget. When the cap goes up after a new TV deal, it's because that media money is being distributed to teams.",
+  },
+  {
+    id: "q-t201-m2-mc2", moduleUnlock: 2, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "Revenue sharing in the NBA means:",
+    choiceA: "All teams split ticket revenue evenly",
+    choiceB: "Teams in big cities give a portion of their revenue to teams in small cities",
+    choiceC: "Players share revenue with owners",
+    choiceD: "International teams get a share of US revenue",
+    correctAnswer: "B",
+    explanation: "Revenue sharing is designed to help small-market teams compete. The Lakers and Knicks generate far more local revenue than the Memphis Grizzlies. Revenue sharing redistributes some of that money so small-market teams can afford competitive rosters.",
+  },
+  {
+    id: "q-t201-m2-mc3", moduleUnlock: 2, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "A market with 10 million people versus a market with 1 million people will likely generate more:",
+    choiceA: "Draft picks",
+    choiceB: "Local media and sponsorship revenue",
+    choiceC: "Luxury tax payments",
+    choiceD: "International fans",
+    correctAnswer: "B",
+    explanation: "Local TV deals, sponsorships, and ticket prices all scale with market size. The Lakers in Los Angeles have access to vastly more local revenue than a team in a smaller city. This is why market size is one of the most important structural advantages in sports.",
+  },
+  {
+    id: "q-t201-m2-mc4", moduleUnlock: 2, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "When a player signs with a large-market team, they can sometimes earn more money because:",
+    choiceA: "Large-market teams always have more cap space",
+    choiceB: "They can negotiate bigger endorsement deals off the court",
+    choiceC: "The NBA pays them a bonus",
+    choiceD: "Small-market teams have salary restrictions",
+    correctAnswer: "B",
+    explanation: "On-court salary is set by the CBA. But off-court income — Nike deals, commercials, social media partnerships — scales with market size and media exposure. A star in New York or LA gets far more endorsement opportunities than the same player in a smaller market.",
+  },
+  {
+    id: "q-t201-m2-mc5", moduleUnlock: 2, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "Gate revenue refers to:",
+    choiceA: "Revenue from streaming",
+    choiceB: "Money from ticket sales at games",
+    choiceC: "Revenue from the front gate of team headquarters",
+    choiceD: "International licensing fees",
+    correctAnswer: "B",
+    explanation: "Gate revenue is what teams earn from selling tickets and suite packages at their arena. It varies hugely by team — teams in expensive cities with sellout crowds earn far more gate revenue than teams with lower attendance or cheaper ticket prices.",
+  },
+  {
+    id: "q-t201-m2-mc6", moduleUnlock: 2, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "If a league signs a new TV deal worth 50% more than the old one, what most likely happens to the salary cap?",
+    choiceA: "It stays the same",
+    choiceB: "It decreases",
+    choiceC: "It increases significantly",
+    choiceD: "Only playoff teams benefit",
+    correctAnswer: "C",
+    explanation: "The cap is calculated as a percentage of Basketball Related Income. A bigger TV deal means more BRI, which means a higher cap. This is why front offices track media deal negotiations — a new deal can change team-building strategy for a decade.",
+  },
+  {
+    id: "q-t201-m2-mc7", moduleUnlock: 2, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "Naming rights for an arena (like Barclays Center or Chase Center) are a form of:",
+    choiceA: "Gate revenue",
+    choiceB: "Media revenue",
+    choiceC: "Sponsorship revenue",
+    choiceD: "Revenue sharing",
+    correctAnswer: "C",
+    explanation: "Companies pay tens of millions of dollars for the right to put their name on an arena. It's one of the most reliable sponsorship revenue streams teams have. For some teams, the naming rights deal alone covers a significant portion of player salaries.",
+  },
+  {
+    id: "q-t201-m2-mc8", moduleUnlock: 2, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "Small-market teams are at a structural disadvantage because:",
+    choiceA: "They are not allowed to sign star players",
+    choiceB: "They generate less local revenue, making it harder to spend on everything from scouting to facilities",
+    choiceC: "The NBA gives large-market teams more cap space",
+    choiceD: "Small-market fans don't watch basketball",
+    correctAnswer: "B",
+    explanation: "The structural disadvantage isn't about rules — it's about economics. Less local TV revenue, lower ticket prices, fewer sponsors. Revenue sharing helps, but it doesn't fully close the gap. Small-market teams compensate by drafting better and developing players more efficiently.",
+  },
+  {
+    id: "q-t201-m2-fr1", moduleUnlock: 2, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "Why is the national TV deal the most important financial event in professional sports? Explain using what you know about how the salary cap works.",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "The salary cap is calculated from league revenue. The national TV deal is the biggest single source of league revenue. When a new TV deal is signed, league revenue jumps, which raises the cap for every team. A bigger cap means teams can spend more on players. The 2016 cap spike — when the NBA's TV deal with ESPN/TNT kicked in — added over $20M to the cap overnight and reshaped the entire free agent market.",
+  },
+  {
+    id: "q-t201-m2-fr2", moduleUnlock: 2, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "A team in a city of 500,000 people is competing against a team in a city of 8 million people. What economic advantages does the larger-market team have, and what can the small-market team do to compete?",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "The large-market team generates more local TV revenue, commands higher sponsorship deals, sells more merchandise locally, and attracts more endorsement interest for its players. The small-market team can compete by being smarter in the draft, developing players better, using analytics to find undervalued talent, and building a culture that retains players who might otherwise leave for bigger markets. Small-market champions — San Antonio, Oklahoma City — usually succeed through player development and front-office excellence, not spending power.",
+  },
+  {
+    id: "q-t201-m2-fr3", moduleUnlock: 2, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "What is revenue sharing and why is it controversial? Make an argument for why it helps the league, then make an argument for why some teams think it's unfair.",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "Revenue sharing redistributes money from high-revenue teams to low-revenue teams. For the league: it keeps small-market teams financially healthy, prevents the league from becoming a two-team show, and maintains fan interest across all 30 cities. Against it: large-market teams argue they earned their revenue through smart management and strong markets — it's not fair to penalize success. Some owners see it as subsidizing poorly-run franchises. Both sides have real points.",
+  },
+  {
+    id: "q-t201-m2-fr4", moduleUnlock: 2, track: TRACK_201, difficulty: 2, type: "fr",
+    question: "You are the GM of a small-market team. Your star player is a free agent and wants to sign with a large-market team for the same money you're offering. What non-financial arguments do you make to keep him?",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "I'd argue he's the face of the franchise — in a small market he's the biggest star, not one of several. He'll get more touches, more shots, and more chances to showcase his individual game. I'd point to the team's trajectory, the talent we're building around him, and the culture we've developed. I'd also emphasize that in a small market, he becomes a civic legend — something that's harder to achieve when sharing the spotlight in a massive city.",
+  },
+
+  /* ---- Module 201-3 — The Analytics Edge ---- */
+  {
+    id: "q-t201-m3-mc1", moduleUnlock: 3, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "Wins Above Replacement (WAR) measures:",
+    choiceA: "How many games a team wins",
+    choiceB: "How much better a player is than a freely available replacement-level player, measured in wins",
+    choiceC: "How many points a player scores",
+    choiceD: "A player's shooting percentage",
+    correctAnswer: "B",
+    explanation: "WAR answers the question: how many wins does this player add compared to the average player you could find for minimum salary? A player with a WAR of 5 adds 5 wins to their team compared to playing a replacement-level player in their spot.",
+  },
+  {
+    id: "q-t201-m3-mc2", moduleUnlock: 3, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "Market inefficiency in sports means:",
+    choiceA: "Teams spend too much money",
+    choiceB: "Some players are priced below their actual value because the market hasn't recognized their contribution yet",
+    choiceC: "Small-market teams can't afford good players",
+    choiceD: "Analytics don't work",
+    correctAnswer: "B",
+    explanation: "When the market doesn't fully understand a skill, players with that skill get underpaid. The Moneyball Oakland A's found that on-base percentage was undervalued — hitters who got on base a lot weren't being paid for it. They signed those players cheap and competed with a fraction of the Yankees' budget.",
+  },
+  {
+    id: "q-t201-m3-mc3", moduleUnlock: 3, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "Why do market inefficiencies eventually disappear?",
+    choiceA: "The players retire",
+    choiceB: "Once enough teams start valuing the same thing, the price for it goes up",
+    choiceC: "The NBA changes the rules",
+    choiceD: "Analytics become illegal",
+    correctAnswer: "B",
+    explanation: "When Oakland started winning with OBP-heavy lineups, other teams noticed. They started bidding for the same players. Supply stayed the same but demand went up — prices rose. The inefficiency closed. The front offices that move first capture the value. The ones that follow pay full price.",
+  },
+  {
+    id: "q-t201-m3-mc4", moduleUnlock: 3, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "A player averages 8 points, 3 rebounds, and 2 assists per game. By traditional stats, he looks mediocre. Advanced stats show he has a top-5 defensive rating in the league. This player is most likely:",
+    choiceA: "Overpaid",
+    choiceB: "Paid correctly",
+    choiceC: "Undervalued because defense doesn't show up in the box score",
+    choiceD: "Not worth signing",
+    correctAnswer: "C",
+    explanation: "Box score stats capture offense easily but miss most defensive value. Players who defend, screen, move without the ball, and make their teammates better rarely show up well in simple stats. Advanced metrics try to capture this hidden value — which is why defensive specialists are often underpaid.",
+  },
+  {
+    id: "q-t201-m3-mc5", moduleUnlock: 3, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "Which of these is an advanced statistic?",
+    choiceA: "Points per game",
+    choiceB: "Field goal percentage",
+    choiceC: "Player Efficiency Rating (PER)",
+    choiceD: "Assists per game",
+    correctAnswer: "C",
+    explanation: "PER attempts to summarize a player's total per-minute productivity into one number, accounting for positive contributions (points, rebounds, assists, steals, blocks) and negative ones (missed shots, turnovers). Unlike raw counting stats, it adjusts for pace and playing time.",
+  },
+  {
+    id: "q-t201-m3-mc6", moduleUnlock: 3, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "A team uses analytics to find that corner three-pointers are the highest-value shot in basketball. They build their offense around corner threes. Three years later, every team in the league is also running corner-three heavy offenses. What happened to the advantage?",
+    choiceA: "It grew stronger",
+    choiceB: "It disappeared because everyone now values and defends corner threes",
+    choiceC: "It became illegal",
+    choiceD: "Only that team can keep using it",
+    correctAnswer: "B",
+    explanation: "This is how sports analytics cycles work. Someone finds an edge, exploits it, wins. Others copy it. The edge disappears. The teams that win long-term are the ones that keep finding the next thing — not the ones defending last year's innovation.",
+  },
+  {
+    id: "q-t201-m3-mc7", moduleUnlock: 3, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "In the NFL, why did the Moneyball approach take longer to catch on than in baseball?",
+    choiceA: "NFL players are smarter",
+    choiceB: "Football has more variables and randomness, making statistical isolation harder",
+    choiceC: "The NFL banned analytics",
+    choiceD: "Baseball is more popular",
+    correctAnswer: "B",
+    explanation: "Baseball is beautifully isolated — a pitcher faces a batter, the result is measurable. Football has 22 players moving simultaneously. Isolating one player's contribution is much harder. That's why NFL analytics lagged baseball by a decade, and why football still has more disagreement about metrics than baseball does.",
+  },
+  {
+    id: "q-t201-m3-mc8", moduleUnlock: 3, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "A team signs a player based on advanced metrics that suggest he's undervalued. He performs well. The next offseason, three other teams bid on him using the same data. His salary doubles. What does this illustrate?",
+    choiceA: "Players always deserve more money",
+    choiceB: "Analytics created a market correction that closed the inefficiency",
+    choiceC: "The team made a mistake",
+    choiceD: "Advanced stats are unreliable",
+    correctAnswer: "B",
+    explanation: "This is the full analytics cycle: find inefficiency, exploit it cheaply, win, watch the market correct, pay more next time. The advantage is in being early — which requires having better data or better interpretation than your competitors.",
+  },
+  {
+    id: "q-t201-m3-fr1", moduleUnlock: 3, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "Explain what a market inefficiency is and give a real example from sports history where a team exploited one.",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "A market inefficiency is when the market is systematically mispricing something — undervaluing a skill or player type because it doesn't understand them yet. The classic example is the 2002 Oakland A's. They found that on-base percentage was being ignored by most teams, who were still judging hitters mostly by batting average and RBI. Oakland signed players with high OBP at a discount, built one of the most efficient offenses in baseball, and won 103 games with the third-lowest payroll in the league.",
+  },
+  {
+    id: "q-t201-m3-fr2", moduleUnlock: 3, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "Why is defensive value harder to measure than offensive value in basketball? What does this mean for how teams should think about building a roster?",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "Offense is easy to count — you can track who scores, who passes, who shoots. Defense happens in movement, positioning, communication, and deterrence — things that don't show up in a box score. A defender who makes a star take a bad shot didn't get a stat for that. Teams that understand defensive value can sign elite defenders at below-market rates because most teams don't know how to measure them. Building a roster means combining scorers everyone can see with defenders only smart front offices can find.",
+  },
+  {
+    id: "q-t201-m3-fr3", moduleUnlock: 3, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "If every team starts using the same analytics system, does analytics still give anyone an advantage? Explain your answer.",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "No — or at least, not the same advantage. When everyone uses the same data the same way, prices adjust and the edge disappears. The advantage moves to whoever interprets the data better, finds data others don't have, or asks questions the standard tools don't answer yet. Long-term, the analytical edge is less about the tool and more about the quality of the thinking — which is why the best front offices hire curious people who challenge their own models.",
+  },
+  {
+    id: "q-t201-m3-fr4", moduleUnlock: 3, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "You're the GM of a team with a small budget. How would you use analytics to compete with teams that have twice your payroll?",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "I'd start by identifying skills the market is currently undervaluing — the same way Oakland found OBP. Right now, that might be defensive versatility, specific shooting patterns, or off-ball movement. I'd build a scouting system that measures those things before other teams do. I'd also target players coming off injuries or down years, whose market value is temporarily low but whose underlying metrics are still strong. The goal is to find $10M value in $5M players — every time. That's the only sustainable path to competing without spending power.",
+  },
+
+  /* ---- Module 201-4 — Draft Economics and Roster Windows ---- */
+  {
+    id: "q-t201-m4-mc1", moduleUnlock: 4, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "A rookie on a first-round contract who performs like an All-Star is valuable primarily because:",
+    choiceA: "Rookies are always better than veterans",
+    choiceB: "They are paid far below their market value, freeing up cap space for other players",
+    choiceC: "They get extra playing time",
+    choiceD: "The NBA gives rookie teams bonus cap space",
+    correctAnswer: "B",
+    explanation: "A rookie playing at All-Star level might be worth $35M per year on the open market but is paid $10M on their rookie deal. That $25M gap is surplus value. The team gets $35M of performance for $10M and can use the remaining cap space to build around them.",
+  },
+  {
+    id: "q-t201-m4-mc2", moduleUnlock: 4, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "Roster window theory says teams should go all-in and win now when:",
+    choiceA: "They have young players with rookie deals and are close to championship contention",
+    choiceB: "They just lost their best player",
+    choiceC: "The salary cap goes down",
+    choiceD: "They have too many draft picks",
+    correctAnswer: "A",
+    explanation: "The window is when a star is on a cheap deal and the team is good enough to compete. Stars on max contracts don't have surplus value — you're paying market rate. The window is the cheap years. Teams that don't push during the window often watch the star leave in free agency having won nothing.",
+  },
+  {
+    id: "q-t201-m4-mc3", moduleUnlock: 4, track: TRACK_201, difficulty: 2, type: "mc",
+    question: "Earlier draft picks are generally more valuable than later picks because:",
+    choiceA: "Earlier picks are always better players",
+    choiceB: "The probability of drafting a franchise-altering player is much higher at the top of the draft",
+    choiceC: "Later picks cost more money",
+    choiceD: "Teams can trade earlier picks for cash",
+    correctAnswer: "B",
+    explanation: "Pick value follows a steep curve. The top five picks have produced the vast majority of franchise players in NBA history. By pick 20, the probability of hitting on a star drops significantly. This is why teams trade multiple late picks for one high pick — the expected value math supports it.",
+  },
+  {
+    id: "q-t201-m4-mc4", moduleUnlock: 4, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "A team trades away a first-round pick that turns out to be the second overall pick. They gave up a potential franchise player. This is an example of:",
+    choiceA: "Smart trading",
+    choiceB: "The risk of trading picks — you don't know where they'll land when you trade them",
+    choiceC: "A good deal",
+    choiceD: "Revenue sharing",
+    correctAnswer: "B",
+    explanation: "Pick value is uncertain at the time of the trade. A pick from a team you expect to be bad might land at 5 if that team improves, or at 1 if everything goes wrong. This is why pick protections exist — teams add conditions like 'top-5 protected' to limit their downside risk.",
+  },
+  {
+    id: "q-t201-m4-mc5", moduleUnlock: 4, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "A team is rebuilding and accumulates six first-round picks over the next three years. The risk of having too many picks is:",
+    choiceA: "There is no risk",
+    choiceB: "You can only play five players — having six lottery picks means some won't get enough development time or might be traded at low value",
+    choiceC: "Picks expire",
+    choiceD: "Other teams won't trade with you",
+    correctAnswer: "B",
+    explanation: "You can only have one star — teams that accumulate many picks often find they have more talent than they can develop. The smart move is to identify the best two or three prospects and trade the rest at peak value for veterans who can accelerate the rebuild.",
+  },
+  {
+    id: "q-t201-m4-mc6", moduleUnlock: 4, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "What is a 'pick swap' in NBA trades?",
+    choiceA: "Two teams trade equal picks",
+    choiceB: "One team has the right to swap their first-round pick for another team's pick if the other team's pick is better",
+    choiceC: "Teams swap their entire draft boards",
+    choiceD: "A type of cap exception",
+    correctAnswer: "B",
+    explanation: "Pick swaps are a way to trade future pick value without giving away a pick outright. If Team A has the right to swap with Team B in 2027, they'll take whichever pick is better that year. If Team A finishes with a worse record, they take Team B's pick. If Team A is better, they keep their own. It transfers value with less risk.",
+  },
+  {
+    id: "q-t201-m4-mc7", moduleUnlock: 4, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "A team's star player has two years left on his contract. The team is mediocre (35-47). What should the GM prioritize?",
+    choiceA: "Re-signing him to a max extension immediately",
+    choiceB: "Going all-in on a trade for veteran help to maximize the remaining window",
+    choiceC: "Trading the star while his value is still high and starting a rebuild",
+    choiceD: "There is no right answer — any of these could be correct depending on the full picture",
+    correctAnswer: "D",
+    explanation: "This is a real GM decision with no single right answer. It depends on how good the star is, whether the team can realistically contend in two years, what offers exist for the star, and ownership's willingness to spend. The best answer is the one backed by the most rigorous analysis — which is exactly what front offices do.",
+  },
+  {
+    id: "q-t201-m4-mc8", moduleUnlock: 4, track: TRACK_201, difficulty: 3, type: "mc",
+    question: "Why do teams that rebuild through the draft tend to have longer windows of contention than teams that buy veterans in free agency?",
+    choiceA: "Draft picks are always better than free agents",
+    choiceB: "Rookie contracts provide surplus value for four years, giving teams cost-controlled talent while they build around it",
+    choiceC: "Veterans decline faster",
+    choiceD: "Free agents don't try as hard",
+    correctAnswer: "B",
+    explanation: "Four years of below-market talent is four years of cap space to add pieces. Teams built around drafted stars — Golden State with Curry/Thompson/Green, San Antonio with Duncan/Parker/Ginobili — contend for a decade because the core stays cheap long enough to build depth. Teams that buy veterans in free agency pay market rate, get less surplus, and have smaller windows.",
+  },
+  {
+    id: "q-t201-m4-fr1", moduleUnlock: 4, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "Explain what surplus value is and why rookie contracts create it. Give a specific hypothetical example with numbers.",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "Surplus value is the gap between a player's market value and their actual salary. Rookie contracts create it because the NBA sets rookie salaries by draft slot, not by how good the player turns out to be. Example: if you draft a player at pick 10, his rookie salary might be $6M per year. If he develops into a player worth $25M per year on the open market, you're getting $25M of value for $6M — that's $19M in surplus value per year. That extra cap space lets you sign other good players, which is how teams with one great draft pick build contenders.",
+  },
+  {
+    id: "q-t201-m4-fr2", moduleUnlock: 4, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "What is a roster window and why does timing matter so much? Use a real NBA team as an example.",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "A roster window is the period when a team's best players are in their prime and on contracts that allow the team to spend on supporting pieces. Timing matters because windows close — players age, contracts expire, injuries happen. The Golden State Warriors' window was roughly 2015-2019 when Curry, Thompson, and Green were all on reasonable contracts and in their prime. The Dubs pushed hard during that window and won four championships. Teams that don't recognize their window — or that wait too long — often watch their core break up without winning anything.",
+  },
+  {
+    id: "q-t201-m4-fr3", moduleUnlock: 4, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "A team offers you two trade packages for your expiring superstar: Package A is three future first-round picks. Package B is one top-five protected pick this year and one established young star on a rookie deal. Which do you take and why? Walk through the trade-offs.",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "I'd lean toward Package B. Three future firsts sounds like more, but picks are uncertain — they could land anywhere from 1 to 30. One guaranteed top-five pick is rare and high-value. Adding an established young star on a rookie deal gives me a player I know is good plus surplus value to build around. Package A gives me more shots at a star but more variance. The decision depends on how desperate I am to rebuild quickly vs. how comfortable I am with uncertainty. If I have patience, Package A. If I need a foundation fast, Package B.",
+  },
+  {
+    id: "q-t201-m4-fr4", moduleUnlock: 4, track: TRACK_201, difficulty: 3, type: "fr",
+    question: "Explain the concept of pick value decay. Why is a pick four years from now worth less than a pick next year, even if both will land in the same draft range?",
+    choiceA: null, choiceB: null, choiceC: null, choiceD: null, correctAnswer: null,
+    explanation: "Pick value decays over time for two reasons. First, uncertainty — the further out a pick is, the less you know where it will land. A team that looks bad today might be good in four years, turning a lottery pick into a late first. Second, time value — a pick you can use next year adds a player to your roster immediately. A pick four years away means four more years of the roster you already have. Front offices discount future picks heavily. That's why teams often trade two or three future picks for one present pick — the math actually works out when you account for decay and uncertainty.",
+  },
 ];
 
 /** A quiz question as the dashboard renders it. Answer keys present only when answered. */
@@ -1661,3 +2142,208 @@ export interface QuizModuleSection {
   /** True once every MC question in the module has been answered (enables Review Mode). */
   mcAllAnswered: boolean;
 }
+
+/* ============================================================
+ * Discussion Board (Feature 3).
+ *
+ * Three channels students can post in. Posts, replies, and reactions
+ * persist in the discussion_* tables; six starter posts seed on first
+ * boot so the board isn't empty at launch. Pure content + types only.
+ * ============================================================ */
+
+export type DiscussionChannel = "gm_decisions" | "econ_wild" | "track_talk";
+export type ReactionType = "fire" | "agree" | "big_brain";
+
+/** Channel metadata for tabs, tags, and headers. */
+export const DISCUSSION_CHANNELS: { key: DiscussionChannel; label: string; blurb: string }[] = [
+  { key: "gm_decisions", label: "GM Decisions", blurb: "Debate real NBA / NFL / MLB front office moves." },
+  { key: "econ_wild", label: "Econ in the Wild", blurb: "Spot economics concepts happening in real sports news." },
+  { key: "track_talk", label: "Track Talk", blurb: "Questions about course content — help from peers." },
+];
+
+/** Reaction metadata (emoji + label). One reaction per user per post per type. */
+export const REACTION_TYPES: { key: ReactionType; emoji: string; label: string }[] = [
+  { key: "fire", emoji: "🔥", label: "Fire" },
+  { key: "agree", emoji: "💯", label: "Agree" },
+  { key: "big_brain", emoji: "🧠", label: "Big Brain" },
+];
+
+export const isDiscussionChannel = (v: string): v is DiscussionChannel =>
+  v === "gm_decisions" || v === "econ_wild" || v === "track_talk";
+export const isReactionType = (v: string): v is ReactionType =>
+  v === "fire" || v === "agree" || v === "big_brain";
+export const channelLabel = (key: string): string =>
+  DISCUSSION_CHANNELS.find((c) => c.key === key)?.label ?? "Discussion";
+
+/** A seed discussion post (authored by a demo student on first boot). */
+export interface DiscussionSeedPost {
+  id: string;
+  userId: string;
+  channel: DiscussionChannel;
+  title: string;
+  body: string;
+  pinned?: boolean;
+  /** Hours before "now" the post was created (for realistic ordering). */
+  agoHours: number;
+}
+
+/** Six starter posts so the board feels alive at launch. */
+export const discussionSeedPosts: DiscussionSeedPost[] = [
+  {
+    id: "dp-seed-1", userId: "u-self1", channel: "gm_decisions", agoHours: 22, pinned: true,
+    title: "Why did the Lakers give LeBron that extension when they're so far over the tax?",
+    body: "They're already deep in the luxury tax and the bill is brutal at that level. But he's still a top-tier player and they have his Bird Rights, so they can pay him more than anyone else. Is keeping the star worth the repeating tax penalty, or is there a point where you let him walk and reset the books? Curious what people think the actual breakeven is.",
+  },
+  {
+    id: "dp-seed-2", userId: "u-self2", channel: "gm_decisions", agoHours: 30,
+    title: "Small-market teams should NEVER trade their first-round picks. Change my mind.",
+    body: "Rookie deals are the only way a small market keeps surplus value on the books. The second you trade picks you're betting you can win NOW, and most small markets can't out-spend anybody. Feels like trading picks is a big-market luxury. Am I wrong?",
+  },
+  {
+    id: "dp-seed-3", userId: "u-self3", channel: "track_talk", agoHours: 50,
+    title: "The NFL Draft is the best example of surplus value I've ever seen — prove me wrong",
+    body: "A first-round QB on a rookie deal is worth like four times what he's paid. That's why teams with a cheap young QB go all-in — the surplus is enormous. Once he gets paid, the window basically closes. Is there a cleaner real-world example of surplus value than a rookie-deal QB?",
+  },
+  {
+    id: "dp-seed-4", userId: "u-self1", channel: "econ_wild", agoHours: 8,
+    title: "Ticket prices for the rivalry game doubled — textbook supply and demand",
+    body: "Same arena, same number of seats, way more people who want in. Price shot up. My BOW Daily brain immediately went 'fixed supply + spike in demand = higher price.' Spotted economics in the wild. Anyone else catch concepts from the modules out there in real life?",
+  },
+  {
+    id: "dp-seed-5", userId: "u-self2", channel: "econ_wild", agoHours: 74,
+    title: "A new arena naming-rights deal just dropped — that's sponsorship revenue at scale",
+    body: "Saw a company pay a fortune to put their name on an arena for years. That's not gate revenue or media money — it's pure sponsorship. Module 201-2 said naming rights can cover a chunk of player salaries by themselves. Wild that a logo on a building helps fund the roster.",
+  },
+  {
+    id: "dp-seed-6", userId: "u-self3", channel: "track_talk", agoHours: 96,
+    title: "Still a little fuzzy on the Mid-Level Exception — can someone explain it simply?",
+    body: "I get that it lets you sign someone when you're over the cap, but where does the money 'come from' if you don't have cap space? Trying to wrap my head around it before the Module 201-1 quiz. Appreciate any plain-language help!",
+  },
+];
+
+/* ============================================================
+ * Weekly Challenge (Feature 4).
+ *
+ * One harder, multi-part challenge per week, combining concepts across
+ * both tracks. Eight are seeded so the first two months are populated.
+ * Pure content + types only — the live week + completions live in the DB.
+ * ============================================================ */
+
+export interface WeeklyChallengeSeed {
+  id: string;
+  ordinal: number;
+  title: string;
+  prompt: string;
+}
+
+export const weeklyChallengeSeed: WeeklyChallengeSeed[] = [
+  {
+    id: "wc-1", ordinal: 1, title: "The Trade Deadline",
+    prompt: "The Knicks are 38-30, 4th in the East, $6M under the luxury tax line. Their starting center just tore his ACL. A rebuilding team is offering him for three future firsts and a young wing on a rookie deal. Walk through: (1) whether the Knicks should make the trade, (2) what cap implications arise, (3) what the opportunity cost of the three picks is, and (4) what you would do as GM and why.",
+  },
+  {
+    id: "wc-2", ordinal: 2, title: "Build a Winner on a Budget",
+    prompt: "You are the GM of a small-market team with $8M in cap space and the 8th pick in the upcoming draft. Design your offseason strategy using at least three of the following tools: the MLE, Bird Rights, a sign-and-trade, surplus value from rookie contracts, or analytics-driven free agent targeting. Explain each tool you use and why.",
+  },
+  {
+    id: "wc-3", ordinal: 3, title: "The Media Rights Negotiation",
+    prompt: "Your league's TV deal expires in two years. Three networks are bidding: Network A offers $4B/year for 8 years. Network B offers $5B/year for 5 years. Network C offers $3.5B/year for 10 years. Calculate the total value of each deal. Then explain which you'd sign and why, considering factors beyond just total dollars.",
+  },
+  {
+    id: "wc-4", ordinal: 4, title: "The Rebuild vs. Retool Decision",
+    prompt: "Your franchise star is 31, on a three-year max contract, and your team went 44-38 last season — a first-round playoff exit. You can: (A) retool by trading for a second star (costs two future firsts plus a rotation player), (B) rebuild by trading your star for young players and picks, or (C) stay the course and add role players. Use roster window theory and surplus value concepts to argue for one path.",
+  },
+  {
+    id: "wc-5", ordinal: 5, title: "Market Inefficiency Hunt",
+    prompt: "Based on what you know about analytics and market inefficiencies: what skill or player type do you think is currently undervalued by NBA teams? Explain what the data would look like if you were right, and how you would find players with that skill at below-market value.",
+  },
+  {
+    id: "wc-6", ordinal: 6, title: "The Luxury Tax Math",
+    prompt: "A team has a payroll of $180M. The luxury tax line is $165M. The first tax bracket charges $1.50 for every $1 over up to $5M over. The second bracket charges $1.75 for every $1 from $5M to $10M over. The third bracket charges $2.50 for everything above $10M over. Calculate the team's total luxury tax bill and explain why the progressive structure discourages teams from going deep into the tax.",
+  },
+  {
+    id: "wc-7", ordinal: 7, title: "The Draft Pick Trade",
+    prompt: "Team A offers Team B: their 2026 first-round pick (projected 18-22) plus a young player on a rookie deal (2 years left, $4M/year, plays like a $10M player). Team B would give up their starting small forward (28 years old, $20M/year, two years left). Analyze this trade from both perspectives. Who wins and why? Use surplus value, pick value, and roster window theory in your answer.",
+  },
+  {
+    id: "wc-8", ordinal: 8, title: "Design Your Front Office",
+    prompt: "If you were building an NBA front office from scratch, what three roles would you hire first (beyond GM and coach)? What skills would you look for in each? How would you use analytics, scouting, and economics to build a decision-making process that finds edges other teams miss?",
+  },
+];
+
+/* ============================================================
+ * Partner / School landing pages (Feature 5).
+ *
+ * Public, custom-branded outreach pages. Three seed partners ship so
+ * BOW can demo the system. Pure content + types only.
+ * ============================================================ */
+
+export type PartnerOrgType = "school" | "jcc" | "youth_org" | "league";
+
+export const PARTNER_ORG_TYPES: { key: PartnerOrgType; label: string }[] = [
+  { key: "school", label: "School" },
+  { key: "jcc", label: "JCC" },
+  { key: "youth_org", label: "Youth Organization" },
+  { key: "league", label: "League" },
+];
+
+export const isPartnerOrgType = (v: string): v is PartnerOrgType =>
+  v === "school" || v === "jcc" || v === "youth_org" || v === "league";
+export const partnerTypeLabel = (key: string): string =>
+  PARTNER_ORG_TYPES.find((t) => t.key === key)?.label ?? "Organization";
+
+export interface PartnerOrgSeed {
+  id: string;
+  name: string;
+  slug: string;
+  orgType: PartnerOrgType;
+  contactName: string;
+  contactEmail: string;
+  customHeadline: string;
+  customBody: string;
+}
+
+export const partnerOrgSeed: PartnerOrgSeed[] = [
+  {
+    id: "po-frisch", name: "The Frisch School", slug: "frisch", orgType: "school",
+    contactName: "Athletics & Electives Office", contactEmail: "partnerships@frisch.org",
+    customHeadline: "Frisch students, meet the front office.",
+    customBody: "Bring BOW Sports Capital to The Frisch School — a sports-business curriculum that teaches real economics, finance, and decision-making through the lens students already love. Self-paced, classroom-ready, and built to run alongside your existing electives and athletics program.",
+  },
+  {
+    id: "po-jcc", name: "JCC Demo Partner", slug: "jcc-demo", orgType: "jcc",
+    contactName: "Youth & Teen Programs", contactEmail: "programs@jccdemo.org",
+    customHeadline: "A teen program they'll actually show up for.",
+    customBody: "BOW Sports Capital gives your JCC's teen and youth programs a turnkey way to teach economics and leadership through sports. Run it as an after-school block, a summer camp track, or a drop-in program — the platform handles the curriculum, the simulations, and the progress tracking.",
+  },
+  {
+    id: "po-bow", name: "General Demo", slug: "bow-demo", orgType: "youth_org",
+    contactName: "BOW Partnerships", contactEmail: "hello@bowsportscapital.com",
+    customHeadline: "The front office for the next generation.",
+    customBody: "This is a live demo of a BOW Sports Capital partner page. Every organization we work with gets a custom-branded page like this one — built to show your students, families, and staff exactly what BOW offers and how to get started.",
+  },
+];
+
+/** The six press outlets shown in the partner-page coverage strip. */
+export const PRESS_OUTLETS: string[] = [
+  "The Ringer",
+  "ESPN",
+  "Sports Business Journal",
+  "Front Office Sports",
+  "The Athletic",
+  "Bleacher Report",
+];
+
+/** What partner students and instructors get (shown on every partner page). */
+export const PARTNER_STUDENT_BULLETS: string[] = [
+  "A self-paced curriculum — two full tracks of sports-business economics, unlocked one decision at a time.",
+  "The Simulation Room — turn-based front-office games where every choice teaches an economic concept.",
+  "The Econ Quiz — plain-language questions that build real financial literacy, module by module.",
+  "A certificate of completion — a shareable, verifiable credential for each track they finish.",
+];
+
+export const PARTNER_INSTRUCTOR_BULLETS: string[] = [
+  "Roster management — invite students, track enrollment, and manage cohorts in one place.",
+  "Class analytics — see module progress, quiz scores, and engagement across the whole group.",
+  "Session tools — attendance, per-student notes, and manual module unlocks when you need them.",
+];

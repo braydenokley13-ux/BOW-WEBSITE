@@ -94,7 +94,7 @@ export async function joinSelfPaced(_prev: AuthState, formData: FormData): Promi
   ).run(userId, SELF_PACED_COHORT_ID);
 
   await createSession(userId);
-  redirect("/dashboard");
+  redirect("/onboarding");
 }
 
 /* ---------------- Sign out ---------------- */

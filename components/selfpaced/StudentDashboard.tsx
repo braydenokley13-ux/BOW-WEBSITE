@@ -10,52 +10,84 @@ import {
   type QuizModuleSection,
   type SelfModuleView,
 } from "@/lib/account";
+import type { WeeklyChallengeView } from "@/lib/weekly";
+import type { NotificationView } from "@/lib/notifications";
 import { markSelfModuleComplete, saveSelfReflection, generateCertificate } from "@/app/actions/lms";
 import EconQuiz from "@/components/selfpaced/EconQuiz";
 import DailyScenarios from "@/components/selfpaced/DailyScenarios";
+import WeeklyChallenge from "@/components/selfpaced/WeeklyChallenge";
+import NotificationBell from "@/components/selfpaced/NotificationBell";
+
+export interface TrackData {
+  modules: SelfModuleView[];
+  quizSections: QuizModuleSection[];
+  certificateEarned: boolean;
+}
 
 interface Props {
   firstName: string;
-  modules: SelfModuleView[];
-  /** Quiz sections, one per module (Feature 3). */
-  quizSections: QuizModuleSection[];
-  /** This week's active BOW Daily scenario (Feature 2). */
+  track101: TrackData;
+  track201: TrackData;
   activeScenario: DailyScenarioView | null;
-  /** Every other scenario: answered (full) or locked (Feature 5 archive). */
   scenarioArchive: DailyScenarioView[];
+  weeklyCurrent: WeeklyChallengeView | null;
+  weeklyPast: WeeklyChallengeView[];
+  notifications: NotificationView[];
+  unreadCount: number;
 }
 
-export default function StudentDashboard({ firstName, modules, quizSections, activeScenario, scenarioArchive }: Props) {
+export default function StudentDashboard({
+  firstName,
+  track101,
+  track201,
+  activeScenario,
+  scenarioArchive,
+  weeklyCurrent,
+  weeklyPast,
+  notifications,
+  unreadCount,
+}: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
-  const completedCount = modules.filter((m) => m.completed).length;
-  const total = modules.length;
-  const pct = total ? Math.round((completedCount / total) * 100) : 0;
-  const allDone = total > 0 && completedCount === total;
-  // Simulation Room unlocks once Module 2 is complete (Feature 7).
-  const simUnlocked = modules.find((m) => m.module.ordinal === 2)?.completed ?? false;
+  // Track 201 unlocks (Module 201-1 opens) once the Track 101 certificate is earned.
+  const track201Unlocked = track201.modules[0]?.unlocked ?? false;
+  // The Track 101 Simulation Room unlocks after Module 2; The Front Office after Module 201-2.
+  const simUnlocked = track101.modules.find((m) => m.module.ordinal === 2)?.completed ?? false;
+  const frontOfficeUnlocked = track201.modules.find((m) => m.module.ordinal === 2)?.completed ?? false;
+
+  const navLinks = [
+    { href: "/profile", label: "My Profile" },
+    { href: "/leaderboard", label: "Leaderboard" },
+    { href: "/discussion", label: "Discussion" },
+    ...(simUnlocked ? [{ href: "/simulation-room", label: "Simulation Room" }] : []),
+    ...(frontOfficeUnlocked ? [{ href: "/front-office", label: "The Front Office" }] : []),
+  ];
 
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "100vh", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
-      <div style={{ maxWidth: 880, margin: "0 auto" }}>
-        <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
-          Self-Paced · Track 101
-        </span>
-        <h1 style={{ margin: "8px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
-          Good to see you, {firstName}.
-        </h1>
-        <p style={{ margin: "0 0 16px", fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 560 }}>
-          Four modules, unlocked one decision at a time. Finish a module and write a short reflection to open the next.
-        </p>
+      <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+        {/* HEADER */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
+              Self-Paced · BOW Sports Capital
+            </span>
+            <h1 style={{ margin: "8px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
+              Good to see you, {firstName}.
+            </h1>
+            <p style={{ margin: "0 0 16px", fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 560 }}>
+              Two tracks, unlocked one decision at a time. Finish a module and write a short reflection to open the next — then earn your certificate to unlock Track 201.
+            </p>
+          </div>
+          <div style={{ flexShrink: 0, paddingTop: 4 }}>
+            <NotificationBell notifications={notifications} unreadCount={unreadCount} />
+          </div>
+        </div>
 
         {/* QUICK NAV */}
-        <nav style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 26 }}>
-          {[
-            { href: "/profile", label: "My Profile" },
-            { href: "/leaderboard", label: "Leaderboard" },
-            ...(simUnlocked ? [{ href: "/simulation-room", label: "Simulation Room" }] : []),
-          ].map((l) => (
+        <nav style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 28 }}>
+          {navLinks.map((l) => (
             <Link
               key={l.href}
               href={l.href}
@@ -66,59 +98,140 @@ export default function StudentDashboard({ firstName, modules, quizSections, act
           ))}
         </nav>
 
-        {/* PROGRESS */}
-        <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 24, marginBottom: 28 }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Your progress</span>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-ink)" }}>{completedCount} of {total} modules complete</span>
-          </div>
-          <div style={{ height: 12, background: "var(--bow-paper)", border: "1px solid var(--border-rule)", borderRadius: 999, overflow: "hidden" }}>
-            <div
-              role="progressbar"
-              aria-valuenow={pct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              style={{ height: "100%", width: `${pct}%`, background: allDone ? "var(--bow-positive)" : "var(--bow-blue)", transition: "width var(--dur-card) var(--ease-out)" }}
-            />
-          </div>
+        {/* TWO TRACKS, SIDE BY SIDE */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 24, marginBottom: 40 }}>
+          <TrackColumn
+            track="101"
+            eyebrow="Track 101 · Rookie GM Economics"
+            data={track101}
+            unlocked
+            firstName={firstName}
+            router={router}
+            startTransition={startTransition}
+          />
+          <TrackColumn
+            track="201"
+            eyebrow="Track 201 · Front Office Fundamentals"
+            data={track201}
+            unlocked={track201Unlocked}
+            firstName={firstName}
+            router={router}
+            startTransition={startTransition}
+          />
         </div>
 
-        {/* CERTIFICATE PROMPT */}
-        {allDone && <CertificatePrompt firstName={firstName} />}
+        {/* WEEKLY CHALLENGE (between modules and BOW Daily) */}
+        <WeeklyChallenge current={weeklyCurrent} past={weeklyPast} />
 
-        {/* MODULES */}
-        <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 12 }}>
-          The four modules
-        </span>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 40 }}>
-          {modules.map((m) => (
-            <ModuleCard key={m.module.id} view={m} router={router} startTransition={startTransition} />
-          ))}
-        </div>
+        {/* ECON QUIZ — Track 101 always; Track 201 once unlocked */}
+        <EconQuiz sections={track101.quizSections} eyebrow="Econ Quiz · Track 101" />
+        {track201Unlocked && (
+          <EconQuiz
+            sections={track201.quizSections}
+            eyebrow="Econ Quiz · Track 201"
+            heading="The front-office exam."
+            blurb="Track 201 questions — cap mechanics, revenue, analytics, and draft economics. Finish a Track 201 module to unlock its twelve questions."
+          />
+        )}
 
-        {/* ECON QUIZ (Feature 3) */}
-        <EconQuiz sections={quizSections} />
-
-        {/* BOW DAILY SCENARIOS (Features 2 & 5) */}
+        {/* BOW DAILY SCENARIOS */}
         <DailyScenarios active={activeScenario} archive={scenarioArchive} />
       </div>
     </div>
   );
 }
 
+/* ---------------- track column ---------------- */
+
+function TrackColumn({
+  track,
+  eyebrow,
+  data,
+  unlocked,
+  firstName,
+  router,
+  startTransition,
+}: {
+  track: "101" | "201";
+  eyebrow: string;
+  data: TrackData;
+  unlocked: boolean;
+  firstName: string;
+  router: ReturnType<typeof useRouter>;
+  startTransition: React.TransitionStartFunction;
+}) {
+  const total = data.modules.length;
+  const completedCount = data.modules.filter((m) => m.completed).length;
+  const pct = total ? Math.round((completedCount / total) * 100) : 0;
+  const allDone = total > 0 && completedCount === total;
+  const accent = track === "201" ? "var(--bow-orange)" : "var(--bow-blue)";
+
+  return (
+    <section>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: accent }}>
+          {eyebrow}
+        </span>
+        <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>
+          {completedCount} / {total}
+        </span>
+      </div>
+
+      {/* progress bar */}
+      <div style={{ height: 10, background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 999, overflow: "hidden", marginBottom: 16 }}>
+        <div
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          style={{ height: "100%", width: `${pct}%`, background: allDone ? "var(--bow-positive)" : accent, transition: "width var(--dur-card) var(--ease-out)" }}
+        />
+      </div>
+
+      {!unlocked ? (
+        <LockedTrack reason={data.modules[0]?.lockedReason ?? "Earn your Track 101 certificate to unlock Track 201."} />
+      ) : (
+        <>
+          {allDone && <CertificatePrompt firstName={firstName} track={track} earned={data.certificateEarned} />}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {data.modules.map((m) => (
+              <ModuleCard key={m.module.id} view={m} track={track} router={router} startTransition={startTransition} />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function LockedTrack({ reason }: { reason: string }) {
+  return (
+    <div style={{ background: "var(--bow-paper)", border: "1px dashed var(--border-strong)", borderRadius: 6, padding: "clamp(22px,3vw,32px)", textAlign: "center", opacity: 0.85 }}>
+      <div aria-hidden style={{ fontSize: 28, marginBottom: 10 }}>🔒</div>
+      <h3 style={{ margin: "0 0 8px", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 20, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)" }}>
+        Track 201 is locked
+      </h3>
+      <p style={{ margin: "0 auto", maxWidth: 320, fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.6, color: "var(--bow-slate)" }}>
+        {reason}
+      </p>
+    </div>
+  );
+}
+
 /* ---------------- certificate ---------------- */
 
-function CertificatePrompt({ firstName }: { firstName: string }) {
+function CertificatePrompt({ firstName, track, earned }: { firstName: string; track: "101" | "201"; earned: boolean }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState(false);
+  const trackLabel = track === "201" ? "Track 201" : "Track 101";
 
   const onGet = async () => {
     if (busy) return;
     setBusy(true);
     setError(false);
     try {
-      const res = await generateCertificate();
+      const res = await generateCertificate(track);
       if (res.ok && res.html && res.filename) {
         const blob = new Blob([res.html], { type: "text/html;charset=utf-8" });
         const url = URL.createObjectURL(blob);
@@ -141,29 +254,31 @@ function CertificatePrompt({ firstName }: { firstName: string }) {
   };
 
   return (
-    <div style={{ background: "var(--bow-ink)", color: "#fff", borderRadius: 6, borderTop: "4px solid var(--bow-positive)", padding: "clamp(24px,3.5vw,36px)", marginBottom: 28 }}>
+    <div style={{ background: "var(--bow-ink)", color: "#fff", borderRadius: 6, borderTop: "4px solid var(--bow-positive)", padding: "clamp(20px,3vw,28px)", marginBottom: 16 }}>
       <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#5fcf99" }}>
-        Track 101 · Complete
+        {trackLabel} · Complete
       </span>
-      <h2 style={{ margin: "10px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(26px,3.6vw,42px)", lineHeight: 0.96, letterSpacing: "-0.01em", textTransform: "uppercase" }}>
+      <h2 style={{ margin: "10px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(22px,3vw,32px)", lineHeight: 0.96, letterSpacing: "-0.01em", textTransform: "uppercase" }}>
         Nicely run, {firstName}.
       </h2>
-      <p style={{ margin: "0 0 20px", fontFamily: "var(--font-interface)", fontSize: 15.5, lineHeight: 1.6, color: "#b9bcc4", maxWidth: 520 }}>
-        You finished all four modules and reflected on every one. Claim your certificate of completion — it’s yours to download, print, and post.
+      <p style={{ margin: "0 0 18px", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "#b9bcc4", maxWidth: 520 }}>
+        {track === "201"
+          ? "You finished all four Front Office Fundamentals modules. Claim your Track 201 certificate."
+          : "You finished all four modules and reflected on every one. Claim your certificate — and unlock Track 201."}
       </p>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <button
           onClick={onGet}
           disabled={busy}
-          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "none", background: busy ? "var(--bow-inactive)" : "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: busy ? "wait" : "pointer" }}
+          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 24px", border: "none", background: busy ? "var(--bow-inactive)" : "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: busy ? "wait" : "pointer" }}
         >
-          {busy ? "Generating…" : "Download My Certificate"}
+          {busy ? "Generating…" : earned ? "Download Again" : "Download My Certificate"}
         </button>
         <a
-          href="/dashboard/certificate"
+          href={track === "201" ? "/dashboard/certificate?track=201" : "/dashboard/certificate"}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "1px solid rgba(255,255,255,0.35)", background: "transparent", color: "#fff", borderRadius: 4, cursor: "pointer", textDecoration: "none" }}
+          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 24px", border: "1px solid rgba(255,255,255,0.35)", background: "transparent", color: "#fff", borderRadius: 4, cursor: "pointer", textDecoration: "none" }}
         >
           View &amp; Print
         </a>
@@ -186,10 +301,12 @@ function CertificatePrompt({ firstName }: { firstName: string }) {
 
 function ModuleCard({
   view,
+  track,
   router,
   startTransition,
 }: {
   view: SelfModuleView;
+  track: "101" | "201";
   router: ReturnType<typeof useRouter>;
   startTransition: React.TransitionStartFunction;
 }) {
@@ -203,6 +320,7 @@ function ModuleCard({
 
   const accent = completed ? "var(--bow-positive)" : unlocked ? "var(--bow-blue)" : "var(--bow-inactive)";
   const statusLabel = completed ? "Completed" : unlocked ? "Open" : "Locked";
+  const moduleTag = track === "201" ? `201-${m.ordinal}` : `M${String(m.ordinal).padStart(2, "0")}`;
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -233,9 +351,9 @@ function ModuleCard({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, minWidth: 0 }}>
           <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)", flexShrink: 0 }}>
-            M{String(m.ordinal).padStart(2, "0")}
+            {moduleTag}
           </span>
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "clamp(18px,2.4vw,24px)", textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)" }}>
+          <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "clamp(17px,2.2vw,22px)", textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)" }}>
             {m.title}
           </span>
         </div>
@@ -262,7 +380,6 @@ function ModuleCard({
 
       {unlocked && (
         <div style={{ marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--border-rule)" }}>
-          {/* complete control */}
           <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 16 }}>
             {completed ? (
               <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "var(--bow-positive)" }}>
@@ -279,7 +396,6 @@ function ModuleCard({
             )}
           </div>
 
-          {/* reflection */}
           <label
             htmlFor={`refl-${m.id}`}
             style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 8 }}

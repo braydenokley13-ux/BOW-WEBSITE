@@ -35,19 +35,27 @@ export function rowToSimState(r: any): SimState {
   };
 }
 
-/** The student's active simulation, or the latest completed one if none is active. */
-export function getCurrentSimulation(studentId: string): SimState | null {
+/**
+ * The student's active simulation of a type, or the latest completed one if none
+ * is active. Defaults to the Westbrook Wolves sim (Track 101); pass "eastfield"
+ * for the Track 201 "Front Office" sim.
+ */
+export function getCurrentSimulation(studentId: string, simType: string = "westbrook"): SimState | null {
   const row = getDb()
-    .prepare("SELECT * FROM simulations WHERE student_id = ? ORDER BY completed ASC, created_at DESC LIMIT 1")
-    .get(studentId) as any;
+    .prepare(
+      "SELECT * FROM simulations WHERE student_id = ? AND COALESCE(sim_type, 'westbrook') = ? ORDER BY completed ASC, created_at DESC LIMIT 1",
+    )
+    .get(studentId, simType) as any;
   return row ? rowToSimState(row) : null;
 }
 
-/** The active (in-progress) simulation only, or null. */
-export function getActiveSimulation(studentId: string): SimState | null {
+/** The active (in-progress) simulation of a type only, or null. */
+export function getActiveSimulation(studentId: string, simType: string = "westbrook"): SimState | null {
   const row = getDb()
-    .prepare("SELECT * FROM simulations WHERE student_id = ? AND completed = 0 ORDER BY created_at DESC LIMIT 1")
-    .get(studentId) as any;
+    .prepare(
+      "SELECT * FROM simulations WHERE student_id = ? AND completed = 0 AND COALESCE(sim_type, 'westbrook') = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(studentId, simType) as any;
   return row ? rowToSimState(row) : null;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

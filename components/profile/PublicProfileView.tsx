@@ -41,10 +41,14 @@ export default function PublicProfileView({ profile }: { profile: PublicProfile 
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 30 }}>
           <Stat label="BOW Score" value={String(profile.bowScore)} accent="#6f8bff" />
-          <Stat label="Modules complete" value={`${profile.modulesCompleted}/${profile.totalModules}`} />
+          <Stat label="Track 101 modules" value={`${profile.modulesCompleted}/${profile.totalModules}`} />
+          <Stat label="Track 201 modules" value={`${profile.modules201Completed}/${profile.total201Modules}`} />
           <Stat label="Econ Quiz (MC)" value={profile.quizScorePct === null ? "—" : `${profile.quizScorePct}%`} />
-          <Stat label="Certificate" value={profile.certificateEarned ? "Earned" : "In progress"} accent={profile.certificateEarned ? "#5fcf99" : undefined} />
+          <Stat label="Track 101 cert" value={profile.certificateEarned ? "Earned" : "In progress"} accent={profile.certificateEarned ? "#5fcf99" : undefined} />
+          <Stat label="Track 201 cert" value={profile.track201CertificateEarned ? "Earned" : "—"} accent={profile.track201CertificateEarned ? "#5fcf99" : undefined} />
           <Stat label="Simulation Room" value={profile.simulationCompleted ? "Complete" : "Not yet"} accent={profile.simulationCompleted ? "#5fcf99" : undefined} />
+          <Stat label="The Front Office" value={profile.eastfieldCompleted ? "Complete" : "Not yet"} accent={profile.eastfieldCompleted ? "#5fcf99" : undefined} />
+          <Stat label="Discussion posts" value={String(profile.discussionPosts)} />
         </div>
 
         <div style={{ borderTop: "1px solid var(--bow-dark-border)", paddingTop: 22, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>

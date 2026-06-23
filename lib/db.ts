@@ -21,6 +21,9 @@ import {
   selfModules,
   dailyScenarios,
   quizQuestions,
+  discussionSeedPosts,
+  weeklyChallengeSeed,
+  partnerOrgSeed,
   reflectionWordCount,
   SEED_PASSWORD,
   SELF_PACED_ORG_ID,
@@ -64,7 +67,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT,
   deletion_requested INTEGER NOT NULL DEFAULT 0,
   last_active_at INTEGER,
-  created_at INTEGER
+  created_at INTEGER,
+  onboarding_completed INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS cohorts (
   id TEXT PRIMARY KEY,
@@ -190,7 +194,8 @@ CREATE TABLE IF NOT EXISTS self_modules (
   title TEXT NOT NULL,
   summary TEXT NOT NULL,
   concept TEXT NOT NULL,
-  central_question TEXT NOT NULL
+  central_question TEXT NOT NULL,
+  track TEXT NOT NULL DEFAULT '101'
 );
 CREATE TABLE IF NOT EXISTS self_progress (
   student_id TEXT NOT NULL,
@@ -201,6 +206,7 @@ CREATE TABLE IF NOT EXISTS self_progress (
   instructor_unlocked INTEGER NOT NULL DEFAULT 0,
   completed_at INTEGER,
   updated_at INTEGER,
+  track TEXT NOT NULL DEFAULT '101',
   PRIMARY KEY (student_id, module_id)
 );
 CREATE TABLE IF NOT EXISTS self_feed_responses (
@@ -245,7 +251,8 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
   choice_d TEXT,
   correct_answer TEXT,
   explanation TEXT NOT NULL,
-  difficulty INTEGER NOT NULL DEFAULT 1
+  difficulty INTEGER NOT NULL DEFAULT 1,
+  track TEXT NOT NULL DEFAULT '101'
 );
 CREATE TABLE IF NOT EXISTS quiz_responses (
   id TEXT PRIMARY KEY,
@@ -273,10 +280,109 @@ CREATE TABLE IF NOT EXISTS simulations (
   decisions TEXT NOT NULL DEFAULT '[]',
   completed INTEGER NOT NULL DEFAULT 0,
   final_score INTEGER,
+  created_at INTEGER NOT NULL,
+  sim_type TEXT NOT NULL DEFAULT 'westbrook'
+);
+
+/* ---- Discussion board (Feature 3) ---- */
+CREATE TABLE IF NOT EXISTS discussion_posts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS discussion_replies (
+  id TEXT PRIMARY KEY,
+  post_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  body TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS discussion_reactions (
+  id TEXT PRIMARY KEY,
+  post_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  reaction_type TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (post_id, user_id, reaction_type)
+);
+
+/* ---- Weekly Challenge (Feature 4) ---- */
+CREATE TABLE IF NOT EXISTS weekly_challenges (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  week_start TEXT NOT NULL,
+  week_end TEXT NOT NULL,
+  ordinal INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS weekly_completions (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  challenge_id TEXT NOT NULL,
+  response_text TEXT NOT NULL,
+  submitted_at INTEGER NOT NULL,
+  UNIQUE (student_id, challenge_id)
+);
+
+/* ---- Partner / school landing pages (Feature 5) ---- */
+CREATE TABLE IF NOT EXISTS partner_orgs (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  org_type TEXT NOT NULL,
+  contact_name TEXT NOT NULL DEFAULT '',
+  contact_email TEXT NOT NULL DEFAULT '',
+  custom_headline TEXT NOT NULL,
+  custom_body TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS demo_requests (
+  id TEXT PRIMARY KEY,
+  org_slug TEXT NOT NULL,
+  requester_name TEXT NOT NULL,
+  requester_email TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+
+/* ---- In-app notifications (Feature 6) ---- */
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  read INTEGER NOT NULL DEFAULT 0,
+  link TEXT,
+  created_at INTEGER NOT NULL
+);
+
+/* ---- Indexes for high-traffic WHERE-clause columns (Feature 8) ---- */
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_sim
-  ON simulations (student_id) WHERE completed = 0;
+  ON simulations (student_id, sim_type) WHERE completed = 0;
+CREATE INDEX IF NOT EXISTS idx_self_progress_student ON self_progress (student_id);
+CREATE INDEX IF NOT EXISTS idx_self_progress_track ON self_progress (student_id, track);
+CREATE INDEX IF NOT EXISTS idx_scenario_responses_student ON scenario_responses (student_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_responses_student ON quiz_responses (student_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_track ON quiz_questions (track, module_unlock);
+CREATE INDEX IF NOT EXISTS idx_simulations_student ON simulations (student_id);
+CREATE INDEX IF NOT EXISTS idx_disc_posts_channel ON discussion_posts (channel, pinned, created_at);
+CREATE INDEX IF NOT EXISTS idx_disc_posts_user ON discussion_posts (user_id);
+CREATE INDEX IF NOT EXISTS idx_disc_replies_post ON discussion_replies (post_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_disc_replies_user ON discussion_replies (user_id);
+CREATE INDEX IF NOT EXISTS idx_disc_reactions_post ON discussion_reactions (post_id);
+CREATE INDEX IF NOT EXISTS idx_disc_reactions_user ON discussion_reactions (user_id);
+CREATE INDEX IF NOT EXISTS idx_weekly_completions_student ON weekly_completions (student_id);
+CREATE INDEX IF NOT EXISTS idx_weekly_challenges_window ON weekly_challenges (week_start, week_end);
+CREATE INDEX IF NOT EXISTS idx_partner_orgs_slug ON partner_orgs (slug);
+CREATE INDEX IF NOT EXISTS idx_demo_requests_slug ON demo_requests (org_slug, created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, read, created_at);
 `;
 
 function seed(db: DatabaseSync) {
@@ -416,16 +522,84 @@ function seedDailyScenarios(db: DatabaseSync) {
 /** Idempotently load the Econ Quiz bank (Feature 3). Reference data. */
 function seedQuizQuestions(db: DatabaseSync) {
   const insert = db.prepare(
-    `INSERT INTO quiz_questions (id, module_unlock, question_type, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, difficulty)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET module_unlock = excluded.module_unlock, question_type = excluded.question_type, question_text = excluded.question_text, choice_a = excluded.choice_a, choice_b = excluded.choice_b, choice_c = excluded.choice_c, choice_d = excluded.choice_d, correct_answer = excluded.correct_answer, explanation = excluded.explanation, difficulty = excluded.difficulty`,
+    `INSERT INTO quiz_questions (id, module_unlock, question_type, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, difficulty, track)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET module_unlock = excluded.module_unlock, question_type = excluded.question_type, question_text = excluded.question_text, choice_a = excluded.choice_a, choice_b = excluded.choice_b, choice_c = excluded.choice_c, choice_d = excluded.choice_d, correct_answer = excluded.correct_answer, explanation = excluded.explanation, difficulty = excluded.difficulty, track = excluded.track`,
   );
   for (const q of quizQuestions) {
     insert.run(
       q.id, q.moduleUnlock, q.type, q.question,
-      q.choiceA, q.choiceB, q.choiceC, q.choiceD, q.correctAnswer, q.explanation, q.difficulty,
+      q.choiceA, q.choiceB, q.choiceC, q.choiceD, q.correctAnswer, q.explanation, q.difficulty, q.track ?? "101",
     );
   }
+}
+
+/**
+ * Idempotently load the eight Weekly Challenges (Feature 4). Title/prompt/ordinal
+ * stay authoritative across boots; the week window + created_at are stamped on
+ * first insert (so the calendar windows don't drift on every reboot). The first
+ * challenge is anchored to the current week, each subsequent one a week later.
+ */
+function seedWeeklyChallenges(db: DatabaseSync) {
+  const insert = db.prepare(
+    `INSERT INTO weekly_challenges (id, title, prompt, week_start, week_end, ordinal, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET title = excluded.title, prompt = excluded.prompt, ordinal = excluded.ordinal`,
+  );
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+  const d = new Date(now);
+  // Sunday (UTC) of the current week — challenges run Sunday → Saturday.
+  const sunday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - d.getUTCDay());
+  const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  weeklyChallengeSeed.forEach((c, i) => {
+    const start = sunday + i * 7 * DAY;
+    const end = start + 6 * DAY;
+    insert.run(c.id, c.title, c.prompt, isoDate(start), isoDate(end), c.ordinal, now + i);
+  });
+}
+
+/** Idempotently load the three seed Partner orgs (Feature 5). Reference data. */
+function seedPartnerOrgs(db: DatabaseSync) {
+  const insert = db.prepare(
+    `INSERT INTO partner_orgs (id, name, slug, org_type, contact_name, contact_email, custom_headline, custom_body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(slug) DO UPDATE SET name = excluded.name, org_type = excluded.org_type, custom_headline = excluded.custom_headline, custom_body = excluded.custom_body`,
+  );
+  const now = Date.now();
+  for (const p of partnerOrgSeed) {
+    insert.run(p.id, p.name, p.slug, p.orgType, p.contactName, p.contactEmail, p.customHeadline, p.customBody, now);
+  }
+}
+
+/**
+ * First-boot discussion board seed (Feature 3) — six starter posts so the board
+ * isn't empty at launch. Authored by the demo self-paced students, so it only
+ * runs on a fresh database (after the demo students are created).
+ */
+function seedDiscussion(db: DatabaseSync) {
+  const insert = db.prepare(
+    "INSERT OR IGNORE INTO discussion_posts (id, user_id, channel, title, body, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  const now = Date.now();
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+  for (const p of discussionSeedPosts) {
+    const ts = now - p.agoHours * HOUR;
+    insert.run(p.id, p.userId, p.channel, p.title, p.body, p.pinned ? 1 : 0, ts, ts);
+  }
+  // A couple of seed replies + reactions so threads feel alive.
+  const insertReply = db.prepare(
+    "INSERT OR IGNORE INTO discussion_replies (id, post_id, user_id, body, created_at) VALUES (?, ?, ?, ?, ?)",
+  );
+  insertReply.run("dr-seed-1", "dp-seed-1", "u-self2", "Bird Rights are the whole reason — they could pay him more than anyone else and going over the tax was the price of keeping a top-5 player. Walking away gets you nothing.", now - 20 * HOUR);
+  insertReply.run("dr-seed-2", "dp-seed-1", "u-self3", "Counterpoint: at some point the tax bill outruns the marginal wins. There's a number where you let him walk and reset.", now - 16 * HOUR);
+  insertReply.run("dr-seed-3", "dp-seed-3", "u-self1", "The draft is surplus value in its purest form — pre-set slot salaries vs open-market value. Rookie deals are how small markets compete.", now - 2 * DAY);
+  const insertReaction = db.prepare(
+    "INSERT OR IGNORE INTO discussion_reactions (id, post_id, user_id, reaction_type, created_at) VALUES (?, ?, ?, ?, ?)",
+  );
+  insertReaction.run("dx-seed-1", "dp-seed-1", "u-self2", "fire", now - 19 * HOUR);
+  insertReaction.run("dx-seed-2", "dp-seed-1", "u-self3", "big_brain", now - 15 * HOUR);
+  insertReaction.run("dx-seed-3", "dp-seed-3", "u-self2", "agree", now - 2 * DAY);
+  insertReaction.run("dx-seed-4", "dp-seed-3", "u-self3", "fire", now - 1 * DAY);
 }
 
 /** Idempotently load the four self-paced modules + the default async cohort. */
@@ -433,12 +607,14 @@ function seedSelfModulesAndCohort(db: DatabaseSync) {
   // Upsert so the module copy stays authoritative across boots (titles match
   // the Econ Quiz module names so completing a module unlocks its questions).
   const insertMod = db.prepare(
-    `INSERT INTO self_modules (id, ordinal, title, summary, concept, central_question) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, title = excluded.title, summary = excluded.summary, concept = excluded.concept, central_question = excluded.central_question`,
+    `INSERT INTO self_modules (id, ordinal, title, summary, concept, central_question, track) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, title = excluded.title, summary = excluded.summary, concept = excluded.concept, central_question = excluded.central_question, track = excluded.track`,
   );
-  for (const m of selfModules) insertMod.run(m.id, m.ordinal, m.title, m.summary, m.concept, m.centralQuestion);
-  // Track 101 is four modules — drop any stale modules from an older seed.
-  db.prepare("DELETE FROM self_modules WHERE ordinal > ?").run(selfModules.length);
+  for (const m of selfModules) insertMod.run(m.id, m.ordinal, m.title, m.summary, m.concept, m.centralQuestion, m.track ?? "101");
+  // Modules are keyed by id across both tracks — drop any module no longer in the seed.
+  const keepIds = selfModules.map((m) => m.id);
+  const placeholders = keepIds.map(() => "?").join(", ");
+  db.prepare(`DELETE FROM self_modules WHERE id NOT IN (${placeholders})`).run(...keepIds);
 
   // The default async cohort. Instructor u-coach (Marcus Reyes) manages it so
   // the instructor dashboard (Feature 2) always has a roster to work with.
@@ -546,6 +722,21 @@ function migrate(db: DatabaseSync) {
   add("quiz_questions", "difficulty", "INTEGER NOT NULL DEFAULT 1");
   // Signup timestamp for the student profile (Feature 3).
   add("users", "created_at", "INTEGER");
+  // First-time onboarding flag (Feature 7).
+  add("users", "onboarding_completed", "INTEGER NOT NULL DEFAULT 0");
+  // Track tagging for Track 201 (Feature 1).
+  add("self_modules", "track", "TEXT NOT NULL DEFAULT '101'");
+  add("self_progress", "track", "TEXT NOT NULL DEFAULT '101'");
+  add("quiz_questions", "track", "TEXT NOT NULL DEFAULT '101'");
+  // Second simulation: Eastfield Eagles (Feature 2).
+  add("simulations", "sim_type", "TEXT NOT NULL DEFAULT 'westbrook'");
+  // Weekly Challenge ordering (Feature 4).
+  add("weekly_challenges", "ordinal", "INTEGER NOT NULL DEFAULT 0");
+  // The active-simulation guard moved from one-per-student to one-per-type so a
+  // student can hold an active Westbrook AND Eastfield run. Recreate the index
+  // for any database that still has the older single-column form.
+  db.exec("DROP INDEX IF EXISTS idx_one_active_sim");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_sim ON simulations (student_id, sim_type) WHERE completed = 0");
 }
 
 function init(): DatabaseSync {
@@ -568,7 +759,15 @@ function init(): DatabaseSync {
   // reference data — ensure they exist on every boot, fresh or not.
   seedDailyScenarios(db);
   seedQuizQuestions(db);
-  if (fresh) seedSelfPacedDemo(db);
+  // Weekly Challenges (Feature 4) and Partner pages (Feature 5) are reference data.
+  seedWeeklyChallenges(db);
+  seedPartnerOrgs(db);
+  if (fresh) {
+    seedSelfPacedDemo(db);
+    // Discussion seed posts are authored by the demo students, so they only
+    // seed a fresh database (after the demo students exist).
+    seedDiscussion(db);
+  }
 
   return db;
 }
@@ -590,6 +789,7 @@ export function rowToUser(r: any): User {
     orgId: r.org_id, grade: r.grade ?? undefined, status: r.status, last: r.last, signin: r.signin,
     lastActiveAt: r.last_active_at ?? null,
     createdAt: r.created_at ?? null,
+    onboardingCompleted: !!r.onboarding_completed,
   };
 }
 

@@ -4,8 +4,10 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminData } from "@/lib/admin";
 import { createCohort, updateUserRole, type RoleToggle } from "@/app/actions/lms";
+import { createPartnerOrg } from "@/app/actions/partners";
+import { PARTNER_ORG_TYPES, partnerTypeLabel } from "@/lib/account";
 
-type Tab = "overview" | "cohorts" | "users" | "content";
+type Tab = "overview" | "cohorts" | "users" | "content" | "partners";
 
 interface Props {
   adminName: string;
@@ -36,6 +38,7 @@ export default function AdminDashboard({ adminName, data, defaultOrgId, defaultT
             { key: "cohorts", label: "Cohorts" },
             { key: "users", label: "Users" },
             { key: "content", label: "Content" },
+            { key: "partners", label: "Partners" },
           ] as { key: Tab; label: string }[]).map((t) => {
             const active = tab === t.key;
             return (
@@ -56,6 +59,7 @@ export default function AdminDashboard({ adminName, data, defaultOrgId, defaultT
         {tab === "cohorts" && <Cohorts data={data} defaultOrgId={defaultOrgId} defaultTrack={defaultTrack} refresh={refresh} />}
         {tab === "users" && <Users data={data} refresh={refresh} />}
         {tab === "content" && <Content data={data} />}
+        {tab === "partners" && <Partners data={data} refresh={refresh} />}
       </div>
     </div>
   );
@@ -90,6 +94,10 @@ function Overview({ data }: { data: AdminData }) {
     ["Simulations started", o.simulationsStarted],
     ["Simulations completed", o.simulationsCompleted],
     ["Certificates issued", o.certificatesIssued],
+    ["Discussion posts", o.discussionPosts],
+    ["Weekly completions", o.weeklyCompletions],
+    ["Partner pages", o.partnerPages],
+    ["Demo requests", o.demoRequests],
   ];
   return (
     <div>
@@ -271,6 +279,117 @@ function Content({ data }: { data: AdminData }) {
           <div key={s.ordinal} style={rowStyle}>
             <span>#{s.ordinal} · {s.concept}</span>
             <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{s.count} response{s.count === 1 ? "" : "s"}</span>
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+/* ---------------- partners ---------------- */
+
+function Partners({ data, refresh }: { data: AdminData; refresh: () => void }) {
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [orgType, setOrgType] = useState(PARTNER_ORG_TYPES[0].key as string);
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [headline, setHeadline] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const onCreate = async () => {
+    if (busy || !name.trim() || !headline.trim() || !body.trim()) return;
+    setBusy(true);
+    setMsg(null);
+    const res = await createPartnerOrg({
+      name: name.trim(),
+      slug: slug.trim(),
+      orgType,
+      contactName: contactName.trim(),
+      contactEmail: contactEmail.trim(),
+      customHeadline: headline.trim(),
+      customBody: body.trim(),
+    });
+    setBusy(false);
+    if (res.ok) {
+      setMsg(`Created /partners/${res.slug}`);
+      setName(""); setSlug(""); setContactName(""); setContactEmail(""); setHeadline(""); setBody("");
+      refresh();
+    } else {
+      setMsg(res.error === "slug-taken" ? "That slug is already taken." : "Fill in name, headline, body, and a valid type.");
+    }
+  };
+
+  return (
+    <div>
+      <section style={panel}>
+        <h3 style={panelTitle}>Create partner page</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={fieldLabel}>Organization name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="The Frisch School" aria-label="Organization name" style={input} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={fieldLabel}>Slug (optional)</span>
+            <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="frisch" aria-label="Slug" style={input} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={fieldLabel}>Type</span>
+            <select value={orgType} onChange={(e) => setOrgType(e.target.value)} aria-label="Organization type" style={input}>
+              {PARTNER_ORG_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+            </select>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={fieldLabel}>Contact name</span>
+            <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Athletics Office" aria-label="Contact name" style={input} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={fieldLabel}>Contact email</span>
+            <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="partnerships@frisch.org" aria-label="Contact email" style={input} />
+          </label>
+        </div>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 10 }}>
+          <span style={fieldLabel}>Custom headline</span>
+          <input value={headline} onChange={(e) => setHeadline(e.target.value)} placeholder="Frisch students, meet the front office." aria-label="Custom headline" style={input} />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 10 }}>
+          <span style={fieldLabel}>Custom body</span>
+          <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="A few sentences about what BOW offers this partner…" aria-label="Custom body" style={{ ...input, resize: "vertical" }} />
+        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12, flexWrap: "wrap" }}>
+          <button onClick={onCreate} disabled={busy || !name.trim() || !headline.trim() || !body.trim()} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "11px 20px", border: "none", background: busy || !name.trim() || !headline.trim() || !body.trim() ? "var(--bow-inactive)" : "var(--bow-orange)", color: "#fff", borderRadius: 4, cursor: busy ? "wait" : "pointer" }}>
+            {busy ? "Creating…" : "Create Page"}
+          </button>
+          {msg && <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: msg.startsWith("Created") ? "var(--bow-positive)" : "var(--bow-warning)" }}>{msg}</span>}
+        </div>
+      </section>
+
+      <section style={panel}>
+        <h3 style={panelTitle}>Partner pages ({data.partners.orgs.length})</h3>
+        {data.partners.orgs.length === 0 ? <Empty /> : data.partners.orgs.map((p) => (
+          <div key={p.id} style={{ ...rowStyle, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ minWidth: 0 }}>
+              <strong>{p.name}</strong>
+              <span style={{ color: "var(--bow-slate)" }}> · {partnerTypeLabel(p.orgType)}</span>
+            </span>
+            <a href={`/partners/${p.slug}`} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-blue)", textDecoration: "none" }}>
+              /partners/{p.slug} →
+            </a>
+          </div>
+        ))}
+      </section>
+
+      <section style={panel}>
+        <h3 style={panelTitle}>Demo requests ({data.partners.demoRequests.length})</h3>
+        {data.partners.demoRequests.length === 0 ? <Empty /> : data.partners.demoRequests.map((d) => (
+          <div key={d.id} style={{ ...rowStyle, flexDirection: "column", alignItems: "stretch", gap: 4 }}>
+            <span style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <span><strong>{d.requesterName}</strong> <span style={{ color: "var(--bow-slate)" }}>· {d.requesterEmail}</span></span>
+              <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)", flexShrink: 0 }}>{d.orgSlug} · {d.when}</span>
+            </span>
+            {d.message && <span style={{ fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>{d.message}</span>}
           </div>
         ))}
       </section>
