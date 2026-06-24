@@ -16,6 +16,7 @@ import {
 import { createNotification } from "@/lib/notifications";
 import { recordDailyVisit as applyDailyVisitStreak, type RecordVisitResult } from "@/lib/streak";
 import { conceptLabel } from "@/lib/daily-question";
+import { getPlayerCardData, buildPlayerCardHtml, playerCardFilename, recordPlayerCard } from "@/lib/player-card";
 import { rankForStudent, nextRankName } from "@/lib/scoring";
 import {
   orderedTrackLessons,
@@ -880,6 +881,29 @@ export async function submitDailyResponse(
     longestStreak: visit.longest,
     streakMilestone: visit.advanced ? visit.milestone : null,
   };
+}
+
+/* ---------------- Player Card (Feature 4) ---------------- */
+
+export interface PlayerCardResult {
+  ok: boolean;
+  html?: string;
+  filename?: string;
+  positionLabel?: string;
+}
+
+/**
+ * Generate (and record) the student's Player Card. Idempotent at the storage
+ * layer — one row per student, updated with the latest position label — and
+ * returns a self-contained HTML file to download.
+ */
+export async function generatePlayerCard(): Promise<PlayerCardResult> {
+  const me = await requireRole("student");
+  const data = getPlayerCardData(me.id);
+  if (!data) return { ok: false };
+  recordPlayerCard(me.id, data.positionLabel);
+  touchActive(me.id);
+  return { ok: true, html: buildPlayerCardHtml(data), filename: playerCardFilename(data.name), positionLabel: data.positionLabel };
 }
 
 /* ---------------- Instructor controls (instructor + admin) ---------------- */

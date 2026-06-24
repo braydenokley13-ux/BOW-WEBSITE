@@ -392,6 +392,46 @@ CREATE TABLE IF NOT EXISTS daily_responses (
   UNIQUE (student_id, question_id)
 );
 
+/* ---- Player Card (Feature 4) — one collectible card per student ---- */
+CREATE TABLE IF NOT EXISTS player_cards (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL UNIQUE,
+  generated_at INTEGER NOT NULL,
+  position_label TEXT NOT NULL
+);
+
+/* ---- Admin content management (Feature 8) ---- */
+CREATE TABLE IF NOT EXISTS news_items (
+  id TEXT PRIMARY KEY,
+  headline TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  source_name TEXT NOT NULL DEFAULT '',
+  source_url TEXT NOT NULL DEFAULT '',
+  concept_tag TEXT NOT NULL DEFAULT '',
+  published_date TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS news_submissions (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  headline TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  source_url TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS testimonials (
+  id TEXT PRIMARY KEY,
+  quote TEXT NOT NULL,
+  student_name TEXT NOT NULL,
+  school_name TEXT NOT NULL DEFAULT '',
+  track_completed TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  ordinal INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
 /* ---- Front Office Concept Map (Feature 3) — public reference data ---- */
 CREATE TABLE IF NOT EXISTS concept_map (
   id TEXT PRIMARY KEY,
@@ -451,6 +491,10 @@ CREATE INDEX IF NOT EXISTS idx_daily_questions_active ON daily_questions (active
 CREATE INDEX IF NOT EXISTS idx_daily_responses_student ON daily_responses (student_id);
 CREATE INDEX IF NOT EXISTS idx_daily_responses_question ON daily_responses (question_id);
 CREATE INDEX IF NOT EXISTS idx_glossary_terms_term ON glossary_terms (term);
+CREATE INDEX IF NOT EXISTS idx_player_cards_student ON player_cards (student_id);
+CREATE INDEX IF NOT EXISTS idx_news_items_active ON news_items (active, created_at);
+CREATE INDEX IF NOT EXISTS idx_news_submissions_status ON news_submissions (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_testimonials_active ON testimonials (active, ordinal);
 `;
 
 function seed(db: DatabaseSync) {
@@ -740,6 +784,42 @@ function seedSelfModulesAndCohort(db: DatabaseSync) {
 }
 
 /**
+ * First-boot demo content for the admin content managers (Feature 8):
+ * testimonials (shown on the homepage), news items, and a couple of pending
+ * student news submissions. Editable in the admin Content tab, so this only
+ * seeds a FRESH database — admin edits are never overwritten on reboot.
+ */
+function seedContentDemo(db: DatabaseSync) {
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+
+  const testimonial = db.prepare(
+    "INSERT OR IGNORE INTO testimonials (id, quote, student_name, school_name, track_completed, active, ordinal, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+  );
+  ([
+    ["tm-1", "I stopped memorizing and started arguing about decisions. That changed how I see every trade.", "Jalen B.", "Lincoln High School", "101", 1],
+    ["tm-2", "It's the first thing my son has called homework and a game in the same sentence.", "Parent", "Brooklyn, NY", "", 2],
+    ["tm-3", "The economics finally had stakes my students cared about — the cap sheet did what the textbook couldn't.", "M. Reyes", "Lincoln High School", "201", 3],
+    ["tm-4", "I put my BOW certificate and profile on my college application. It showed I could actually run the numbers.", "Maya C.", "Lincoln High School", "101", 4],
+  ] as [string, string, string, string, string, number][]).forEach((t) => testimonial.run(t[0], t[1], t[2], t[3], t[4], t[5], now));
+
+  const news = db.prepare(
+    "INSERT OR IGNORE INTO news_items (id, headline, summary, source_name, source_url, concept_tag, published_date, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)",
+  );
+  ([
+    ["nw-1", "NBA finalizes ~$76B media-rights deal", "The league's new 11-year national TV agreements will lift the salary cap for every team for a decade — league 'GDP' flowing straight to budgets.", "Sports Business Journal", "https://www.sportsbusinessjournal.com/", "media_rights", "2024-07-24", now - 2 * DAY],
+    ["nw-2", "Warriors set record luxury-tax bill", "Golden State paid over $170M in luxury tax in a single season to keep its championship core — the highest bill in NBA history.", "ESPN", "https://www.espn.com/nba/", "luxury_tax", "2023-08-01", now - 5 * DAY],
+    ["nw-3", "Athletics open season in a Triple-A park", "After 50+ years in Oakland, the A's are playing in a minor-league stadium while chasing Las Vegas — a textbook opportunity-cost bet.", "The Athletic", "https://www.nytimes.com/athletic/", "opportunity_cost", "2025-03-27", now - 9 * DAY],
+  ] as [string, string, string, string, string, string, string, number][]).forEach((n) => news.run(n[0], n[1], n[2], n[3], n[4], n[5], n[6], n[7]));
+
+  const sub = db.prepare(
+    "INSERT OR IGNORE INTO news_submissions (id, student_id, headline, summary, source_url, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+  );
+  sub.run("ns-1", "u-self1", "Small-market team wins title on a bargain roster", "They found surplus value in undervalued players and beat far richer teams — Moneyball, but for the cap.", "https://www.espn.com/", now - DAY);
+  sub.run("ns-2", "u-self2", "City debates $500M stadium subsidy", "Supporters cite jobs and the multiplier effect; critics say the money should fund schools. Classic fiscal-policy fight.", "https://www.sportsbusinessjournal.com/", now - 12 * 60 * 60 * 1000);
+}
+
+/**
  * First-boot demo data for the self-paced experience: a few async students
  * with varied progress, reflections, Daily decisions, attendance, and a note —
  * so both dashboards (Features 1 & 2) are populated out of the box.
@@ -908,6 +988,8 @@ function init(): DatabaseSync {
       // Discussion seed posts are authored by the demo students, so they only
       // seed a fresh database (after the demo students exist).
       seedDiscussion(db);
+      // Editable admin content (testimonials, news, pending submissions).
+      seedContentDemo(db);
     }
     db.exec("COMMIT");
   } catch (e) {

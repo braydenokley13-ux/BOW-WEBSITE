@@ -10,6 +10,7 @@ import { getCurrentWeeklyChallenge, getPastWeeklyChallenges, ensureWeeklyChallen
 import { getNotifications, getUnreadCount } from "@/lib/notifications";
 import { getDailyQuestionView } from "@/lib/daily-question";
 import { getStreak, streakLabel } from "@/lib/streak";
+import { rankForStudent } from "@/lib/scoring";
 import { TRACK_101, TRACK_201 } from "@/lib/account";
 import StudentDashboard from "@/components/selfpaced/StudentDashboard";
 
@@ -31,6 +32,7 @@ export default async function DashboardPage() {
   };
 
   const streak = getStreak(me.id);
+  const rank = rankForStudent(me.id);
 
   return (
     <StudentDashboard
@@ -39,6 +41,8 @@ export default async function DashboardPage() {
       track201={track201}
       dailyQuestion={getDailyQuestionView(me.id)}
       streak={{ current: streak.current, longest: streak.longest, label: streakLabel(streak.current) }}
+      rankName={rank.name}
+      rankKey={rank.key}
       activeScenario={getActiveScenario(me.id)}
       scenarioArchive={getScenarioArchive(me.id)}
       weeklyCurrent={getCurrentWeeklyChallenge(me.id)}

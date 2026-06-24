@@ -22,10 +22,21 @@ import {
   quotes,
   faqs,
 } from "@/lib/home";
+import { getActiveTestimonials } from "@/lib/content";
 
 const SECTION_PAD = "clamp(56px,8vw,120px) clamp(18px,4vw,40px)";
 
 export default function HomePage() {
+  // Testimonials are admin-editable (Feature 8); fall back to the static
+  // seed quotes if none are active. revalidatePath("/") refreshes this after edits.
+  const dbTestimonials = getActiveTestimonials();
+  const testimonials = dbTestimonials.length
+    ? dbTestimonials.map((t) => ({
+        text: t.quote,
+        who: [t.studentName, t.schoolName, t.trackCompleted ? `Track ${t.trackCompleted}` : ""].filter(Boolean).join(" · ").toUpperCase(),
+      }))
+    : quotes;
+
   return (
     <div>
       {/* ===== HERO A — DRAFT BOARD ===== */}
@@ -428,7 +439,7 @@ export default function HomePage() {
             ))}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(20px,3vw,40px)", marginTop: 40 }}>
-            {quotes.map((q) => (
+            {testimonials.map((q) => (
               <figure key={q.who} style={{ margin: 0, display: "flex", flexDirection: "column", gap: 14 }}>
                 <blockquote style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 500, fontSize: 22, lineHeight: 1.3, color: "#fff" }}>&ldquo;{q.text}&rdquo;</blockquote>
                 <figcaption style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#9a9da6" }}>{q.who}</figcaption>

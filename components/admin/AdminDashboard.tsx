@@ -6,6 +6,7 @@ import type { AdminData } from "@/lib/admin";
 import { createCohort, updateUserRole, type RoleToggle } from "@/app/actions/lms";
 import { createPartnerOrg } from "@/app/actions/partners";
 import { PARTNER_ORG_TYPES, partnerTypeLabel } from "@/lib/account";
+import ContentManager from "@/components/admin/ContentManager";
 
 type Tab = "overview" | "cohorts" | "users" | "content" | "partners";
 
@@ -290,6 +291,10 @@ function Content({ data }: { data: AdminData }) {
           </div>
         ))}
       </section>
+
+      {/* Content management — Daily Questions, News, Testimonials, Glossary (Feature 8) */}
+      <h3 style={{ ...panelTitle, marginTop: 24 }}>Manage content</h3>
+      <ContentManager data={data.contentMgmt} />
     </div>
   );
 }

@@ -13,8 +13,18 @@ import { getDb } from "@/lib/db";
 import { getSelfModules } from "@/lib/self-paced";
 import { getAllPartnerOrgs, getDemoRequests, type PartnerOrg, type DemoRequest } from "@/lib/partners";
 import { countDailyAnswersToday } from "@/lib/daily-question";
-import { countGlossaryTerms } from "@/lib/glossary";
+import { countGlossaryTerms, getGlossaryTerms, type GlossaryTerm } from "@/lib/glossary";
 import { getStreakLeaders } from "@/lib/streak";
+import {
+  getDailyQuestionsAdmin,
+  getAllNewsItems,
+  getPendingNewsSubmissions,
+  getAllTestimonials,
+  type DailyQuestionAdminRow,
+  type NewsItem,
+  type NewsSubmission,
+  type Testimonial,
+} from "@/lib/content";
 
 export interface AdminOverview {
   totalStudents: number;
@@ -68,11 +78,21 @@ export interface AdminHealth {
   recentCertificates: { name: string; when: string }[];
 }
 
+/** Editable content lists for the admin Content managers (Feature 8). */
+export interface AdminContentMgmt {
+  dailyQuestions: DailyQuestionAdminRow[];
+  newsItems: NewsItem[];
+  newsSubmissions: NewsSubmission[];
+  testimonials: Testimonial[];
+  glossary: GlossaryTerm[];
+}
+
 export interface AdminData {
   overview: AdminOverview;
   cohorts: AdminCohortRow[];
   users: AdminUserRow[];
   content: AdminContent;
+  contentMgmt: AdminContentMgmt;
   health: AdminHealth;
   instructors: { id: string; name: string }[];
   partners: { orgs: PartnerOrg[]; demoRequests: DemoRequest[] };
@@ -189,11 +209,20 @@ export function getAdminData(adminId: string): AdminData {
 
   const instructors = (db.prepare("SELECT id, name FROM users WHERE role = 'instructor' ORDER BY name ASC").all() as any[]).map((r) => ({ id: r.id, name: r.name }));
 
+  const contentMgmt: AdminContentMgmt = {
+    dailyQuestions: getDailyQuestionsAdmin(),
+    newsItems: getAllNewsItems(),
+    newsSubmissions: getPendingNewsSubmissions(),
+    testimonials: getAllTestimonials(),
+    glossary: getGlossaryTerms(),
+  };
+
   return {
     overview,
     cohorts,
     users,
     content,
+    contentMgmt,
     health: { recentStudents, recentModules, recentCertificates },
     instructors,
     partners: { orgs: getAllPartnerOrgs(), demoRequests: getDemoRequests() },

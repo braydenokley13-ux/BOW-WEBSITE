@@ -63,6 +63,7 @@ export const FOOTER_COLS: FooterCol[] = [
       { label: "Concept Map", href: "/concept-map" },
       { label: "Glossary", href: "/glossary" },
       { label: "Standards Alignment", href: "/standards" },
+      { label: "In the News", href: "/news" },
     ],
   },
   {
@@ -80,6 +81,7 @@ export const FOOTER_COLS: FooterCol[] = [
     links: [
       { label: "Get Involved", href: "/get-involved" },
       { label: "Contact / Partnerships", href: "/contact" },
+      { label: "Partner Demo", href: "/demo" },
       { label: "About BOW", href: "/about" },
       { label: "FAQ", href: "/#faq" },
     ],
