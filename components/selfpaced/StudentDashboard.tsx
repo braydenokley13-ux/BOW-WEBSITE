@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -38,6 +38,7 @@ interface Props {
   track201: TrackData;
   dailyQuestion: DailyQuestionView | null;
   streak: StreakDisplay;
+  xp: number;
   rankName: string;
   rankKey: string;
   activeScenario: DailyScenarioView | null;
@@ -54,6 +55,7 @@ export default function StudentDashboard({
   track201,
   dailyQuestion,
   streak,
+  xp,
   rankName,
   rankKey,
   activeScenario,
@@ -78,6 +80,7 @@ export default function StudentDashboard({
     ...(frontOfficeUnlocked ? [{ href: "/front-office", label: "The Front Office" }] : []),
     { href: "/discussion", label: "Discussion" },
     { href: "/leaderboard", label: "Leaderboard" },
+    { href: "/badges", label: "Badges" },
     { href: "/card", label: "My Card" },
     { href: "/news", label: "News" },
     { href: "/glossary", label: "Glossary" },
@@ -99,14 +102,8 @@ export default function StudentDashboard({
               <h1 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
                 Good to see you, {firstName}.
               </h1>
-              {streak.label && (
-                <span
-                  title={`Current streak: ${streak.current} day${streak.current === 1 ? "" : "s"} · Longest: ${streak.longest}`}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--bow-ink)", color: "#fff", borderRadius: 999, padding: "6px 14px", fontFamily: "var(--font-data)", fontSize: 13, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}
-                >
-                  {streak.label}
-                </span>
-              )}
+              <StreakChip current={streak.current} longest={streak.longest} label={streak.label} />
+              <XpChip xp={xp} />
               <span
                 style={{ display: "inline-flex", alignItems: "center", gap: 7, border: `1px solid ${rankColor}`, color: rankColor, borderRadius: 999, padding: "5px 13px", fontFamily: "var(--font-data)", fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}
               >
@@ -129,7 +126,7 @@ export default function StudentDashboard({
         </div>
 
         {/* 1 · DAILY QUESTION — the core retention hook, above everything else */}
-        <DailyQuestionCard view={dailyQuestion} />
+        <DailyQuestionCard view={dailyQuestion} streakCurrent={streak.current} />
 
         {/* 2 · BOW DAILY SCENARIO */}
         <DailyScenarios active={activeScenario} archive={scenarioArchive} />
@@ -189,6 +186,61 @@ export default function StudentDashboard({
         </div>
       </div>
     </div>
+  );
+}
+
+/* ---------------- header chips ---------------- */
+
+/** Streak chip — links to /badges and pulses when the streak just advanced. */
+function StreakChip({ current, longest, label }: { current: number; longest: number; label: string | null }) {
+  const [pulse, setPulse] = useState(false);
+  const prev = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (prev.current !== null && current > prev.current) {
+      setPulse(true);
+      const t = setTimeout(() => setPulse(false), 3000);
+      prev.current = current;
+      return () => clearTimeout(t);
+    }
+    prev.current = current;
+  }, [current]);
+
+  const base: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 6, background: "var(--bow-ink)", color: "#fff",
+    borderRadius: 999, padding: "6px 14px", fontFamily: "var(--font-data)", fontSize: 13, fontWeight: 700,
+    letterSpacing: "0.04em", whiteSpace: "nowrap", textDecoration: "none",
+  };
+
+  if (!label) {
+    return (
+      <Link href="/badges" title="See your achievements" style={{ ...base, background: "transparent", color: "var(--bow-ink)", border: "1px solid var(--border-strong)" }}>
+        🏅 Achievements
+      </Link>
+    );
+  }
+  return (
+    <Link
+      href="/badges"
+      className={pulse ? "bow-streak-pulse" : undefined}
+      title={`Current streak: ${current} day${current === 1 ? "" : "s"} · Longest: ${longest} · View badges`}
+      style={base}
+    >
+      {label}
+    </Link>
+  );
+}
+
+/** XP chip — current XP total, linking to the XP leaderboard. */
+function XpChip({ xp }: { xp: number }) {
+  return (
+    <Link
+      href="/leaderboard?tab=xp"
+      title="Your XP — see the XP leaderboard"
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(201,168,76,0.14)", color: "#8a6d1f", border: "1px solid rgba(201,168,76,0.5)", borderRadius: 999, padding: "6px 14px", fontFamily: "var(--font-data)", fontSize: 13, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap", textDecoration: "none" }}
+    >
+      ⚡ {xp.toLocaleString()} XP
+    </Link>
   );
 }
 

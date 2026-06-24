@@ -37,6 +37,12 @@ export interface RecordVisitResult extends StreakState {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/** Read a student's current XP total. */
+export function getUserXp(studentId: string): number {
+  const r = getDb().prepare("SELECT xp FROM users WHERE id = ?").get(studentId) as any;
+  return Number(r?.xp) || 0;
+}
+
 /** Read a student's streak state. */
 export function getStreak(studentId: string): StreakState {
   const r = getDb()

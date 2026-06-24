@@ -123,31 +123,53 @@ export interface DailyQuestionAdminRow {
   id: string;
   ordinal: number;
   questionText: string;
+  choiceA: string;
+  choiceB: string;
+  choiceC: string;
+  choiceD: string;
   conceptTag: string;
   difficulty: number;
+  type: string;
+  track: string;
+  points: number;
+  active: boolean;
   activeDate: string | null;
   correctAnswer: string;
+  explanation: string;
   answeredCount: number;
 }
 
 export function getDailyQuestionsAdmin(): DailyQuestionAdminRow[] {
   const rows = getDb()
     .prepare(
-      `SELECT q.id, q.ordinal, q.question_text, q.concept_tag, q.difficulty, q.active_date, q.correct_answer,
+      `SELECT q.id, q.ordinal, q.question_text, q.choice_a, q.choice_b, q.choice_c, q.choice_d,
+              q.concept_tag, q.difficulty, q.type, q.track, q.points, q.active, q.active_date, q.correct_answer, q.explanation,
               (SELECT COUNT(*) FROM daily_responses r WHERE r.question_id = q.id) AS answered
        FROM daily_questions q ORDER BY q.ordinal ASC`,
     )
     .all() as any[];
-  return rows.map((r) => ({
-    id: r.id,
-    ordinal: Number(r.ordinal) || 0,
-    questionText: r.question_text,
-    conceptTag: r.concept_tag,
-    difficulty: Number(r.difficulty) || 1,
-    activeDate: r.active_date ?? null,
-    correctAnswer: String(r.correct_answer ?? "").toUpperCase(),
-    answeredCount: Number(r.answered) || 0,
-  }));
+  return rows.map((r) => {
+    const type = r.type === "math" || r.type === "fr" ? r.type : "mc";
+    return {
+      id: r.id,
+      ordinal: Number(r.ordinal) || 0,
+      questionText: r.question_text,
+      choiceA: r.choice_a ?? "",
+      choiceB: r.choice_b ?? "",
+      choiceC: r.choice_c ?? "",
+      choiceD: r.choice_d ?? "",
+      conceptTag: r.concept_tag,
+      difficulty: Number(r.difficulty) || 1,
+      type,
+      track: r.track === "201" ? "201" : "101",
+      points: Number(r.points) || 10,
+      active: r.active == null ? true : Number(r.active) === 1,
+      activeDate: r.active_date ?? null,
+      correctAnswer: type === "mc" ? String(r.correct_answer ?? "").toUpperCase() : String(r.correct_answer ?? ""),
+      explanation: r.explanation ?? "",
+      answeredCount: Number(r.answered) || 0,
+    };
+  });
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */

@@ -21,36 +21,73 @@
 
 import { getDb } from "@/lib/db";
 
+/** How a question is answered: multiple choice, numeric, or free response. */
+export type QuestionType = "mc" | "math" | "fr";
+
+/** The three difficulty tiers, derived from the integer `difficulty` (1/2/3). */
+export type DifficultyTier = "rookie" | "pro" | "executive";
+
 /** One Daily Question (reference data). */
 export interface DailyQuestion {
   id: string;
-  /** Stable display/rotation order, 1..60. */
+  /** Stable display/rotation order. */
   ordinal: number;
   questionText: string;
+  /** How the student answers. MC uses the four choices; math/fr use a text input. */
+  type: QuestionType;
   choiceA: string;
   choiceB: string;
   choiceC: string;
   choiceD: string;
-  /** The correct choice letter, "A".."D". */
+  /** MC: the correct choice letter, "A".."D". math/fr: the expected answer text. */
   correctAnswer: string;
   explanation: string;
   /** snake_case BOW concept tag, e.g. "opportunity_cost". */
   conceptTag: string;
-  /** 1 = recall, 2 = application, 3 = analysis. */
+  /**
+   * 1 = Rookie (recall), 2 = Pro (application), 3 = Executive (analysis).
+   * The integer is canonical in storage; {@link difficultyTier} maps it to the
+   * rookie/pro/executive labels the UI shows.
+   */
   difficulty: number;
+  /** Curriculum track this question belongs to: "101" or "201". */
+  track: string;
+  /** XP awarded for a correct answer (Rookie 10 / Pro 20 / Executive 35). */
+  points: number;
+  /** Admin can hide a question from rotation without deleting it. */
+  active: boolean;
   /** Optional fixed calendar date (YYYY-MM-DD) this question is scheduled for. */
   activeDate: string | null;
 }
+
+/**
+ * Seed-bank shape. `track`, `type`, and `points` are optional here so the
+ * original 60 questions stay terse; {@link seedDefaults} fills them in.
+ */
+export type DailyQuestionSeed = Omit<DailyQuestion, "track" | "type" | "points" | "active"> & {
+  track?: string;
+  type?: QuestionType;
+  points?: number;
+};
 
 /** The Daily Question as the dashboard card renders it (fully serializable). */
 export interface DailyQuestionView {
   id: string;
   ordinal: number;
   questionText: string;
+  type: QuestionType;
   choices: { key: string; text: string }[];
   conceptTag: string;
   conceptLabel: string;
   difficulty: number;
+  /** rookie / pro / executive, derived from `difficulty`. */
+  tier: DifficultyTier;
+  /** Title-case tier label for the pill ("Rookie" / "Pro" / "Executive"). */
+  tierLabel: string;
+  /** Curriculum track ("101" / "201"). */
+  track: string;
+  /** XP a correct answer is worth. */
+  points: number;
   /** True once this student has answered today's question. */
   answered: boolean;
   selectedChoice: string | null;
@@ -60,6 +97,31 @@ export interface DailyQuestionView {
   explanation: string | null;
   /** Epoch-ms of the next UTC midnight — the client ticks a countdown to it. */
   nextResetAt: number;
+}
+
+/** XP a correct answer is worth at each difficulty (Rookie/Pro/Executive). */
+export function pointsForDifficulty(difficulty: number): number {
+  if (difficulty >= 3) return 35;
+  if (difficulty === 2) return 20;
+  return 10;
+}
+
+/** Map the integer difficulty (1/2/3) to its tier key. */
+export function difficultyTier(difficulty: number): DifficultyTier {
+  if (difficulty >= 3) return "executive";
+  if (difficulty === 2) return "pro";
+  return "rookie";
+}
+
+/** Title-case label for a difficulty tier ("Rookie" / "Pro" / "Executive"). */
+export function tierLabel(difficulty: number): string {
+  const tier = difficultyTier(difficulty);
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
+}
+
+/** The integer difficulty for a tier key (inverse of {@link difficultyTier}). */
+export function tierToDifficulty(tier: DifficultyTier): number {
+  return tier === "executive" ? 3 : tier === "pro" ? 2 : 1;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -101,7 +163,7 @@ export function conceptLabel(tag: string): string {
  *  Every BOW concept is covered at least twice.
  *  Reading level: 5th–8th grade, short sentences, real sports examples.
  * ============================================================ */
-export const DAILY_QUESTIONS: DailyQuestion[] = [
+export const DAILY_QUESTIONS: DailyQuestionSeed[] = [
   {
     id: "dq-001", ordinal: 1, difficulty: 1, conceptTag: "opportunity_cost", activeDate: null,
     questionText:
@@ -811,6 +873,343 @@ export const DAILY_QUESTIONS: DailyQuestion[] = [
     explanation:
       "By holding the star, the GM gives up the young players and picks a trade would bring — that's the opportunity cost. Loyalty is admirable, but every roster spot and dollar tied up in one player is value not used elsewhere.",
   },
+
+  /* ============================================================
+   * Deep-expansion bank — 30 questions across the track × difficulty
+   * matrix. Track "101" = front-office mechanics; "201" = league
+   * business. Difficulty 1/2/3 = Rookie/Pro/Executive. Points follow
+   * the tier (10/20/35) and are filled by seedDefaults if omitted.
+   * ============================================================ */
+
+  /* ---- Track 101 · Rookie (6) — cap basics, luxury tax, the GM role ---- */
+  {
+    id: "dq-101r-1", ordinal: 61, difficulty: 1, track: "101", type: "mc", conceptTag: "salary_cap", activeDate: null,
+    questionText: "What is a salary cap?",
+    choiceA: "A tax every team pays the league each year",
+    choiceB: "A limit on how much a team can spend on player salaries",
+    choiceC: "The most any single player can earn",
+    choiceD: "The minimum a team must spend on its arena",
+    correctAnswer: "B",
+    explanation:
+      "A salary cap is a league-set limit on total player payroll. It keeps big-market teams from simply outspending everyone and forces GMs to budget. Every signing has to fit under — or be carved out of — that number.",
+  },
+  {
+    id: "dq-101r-2", ordinal: 62, difficulty: 1, track: "101", type: "mc", conceptTag: "front_office", activeDate: null,
+    questionText: "What does a general manager (GM) mainly do?",
+    choiceA: "Coach the team during games",
+    choiceB: "Sell tickets and run the arena",
+    choiceC: "Build the roster — drafting, signing, and trading players within a budget",
+    choiceD: "Referee disputes between players",
+    correctAnswer: "C",
+    explanation:
+      "The GM is the architect of the roster: they draft, sign, and trade players while staying inside the cap. It's an economics job as much as a basketball one — every move is a resource-allocation decision.",
+  },
+  {
+    id: "dq-101r-3", ordinal: 63, difficulty: 1, track: "101", type: "mc", conceptTag: "luxury_tax", activeDate: null,
+    questionText: "What is the luxury tax?",
+    choiceA: "A fee fans pay for premium seats",
+    choiceB: "An extra payment teams owe when payroll goes above a set threshold",
+    choiceC: "A tax on ticket sales",
+    choiceD: "Money the league pays the best teams",
+    correctAnswer: "B",
+    explanation:
+      "The luxury tax is a penalty on teams that spend above a set threshold. It's the league's way of letting teams overspend — but only if they're willing to pay for it. The richest, most aggressive teams treat it as the cost of contending.",
+  },
+  {
+    id: "dq-101r-4", ordinal: 64, difficulty: 1, track: "101", type: "mc", conceptTag: "salary_cap", activeDate: null,
+    questionText: "A team's payroll is $20M below the cap. What does that 'cap space' let them do?",
+    choiceA: "Nothing — unused space is lost",
+    choiceB: "Sign free agents using up to that $20M in room",
+    choiceC: "Force another team to make a trade",
+    choiceD: "Raise ticket prices by $20M",
+    correctAnswer: "B",
+    explanation:
+      "Cap space is room to add salary. A team $20M under the cap can sign free agents up to that amount. Space is a real asset — teams sometimes trade just to create it so they can chase a big-name player.",
+  },
+  {
+    id: "dq-101r-5", ordinal: 65, difficulty: 1, track: "101", type: "mc", conceptTag: "guaranteed_money", activeDate: null,
+    questionText: "A contract is 'fully guaranteed.' What does that mean for the team?",
+    choiceA: "They owe the money even if they cut the player",
+    choiceB: "They can cancel it any time for free",
+    choiceC: "The player can never be traded",
+    choiceD: "The league pays half the salary",
+    correctAnswer: "A",
+    explanation:
+      "Guaranteed money is owed no matter what — even if the player is waived or gets hurt. That's why GMs are careful with long guaranteed deals: a bad one stays on the books and eats cap space for years.",
+  },
+  {
+    id: "dq-101r-6", ordinal: 66, difficulty: 1, track: "101", type: "mc", conceptTag: "scarcity", activeDate: null,
+    questionText: "Rosters are limited to 15 players. A GM wants to keep a 16th they like. What concept forces a cut?",
+    choiceA: "Inflation",
+    choiceB: "Scarcity — there are more useful players than roster spots",
+    choiceC: "Revenue sharing",
+    choiceD: "The luxury tax",
+    correctAnswer: "B",
+    explanation:
+      "Roster spots are scarce, so keeping one player means cutting another. Scarcity is the core of every front-office choice: limited spots, limited dollars, limited minutes. Someone always gets left off.",
+  },
+
+  /* ---- Track 101 · Pro (6) — apron math, slot value, exceptions ---- */
+  {
+    id: "dq-101p-1", ordinal: 67, difficulty: 2, track: "101", type: "mc", conceptTag: "apron", activeDate: null,
+    questionText: "The 'first apron' is a spending line above the luxury tax. Why do teams fear crossing it?",
+    choiceA: "It bans them from the playoffs",
+    choiceB: "It unlocks extra cap space",
+    choiceC: "It strips away roster-building tools like certain trades and exceptions",
+    choiceD: "It forces them to sell the team",
+    correctAnswer: "C",
+    explanation:
+      "The apron is a hard-ish ceiling: cross it and you lose flexibility — full mid-level exception, taking back more salary in trades, and more. It's designed to make the very top of the market pay a roster-building price, not just a tax bill.",
+  },
+  {
+    id: "dq-101p-2", ordinal: 68, difficulty: 2, track: "101", type: "math", conceptTag: "luxury_tax", activeDate: null,
+    questionText: "Your payroll is $5M over the tax line. At a simple 1.5× tax rate on the overage, what is the tax bill, in millions of dollars? (Enter the number.)",
+    choiceA: "", choiceB: "", choiceC: "", choiceD: "",
+    correctAnswer: "7.5",
+    explanation:
+      "Tax is charged on the amount above the line: $5M × 1.5 = $7.5M. Real tax rates climb the deeper you go (the 'repeater' rates are even steeper), so the bill grows fast as payroll rises.",
+  },
+  {
+    id: "dq-101p-3", ordinal: 69, difficulty: 2, track: "101", type: "mc", conceptTag: "pick_value_decay", activeDate: null,
+    questionText: "Why is the #3 overall pick worth far more than the #33 pick, even though both are 'draft picks'?",
+    choiceA: "Higher picks have a much greater chance of landing a star — value decays steeply",
+    choiceB: "Lower picks cost more money",
+    choiceC: "The league bans trading late picks",
+    choiceD: "There is no real difference",
+    correctAnswer: "A",
+    explanation:
+      "Pick value decays steeply: the odds of finding a star drop sharply as you move down the board. That's why a top-5 pick can headline a blockbuster while second-round picks are thrown in as sweeteners.",
+  },
+  {
+    id: "dq-101p-4", ordinal: 70, difficulty: 2, track: "101", type: "mc", conceptTag: "trade_exception", activeDate: null,
+    questionText: "A team trades away a $10M player and gets none back. What does the resulting 'trade exception' let them do?",
+    choiceA: "Sign any free agent to any amount",
+    choiceB: "Absorb an incoming salary up to about that $10M later, without matching it",
+    choiceC: "Skip the luxury tax for a year",
+    choiceD: "Draft an extra player",
+    correctAnswer: "B",
+    explanation:
+      "A trade exception is like a salary-sized coupon: it lets a team take back an incoming contract up to that amount later without sending matching salary out. It's a flexibility asset that expires — usually within a year.",
+  },
+  {
+    id: "dq-101p-5", ordinal: 71, difficulty: 2, track: "101", type: "mc", conceptTag: "apron", activeDate: null,
+    questionText: "Teams above the 'second apron' face the harshest rules. What is the league really trying to do?",
+    choiceA: "Help the richest teams build superteams",
+    choiceB: "Discourage stacking expensive rosters by removing tools, not just adding cost",
+    choiceC: "Eliminate the salary cap entirely",
+    choiceD: "Force every team to spend the same",
+    correctAnswer: "B",
+    explanation:
+      "The second apron replaces 'pay more to spend more' with 'you simply can't.' By freezing picks and removing trade tools, it caps competitive concentration through roster rules rather than dollars alone.",
+  },
+  {
+    id: "dq-101p-6", ordinal: 72, difficulty: 2, track: "101", type: "mc", conceptTag: "cap_hold", activeDate: null,
+    questionText: "A team's own free agent isn't re-signed yet, but a 'cap hold' still sits on their books. Why does that matter?",
+    choiceA: "It counts as placeholder salary, reducing usable cap space until they sign or renounce him",
+    choiceB: "It pays the player twice",
+    choiceC: "It is money the league owes the team",
+    choiceD: "It has no effect on cap space",
+    correctAnswer: "A",
+    explanation:
+      "A cap hold is a placeholder charge that reserves space for re-signing your own free agent. Until you sign or renounce him, that hold eats into your room — so chasing outside free agents often means giving up your own players' rights first.",
+  },
+
+  /* ---- Track 101 · Executive (4) — multi-team trades, S&T, supermax ---- */
+  {
+    id: "dq-101e-1", ordinal: 73, difficulty: 3, track: "101", type: "mc", conceptTag: "multi_team_trade", activeDate: null,
+    questionText: "Why would a GM build a three-team trade instead of a simple two-team deal?",
+    choiceA: "It avoids the salary cap completely",
+    choiceB: "A third team can absorb salary or send an asset that makes the matching and fit work",
+    choiceC: "The league requires three teams for any star trade",
+    choiceD: "It doubles the number of players allowed",
+    correctAnswer: "B",
+    explanation:
+      "Multi-team trades exist to solve matching and fit problems: a third team uses its cap space or surplus assets to make the money work or route players where they're wanted. Complexity is the price of getting an otherwise-impossible deal done.",
+  },
+  {
+    id: "dq-101e-2", ordinal: 74, difficulty: 3, track: "101", type: "mc", conceptTag: "sign_and_trade", activeDate: null,
+    questionText: "In a sign-and-trade, a team re-signs its own free agent and immediately trades him. Why bother?",
+    choiceA: "It lets the player leave while the old team gets assets instead of nothing",
+    choiceB: "It is the only way to cut a player",
+    choiceC: "It erases the player's salary from both teams",
+    choiceD: "It guarantees a championship",
+    correctAnswer: "A",
+    explanation:
+      "A sign-and-trade turns a departing free agent into a return of players or picks — value the team would otherwise lose for free. It can also let the new team pay more or add years than straight cap space allows, so both sides can win.",
+  },
+  {
+    id: "dq-101e-3", ordinal: 75, difficulty: 3, track: "101", type: "mc", conceptTag: "supermax", activeDate: null,
+    questionText: "The 'supermax' lets a team pay its own star more than any rival can. What's the strategic risk of offering it?",
+    choiceA: "There is no risk — more pay is always better",
+    choiceB: "One huge guaranteed deal can crush future flexibility if the player declines or gets hurt",
+    choiceC: "It forces the team to trade the player",
+    choiceD: "The league pays the difference",
+    correctAnswer: "B",
+    explanation:
+      "The supermax is a retention tool, but it concentrates enormous guaranteed money in one player. If his performance dips or injuries hit, that contract becomes an immovable anchor — the analog of over-betting on a single asset.",
+  },
+  {
+    id: "dq-101e-4", ordinal: 76, difficulty: 3, track: "101", type: "math", conceptTag: "stretch_provision", activeDate: null,
+    questionText: "You waive a player with $12M left and 'stretch' it evenly across 3 seasons. What is the annual cap hit, in millions? (Enter the number.)",
+    choiceA: "", choiceB: "", choiceC: "", choiceD: "",
+    correctAnswer: "4",
+    explanation:
+      "The stretch provision spreads dead money over more years: $12M ÷ 3 = $4M per season. It lowers the yearly hit now but locks 'dead money' on the books longer — paying for nothing in future seasons.",
+  },
+
+  /* ---- Track 201 · Rookie (5) — revenue sharing, arena, tickets ---- */
+  {
+    id: "dq-201r-1", ordinal: 77, difficulty: 1, track: "201", type: "mc", conceptTag: "revenue_sharing", activeDate: null,
+    questionText: "What is revenue sharing between teams?",
+    choiceA: "Players splitting their salaries with fans",
+    choiceB: "Richer teams sending money to smaller-market teams to keep the league healthy",
+    choiceC: "Teams sharing their playbooks",
+    choiceD: "The league taking all ticket money",
+    correctAnswer: "B",
+    explanation:
+      "Revenue sharing moves money from high-revenue teams to smaller-market ones. A league is only as strong as its weakest franchises, so sharing keeps every market competitive enough to matter — and keeps the product valuable for everyone.",
+  },
+  {
+    id: "dq-201r-2", ordinal: 78, difficulty: 1, track: "201", type: "mc", conceptTag: "arena_economics", activeDate: null,
+    questionText: "Besides tickets, which is a major way an arena makes money on game night?",
+    choiceA: "Charging players to enter",
+    choiceB: "Concessions, parking, and premium suites",
+    choiceC: "Selling the building each night",
+    choiceD: "Taxing other teams",
+    correctAnswer: "B",
+    explanation:
+      "The arena is a revenue machine well beyond ticket stubs: food and drink, parking, suites, and sponsorship all stack up. That's why owning or controlling the building is so valuable — many revenue streams flow through one night.",
+  },
+  {
+    id: "dq-201r-3", ordinal: 79, difficulty: 1, track: "201", type: "mc", conceptTag: "ticket_pricing", activeDate: null,
+    questionText: "A team notices its cheapest seats sell out instantly but premium seats sit empty. What does basic pricing suggest?",
+    choiceA: "Cut prices on the premium seats to fill them",
+    choiceB: "Raise prices on every seat",
+    choiceC: "Stop selling cheap seats",
+    choiceD: "Move the team to a new city",
+    correctAnswer: "A",
+    explanation:
+      "When demand is weak at a price, lowering it can fill seats and capture revenue you'd otherwise lose. Empty premium seats earn nothing; a filled seat at a lower price earns something — and sells concessions too.",
+  },
+  {
+    id: "dq-201r-4", ordinal: 80, difficulty: 1, track: "201", type: "mc", conceptTag: "gate_revenue", activeDate: null,
+    questionText: "What is 'gate revenue'?",
+    choiceA: "Money from the team's TV deal",
+    choiceB: "Income from ticket sales to games",
+    choiceC: "Fees for entering the parking lot",
+    choiceD: "Player salaries",
+    correctAnswer: "B",
+    explanation:
+      "Gate revenue is the money from tickets — the oldest revenue stream in sports. It still matters, but for big franchises it's now often smaller than media and sponsorship money, which has reshaped how teams are valued.",
+  },
+  {
+    id: "dq-201r-5", ordinal: 81, difficulty: 1, track: "201", type: "mc", conceptTag: "naming_rights", activeDate: null,
+    questionText: "A company pays millions to put its name on a team's arena. What is the company buying?",
+    choiceA: "Ownership of the team",
+    choiceB: "Years of brand exposure to every fan and broadcast",
+    choiceC: "The right to pick the roster",
+    choiceD: "Free tickets forever",
+    correctAnswer: "B",
+    explanation:
+      "Naming rights are advertising: the sponsor's name reaches every fan, broadcast, and highlight for years. For the team, it's a large, reliable revenue stream locked in by a long contract — value created from the building's attention, not the game.",
+  },
+
+  /* ---- Track 201 · Pro (5) — valuation, media rights, cap-sheet ---- */
+  {
+    id: "dq-201p-1", ordinal: 82, difficulty: 2, track: "201", type: "math", conceptTag: "franchise_valuation", activeDate: null,
+    questionText: "A franchise earns $300M in annual revenue and sells at a 7× revenue multiple. What is the sale price, in billions? (Enter the number.)",
+    choiceA: "", choiceB: "", choiceC: "", choiceD: "",
+    correctAnswer: "2.1",
+    explanation:
+      "A revenue multiple values a team as revenue × a market factor: $300M × 7 = $2.1B. Multiples rise when buyers expect future growth — new media deals, scarcity of teams, and rich owners bidding push them well above old levels.",
+  },
+  {
+    id: "dq-201p-2", ordinal: 83, difficulty: 2, track: "201", type: "mc", conceptTag: "media_rights", activeDate: null,
+    questionText: "Why have national media rights become the single biggest driver of franchise value?",
+    choiceA: "Fans pay teams directly to watch",
+    choiceB: "Networks and streamers pay enormous, guaranteed sums shared across all teams",
+    choiceC: "Media deals are tax-free",
+    choiceD: "They replace the need for players",
+    correctAnswer: "B",
+    explanation:
+      "Live sports are one of the few things people still watch in real time, so networks and streamers pay huge guaranteed fees. That money is shared league-wide and is highly predictable — exactly what drives up what a franchise is worth.",
+  },
+  {
+    id: "dq-201p-3", ordinal: 84, difficulty: 2, track: "201", type: "mc", conceptTag: "cap_sheet", activeDate: null,
+    questionText: "Reading a cap sheet, you see most salary expires next summer. What does that signal about the team's plan?",
+    choiceA: "They are stuck with no flexibility",
+    choiceB: "They are clearing room for a big run at free agents next offseason",
+    choiceC: "They plan to fold the team",
+    choiceD: "They have already spent over the cap forever",
+    correctAnswer: "B",
+    explanation:
+      "Expiring contracts are future cap space. A sheet full of deals ending next summer usually means a deliberate plan to open room for a major signing or trade — reading the timeline tells you the strategy.",
+  },
+  {
+    id: "dq-201p-4", ordinal: 85, difficulty: 2, track: "201", type: "mc", conceptTag: "franchise_valuation", activeDate: null,
+    questionText: "Two teams have equal revenue, but one sells for far more. Which factor best explains the gap?",
+    choiceA: "Market size and growth potential — a bigger, growing market commands a higher multiple",
+    choiceB: "The color of the jerseys",
+    choiceC: "The number of timeouts they use",
+    choiceD: "How tall the players are",
+    correctAnswer: "A",
+    explanation:
+      "Price reflects expected future revenue, not just today's. A larger market with room to grow, valuable real estate, or an upcoming media deal earns a richer multiple — buyers pay for tomorrow's cash flows.",
+  },
+  {
+    id: "dq-201p-5", ordinal: 86, difficulty: 2, track: "201", type: "math", conceptTag: "media_rights", activeDate: null,
+    questionText: "A league signs a $30B media deal over 10 years, split evenly among 30 teams. About how many millions does each team get per year? (Enter the number.)",
+    choiceA: "", choiceB: "", choiceC: "", choiceD: "",
+    correctAnswer: "100",
+    explanation:
+      "Split it down: $30B ÷ 10 years = $3B per year; $3B ÷ 30 teams = $100M each per year. That shared, guaranteed money raises the financial floor for every franchise — even small-market teams.",
+  },
+
+  /* ---- Track 201 · Executive (4) — CBA, ownership, expansion ---- */
+  {
+    id: "dq-201e-1", ordinal: 87, difficulty: 3, track: "201", type: "mc", conceptTag: "collective_bargaining", activeDate: null,
+    questionText: "In labor talks, owners and players split 'basketball-related income' (BRI) roughly 50/50. Why is that split the core fight?",
+    choiceA: "It decides team uniforms",
+    choiceB: "A few percentage points of a multibillion-dollar pie is worth enormous money to both sides",
+    choiceC: "It sets ticket prices directly",
+    choiceD: "It determines the playoff bracket",
+    correctAnswer: "B",
+    explanation:
+      "The BRI split divides billions, so even one or two percentage points is a fortune. That's why collective bargaining is so contentious and why lockouts happen — both sides are negotiating the division of the entire economic pie.",
+  },
+  {
+    id: "dq-201e-2", ordinal: 88, difficulty: 3, track: "201", type: "mc", conceptTag: "ownership_waterfall", activeDate: null,
+    questionText: "When a team is sold, an 'ownership waterfall' determines who gets paid first. Who typically sits at the top?",
+    choiceA: "Season-ticket holders",
+    choiceB: "Lenders and preferred investors, before common-equity owners see a dollar",
+    choiceC: "The players",
+    choiceD: "The city government",
+    correctAnswer: "B",
+    explanation:
+      "A waterfall pays claims in priority order: debt and preferred investors are made whole first, and common owners split what's left. It's why two owners with the same percentage can walk away with very different amounts.",
+  },
+  {
+    id: "dq-201e-3", ordinal: 89, difficulty: 3, track: "201", type: "mc", conceptTag: "expansion_economics", activeDate: null,
+    questionText: "Existing owners often welcome an expansion team. What's the main economic reason?",
+    choiceA: "It lowers their own ticket prices",
+    choiceB: "They split a large one-time expansion fee and aren't required to share it like normal revenue",
+    choiceC: "It forces them to share players",
+    choiceD: "It reduces the value of their team",
+    correctAnswer: "B",
+    explanation:
+      "New owners pay a huge entry fee that current owners divide among themselves — often without the usual revenue-sharing obligations. Expansion can dilute future shares, but the upfront windfall and a bigger league footprint usually win the vote.",
+  },
+  {
+    id: "dq-201e-4", ordinal: 90, difficulty: 3, track: "201", type: "mc", conceptTag: "escrow", activeDate: null,
+    questionText: "Players have a slice of every paycheck held in 'escrow.' What problem does that solve for the league?",
+    choiceA: "It pays for the arena",
+    choiceB: "It trues up the actual salary-to-revenue split when final revenue is known",
+    choiceC: "It funds player pensions only",
+    choiceD: "It replaces the salary cap",
+    correctAnswer: "B",
+    explanation:
+      "Salaries are set before final revenue is known, so escrow holds back part of pay to balance the books to the agreed split. If players were overpaid relative to revenue, escrow covers the gap — a settle-up mechanism for a moving target.",
+  },
 ];
 
 /* ============================================================
@@ -819,42 +1218,128 @@ export const DAILY_QUESTIONS: DailyQuestion[] = [
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/** Fill in seed defaults (track/type/points/active) to a full DailyQuestion. */
+export function seedToQuestion(s: DailyQuestionSeed): DailyQuestion {
+  const type: QuestionType = s.type ?? "mc";
+  return {
+    ...s,
+    type,
+    track: s.track ?? "101",
+    points: s.points ?? pointsForDifficulty(s.difficulty),
+    active: true,
+    correctAnswer: type === "mc" ? s.correctAnswer.toUpperCase() : s.correctAnswer,
+  };
+}
+
 /** All daily questions, ordered (DB first, falling back to the seed bank). */
 export function getDailyQuestions(): DailyQuestion[] {
   const rows = getDb().prepare("SELECT * FROM daily_questions ORDER BY ordinal ASC").all() as any[];
-  if (rows.length === 0) return [...DAILY_QUESTIONS].sort((a, b) => a.ordinal - b.ordinal);
+  if (rows.length === 0) return [...DAILY_QUESTIONS].sort((a, b) => a.ordinal - b.ordinal).map(seedToQuestion);
   return rows.map(rowToDailyQuestion);
 }
 
+/** A single question by id (admin + submit-action use), or null. */
+export function getDailyQuestionById(id: string): DailyQuestion | null {
+  const r = getDb().prepare("SELECT * FROM daily_questions WHERE id = ?").get(id) as any;
+  return r ? rowToDailyQuestion(r) : null;
+}
+
 function rowToDailyQuestion(r: any): DailyQuestion {
+  const type: QuestionType = r.type === "math" || r.type === "fr" ? r.type : "mc";
+  const difficulty = Number(r.difficulty) || 1;
+  const rawCorrect = String(r.correct_answer ?? "");
   return {
     id: r.id,
     ordinal: Number(r.ordinal) || 0,
     questionText: r.question_text,
-    choiceA: r.choice_a,
-    choiceB: r.choice_b,
-    choiceC: r.choice_c,
-    choiceD: r.choice_d,
-    correctAnswer: String(r.correct_answer ?? "").toUpperCase(),
+    type,
+    choiceA: r.choice_a ?? "",
+    choiceB: r.choice_b ?? "",
+    choiceC: r.choice_c ?? "",
+    choiceD: r.choice_d ?? "",
+    // MC keys are letters; math/fr answers keep their original casing.
+    correctAnswer: type === "mc" ? rawCorrect.toUpperCase() : rawCorrect,
     explanation: r.explanation,
     conceptTag: r.concept_tag,
-    difficulty: Number(r.difficulty) || 1,
+    difficulty,
+    track: r.track === "201" ? "201" : "101",
+    points: Number(r.points) || pointsForDifficulty(difficulty),
+    active: r.active == null ? true : Number(r.active) === 1,
     activeDate: r.active_date ?? null,
   };
 }
 
+/** Pick the question for `today` from a pool: a dated match first, else a stable daily rotation. */
+function pickForDay(pool: DailyQuestion[], today: string, now: number): DailyQuestion | null {
+  if (pool.length === 0) return null;
+  const dated = pool.find((q) => q.activeDate === today);
+  if (dated) return dated;
+  return pool[utcDayNumber(now) % pool.length];
+}
+
 /**
- * The question that is "live" right now. Prefers a question scheduled for
- * today's date; otherwise rotates by day number so there is always one.
+ * The question that is "live" right now across the whole active bank. Prefers a
+ * question scheduled for today's date; otherwise rotates by day number. Kept for
+ * callers that want a single global question regardless of student.
  */
 export function getActiveDailyQuestion(now: number = Date.now()): DailyQuestion | null {
-  const all = getDailyQuestions();
+  const all = getDailyQuestions().filter((q) => q.active);
+  return pickForDay(all, todayUtcIso(now), now);
+}
+
+/** Lifetime count of this student's correct daily answers. */
+export function lifetimeCorrectCount(studentId: string): number {
+  const row = getDb()
+    .prepare("SELECT COUNT(*) AS n FROM daily_responses WHERE student_id = ? AND is_correct = 1")
+    .get(studentId) as any;
+  return Number(row?.n) || 0;
+}
+
+/**
+ * The student's current curriculum track. Earning the Track 101 certificate
+ * unlocks Track 201, so a certified student gets the 201 question bank.
+ */
+export function currentTrackFor(studentId: string): string {
+  const row = getDb()
+    .prepare("SELECT 1 AS c FROM certificates WHERE student_id = ? AND track = '101' LIMIT 1")
+    .get(studentId) as any;
+  return row ? "201" : "101";
+}
+
+/**
+ * The difficulty a student should see, by lifetime correct answers:
+ *  0–4 → Rookie (1), 5–14 → Pro (2), 15+ → Executive (3).
+ */
+export function computedDifficultyFor(studentId: string): number {
+  const correct = lifetimeCorrectCount(studentId);
+  if (correct >= 15) return 3;
+  if (correct >= 5) return 2;
+  return 1;
+}
+
+/**
+ * Today's question FOR A STUDENT: filtered to their track and computed
+ * difficulty, picked by the date-seed rotation. If no question exists at the
+ * exact difficulty, fall one tier down, then to any difficulty on the track,
+ * then to anything — so there is ALWAYS a question.
+ */
+export function getDailyQuestion(studentId: string, now: number = Date.now()): DailyQuestion | null {
+  const all = getDailyQuestions().filter((q) => q.active);
   if (all.length === 0) return null;
+  const track = currentTrackFor(studentId);
+  const targetDiff = computedDifficultyFor(studentId);
   const today = todayUtcIso(now);
-  const dated = all.find((q) => q.activeDate === today);
-  if (dated) return dated;
-  // Stable fallback: rotate by day number across the whole bank.
-  return all[utcDayNumber(now) % all.length];
+
+  const matchers: ((q: DailyQuestion) => boolean)[] = [];
+  for (let d = targetDiff; d >= 1; d--) matchers.push((q) => q.track === track && q.difficulty === d);
+  matchers.push((q) => q.track === track);
+  matchers.push(() => true);
+
+  for (const match of matchers) {
+    const picked = pickForDay(all.filter(match), today, now);
+    if (picked) return picked;
+  }
+  return all[0] ?? null;
 }
 
 /** The student's stored response to a specific daily question, if any. */
@@ -867,31 +1352,62 @@ export function getDailyResponse(
     .get(studentId, questionId) as any;
   if (!r) return null;
   return {
-    selectedChoice: String(r.selected_choice ?? "").toUpperCase(),
+    // Raw — MC stores an uppercase letter; math/fr store the typed answer.
+    selectedChoice: String(r.selected_choice ?? ""),
     isCorrect: Number(r.is_correct) === 1,
     respondedAt: Number(r.responded_at) || 0,
   };
 }
 
+/** Parse a money/number answer into a comparable number ("$2.1B" → 2.1). */
+export function normalizeNumeric(s: string): number | null {
+  const cleaned = s.replace(/[\s,$%]/g, "").replace(/(million|billion|[mb])$/i, "").trim();
+  if (cleaned === "") return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Grade a submitted answer against a question's key (handles mc / math / fr). */
+export function gradeAnswer(q: DailyQuestion, submitted: string): boolean {
+  const s = String(submitted ?? "").trim();
+  if (s === "") return false;
+  if (q.type === "mc") return s.toUpperCase() === q.correctAnswer.toUpperCase();
+  if (q.type === "math") {
+    const a = normalizeNumeric(s);
+    const b = normalizeNumeric(q.correctAnswer);
+    if (a != null && b != null) return Math.abs(a - b) < 1e-6;
+  }
+  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, " ").replace(/[.,!?;:]+$/g, "").trim();
+  return norm(s) === norm(q.correctAnswer);
+}
+
 /** Build the dashboard view of today's question for a student. */
 export function getDailyQuestionView(studentId: string, now: number = Date.now()): DailyQuestionView | null {
-  const q = getActiveDailyQuestion(now);
+  const q = getDailyQuestion(studentId, now);
   if (!q) return null;
   const answer = getDailyResponse(studentId, q.id);
-  const choices = [
-    { key: "A", text: q.choiceA },
-    { key: "B", text: q.choiceB },
-    { key: "C", text: q.choiceC },
-    { key: "D", text: q.choiceD },
-  ];
+  const choices =
+    q.type === "mc"
+      ? [
+          { key: "A", text: q.choiceA },
+          { key: "B", text: q.choiceB },
+          { key: "C", text: q.choiceC },
+          { key: "D", text: q.choiceD },
+        ]
+      : [];
   return {
     id: q.id,
     ordinal: q.ordinal,
     questionText: q.questionText,
+    type: q.type,
     choices,
     conceptTag: q.conceptTag,
     conceptLabel: conceptLabel(q.conceptTag),
     difficulty: q.difficulty,
+    tier: difficultyTier(q.difficulty),
+    tierLabel: tierLabel(q.difficulty),
+    track: q.track,
+    points: q.points,
     answered: !!answer,
     selectedChoice: answer?.selectedChoice ?? null,
     isCorrect: answer ? answer.isCorrect : null,
@@ -901,13 +1417,12 @@ export function getDailyQuestionView(studentId: string, now: number = Date.now()
   };
 }
 
-/** How many distinct students answered today's question (admin overview). */
+/** How many daily answers were recorded across all students today (admin overview). */
 export function countDailyAnswersToday(now: number = Date.now()): number {
-  const q = getActiveDailyQuestion(now);
-  if (!q) return 0;
+  const start = utcDayNumber(now) * DAY_MS;
   const row = getDb()
-    .prepare("SELECT COUNT(*) AS n FROM daily_responses WHERE question_id = ?")
-    .get(q.id) as any;
+    .prepare("SELECT COUNT(*) AS n FROM daily_responses WHERE responded_at >= ? AND responded_at < ?")
+    .get(start, start + DAY_MS) as any;
   return Number(row?.n) || 0;
 }
 

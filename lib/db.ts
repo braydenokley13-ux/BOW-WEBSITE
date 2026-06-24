@@ -41,7 +41,8 @@ import {
   type AppData,
 } from "@/lib/account";
 import { hashPassword } from "@/lib/password";
-import { DAILY_QUESTIONS } from "@/lib/daily-question";
+import { DAILY_QUESTIONS, seedToQuestion } from "@/lib/daily-question";
+import { BADGE_CATALOG } from "@/lib/badges";
 import { CONCEPT_MAP } from "@/lib/concept-map";
 import { GLOSSARY_TERMS } from "@/lib/glossary";
 import { STANDARDS_ALIGNMENT } from "@/lib/standards";
@@ -380,6 +381,10 @@ CREATE TABLE IF NOT EXISTS daily_questions (
   explanation TEXT NOT NULL,
   concept_tag TEXT NOT NULL,
   difficulty INTEGER NOT NULL DEFAULT 1,
+  type TEXT NOT NULL DEFAULT 'mc',
+  track TEXT NOT NULL DEFAULT '101',
+  points INTEGER NOT NULL DEFAULT 10,
+  active INTEGER NOT NULL DEFAULT 1,
   active_date TEXT UNIQUE
 );
 CREATE TABLE IF NOT EXISTS daily_responses (
@@ -390,6 +395,27 @@ CREATE TABLE IF NOT EXISTS daily_responses (
   is_correct INTEGER NOT NULL,
   responded_at INTEGER NOT NULL,
   UNIQUE (student_id, question_id)
+);
+
+/* ---- Badges & Achievements (Daily-Question deep expansion) ----
+ * The badge catalog (reference data) and per-student awards. student_id /
+ * badge_id are TEXT to match users.id (TEXT) and the catalog's string ids. */
+CREATE TABLE IF NOT EXISTS badges (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  icon TEXT NOT NULL,
+  category TEXT NOT NULL,
+  threshold INTEGER NOT NULL,
+  xp_reward INTEGER NOT NULL DEFAULT 0,
+  ordinal INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS student_badges (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id TEXT NOT NULL,
+  badge_id TEXT NOT NULL,
+  earned_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (student_id, badge_id)
 );
 
 /* ---- Player Card (Feature 4) — one collectible card per student ---- */
@@ -490,6 +516,8 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, rea
 CREATE INDEX IF NOT EXISTS idx_daily_questions_active ON daily_questions (active_date);
 CREATE INDEX IF NOT EXISTS idx_daily_responses_student ON daily_responses (student_id);
 CREATE INDEX IF NOT EXISTS idx_daily_responses_question ON daily_responses (question_id);
+CREATE INDEX IF NOT EXISTS idx_daily_questions_track_diff ON daily_questions (active, track, difficulty);
+CREATE INDEX IF NOT EXISTS idx_student_badges_student ON student_badges (student_id);
 CREATE INDEX IF NOT EXISTS idx_glossary_terms_term ON glossary_terms (term);
 CREATE INDEX IF NOT EXISTS idx_player_cards_student ON player_cards (student_id);
 CREATE INDEX IF NOT EXISTS idx_news_items_active ON news_items (active, created_at);
@@ -682,16 +710,30 @@ function seedPartnerOrgs(db: DatabaseSync) {
   }
 }
 
-/** Idempotently load the 60 Daily Questions (Feature 1). Reference data. */
+/** Idempotently load the Daily Question bank (Feature 1). Reference data.
+ * `active` is set only on first insert so admin show/hide toggles survive reboots. */
 function seedDailyQuestions(db: DatabaseSync) {
   const insert = db.prepare(
-    `INSERT INTO daily_questions (id, ordinal, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, concept_tag, difficulty, active_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, question_text = excluded.question_text, choice_a = excluded.choice_a, choice_b = excluded.choice_b, choice_c = excluded.choice_c, choice_d = excluded.choice_d, correct_answer = excluded.correct_answer, explanation = excluded.explanation, concept_tag = excluded.concept_tag, difficulty = excluded.difficulty, active_date = excluded.active_date`,
+    `INSERT INTO daily_questions (id, ordinal, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, concept_tag, difficulty, type, track, points, active, active_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, question_text = excluded.question_text, choice_a = excluded.choice_a, choice_b = excluded.choice_b, choice_c = excluded.choice_c, choice_d = excluded.choice_d, correct_answer = excluded.correct_answer, explanation = excluded.explanation, concept_tag = excluded.concept_tag, difficulty = excluded.difficulty, type = excluded.type, track = excluded.track, points = excluded.points, active_date = excluded.active_date`,
   );
-  for (const q of DAILY_QUESTIONS) {
-    insert.run(q.id, q.ordinal, q.questionText, q.choiceA, q.choiceB, q.choiceC, q.choiceD, q.correctAnswer, q.explanation, q.conceptTag, q.difficulty, q.activeDate);
+  for (const seed of DAILY_QUESTIONS) {
+    const q = seedToQuestion(seed);
+    insert.run(q.id, q.ordinal, q.questionText, q.choiceA, q.choiceB, q.choiceC, q.choiceD, q.correctAnswer, q.explanation, q.conceptTag, q.difficulty, q.type, q.track, q.points, q.activeDate);
   }
+}
+
+/** Idempotently load the badge catalog (reference data). Never overwrites earned awards. */
+function seedBadges(db: DatabaseSync) {
+  const insert = db.prepare(
+    `INSERT INTO badges (id, name, description, icon, category, threshold, xp_reward, ordinal)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, icon = excluded.icon, category = excluded.category, threshold = excluded.threshold, xp_reward = excluded.xp_reward, ordinal = excluded.ordinal`,
+  );
+  BADGE_CATALOG.forEach((b, i) => {
+    insert.run(b.id, b.name, b.description, b.icon, b.category, b.threshold, b.xpReward, i);
+  });
 }
 
 /** Idempotently load the Concept Map (Feature 3). Public reference data. */
@@ -838,6 +880,8 @@ function seedSelfPacedDemo(db: DatabaseSync) {
     { id: "u-self1", name: "Jordan Avery", first: "Jordan", email: "jordan.avery@example.com", last: "2 h ago", lastActive: now - 2 * HOUR },
     { id: "u-self2", name: "Sam Rivera", first: "Sam", email: "sam.rivera@example.com", last: "Yesterday", lastActive: now - DAY },
     { id: "u-self3", name: "Casey Kim", first: "Casey", email: "casey.kim@example.com", last: "Just now", lastActive: now - 20 * 60 * 1000 },
+    { id: "u-self4", name: "Riley Chen", first: "Riley", email: "riley.chen@example.com", last: "3 h ago", lastActive: now - 3 * HOUR },
+    { id: "u-self5", name: "Morgan Diaz", first: "Morgan", email: "morgan.diaz@example.com", last: "Yesterday", lastActive: now - DAY },
   ];
   const insertUser = db.prepare(
     "INSERT OR IGNORE INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', ?, 'Email + password', ?, ?, ?)",
@@ -892,6 +936,43 @@ function seedSelfPacedDemo(db: DatabaseSync) {
   db.prepare(
     "INSERT OR IGNORE INTO session_notes (id, cohort_id, author_id, student_id, scope, text, created_at, created_ts) VALUES (?, ?, 'u-coach', ?, ?, ?, ?, ?)",
   ).run("note-self-1", SELF_PACED_COHORT_ID, "u-self1", "Student · Jordan Avery", "Flying through the early modules — strong on opportunity cost. Nudge toward the Module 3 quiz once it unlocks.", "Jun 20, 2026", now - DAY);
+
+  /* ---- Daily-Question deep expansion: XP wallets, streaks, badges, history ----
+   * Static demo values so the leaderboard tabs and /badges showcase render with
+   * real, differentiated rows on a fresh database. */
+  const setXp = db.prepare("UPDATE users SET xp = ?, current_streak = ?, longest_streak = ?, last_active_date = ? WHERE id = ?");
+  const today = new Date(now).toISOString().slice(0, 10);
+  const yesterday = new Date(now - DAY).toISOString().slice(0, 10);
+  const xpRows: [string, number, number, number, string][] = [
+    ["u-self1", 540, 12, 18, today],
+    ["u-self2", 180, 4, 9, yesterday],
+    ["u-self3", 35, 1, 1, today],
+    ["u-self4", 320, 7, 7, today],
+    ["u-self5", 95, 2, 5, yesterday],
+  ];
+  for (const [id, xp, cur, lon, lad] of xpRows) setXp.run(xp, cur, lon, lad, id);
+
+  const awardBadge = db.prepare("INSERT OR IGNORE INTO student_badges (student_id, badge_id, earned_at) VALUES (?, ?, ?)");
+  const badgeAwards: Record<string, string[]> = {
+    "u-self1": ["first_flame", "week_warrior", "sharp_eye", "front_office_ready", "daily_habit", "dedicated", "pro_debut"],
+    "u-self2": ["first_flame", "sharp_eye", "daily_habit"],
+    "u-self3": ["first_flame"],
+    "u-self4": ["first_flame", "week_warrior", "sharp_eye", "daily_habit"],
+    "u-self5": ["first_flame", "sharp_eye"],
+  };
+  const earnedAt = `${new Date(now - 2 * DAY).toISOString().slice(0, 10)} 12:00:00`;
+  for (const [sid, ids] of Object.entries(badgeAwards)) for (const bid of ids) awardBadge.run(sid, bid, earnedAt);
+
+  // A little answered-question history so accuracy/difficulty logic has real data.
+  const insertDaily = db.prepare("INSERT OR IGNORE INTO daily_responses (id, student_id, question_id, selected_choice, is_correct, responded_at) VALUES (?, ?, ?, ?, ?, ?)");
+  const seedHistory: [string, string[]][] = [
+    ["u-self1", ["dq-001", "dq-002", "dq-003", "dq-004", "dq-005", "dq-007", "dq-009", "dq-011"]],
+    ["u-self4", ["dq-001", "dq-002", "dq-003", "dq-005", "dq-009"]],
+    ["u-self2", ["dq-001", "dq-002", "dq-003"]],
+  ];
+  for (const [sid, qids] of seedHistory) {
+    qids.forEach((qid, i) => insertDaily.run(`dr-seed-${sid}-${i}`, sid, qid, "B", 1, now - (i + 1) * DAY));
+  }
 }
 
 /**
@@ -932,6 +1013,12 @@ function migrate(db: DatabaseSync) {
   add("users", "current_streak", "INTEGER NOT NULL DEFAULT 0");
   add("users", "longest_streak", "INTEGER NOT NULL DEFAULT 0");
   add("users", "last_active_date", "TEXT");
+  // Daily-Question deep expansion: XP wallet, question track/type/points/active.
+  add("users", "xp", "INTEGER NOT NULL DEFAULT 0");
+  add("daily_questions", "type", "TEXT NOT NULL DEFAULT 'mc'");
+  add("daily_questions", "track", "TEXT NOT NULL DEFAULT '101'");
+  add("daily_questions", "points", "INTEGER NOT NULL DEFAULT 10");
+  add("daily_questions", "active", "INTEGER NOT NULL DEFAULT 1");
   // The active-simulation guard moved from one-per-student to one-per-type so a
   // student can hold an active Westbrook AND Eastfield run. Recreate the index
   // for any database that still has the older single-column form.
@@ -980,6 +1067,7 @@ function init(): DatabaseSync {
     // Daily Questions (Feature 1) + public credibility content (Features 3, 5, 7)
     // are reference data — ensure they exist on every boot, fresh or not.
     seedDailyQuestions(db);
+    seedBadges(db);
     seedConceptMap(db);
     seedGlossaryTerms(db);
     seedStandardsAlignment(db);
