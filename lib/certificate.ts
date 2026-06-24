@@ -25,6 +25,15 @@ export interface CertificateRecord {
 export const CERT_TRACK = "101";
 export const CERT_TRACK_TITLE = "Track 101: Rookie GM Economics";
 
+/** The Track 201 certificate's stored track key and human title. */
+export const CERT_TRACK_201 = "201";
+export const CERT_TRACK_201_TITLE = "Track 201: Front Office Fundamentals";
+
+/** The human title for a stored certificate track key. */
+export function certTrackTitle(track: string): string {
+  return track === CERT_TRACK_201 ? CERT_TRACK_201_TITLE : CERT_TRACK_TITLE;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function rowToCert(r: any): CertificateRecord {
   return { id: r.id, studentId: r.student_id, issuedAt: Number(r.issued_at), track: r.track };
@@ -66,9 +75,10 @@ export function escapeHtml(s: string): string {
 }
 
 /** A filesystem-safe slug of the student's name for the download filename. */
-export function certificateFilename(name: string): string {
+export function certificateFilename(name: string, track: string = CERT_TRACK): string {
   const slug = name.trim().replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "Student";
-  return `BOW-Certificate-${slug}.html`;
+  const tag = track === CERT_TRACK ? "" : `-Track-${track}`;
+  return `BOW-Certificate${tag}-${slug}.html`;
 }
 
 export interface CertificateHtmlOptions {

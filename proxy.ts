@@ -27,6 +27,12 @@ export function proxy(request: NextRequest) {
     pathname === "/leaderboard" ||
     pathname === "/simulation-room" ||
     pathname.startsWith("/simulation-room/") ||
+    pathname === "/front-office" ||
+    pathname.startsWith("/front-office/") ||
+    pathname === "/onboarding" ||
+    pathname.startsWith("/onboarding/") ||
+    pathname === "/discussion" ||
+    pathname.startsWith("/discussion/") ||
     pathname === "/admin" ||
     pathname.startsWith("/admin/");
   if (guarded) {
@@ -56,6 +62,12 @@ export const config = {
     "/leaderboard",
     "/simulation-room",
     "/simulation-room/:path*",
+    "/front-office",
+    "/front-office/:path*",
+    "/onboarding",
+    "/onboarding/:path*",
+    "/discussion",
+    "/discussion/:path*",
     "/admin",
     "/admin/:path*",
     "/sign-in",

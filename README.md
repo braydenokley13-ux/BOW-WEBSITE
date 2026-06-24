@@ -57,6 +57,8 @@ The signature device is the **Cap Line**. See `styles/tokens/` and `components/d
 - ✅ Authentication (student / instructor / admin)
 - ✅ Backend + persistence for cohorts, lessons, and the LMS app shell
 - ✅ Expanded self-paced Track 101 (below)
+- ✅ Track 201, two simulations, discussion board, weekly challenges,
+  partner pages, in-app notifications, and onboarding (below)
 
 ## Expanded Track 101 experience
 
@@ -65,17 +67,27 @@ no new environment variables — `SEED_PASSWORD` is still the only optional one)
 
 | Route | Who | What |
 | ----- | --- | ---- |
-| `/dashboard` | student | Modules, BOW Daily (20 scenarios, difficulty + archive + "how others answered"), Econ Quiz (12/module, difficulty + Review Mode), certificate download |
-| `/dashboard/certificate` | student | Self-contained navy/gold certificate (idempotent, all 4 modules required) |
-| `/profile` | student | BOW Rank, BOW Score, modules, reflections, quiz %, share button |
+| `/dashboard` | student | Track 101 **and** Track 201 modules side by side, Weekly Challenge, BOW Daily, Econ Quiz (per track), notification bell, certificate download |
+| `/dashboard/certificate` | student | Self-contained navy/gold certificate (idempotent; `?track=201` for Track 201) |
+| `/onboarding` | new student | 4-screen first-run flow (shown once after signup) |
+| `/discussion` | any signed-in | Three-channel discussion board: posts, replies, reactions, pins |
+| `/profile` | student | BOW Rank, BOW Score, both tracks, reflections, quiz %, weekly + discussion counts, share button |
 | `/profile/[id]` | public | Privacy-safe shareable record + Open Graph image |
 | `/leaderboard` | any signed-in | Top 25 by BOW Score with cohort + time filters |
-| `/simulation-room` | student (after Module 2) | 10-turn GM economics game + BOW Economics Grade |
+| `/simulation-room` | student (after Module 2) | 10-turn Westbrook Wolves game + BOW Economics Grade |
+| `/front-office` | student (after Module 201-2) | 8-turn Eastfield Eagles "Front Office" sim + cap-efficiency report card |
+| `/partners/[slug]` | public | Custom-branded outreach landing page + "Request a Demo" form + OG image |
 | `/instructor` | instructor | Roster, Class Analytics, Weekly Report, Cohort Leaderboard |
-| `/admin` | admin | Platform overview, cohort/user management, content overview, health |
+| `/admin` | admin | Platform overview, cohort/user management, content, partners, health |
+
+**Track 201 — Front Office Fundamentals** is an advanced 4-module track that unlocks
+only after a student earns their Track 101 certificate. It carries its own quiz bank,
+the Eastfield Eagles simulation, and a separate certificate.
 
 **BOW Score** = modules×100 + MC-correct×10 + scenarios×15 + reflections×20 +
-certificate×200 + simulation×150. **Ranks**: Rookie → Scout → Analyst → Front Office.
+certificate×200 (per track) + Westbrook sim×150 + Eastfield sim×200 +
+discussion posts×5 (capped at 50) + weekly-challenge completions×25.
+**Ranks**: Rookie → Scout → Analyst → Front Office.
 
 ## Authentication & backend
 

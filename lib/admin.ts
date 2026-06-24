@@ -11,6 +11,7 @@
 
 import { getDb } from "@/lib/db";
 import { getSelfModules } from "@/lib/self-paced";
+import { getAllPartnerOrgs, getDemoRequests, type PartnerOrg, type DemoRequest } from "@/lib/partners";
 
 export interface AdminOverview {
   totalStudents: number;
@@ -22,6 +23,11 @@ export interface AdminOverview {
   simulationsStarted: number;
   simulationsCompleted: number;
   certificatesIssued: number;
+  /* ---- New platform surfaces (Features 3, 4, 5) ---- */
+  discussionPosts: number;
+  weeklyCompletions: number;
+  partnerPages: number;
+  demoRequests: number;
 }
 
 export interface AdminCohortRow {
@@ -62,6 +68,7 @@ export interface AdminData {
   content: AdminContent;
   health: AdminHealth;
   instructors: { id: string; name: string }[];
+  partners: { orgs: PartnerOrg[]; demoRequests: DemoRequest[] };
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -100,6 +107,10 @@ export function getAdminData(adminId: string): AdminData {
     simulationsStarted: countOf("SELECT COUNT(*) AS n FROM simulations"),
     simulationsCompleted: countOf("SELECT COUNT(*) AS n FROM simulations WHERE completed = 1"),
     certificatesIssued: countOf("SELECT COUNT(*) AS n FROM certificates"),
+    discussionPosts: countOf("SELECT COUNT(*) AS n FROM discussion_posts"),
+    weeklyCompletions: countOf("SELECT COUNT(*) AS n FROM weekly_completions"),
+    partnerPages: countOf("SELECT COUNT(*) AS n FROM partner_orgs"),
+    demoRequests: countOf("SELECT COUNT(*) AS n FROM demo_requests"),
   };
 
   // Cohort management: student count + avg module completion rate.
@@ -175,6 +186,7 @@ export function getAdminData(adminId: string): AdminData {
     content,
     health: { recentStudents, recentModules, recentCertificates },
     instructors,
+    partners: { orgs: getAllPartnerOrgs(), demoRequests: getDemoRequests() },
   };
 }
 

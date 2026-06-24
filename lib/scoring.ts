@@ -12,7 +12,7 @@
 import { getDb } from "@/lib/db";
 import { SELF_PACED_COHORT_ID } from "@/lib/account";
 
-/** BOW Score weights. Certificate and simulation are one-time bonuses. */
+/** BOW Score weights. Certificates and simulations are one-time bonuses. */
 export const SCORE_WEIGHTS = {
   module: 100,
   mcCorrect: 10,
@@ -20,6 +20,13 @@ export const SCORE_WEIGHTS = {
   reflection: 20,
   certificate: 200,
   simulation: 150,
+  /** The Track 201 "Front Office" sim is harder than the Track 101 one. */
+  eastfield: 200,
+  /** Discussion posts: +5 each, capped at +50 (10 posts = full bonus). */
+  post: 5,
+  postMax: 50,
+  /** Weekly Challenge completion: +25 each. */
+  weekly: 25,
 } as const;
 
 export interface ScoreStats {
@@ -27,8 +34,18 @@ export interface ScoreStats {
   mcCorrect: number;
   scenariosSubmitted: number;
   reflectionsSubmitted: number;
+  /** True if ANY certificate exists (drives the rank ladder — implies Track 101). */
   certificateEarned: boolean;
+  /** Number of certificates earned (Track 101 + Track 201) — each scores once. */
+  certificatesEarned: number;
+  /** The Track 101 Westbrook Wolves simulation. */
   simulationCompleted: boolean;
+  /** The Track 201 Eastfield Eagles ("The Front Office") simulation. */
+  eastfieldCompleted: boolean;
+  /** Discussion posts authored (Feature 3). */
+  discussionPosts: number;
+  /** Weekly Challenge completions (Feature 4). */
+  weeklyCompletions: number;
 }
 
 export interface BowRank {
@@ -80,8 +97,20 @@ export function computeStats(studentId: string, sinceTs = 0): ScoreStats {
     certificateEarned: exists(
       "SELECT 1 FROM certificates WHERE student_id = ? AND COALESCE(issued_at, 0) >= ? LIMIT 1",
     ),
+    certificatesEarned: one(
+      "SELECT COUNT(*) AS n FROM certificates WHERE student_id = ? AND COALESCE(issued_at, 0) >= ?",
+    ),
     simulationCompleted: exists(
-      "SELECT 1 FROM simulations WHERE student_id = ? AND completed = 1 AND COALESCE(created_at, 0) >= ? LIMIT 1",
+      "SELECT 1 FROM simulations WHERE student_id = ? AND completed = 1 AND COALESCE(sim_type, 'westbrook') = 'westbrook' AND COALESCE(created_at, 0) >= ? LIMIT 1",
+    ),
+    eastfieldCompleted: exists(
+      "SELECT 1 FROM simulations WHERE student_id = ? AND completed = 1 AND sim_type = 'eastfield' AND COALESCE(created_at, 0) >= ? LIMIT 1",
+    ),
+    discussionPosts: one(
+      "SELECT COUNT(*) AS n FROM discussion_posts WHERE user_id = ? AND COALESCE(created_at, 0) >= ?",
+    ),
+    weeklyCompletions: one(
+      "SELECT COUNT(*) AS n FROM weekly_completions WHERE student_id = ? AND COALESCE(submitted_at, 0) >= ?",
     ),
   };
 }
@@ -93,8 +122,11 @@ export function bowScore(s: ScoreStats): number {
     s.mcCorrect * SCORE_WEIGHTS.mcCorrect +
     s.scenariosSubmitted * SCORE_WEIGHTS.scenario +
     s.reflectionsSubmitted * SCORE_WEIGHTS.reflection +
-    (s.certificateEarned ? SCORE_WEIGHTS.certificate : 0) +
-    (s.simulationCompleted ? SCORE_WEIGHTS.simulation : 0)
+    s.certificatesEarned * SCORE_WEIGHTS.certificate +
+    (s.simulationCompleted ? SCORE_WEIGHTS.simulation : 0) +
+    (s.eastfieldCompleted ? SCORE_WEIGHTS.eastfield : 0) +
+    Math.min(s.discussionPosts * SCORE_WEIGHTS.post, SCORE_WEIGHTS.postMax) +
+    s.weeklyCompletions * SCORE_WEIGHTS.weekly
   );
 }
 
@@ -110,6 +142,26 @@ export function rankFor(modulesCompleted: number, certificateEarned: boolean): B
     return { key: "scout", name: "Scout", description: "You’re reading the game and spotting value others miss." };
   }
   return { key: "rookie", name: "Rookie", description: "Every front office starts here. Keep stacking good decisions." };
+}
+
+/** The ordered rank ladder, lowest to highest. */
+export const RANK_LADDER: BowRank[] = [
+  rankFor(0, false),
+  rankFor(2, false),
+  rankFor(3, false),
+  rankFor(4, true),
+];
+
+/** The student's current rank, computed from all-time progress. */
+export function rankForStudent(studentId: string): BowRank {
+  const s = computeStats(studentId, 0);
+  return rankFor(s.modulesCompleted, s.certificateEarned);
+}
+
+/** The name of the rank above `key`, or null if already at the top. */
+export function nextRankName(key: BowRank["key"]): string | null {
+  const idx = RANK_LADDER.findIndex((r) => r.key === key);
+  return idx >= 0 && idx < RANK_LADDER.length - 1 ? RANK_LADDER[idx + 1].name : null;
 }
 
 /** A student's primary cohort (active enrollment, preferring the self-paced cohort). */

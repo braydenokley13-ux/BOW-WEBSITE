@@ -45,12 +45,17 @@ export default function ProfileView({ data }: { data: ProfileData }) {
         {/* STATS */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 28 }}>
           <Stat label="BOW Score" value={String(data.bowScore)} accent="var(--bow-blue)" />
-          <Stat label="Modules complete" value={`${data.modulesCompleted}/${data.totalModules}`} />
+          <Stat label="Track 101 modules" value={`${data.modulesCompleted}/${data.totalModules}`} />
+          <Stat label="Track 201 modules" value={`${data.modules201Completed}/${data.total201Modules}`} />
           <Stat label="Econ Quiz (MC)" value={data.quizScorePct === null ? "—" : `${data.quizScorePct}%`} />
           <Stat label="BOW Daily answered" value={String(data.scenarioCount)} />
           <Stat label="Reflections" value={String(data.reflectionCount)} />
-          <Stat label="Certificate" value={data.certificateEarned ? "Earned" : "In progress"} accent={data.certificateEarned ? "var(--bow-positive)" : undefined} />
+          <Stat label="Weekly Challenges" value={String(data.weeklyCompletions)} />
+          <Stat label="Discussion posts" value={String(data.discussionPosts)} />
+          <Stat label="Track 101 certificate" value={data.certificateEarned ? "Earned" : "In progress"} accent={data.certificateEarned ? "var(--bow-positive)" : undefined} />
+          <Stat label="Track 201 certificate" value={data.track201CertificateEarned ? "Earned" : data.track201Unlocked ? "In progress" : "Locked"} accent={data.track201CertificateEarned ? "var(--bow-positive)" : undefined} />
           <Stat label="Simulation Room" value={data.simulationCompleted ? "Complete" : "Not yet"} accent={data.simulationCompleted ? "var(--bow-positive)" : undefined} />
+          <Stat label="The Front Office" value={data.eastfieldCompleted ? "Complete" : "Not yet"} accent={data.eastfieldCompleted ? "var(--bow-positive)" : undefined} />
         </div>
 
         {/* MODULES */}
@@ -70,6 +75,28 @@ export default function ProfileView({ data }: { data: ProfileData }) {
             </div>
           ))}
         </div>
+
+        {/* TRACK 201 MODULES */}
+        {data.track201Unlocked && (
+          <>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 12 }}>
+              Track 201 modules
+            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
+              {data.modules201.map((m) => (
+                <div key={m.ordinal} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderLeft: `4px solid ${m.completed ? "var(--bow-positive)" : "var(--bow-inactive)"}`, borderRadius: 6, padding: "14px 18px" }}>
+                  <span style={{ display: "flex", alignItems: "baseline", gap: 12, minWidth: 0 }}>
+                    <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>201-{m.ordinal}</span>
+                    <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)" }}>{m.title}</span>
+                  </span>
+                  <span style={{ fontFamily: "var(--font-data)", fontSize: 11.5, letterSpacing: "0.04em", color: m.completed ? "var(--bow-positive)" : "var(--bow-slate)" }}>
+                    {m.completed ? `✓ Completed ${fmtDate(m.completedAt)}` : "Not yet"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         {/* REFLECTIONS */}
         {data.reflectionExcerpts.length > 0 && (

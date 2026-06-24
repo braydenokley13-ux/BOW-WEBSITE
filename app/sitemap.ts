@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { SITE } from "@/lib/site";
 import { lessons } from "@/lib/lessons";
+import { getAllPartnerOrgs } from "@/lib/partners";
 
 /** Static marketing routes; lesson-detail routes are appended below. */
 const ROUTES = [
@@ -39,5 +40,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     changeFrequency: "monthly",
     priority: 0.6,
   }));
-  return [...staticEntries, ...lessonEntries];
+  // Public partner / school landing pages — shared in outreach, so index them.
+  const partnerEntries: MetadataRoute.Sitemap = getAllPartnerOrgs().map((p) => ({
+    url: `${SITE.url}/partners/${p.slug}`,
+    lastModified: now,
+    changeFrequency: "monthly",
+    priority: 0.5,
+  }));
+  return [...staticEntries, ...lessonEntries, ...partnerEntries];
 }

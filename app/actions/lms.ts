@@ -4,19 +4,25 @@ import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { requireRole } from "@/lib/dal";
-import { isSelfModuleUnlocked, getSelfModuleViews, hasCompletedAllModules } from "@/lib/self-paced";
+import { isSelfModuleUnlocked, getSelfModuleViews, hasCompletedAllModules, trackForModule } from "@/lib/self-paced";
 import {
   issueCertificate,
   buildCertificateHtml,
   certificateFilename,
+  certTrackTitle,
   CERT_TRACK,
+  CERT_TRACK_201,
 } from "@/lib/certificate";
+import { createNotification } from "@/lib/notifications";
+import { rankForStudent, nextRankName } from "@/lib/scoring";
 import {
   orderedTrackLessons,
   unlockChecklist,
   reflectionWordCount,
   SELF_PACED_COHORT_ID,
   SELF_PACED_SESSIONS,
+  TRACK_101,
+  TRACK_201,
   type LessonProgressDetail,
 } from "@/lib/account";
 import type {
@@ -472,6 +478,60 @@ function refreshInstructor() {
   revalidatePath("/instructor");
 }
 
+/* ---------------- Notification triggers (Feature 6) ---------------- */
+
+/**
+ * Fire `quiz_available` (for each completed module) and `module_unlocked` (for
+ * each newly accessible module) notifications across both tracks. Every insert
+ * uses a deterministic id, so this is safe to call after any progress change —
+ * a given notification is created exactly once.
+ */
+function notifyModuleProgress(userId: string) {
+  for (const track of [TRACK_101, TRACK_201]) {
+    const views = getSelfModuleViews(userId, track);
+    for (const v of views) {
+      const label = track === TRACK_201 ? `201-${v.module.ordinal}` : String(v.module.ordinal);
+      if (v.completed) {
+        createNotification({
+          id: `ntf-quiz-${userId}-${v.module.id}`,
+          userId,
+          type: "quiz_available",
+          title: "New quiz questions available.",
+          body: `Quiz questions for ${v.module.title} are ready.`,
+          link: "/dashboard",
+        });
+      }
+      // The always-open first module of Track 101 isn't an "unlock" event.
+      const alwaysOpen = track === TRACK_101 && v.module.ordinal === 1;
+      if (v.unlocked && !alwaysOpen) {
+        createNotification({
+          id: `ntf-unlock-${userId}-${v.module.id}`,
+          userId,
+          type: "module_unlocked",
+          title: `Module ${label} unlocked.`,
+          body: `You can now start ${v.module.title}.`,
+          link: "/dashboard",
+        });
+      }
+    }
+  }
+}
+
+/** Fire a `rank_up` notification if the student's rank tier increased. Idempotent. */
+function notifyRankChange(userId: string, beforeKey: string) {
+  const after = rankForStudent(userId);
+  if (after.key === beforeKey) return;
+  const next = nextRankName(after.key);
+  createNotification({
+    id: `ntf-rank-${userId}-${after.key}`,
+    userId,
+    type: "rank_up",
+    title: `You ranked up to ${after.name}!`,
+    body: next ? `Keep going — ${next} is next.` : "You've reached the top rank. Incredible work.",
+    link: "/profile",
+  });
+}
+
 /* ---------------- Module progression (student) ---------------- */
 
 /**
@@ -482,13 +542,18 @@ function refreshInstructor() {
 export async function markSelfModuleComplete(moduleId: string): Promise<void> {
   const me = await requireRole("student");
   if (!isSelfModuleUnlocked(me.id, moduleId)) return;
+  const track = trackForModule(moduleId);
+  const rankBefore = rankForStudent(me.id).key;
   const now = Date.now();
   getDb()
     .prepare(
-      "INSERT INTO self_progress (student_id, module_id, completed, completed_at, updated_at) VALUES (?, ?, 1, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET completed = 1, completed_at = COALESCE(self_progress.completed_at, excluded.completed_at), updated_at = excluded.updated_at",
+      "INSERT INTO self_progress (student_id, module_id, completed, completed_at, updated_at, track) VALUES (?, ?, 1, ?, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET completed = 1, completed_at = COALESCE(self_progress.completed_at, excluded.completed_at), updated_at = excluded.updated_at, track = excluded.track",
     )
-    .run(me.id, moduleId, now, now);
+    .run(me.id, moduleId, now, now, track);
   touchActive(me.id);
+  // Completing a module unlocks its quiz and (if the reflection is in) the next module.
+  notifyModuleProgress(me.id);
+  notifyRankChange(me.id, rankBefore);
   refreshDashboard();
 }
 
@@ -503,12 +568,15 @@ export async function saveSelfReflection(moduleId: string, text: string): Promis
   if (!isSelfModuleUnlocked(me.id, moduleId)) return;
   const clean = text.trim();
   const words = reflectionWordCount(clean);
+  const track = trackForModule(moduleId);
   getDb()
     .prepare(
-      "INSERT INTO self_progress (student_id, module_id, reflection, reflection_words, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET reflection = excluded.reflection, reflection_words = excluded.reflection_words, updated_at = excluded.updated_at",
+      "INSERT INTO self_progress (student_id, module_id, reflection, reflection_words, updated_at, track) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET reflection = excluded.reflection, reflection_words = excluded.reflection_words, updated_at = excluded.updated_at, track = excluded.track",
     )
-    .run(me.id, moduleId, clean, words, Date.now());
+    .run(me.id, moduleId, clean, words, Date.now(), track);
   touchActive(me.id);
+  // A passing reflection on a completed module unlocks the next one.
+  notifyModuleProgress(me.id);
   refreshDashboard();
 }
 
@@ -525,24 +593,39 @@ export interface CertificateResult {
 }
 
 /**
- * Generate (or re-fetch) the student's Track 101 certificate. Verifies all four
- * modules are complete on the server before issuing, records an idempotent
- * certificate row, and returns a downloadable self-contained HTML file. The
- * completion date is locked to when the certificate was first issued.
+ * Generate (or re-fetch) the student's certificate for a track (defaults to
+ * Track 101). Verifies all of that track's modules are complete on the server
+ * before issuing, records an idempotent certificate row, and returns a
+ * downloadable self-contained HTML file. The completion date is locked to when
+ * the certificate was first issued. Earning the Track 101 certificate is also
+ * what unlocks Track 201.
  */
-export async function generateCertificate(): Promise<CertificateResult> {
+export async function generateCertificate(track: string = CERT_TRACK): Promise<CertificateResult> {
   const me = await requireRole("student");
-  if (!hasCompletedAllModules(me.id)) return { ok: false };
+  const certTrack = track === CERT_TRACK_201 ? CERT_TRACK_201 : CERT_TRACK;
+  if (!hasCompletedAllModules(me.id, certTrack)) return { ok: false };
 
-  const cert = issueCertificate(me.id, CERT_TRACK);
+  const rankBefore = rankForStudent(me.id).key;
+  const cert = issueCertificate(me.id, certTrack);
   const dateLabel = new Date(cert.issuedAt).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
   });
-  const html = buildCertificateHtml({ name: me.name, dateLabel, certId: cert.id });
+  const html = buildCertificateHtml({ name: me.name, dateLabel, certId: cert.id, trackTitle: certTrackTitle(certTrack) });
   touchActive(me.id);
-  return { ok: true, html, filename: certificateFilename(me.name), certId: cert.id };
+  createNotification({
+    id: `ntf-cert-${me.id}-${certTrack}`,
+    userId: me.id,
+    type: "certificate_earned",
+    title: "Certificate earned!",
+    body: `You completed Track ${certTrack}. Download your certificate.`,
+    link: "/dashboard",
+  });
+  // Earning the Track 101 certificate unlocks Track 201 — surface the unlock + any rank-up.
+  notifyModuleProgress(me.id);
+  notifyRankChange(me.id, rankBefore);
+  return { ok: true, html, filename: certificateFilename(me.name, certTrack), certId: cert.id };
 }
 
 /* ---------------- BOW Daily decision (student) ---------------- */
@@ -642,9 +725,10 @@ export async function submitQuizResponse(
   const q = db.prepare("SELECT * FROM quiz_questions WHERE id = ?").get(questionId) as any;
   if (!q) return { ok: false };
 
-  // Gate: the question's module must be completed by this student.
+  // Gate: the question's module (in its track) must be completed by this student.
+  const qTrack = q.track ?? TRACK_101;
   const moduleOrdinal = Number(q.module_unlock);
-  const view = getSelfModuleViews(me.id).find((v) => v.module.ordinal === moduleOrdinal);
+  const view = getSelfModuleViews(me.id, qTrack).find((v) => v.module.ordinal === moduleOrdinal);
   if (!view?.completed) return { ok: false };
 
   const now = Date.now();

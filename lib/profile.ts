@@ -13,7 +13,8 @@
 import { getDb } from "@/lib/db";
 import { getSelfModules, getSelfProgressMap, getQuizModuleSections } from "@/lib/self-paced";
 import { computeStats, getStudentScore, rankFor, bowScore, type BowRank } from "@/lib/scoring";
-import { getCertificate, CERT_TRACK_TITLE } from "@/lib/certificate";
+import { getCertificate, CERT_TRACK, CERT_TRACK_201, CERT_TRACK_TITLE } from "@/lib/certificate";
+import { TRACK_101, TRACK_201 } from "@/lib/account";
 
 export interface ProfileModule {
   ordinal: number;
@@ -43,6 +44,16 @@ export interface ProfileData {
   certificateEarned: boolean;
   certificateIssuedAt: number | null;
   simulationCompleted: boolean;
+  /* ---- Track 201 (Feature 1) ---- */
+  modules201: ProfileModule[];
+  modules201Completed: number;
+  total201Modules: number;
+  track201CertificateEarned: boolean;
+  track201Unlocked: boolean;
+  eastfieldCompleted: boolean;
+  /* ---- Community + weekly (Features 3 & 4) ---- */
+  discussionPosts: number;
+  weeklyCompletions: number;
 }
 
 export interface PublicProfile {
@@ -56,19 +67,27 @@ export interface PublicProfile {
   certificateEarned: boolean;
   quizScorePct: number | null;
   simulationCompleted: boolean;
+  /* ---- Track 201 + community (privacy-safe counts only) ---- */
+  modules201Completed: number;
+  total201Modules: number;
+  track201CertificateEarned: boolean;
+  eastfieldCompleted: boolean;
+  discussionPosts: number;
+  weeklyCompletions: number;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-/** Quiz MC correct/answered across the student's completed modules. */
+/** Quiz MC correct/answered across the student's completed modules (both tracks). */
 function quizScore(studentId: string): { correct: number; answered: number } {
-  const sections = getQuizModuleSections(studentId);
   let correct = 0;
   let answered = 0;
-  for (const s of sections) {
-    if (!s.unlocked) continue;
-    correct += s.mcCorrect;
-    answered += s.mcAnswered;
+  for (const track of [TRACK_101, TRACK_201]) {
+    for (const s of getQuizModuleSections(studentId, track)) {
+      if (!s.unlocked) continue;
+      correct += s.mcCorrect;
+      answered += s.mcAnswered;
+    }
   }
   return { correct, answered };
 }
@@ -93,7 +112,16 @@ export function getProfileData(studentId: string): ProfileData | null {
 
   const stats = computeStats(studentId, 0);
   const qs = quizScore(studentId);
-  const cert = getCertificate(studentId);
+  const cert = getCertificate(studentId, CERT_TRACK);
+
+  // Track 201 modules + certificate (Feature 1).
+  const mods201 = getSelfModules(TRACK_201);
+  const modules201: ProfileModule[] = mods201.map((m) => {
+    const p = prog[m.id];
+    return { ordinal: m.ordinal, title: m.title, completed: !!p?.completed, completedAt: p?.completedAt ?? null };
+  });
+  const modules201Completed = modules201.filter((m) => m.completed).length;
+  const cert201 = getCertificate(studentId, CERT_TRACK_201);
 
   return {
     studentId: u.id,
@@ -105,7 +133,7 @@ export function getProfileData(studentId: string): ProfileData | null {
     rank: score?.rank ?? rankFor(stats.modulesCompleted, stats.certificateEarned),
     bowScore: score?.bowScore ?? bowScore(stats),
     modules,
-    modulesCompleted: stats.modulesCompleted,
+    modulesCompleted: modules.filter((m) => m.completed).length,
     totalModules: mods.length,
     reflectionExcerpts,
     quizMcCorrect: qs.correct,
@@ -113,9 +141,17 @@ export function getProfileData(studentId: string): ProfileData | null {
     quizScorePct: qs.answered > 0 ? Math.round((qs.correct / qs.answered) * 100) : null,
     scenarioCount: stats.scenariosSubmitted,
     reflectionCount: stats.reflectionsSubmitted,
-    certificateEarned: stats.certificateEarned,
+    certificateEarned: !!cert,
     certificateIssuedAt: cert?.issuedAt ?? null,
     simulationCompleted: stats.simulationCompleted,
+    modules201,
+    modules201Completed,
+    total201Modules: mods201.length,
+    track201CertificateEarned: !!cert201,
+    track201Unlocked: !!cert,
+    eastfieldCompleted: stats.eastfieldCompleted,
+    discussionPosts: stats.discussionPosts,
+    weeklyCompletions: stats.weeklyCompletions,
   };
 }
 
@@ -127,7 +163,11 @@ export function getPublicProfile(studentId: string): PublicProfile | null {
   const score = getStudentScore(studentId, 0);
   if (!score) return null;
   const qs = quizScore(studentId);
-  const totalModules = getSelfModules().length;
+  const stats = computeStats(studentId, 0);
+  const prog = getSelfProgressMap(studentId);
+  const mods101 = getSelfModules(TRACK_101);
+  const mods201 = getSelfModules(TRACK_201);
+  const completedIn = (ms: { id: string }[]) => ms.filter((m) => prog[m.id]?.completed).length;
 
   return {
     studentId: u.id,
@@ -135,11 +175,17 @@ export function getPublicProfile(studentId: string): PublicProfile | null {
     cohortName: score.cohortName,
     rank: score.rank,
     bowScore: score.bowScore,
-    modulesCompleted: score.modulesCompleted,
-    totalModules,
-    certificateEarned: score.certificateEarned,
+    modulesCompleted: completedIn(mods101),
+    totalModules: mods101.length,
+    certificateEarned: !!getCertificate(studentId, CERT_TRACK),
     quizScorePct: qs.answered > 0 ? Math.round((qs.correct / qs.answered) * 100) : null,
     simulationCompleted: score.simulationCompleted,
+    modules201Completed: completedIn(mods201),
+    total201Modules: mods201.length,
+    track201CertificateEarned: !!getCertificate(studentId, CERT_TRACK_201),
+    eastfieldCompleted: stats.eastfieldCompleted,
+    discussionPosts: stats.discussionPosts,
+    weeklyCompletions: stats.weeklyCompletions,
   };
 }
 
