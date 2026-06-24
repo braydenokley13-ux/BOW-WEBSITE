@@ -12,6 +12,9 @@
 import { getDb } from "@/lib/db";
 import { getSelfModules } from "@/lib/self-paced";
 import { getAllPartnerOrgs, getDemoRequests, type PartnerOrg, type DemoRequest } from "@/lib/partners";
+import { countDailyAnswersToday } from "@/lib/daily-question";
+import { countGlossaryTerms } from "@/lib/glossary";
+import { getStreakLeaders } from "@/lib/streak";
 
 export interface AdminOverview {
   totalStudents: number;
@@ -28,6 +31,10 @@ export interface AdminOverview {
   weeklyCompletions: number;
   partnerPages: number;
   demoRequests: number;
+  /* ---- Daily Question, Streak & Glossary (Features 1, 2, 5) ---- */
+  dailyAnswersToday: number;
+  glossaryTerms: number;
+  streakLeaders: { name: string; current: number }[];
 }
 
 export interface AdminCohortRow {
@@ -111,6 +118,9 @@ export function getAdminData(adminId: string): AdminData {
     weeklyCompletions: countOf("SELECT COUNT(*) AS n FROM weekly_completions"),
     partnerPages: countOf("SELECT COUNT(*) AS n FROM partner_orgs"),
     demoRequests: countOf("SELECT COUNT(*) AS n FROM demo_requests"),
+    dailyAnswersToday: countDailyAnswersToday(),
+    glossaryTerms: countGlossaryTerms(),
+    streakLeaders: getStreakLeaders(3).map((s) => ({ name: s.name, current: s.current })),
   };
 
   // Cohort management: student count + avg module completion rate.

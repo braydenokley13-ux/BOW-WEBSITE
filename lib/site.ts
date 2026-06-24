@@ -22,6 +22,9 @@ export interface NavItem {
 export const NAV: NavItem[] = [
   { label: "Home", href: "/" },
   { label: "Programs", href: "/programs" },
+  { label: "Concept Map", href: "/concept-map" },
+  { label: "Glossary", href: "/glossary" },
+  { label: "Standards", href: "/standards" },
   { label: "Lessons", href: "/lessons" },
   { label: "Simulations", href: "/simulation" },
   { label: "Podcast", href: "/podcast" },
@@ -55,6 +58,14 @@ export const FOOTER_COLS: FooterCol[] = [
     ],
   },
   {
+    head: "Curriculum",
+    links: [
+      { label: "Concept Map", href: "/concept-map" },
+      { label: "Glossary", href: "/glossary" },
+      { label: "Standards Alignment", href: "/standards" },
+    ],
+  },
+  {
     head: "For Groups",
     links: [
       { label: "Schools", href: "/get-involved/schools" },
@@ -68,6 +79,7 @@ export const FOOTER_COLS: FooterCol[] = [
     head: "Connect",
     links: [
       { label: "Get Involved", href: "/get-involved" },
+      { label: "Contact / Partnerships", href: "/contact" },
       { label: "About BOW", href: "/about" },
       { label: "FAQ", href: "/#faq" },
     ],

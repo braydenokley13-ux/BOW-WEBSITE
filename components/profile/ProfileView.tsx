@@ -49,6 +49,9 @@ export default function ProfileView({ data }: { data: ProfileData }) {
           <Stat label="Track 201 modules" value={`${data.modules201Completed}/${data.total201Modules}`} />
           <Stat label="Econ Quiz (MC)" value={data.quizScorePct === null ? "—" : `${data.quizScorePct}%`} />
           <Stat label="BOW Daily answered" value={String(data.scenarioCount)} />
+          <Stat label="Daily Questions" value={data.dailyAnswered === 0 ? "0" : `${data.dailyCorrect}/${data.dailyAnswered}`} />
+          <Stat label="Current streak" value={data.currentStreak > 0 ? `🔥 ${data.currentStreak}` : "—"} accent={data.currentStreak >= 3 ? "#C9A84C" : undefined} />
+          <Stat label="Longest streak" value={data.longestStreak > 0 ? String(data.longestStreak) : "—"} />
           <Stat label="Reflections" value={String(data.reflectionCount)} />
           <Stat label="Weekly Challenges" value={String(data.weeklyCompletions)} />
           <Stat label="Discussion posts" value={String(data.discussionPosts)} />

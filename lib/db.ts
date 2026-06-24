@@ -41,6 +41,10 @@ import {
   type AppData,
 } from "@/lib/account";
 import { hashPassword } from "@/lib/password";
+import { DAILY_QUESTIONS } from "@/lib/daily-question";
+import { CONCEPT_MAP } from "@/lib/concept-map";
+import { GLOSSARY_TERMS } from "@/lib/glossary";
+import { STANDARDS_ALIGNMENT } from "@/lib/standards";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DATA_DIR, "bow.db");
@@ -363,6 +367,66 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at INTEGER NOT NULL
 );
 
+/* ---- Daily Question + Streak (Features 1 & 2) ---- */
+CREATE TABLE IF NOT EXISTS daily_questions (
+  id TEXT PRIMARY KEY,
+  ordinal INTEGER NOT NULL DEFAULT 0,
+  question_text TEXT NOT NULL,
+  choice_a TEXT NOT NULL,
+  choice_b TEXT NOT NULL,
+  choice_c TEXT NOT NULL,
+  choice_d TEXT NOT NULL,
+  correct_answer TEXT NOT NULL,
+  explanation TEXT NOT NULL,
+  concept_tag TEXT NOT NULL,
+  difficulty INTEGER NOT NULL DEFAULT 1,
+  active_date TEXT UNIQUE
+);
+CREATE TABLE IF NOT EXISTS daily_responses (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  selected_choice TEXT NOT NULL,
+  is_correct INTEGER NOT NULL,
+  responded_at INTEGER NOT NULL,
+  UNIQUE (student_id, question_id)
+);
+
+/* ---- Front Office Concept Map (Feature 3) — public reference data ---- */
+CREATE TABLE IF NOT EXISTS concept_map (
+  id TEXT PRIMARY KEY,
+  ordinal INTEGER NOT NULL DEFAULT 0,
+  concept_name TEXT NOT NULL,
+  track TEXT NOT NULL,
+  module_name TEXT NOT NULL,
+  frontoffice_application TEXT NOT NULL,
+  real_example TEXT NOT NULL,
+  category TEXT NOT NULL
+);
+
+/* ---- Front Office Glossary (Feature 5) — public reference data ---- */
+CREATE TABLE IF NOT EXISTS glossary_terms (
+  id TEXT PRIMARY KEY,
+  ordinal INTEGER NOT NULL DEFAULT 0,
+  term TEXT NOT NULL,
+  definition TEXT NOT NULL,
+  module_name TEXT NOT NULL,
+  track TEXT NOT NULL,
+  real_world_example TEXT NOT NULL,
+  category TEXT NOT NULL
+);
+
+/* ---- Curriculum Standards Alignment (Feature 7) — public reference data ---- */
+CREATE TABLE IF NOT EXISTS standards_alignment (
+  id TEXT PRIMARY KEY,
+  ordinal INTEGER NOT NULL DEFAULT 0,
+  module_name TEXT NOT NULL,
+  track TEXT NOT NULL,
+  key_concepts TEXT NOT NULL,
+  ap_micro_standards TEXT NOT NULL,
+  ap_macro_standards TEXT NOT NULL
+);
+
 /* ---- Indexes for high-traffic WHERE-clause columns (Feature 8) ---- */
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_sim
   ON simulations (student_id, sim_type) WHERE completed = 0;
@@ -383,6 +447,10 @@ CREATE INDEX IF NOT EXISTS idx_weekly_challenges_window ON weekly_challenges (we
 CREATE INDEX IF NOT EXISTS idx_partner_orgs_slug ON partner_orgs (slug);
 CREATE INDEX IF NOT EXISTS idx_demo_requests_slug ON demo_requests (org_slug, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, read, created_at);
+CREATE INDEX IF NOT EXISTS idx_daily_questions_active ON daily_questions (active_date);
+CREATE INDEX IF NOT EXISTS idx_daily_responses_student ON daily_responses (student_id);
+CREATE INDEX IF NOT EXISTS idx_daily_responses_question ON daily_responses (question_id);
+CREATE INDEX IF NOT EXISTS idx_glossary_terms_term ON glossary_terms (term);
 `;
 
 function seed(db: DatabaseSync) {
@@ -570,6 +638,54 @@ function seedPartnerOrgs(db: DatabaseSync) {
   }
 }
 
+/** Idempotently load the 60 Daily Questions (Feature 1). Reference data. */
+function seedDailyQuestions(db: DatabaseSync) {
+  const insert = db.prepare(
+    `INSERT INTO daily_questions (id, ordinal, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, concept_tag, difficulty, active_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, question_text = excluded.question_text, choice_a = excluded.choice_a, choice_b = excluded.choice_b, choice_c = excluded.choice_c, choice_d = excluded.choice_d, correct_answer = excluded.correct_answer, explanation = excluded.explanation, concept_tag = excluded.concept_tag, difficulty = excluded.difficulty, active_date = excluded.active_date`,
+  );
+  for (const q of DAILY_QUESTIONS) {
+    insert.run(q.id, q.ordinal, q.questionText, q.choiceA, q.choiceB, q.choiceC, q.choiceD, q.correctAnswer, q.explanation, q.conceptTag, q.difficulty, q.activeDate);
+  }
+}
+
+/** Idempotently load the Concept Map (Feature 3). Public reference data. */
+function seedConceptMap(db: DatabaseSync) {
+  const insert = db.prepare(
+    `INSERT INTO concept_map (id, ordinal, concept_name, track, module_name, frontoffice_application, real_example, category)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, concept_name = excluded.concept_name, track = excluded.track, module_name = excluded.module_name, frontoffice_application = excluded.frontoffice_application, real_example = excluded.real_example, category = excluded.category`,
+  );
+  for (const c of CONCEPT_MAP) {
+    insert.run(c.id, c.ordinal, c.conceptName, c.track, c.moduleName, c.frontofficeApplication, c.realExample, c.category);
+  }
+}
+
+/** Idempotently load the Glossary (Feature 5). Public reference data. */
+function seedGlossaryTerms(db: DatabaseSync) {
+  const insert = db.prepare(
+    `INSERT INTO glossary_terms (id, ordinal, term, definition, module_name, track, real_world_example, category)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, term = excluded.term, definition = excluded.definition, module_name = excluded.module_name, track = excluded.track, real_world_example = excluded.real_world_example, category = excluded.category`,
+  );
+  for (const g of GLOSSARY_TERMS) {
+    insert.run(g.id, g.ordinal, g.term, g.definition, g.moduleName, g.track, g.realWorldExample, g.category);
+  }
+}
+
+/** Idempotently load the Standards Alignment (Feature 7). Public reference data. */
+function seedStandardsAlignment(db: DatabaseSync) {
+  const insert = db.prepare(
+    `INSERT INTO standards_alignment (id, ordinal, module_name, track, key_concepts, ap_micro_standards, ap_macro_standards)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET ordinal = excluded.ordinal, module_name = excluded.module_name, track = excluded.track, key_concepts = excluded.key_concepts, ap_micro_standards = excluded.ap_micro_standards, ap_macro_standards = excluded.ap_macro_standards`,
+  );
+  for (const s of STANDARDS_ALIGNMENT) {
+    insert.run(s.id, s.ordinal, s.moduleName, s.track, JSON.stringify(s.keyConcepts), JSON.stringify(s.apMicroStandards), JSON.stringify(s.apMacroStandards));
+  }
+}
+
 /**
  * First-boot discussion board seed (Feature 3) — six starter posts so the board
  * isn't empty at launch. Authored by the demo self-paced students, so it only
@@ -732,6 +848,10 @@ function migrate(db: DatabaseSync) {
   add("simulations", "sim_type", "TEXT NOT NULL DEFAULT 'westbrook'");
   // Weekly Challenge ordering (Feature 4).
   add("weekly_challenges", "ordinal", "INTEGER NOT NULL DEFAULT 0");
+  // Daily Streak (Feature 2): per-user consecutive-day tracking.
+  add("users", "current_streak", "INTEGER NOT NULL DEFAULT 0");
+  add("users", "longest_streak", "INTEGER NOT NULL DEFAULT 0");
+  add("users", "last_active_date", "TEXT");
   // The active-simulation guard moved from one-per-student to one-per-type so a
   // student can hold an active Westbrook AND Eastfield run. Recreate the index
   // for any database that still has the older single-column form.
@@ -744,29 +864,59 @@ function init(): DatabaseSync {
   const db = new DatabaseSync(DB_PATH);
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA foreign_keys = ON;");
-  db.exec(SCHEMA);
-  migrate(db);
+  // During a production build, multiple static-generation worker processes can
+  // open and seed the database at once. WAL allows concurrent reads, and this
+  // makes a blocked writer wait for the lock instead of failing immediately —
+  // the seeds are idempotent, so serialized double-seeding is safe.
+  db.exec("PRAGMA busy_timeout = 8000;");
 
-  const fresh = (db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n === 0;
-  if (fresh) seed(db);
-  // Feed stories are reference data — ensure they exist even on an older DB
-  // that was seeded before the Daily Feed shipped.
-  seedFeedStories(db);
-  // Self-paced Track 101 (Feature 1): the four modules and the default async
-  // cohort are reference data; the demo students only seed a fresh database.
-  seedSelfModulesAndCohort(db);
-  // BOW Daily scenarios (Feature 2) and the Econ Quiz bank (Feature 3) are
-  // reference data — ensure they exist on every boot, fresh or not.
-  seedDailyScenarios(db);
-  seedQuizQuestions(db);
-  // Weekly Challenges (Feature 4) and Partner pages (Feature 5) are reference data.
-  seedWeeklyChallenges(db);
-  seedPartnerOrgs(db);
-  if (fresh) {
-    seedSelfPacedDemo(db);
-    // Discussion seed posts are authored by the demo students, so they only
-    // seed a fresh database (after the demo students exist).
-    seedDiscussion(db);
+  // Serialize the entire schema + migrate + seed sequence behind a single write
+  // lock. During a production build several static-generation worker processes
+  // open the database at once; without this they race on DDL (probe-then-ALTER
+  // in migrate) and on the non-idempotent first-boot seed(). BEGIN IMMEDIATE +
+  // busy_timeout makes the others wait, then they no-op: the schema is
+  // CREATE-IF-NOT-EXISTS, migrate re-probes, reference data upserts, and the
+  // fresh-only seeds re-check freshness inside the lock.
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(SCHEMA);
+    migrate(db);
+
+    const fresh = (db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n === 0;
+    if (fresh) seed(db);
+    // Feed stories are reference data — ensure they exist even on an older DB
+    // that was seeded before the Daily Feed shipped.
+    seedFeedStories(db);
+    // Self-paced Track 101 (Feature 1): the four modules and the default async
+    // cohort are reference data; the demo students only seed a fresh database.
+    seedSelfModulesAndCohort(db);
+    // BOW Daily scenarios (Feature 2) and the Econ Quiz bank (Feature 3) are
+    // reference data — ensure they exist on every boot, fresh or not.
+    seedDailyScenarios(db);
+    seedQuizQuestions(db);
+    // Weekly Challenges (Feature 4) and Partner pages (Feature 5) are reference data.
+    seedWeeklyChallenges(db);
+    seedPartnerOrgs(db);
+    // Daily Questions (Feature 1) + public credibility content (Features 3, 5, 7)
+    // are reference data — ensure they exist on every boot, fresh or not.
+    seedDailyQuestions(db);
+    seedConceptMap(db);
+    seedGlossaryTerms(db);
+    seedStandardsAlignment(db);
+    if (fresh) {
+      seedSelfPacedDemo(db);
+      // Discussion seed posts are authored by the demo students, so they only
+      // seed a fresh database (after the demo students exist).
+      seedDiscussion(db);
+    }
+    db.exec("COMMIT");
+  } catch (e) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      /* already rolled back */
+    }
+    throw e;
   }
 
   return db;

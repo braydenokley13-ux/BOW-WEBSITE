@@ -12,11 +12,19 @@ import {
 } from "@/lib/account";
 import type { WeeklyChallengeView } from "@/lib/weekly";
 import type { NotificationView } from "@/lib/notifications";
+import type { DailyQuestionView } from "@/lib/daily-question";
 import { markSelfModuleComplete, saveSelfReflection, generateCertificate } from "@/app/actions/lms";
 import EconQuiz from "@/components/selfpaced/EconQuiz";
 import DailyScenarios from "@/components/selfpaced/DailyScenarios";
+import DailyQuestionCard from "@/components/selfpaced/DailyQuestionCard";
 import WeeklyChallenge from "@/components/selfpaced/WeeklyChallenge";
 import NotificationBell from "@/components/selfpaced/NotificationBell";
+
+export interface StreakDisplay {
+  current: number;
+  longest: number;
+  label: string | null;
+}
 
 export interface TrackData {
   modules: SelfModuleView[];
@@ -28,6 +36,8 @@ interface Props {
   firstName: string;
   track101: TrackData;
   track201: TrackData;
+  dailyQuestion: DailyQuestionView | null;
+  streak: StreakDisplay;
   activeScenario: DailyScenarioView | null;
   scenarioArchive: DailyScenarioView[];
   weeklyCurrent: WeeklyChallengeView | null;
@@ -40,6 +50,8 @@ export default function StudentDashboard({
   firstName,
   track101,
   track201,
+  dailyQuestion,
+  streak,
   activeScenario,
   scenarioArchive,
   weeklyCurrent,
@@ -62,6 +74,7 @@ export default function StudentDashboard({
     { href: "/discussion", label: "Discussion" },
     ...(simUnlocked ? [{ href: "/simulation-room", label: "Simulation Room" }] : []),
     ...(frontOfficeUnlocked ? [{ href: "/front-office", label: "The Front Office" }] : []),
+    { href: "/glossary", label: "Glossary" },
   ];
 
   return (
@@ -73,9 +86,19 @@ export default function StudentDashboard({
             <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
               Self-Paced · BOW Sports Capital
             </span>
-            <h1 style={{ margin: "8px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
-              Good to see you, {firstName}.
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", margin: "8px 0 6px" }}>
+              <h1 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
+                Good to see you, {firstName}.
+              </h1>
+              {streak.label && (
+                <span
+                  title={`Current streak: ${streak.current} day${streak.current === 1 ? "" : "s"} · Longest: ${streak.longest}`}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--bow-ink)", color: "#fff", borderRadius: 999, padding: "6px 14px", fontFamily: "var(--font-data)", fontSize: 13, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}
+                >
+                  {streak.label}
+                </span>
+              )}
+            </div>
             <p style={{ margin: "0 0 16px", fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 560 }}>
               Two tracks, unlocked one decision at a time. Finish a module and write a short reflection to open the next — then earn your certificate to unlock Track 201.
             </p>
@@ -97,6 +120,9 @@ export default function StudentDashboard({
             </Link>
           ))}
         </nav>
+
+        {/* DAILY QUESTION — the core retention hook, above everything else */}
+        <DailyQuestionCard view={dailyQuestion} />
 
         {/* TWO TRACKS, SIDE BY SIDE */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 24, marginBottom: 40 }}>

@@ -30,6 +30,11 @@ function Row({ row, highlight, fullName }: { row: StudentScore; highlight: boole
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 3 }}>
           <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: accent }}>{row.rank.name}</span>
           <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, color: "#6d7078" }}>{row.cohortName}</span>
+          {row.currentStreak >= 3 && (
+            <span title={`${row.currentStreak}-day streak`} style={{ fontFamily: "var(--font-data)", fontSize: 10.5, color: "#C9A84C" }}>
+              🔥 {row.currentStreak}
+            </span>
+          )}
         </span>
       </span>
       <span style={{ textAlign: "right" }}>

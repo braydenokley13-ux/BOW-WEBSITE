@@ -14,6 +14,8 @@ import {
   CERT_TRACK_201,
 } from "@/lib/certificate";
 import { createNotification } from "@/lib/notifications";
+import { recordDailyVisit as applyDailyVisitStreak, type RecordVisitResult } from "@/lib/streak";
+import { conceptLabel } from "@/lib/daily-question";
 import { rankForStudent, nextRankName } from "@/lib/scoring";
 import {
   orderedTrackLessons,
@@ -753,6 +755,131 @@ export async function submitQuizResponse(
   touchActive(me.id);
   refreshDashboard();
   return { ok: true, isCorrect: null, correctAnswer: null, explanation: q.explanation };
+}
+
+/* ---------------- Daily Streak (Feature 2) ---------------- */
+
+/** Body copy for each streak-milestone notification. */
+function streakMilestoneBody(milestone: number): string {
+  if (milestone >= 60) return "Sixty days straight. That's front-office discipline. Legendary.";
+  if (milestone >= 30) return "A full month without missing a day. You're LEGENDARY.";
+  if (milestone >= 14) return "Two weeks straight — you're building a real habit.";
+  if (milestone >= 7) return "Seven days in a row. You're on fire. Keep it going.";
+  return "Three days in a row — the streak is officially lit. Don't break it.";
+}
+
+/**
+ * Update the student's streak for today's visit and fire a milestone
+ * notification (3/7/14/30/60) when one is hit. Shared by the standalone
+ * server action and the Daily Question submission. Idempotent within a day.
+ */
+function runDailyVisit(userId: string): RecordVisitResult {
+  const r = applyDailyVisitStreak(userId);
+  if (r.advanced && r.milestone) {
+    createNotification({
+      id: `ntf-streak-${userId}-${r.milestone}`,
+      userId,
+      type: "streak_milestone",
+      title: `${r.milestone}-day streak! 🔥`,
+      body: streakMilestoneBody(r.milestone),
+      link: "/dashboard",
+    });
+  }
+  return r;
+}
+
+export interface DailyVisitResult {
+  current: number;
+  longest: number;
+  milestone: number | null;
+}
+
+/**
+ * Record today's visit and advance the streak. Called inside
+ * {@link submitDailyResponse} (answering the Daily Question counts as the
+ * daily visit) and also exposed directly. Student-only.
+ */
+export async function recordDailyVisit(): Promise<DailyVisitResult> {
+  const me = await requireRole("student");
+  const r = runDailyVisit(me.id);
+  refreshDashboard();
+  return { current: r.current, longest: r.longest, milestone: r.milestone };
+}
+
+/* ---------------- Daily Question (Feature 1) ---------------- */
+
+export interface DailyQuestionResult {
+  ok: boolean;
+  /** The student's selected choice (authoritative — reflects the stored answer). */
+  selectedChoice?: string;
+  isCorrect?: boolean;
+  /** The correct choice letter, revealed after answering. */
+  correctAnswer?: string;
+  explanation?: string;
+  /** The BOW concept the question connects to (snake_case tag). */
+  concept?: string;
+  /** Display label for the concept (e.g. "Opportunity Cost"). */
+  conceptLabel?: string;
+  /** True when the student had already answered today's question. */
+  alreadyAnswered?: boolean;
+  /** Streak after recording today's visit. */
+  currentStreak?: number;
+  longestStreak?: number;
+  streakMilestone?: number | null;
+}
+
+/**
+ * Submit an answer to today's Daily Question. One response per student per
+ * question (idempotent via UNIQUE). MC is auto-checked against the stored key.
+ * Answering counts as the daily visit, so the streak is updated here too.
+ */
+export async function submitDailyResponse(
+  questionId: string,
+  selectedChoice: string,
+): Promise<DailyQuestionResult> {
+  const me = await requireRole("student");
+  const choice = String(selectedChoice ?? "").toUpperCase();
+  if (!["A", "B", "C", "D"].includes(choice)) return { ok: false };
+
+  const db = getDb();
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  const q = db.prepare("SELECT * FROM daily_questions WHERE id = ?").get(questionId) as any;
+  if (!q) return { ok: false };
+
+  const correct = String(q.correct_answer ?? "").toUpperCase();
+  const isCorrect = choice === correct;
+  const result = db
+    .prepare(
+      "INSERT OR IGNORE INTO daily_responses (id, student_id, question_id, selected_choice, is_correct, responded_at) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .run(`dr-${randomUUID().slice(0, 12)}`, me.id, questionId, choice, isCorrect ? 1 : 0, Date.now());
+  const alreadyAnswered = Number(result.changes) === 0;
+
+  // Authoritative stored answer (in case they had already answered today).
+  const stored = db
+    .prepare("SELECT selected_choice, is_correct FROM daily_responses WHERE student_id = ? AND question_id = ?")
+    .get(me.id, questionId) as { selected_choice?: string; is_correct?: number } | undefined;
+  const storedChoice = String(stored?.selected_choice ?? choice).toUpperCase();
+  const storedCorrect = Number(stored?.is_correct) === 1;
+
+  touchActive(me.id);
+  // Answering the Daily Question is the daily visit — update the streak.
+  const visit = runDailyVisit(me.id);
+  refreshDashboard();
+
+  return {
+    ok: true,
+    selectedChoice: storedChoice,
+    isCorrect: storedCorrect,
+    correctAnswer: correct,
+    explanation: q.explanation,
+    concept: q.concept_tag,
+    conceptLabel: conceptLabel(q.concept_tag),
+    alreadyAnswered,
+    currentStreak: visit.current,
+    longestStreak: visit.longest,
+    streakMilestone: visit.advanced ? visit.milestone : null,
+  };
 }
 
 /* ---------------- Instructor controls (instructor + admin) ---------------- */

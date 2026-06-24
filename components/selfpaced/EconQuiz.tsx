@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { QuizModuleSection, QuizQuestionView } from "@/lib/account";
 import { submitQuizResponse, type QuizSubmitResult } from "@/app/actions/lms";
 import { DifficultyDots } from "@/components/selfpaced/DailyScenarios";
@@ -32,9 +33,17 @@ export default function EconQuiz({ sections, eyebrow = "Econ Quiz", heading = "T
       <h2 style={{ margin: "0 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(24px,3.4vw,38px)", lineHeight: 0.96, letterSpacing: "-0.01em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
         {heading}
       </h2>
-      <p style={{ margin: "0 0 18px", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 580 }}>
+      <p style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 580 }}>
         {blurb ?? "Plain-language economics — no sports needed. Finish a module to unlock its twelve questions. Multiple choice is checked for you; written answers come with a model answer to compare against."}
       </p>
+      <Link
+        href="/glossary"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 18, fontFamily: "var(--font-data)", fontSize: 11.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)", textDecoration: "none", border: "1px solid var(--border-rule)", borderRadius: 999, padding: "7px 14px" }}
+      >
+        📖 Glossary — look up any term
+      </Link>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {sections.map((s) => (
