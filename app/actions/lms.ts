@@ -15,7 +15,8 @@ import {
 } from "@/lib/certificate";
 import { createNotification } from "@/lib/notifications";
 import { recordDailyVisit as applyDailyVisitStreak, type RecordVisitResult } from "@/lib/streak";
-import { conceptLabel } from "@/lib/daily-question";
+import { conceptLabel, getDailyQuestionById, gradeAnswer, tierLabel } from "@/lib/daily-question";
+import { checkAndAwardBadges } from "@/lib/badges";
 import { getPlayerCardData, buildPlayerCardHtml, playerCardFilename, recordPlayerCard } from "@/lib/player-card";
 import { rankForStudent, nextRankName } from "@/lib/scoring";
 import {
@@ -809,12 +810,21 @@ export async function recordDailyVisit(): Promise<DailyVisitResult> {
 
 /* ---------------- Daily Question (Feature 1) ---------------- */
 
+/** A newly earned badge, trimmed for the client toast. */
+export interface EarnedBadgeResult {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  xpReward: number;
+}
+
 export interface DailyQuestionResult {
   ok: boolean;
-  /** The student's selected choice (authoritative — reflects the stored answer). */
+  /** The student's submitted answer (authoritative — reflects the stored answer). */
   selectedChoice?: string;
   isCorrect?: boolean;
-  /** The correct choice letter, revealed after answering. */
+  /** The correct answer (choice letter for MC, expected text for math/fr), revealed after answering. */
   correctAnswer?: string;
   explanation?: string;
   /** The BOW concept the question connects to (snake_case tag). */
@@ -827,59 +837,91 @@ export interface DailyQuestionResult {
   currentStreak?: number;
   longestStreak?: number;
   streakMilestone?: number | null;
+  /** Whether today's visit extended (or started) the streak. */
+  streakAdvanced?: boolean;
+  /** XP banked by THIS submission (question points + streak bonus + badge XP). */
+  xpEarned?: number;
+  /** The student's XP total after this submission. */
+  totalXp?: number;
+  /** Badges newly unlocked by this submission (for the toast queue). */
+  newBadges?: EarnedBadgeResult[];
+  /** Difficulty tier label for the answered question ("Rookie"/"Pro"/"Executive"). */
+  tierLabel?: string;
 }
+
+/** XP bonus when a streak crosses a 7-day multiple. */
+const STREAK_BONUS_XP = 15;
 
 /**
  * Submit an answer to today's Daily Question. One response per student per
- * question (idempotent via UNIQUE). MC is auto-checked against the stored key.
- * Answering counts as the daily visit, so the streak is updated here too.
+ * question (idempotent via UNIQUE). MC is auto-checked against the stored key;
+ * math/fr answers are graded by {@link gradeAnswer}. Answering counts as the
+ * daily visit (streak), banks XP, and awards any newly earned badges.
  */
 export async function submitDailyResponse(
   questionId: string,
   selectedChoice: string,
 ): Promise<DailyQuestionResult> {
   const me = await requireRole("student");
-  const choice = String(selectedChoice ?? "").toUpperCase();
-  if (!["A", "B", "C", "D"].includes(choice)) return { ok: false };
-
-  const db = getDb();
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const q = db.prepare("SELECT * FROM daily_questions WHERE id = ?").get(questionId) as any;
+  const q = getDailyQuestionById(questionId);
   if (!q) return { ok: false };
 
-  const correct = String(q.correct_answer ?? "").toUpperCase();
-  const isCorrect = choice === correct;
+  // MC stores an uppercase letter; math/fr store the trimmed typed answer.
+  const submitted = q.type === "mc" ? String(selectedChoice ?? "").trim().toUpperCase() : String(selectedChoice ?? "").trim();
+  if (submitted === "") return { ok: false };
+  if (q.type === "mc" && !["A", "B", "C", "D"].includes(submitted)) return { ok: false };
+
+  const db = getDb();
+  const isCorrect = gradeAnswer(q, submitted);
   const result = db
     .prepare(
       "INSERT OR IGNORE INTO daily_responses (id, student_id, question_id, selected_choice, is_correct, responded_at) VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .run(`dr-${randomUUID().slice(0, 12)}`, me.id, questionId, choice, isCorrect ? 1 : 0, Date.now());
+    .run(`dr-${randomUUID().slice(0, 12)}`, me.id, questionId, submitted, isCorrect ? 1 : 0, Date.now());
   const alreadyAnswered = Number(result.changes) === 0;
 
   // Authoritative stored answer (in case they had already answered today).
   const stored = db
     .prepare("SELECT selected_choice, is_correct FROM daily_responses WHERE student_id = ? AND question_id = ?")
     .get(me.id, questionId) as { selected_choice?: string; is_correct?: number } | undefined;
-  const storedChoice = String(stored?.selected_choice ?? choice).toUpperCase();
+  const storedChoice = String(stored?.selected_choice ?? submitted);
   const storedCorrect = Number(stored?.is_correct) === 1;
 
   touchActive(me.id);
   // Answering the Daily Question is the daily visit — update the streak.
   const visit = runDailyVisit(me.id);
+
+  // ---- XP + badges (only the first answer of the day banks streak/points XP) ----
+  let xpEarned = 0;
+  if (!alreadyAnswered && isCorrect) xpEarned += q.points;
+  if (visit.advanced && visit.current > 0 && visit.current % 7 === 0) xpEarned += STREAK_BONUS_XP;
+
+  // Award badges AFTER the response + streak are recorded so stats are current.
+  const newBadges = checkAndAwardBadges(me.id);
+  xpEarned += newBadges.reduce((sum, b) => sum + b.xpReward, 0);
+
+  if (xpEarned > 0) db.prepare("UPDATE users SET xp = COALESCE(xp, 0) + ? WHERE id = ?").run(xpEarned, me.id);
+  const totalXp = (db.prepare("SELECT xp FROM users WHERE id = ?").get(me.id) as { xp?: number } | undefined)?.xp ?? 0;
+
   refreshDashboard();
 
   return {
     ok: true,
     selectedChoice: storedChoice,
     isCorrect: storedCorrect,
-    correctAnswer: correct,
+    correctAnswer: q.correctAnswer,
     explanation: q.explanation,
-    concept: q.concept_tag,
-    conceptLabel: conceptLabel(q.concept_tag),
+    concept: q.conceptTag,
+    conceptLabel: conceptLabel(q.conceptTag),
     alreadyAnswered,
     currentStreak: visit.current,
     longestStreak: visit.longest,
     streakMilestone: visit.advanced ? visit.milestone : null,
+    streakAdvanced: visit.advanced,
+    xpEarned,
+    totalXp: Number(totalXp) || 0,
+    newBadges: newBadges.map((b) => ({ id: b.id, name: b.name, icon: b.icon, description: b.description, xpReward: b.xpReward })),
+    tierLabel: tierLabel(q.difficulty),
   };
 }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { requireRole } from "@/lib/dal";
+import { pointsForDifficulty } from "@/lib/daily-question";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -20,6 +21,8 @@ const nextOrdinal = (table: string): number => {
 
 export interface DailyQuestionInput {
   questionText: string;
+  /** "mc" | "math" | "fr" */
+  type: string;
   choiceA: string;
   choiceB: string;
   choiceC: string;
@@ -28,43 +31,178 @@ export interface DailyQuestionInput {
   explanation: string;
   conceptTag: string;
   difficulty: number;
+  /** "101" | "201" */
+  track: string;
+  /** XP for a correct answer; defaults from difficulty when blank. */
+  points?: number;
+  active?: boolean;
   activeDate?: string | null;
 }
 
+const QTYPES = ["mc", "math", "fr"];
+const normType = (t: string): string => (QTYPES.includes(t) ? t : "mc");
+const normTrack = (t: string): string => (t === "201" ? "201" : "101");
+const normDiff = (d: number): number => ([1, 2, 3].includes(Number(d)) ? Number(d) : 1);
+const normKey = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/** MC needs four choices and an A–D key; math/fr just need an expected answer. */
 function validDaily(i: DailyQuestionInput): boolean {
-  return (
-    !!i.questionText.trim() &&
-    !!i.choiceA.trim() && !!i.choiceB.trim() && !!i.choiceC.trim() && !!i.choiceD.trim() &&
-    ["A", "B", "C", "D"].includes(String(i.correctAnswer).toUpperCase()) &&
-    !!i.explanation.trim() && !!i.conceptTag.trim()
-  );
+  if (!i.questionText.trim() || !i.explanation.trim() || !i.conceptTag.trim()) return false;
+  if (normType(i.type) === "mc") {
+    return (
+      !!i.choiceA.trim() && !!i.choiceB.trim() && !!i.choiceC.trim() && !!i.choiceD.trim() &&
+      ["A", "B", "C", "D"].includes(String(i.correctAnswer).trim().toUpperCase())
+    );
+  }
+  return !!String(i.correctAnswer ?? "").trim();
 }
 
+/** Normalize validated input into the DB column values. */
+function dailyValues(i: DailyQuestionInput) {
+  const type = normType(i.type);
+  const difficulty = normDiff(i.difficulty);
+  return {
+    questionText: i.questionText.trim(),
+    type,
+    choiceA: (i.choiceA ?? "").trim(),
+    choiceB: (i.choiceB ?? "").trim(),
+    choiceC: (i.choiceC ?? "").trim(),
+    choiceD: (i.choiceD ?? "").trim(),
+    correct: type === "mc" ? String(i.correctAnswer).trim().toUpperCase() : String(i.correctAnswer).trim(),
+    explanation: i.explanation.trim(),
+    conceptTag: i.conceptTag.trim(),
+    difficulty,
+    track: normTrack(i.track),
+    points: i.points && Number(i.points) > 0 ? Number(i.points) : pointsForDifficulty(difficulty),
+    active: i.active === false ? 0 : 1,
+    activeDate: i.activeDate?.trim() || null,
+  };
+}
+
+/** Create (id null) or update an existing daily question. */
+export async function upsertDailyQuestion(id: string | null, input: DailyQuestionInput): Promise<{ ok: boolean }> {
+  await requireRole("admin");
+  if (!validDaily(input)) return { ok: false };
+  const v = dailyValues(input);
+  const db = getDb();
+  if (id) {
+    db.prepare(
+      "UPDATE daily_questions SET question_text=?, type=?, choice_a=?, choice_b=?, choice_c=?, choice_d=?, correct_answer=?, explanation=?, concept_tag=?, difficulty=?, track=?, points=?, active=?, active_date=? WHERE id=?",
+    ).run(v.questionText, v.type, v.choiceA, v.choiceB, v.choiceC, v.choiceD, v.correct, v.explanation, v.conceptTag, v.difficulty, v.track, v.points, v.active, v.activeDate, id);
+  } else {
+    db.prepare(
+      "INSERT INTO daily_questions (id, ordinal, question_text, type, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, concept_tag, difficulty, track, points, active, active_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(`dq-${randomUUID().slice(0, 8)}`, nextOrdinal("daily_questions"), v.questionText, v.type, v.choiceA, v.choiceB, v.choiceC, v.choiceD, v.correct, v.explanation, v.conceptTag, v.difficulty, v.track, v.points, v.active, v.activeDate);
+  }
+  refresh();
+  return { ok: true };
+}
+
+// Back-compat wrappers around upsertDailyQuestion.
 export async function createDailyQuestion(input: DailyQuestionInput): Promise<{ ok: boolean }> {
-  await requireRole("admin");
-  if (!validDaily(input)) return { ok: false };
-  const id = `dq-${randomUUID().slice(0, 8)}`;
-  const diff = [1, 2, 3].includes(Number(input.difficulty)) ? Number(input.difficulty) : 1;
-  getDb()
-    .prepare(
-      "INSERT INTO daily_questions (id, ordinal, question_text, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, concept_tag, difficulty, active_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .run(id, nextOrdinal("daily_questions"), input.questionText.trim(), input.choiceA.trim(), input.choiceB.trim(), input.choiceC.trim(), input.choiceD.trim(), String(input.correctAnswer).toUpperCase(), input.explanation.trim(), input.conceptTag.trim(), diff, input.activeDate?.trim() || null);
-  refresh();
-  return { ok: true };
+  return upsertDailyQuestion(null, input);
+}
+export async function updateDailyQuestion(id: string, input: DailyQuestionInput): Promise<{ ok: boolean }> {
+  return upsertDailyQuestion(id, input);
 }
 
-export async function updateDailyQuestion(id: string, input: DailyQuestionInput): Promise<{ ok: boolean }> {
+/** Bulk show/hide questions by id. */
+export async function setDailyQuestionsActive(ids: string[], active: boolean): Promise<{ ok: boolean; updated: number }> {
   await requireRole("admin");
-  if (!validDaily(input)) return { ok: false };
-  const diff = [1, 2, 3].includes(Number(input.difficulty)) ? Number(input.difficulty) : 1;
-  getDb()
-    .prepare(
-      "UPDATE daily_questions SET question_text = ?, choice_a = ?, choice_b = ?, choice_c = ?, choice_d = ?, correct_answer = ?, explanation = ?, concept_tag = ?, difficulty = ?, active_date = ? WHERE id = ?",
-    )
-    .run(input.questionText.trim(), input.choiceA.trim(), input.choiceB.trim(), input.choiceC.trim(), input.choiceD.trim(), String(input.correctAnswer).toUpperCase(), input.explanation.trim(), input.conceptTag.trim(), diff, input.activeDate?.trim() || null, id);
+  if (!Array.isArray(ids) || ids.length === 0) return { ok: true, updated: 0 };
+  const stmt = getDb().prepare("UPDATE daily_questions SET active = ? WHERE id = ?");
+  let updated = 0;
+  for (const id of ids) updated += Number(stmt.run(active ? 1 : 0, String(id)).changes) || 0;
   refresh();
-  return { ok: true };
+  return { ok: true, updated };
+}
+
+/** Bulk delete questions (and their responses) by id. */
+export async function deleteDailyQuestions(ids: string[]): Promise<{ ok: boolean; deleted: number }> {
+  await requireRole("admin");
+  if (!Array.isArray(ids) || ids.length === 0) return { ok: true, deleted: 0 };
+  const db = getDb();
+  const delResp = db.prepare("DELETE FROM daily_responses WHERE question_id = ?");
+  const del = db.prepare("DELETE FROM daily_questions WHERE id = ?");
+  let deleted = 0;
+  for (const id of ids) {
+    delResp.run(String(id));
+    deleted += Number(del.run(String(id)).changes) || 0;
+  }
+  refresh();
+  return { ok: true, deleted };
+}
+
+export interface BulkImportResult {
+  ok: boolean;
+  inserted: number;
+  skipped: number;
+  errors: number;
+  message: string;
+}
+
+/** Difficulty as a number from either an int or a tier string ("rookie"/"pro"/"executive"). */
+function parseDifficulty(d: any): number {
+  if (typeof d === "number") return normDiff(d);
+  const s = String(d ?? "").toLowerCase();
+  if (s === "executive" || s === "3") return 3;
+  if (s === "pro" || s === "2") return 2;
+  return 1;
+}
+
+/** Coerce a loose JSON object into a DailyQuestionInput (accepts common aliases). */
+function coerceImport(raw: any): DailyQuestionInput | null {
+  if (!raw || typeof raw !== "object") return null;
+  const opts = Array.isArray(raw.options) ? raw.options.map((o: any) => String(o ?? "")) : [];
+  return {
+    questionText: String(raw.questionText ?? raw.question_text ?? raw.question ?? ""),
+    type: String(raw.type ?? "mc"),
+    choiceA: String(raw.choiceA ?? raw.choice_a ?? opts[0] ?? ""),
+    choiceB: String(raw.choiceB ?? raw.choice_b ?? opts[1] ?? ""),
+    choiceC: String(raw.choiceC ?? raw.choice_c ?? opts[2] ?? ""),
+    choiceD: String(raw.choiceD ?? raw.choice_d ?? opts[3] ?? ""),
+    correctAnswer: String(raw.correctAnswer ?? raw.correct_answer ?? ""),
+    explanation: String(raw.explanation ?? ""),
+    conceptTag: String(raw.conceptTag ?? raw.concept_tag ?? ""),
+    difficulty: parseDifficulty(raw.difficulty),
+    track: String(raw.track ?? "101"),
+    points: raw.points != null ? Number(raw.points) : undefined,
+    active: raw.active === false ? false : true,
+    activeDate: raw.activeDate ?? raw.active_date ?? null,
+  };
+}
+
+/**
+ * Bulk-insert a JSON array of question objects. Skips duplicates (by normalized
+ * question text, against the DB and within the batch) and invalid rows; returns
+ * a summary. Malformed (non-array) input is reported, never thrown.
+ */
+export async function bulkImportQuestions(questions: unknown): Promise<BulkImportResult> {
+  await requireRole("admin");
+  if (!Array.isArray(questions)) {
+    return { ok: false, inserted: 0, skipped: 0, errors: 0, message: "Expected a JSON array of question objects." };
+  }
+  const db = getDb();
+  const existing = new Set(
+    (db.prepare("SELECT question_text FROM daily_questions").all() as any[]).map((r) => normKey(String(r.question_text))),
+  );
+  const insert = db.prepare(
+    "INSERT INTO daily_questions (id, ordinal, question_text, type, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, concept_tag, difficulty, track, points, active, active_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  let inserted = 0, skipped = 0, errors = 0;
+  let ordinal = nextOrdinal("daily_questions");
+  for (const raw of questions) {
+    const input = coerceImport(raw);
+    if (!input || !validDaily(input)) { errors++; continue; }
+    const key = normKey(input.questionText);
+    if (existing.has(key)) { skipped++; continue; }
+    const v = dailyValues(input);
+    insert.run(`dq-${randomUUID().slice(0, 8)}`, ordinal++, v.questionText, v.type, v.choiceA, v.choiceB, v.choiceC, v.choiceD, v.correct, v.explanation, v.conceptTag, v.difficulty, v.track, v.points, v.active, v.activeDate);
+    existing.add(key);
+    inserted++;
+  }
+  refresh();
+  return { ok: true, inserted, skipped, errors, message: `${inserted} inserted, ${skipped} skipped${errors ? `, ${errors} invalid` : ""}.` };
 }
 
 /* ---------------- News items (admin) ---------------- */

@@ -61,6 +61,22 @@ h1, h2, h3, h4, h5, h6, p, figure, blockquote { margin: 0; }
 @keyframes bowWipe { from { clip-path: inset(0 0 108% 0); opacity: 0; transform: translateY(26px); } to { clip-path: inset(0 0 -12% 0); opacity: 1; transform: translateY(0); } }
 @keyframes bowHandoff { from { transform: translateY(0) scale(1); opacity: 1; } to { transform: translateY(-60px) scale(0.93); opacity: 0; } }
 
+/* ---- Daily-Question deep expansion: streak pulse, XP pop, badge toast ---- */
+@keyframes bowStreakPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201,168,76,0); }
+  50% { box-shadow: 0 0 0 5px rgba(201,168,76,0.45); }
+}
+@keyframes bowXpPop { from { opacity: 0; transform: translateY(8px) scale(0.92); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes bowToastIn { from { opacity: 0; transform: translateY(24px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes bowToastOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(16px); } }
+.bow-streak-pulse { animation: bowStreakPulse 1.4s var(--ease-out) 2; }
+.bow-xp-pop { animation: bowXpPop 0.4s var(--ease-out) both; }
+.bow-toast-in { animation: bowToastIn 0.35s var(--ease-out) both; }
+.bow-toast-out { animation: bowToastOut 0.35s var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) {
+  .bow-streak-pulse, .bow-xp-pop, .bow-toast-in, .bow-toast-out { animation: none; }
+}
+
 /* ============================================================
  * Scroll-driven reveal + parallax utilities.
  * Where the browser lacks scroll/view timelines, the 0s default

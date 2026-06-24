@@ -6,7 +6,7 @@ import type { AdminContentMgmt } from "@/lib/admin";
 import type { DailyQuestionAdminRow, NewsItem, NewsSubmission, Testimonial } from "@/lib/content";
 import type { GlossaryTerm } from "@/lib/glossary";
 import {
-  createDailyQuestion, updateDailyQuestion,
+  upsertDailyQuestion, setDailyQuestionsActive, deleteDailyQuestions, bulkImportQuestions,
   createNewsItem, setNewsItemActive, approveNewsSubmission, rejectNewsSubmission,
   createTestimonial, updateTestimonial,
   createGlossaryTerm, updateGlossaryTerm,
@@ -56,74 +56,229 @@ export default function ContentManager({ data }: { data: AdminContentMgmt }) {
 
 /* ============================================================ Daily Questions */
 
-const emptyDaily = { questionText: "", choiceA: "", choiceB: "", choiceC: "", choiceD: "", correctAnswer: "A", explanation: "", conceptTag: "", difficulty: 1, activeDate: "" };
+const DEFAULT_POINTS: Record<number, number> = { 1: 10, 2: 20, 3: 35 };
+const TIER_LABEL: Record<number, string> = { 1: "Rookie", 2: "Pro", 3: "Executive" };
+const TYPE_LABEL: Record<string, string> = { mc: "MC", math: "Math", fr: "FR" };
+type DailyForm = {
+  questionText: string; type: string; choiceA: string; choiceB: string; choiceC: string; choiceD: string;
+  correctAnswer: string; explanation: string; conceptTag: string; difficulty: number; track: string; points: number; active: boolean; activeDate: string;
+};
+const emptyDaily: DailyForm = { questionText: "", type: "mc", choiceA: "", choiceB: "", choiceC: "", choiceD: "", correctAnswer: "A", explanation: "", conceptTag: "", difficulty: 1, track: "101", points: 10, active: true, activeDate: "" };
+
+const IMPORT_PLACEHOLDER = `[
+  {
+    "questionText": "What is a salary cap?",
+    "type": "mc",
+    "options": ["A tax", "A spending limit", "A bonus", "A draft pick"],
+    "correctAnswer": "B",
+    "explanation": "A salary cap limits total player payroll.",
+    "conceptTag": "salary_cap",
+    "track": "101",
+    "difficulty": "rookie"
+  }
+]`;
 
 function DailyManager({ rows, refresh }: { rows: DailyQuestionAdminRow[]; refresh: () => void }) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ ...emptyDaily });
+  const [form, setForm] = useState<DailyForm>({ ...emptyDaily });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  const [filterTrack, setFilterTrack] = useState("all");
+  const [filterDiff, setFilterDiff] = useState("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const filtered = rows.filter(
+    (r) => (filterTrack === "all" || r.track === filterTrack) && (filterDiff === "all" || String(r.difficulty) === filterDiff),
+  );
+  const filteredIds = filtered.map((r) => r.id);
 
   const startCreate = () => { setEditingId("new"); setForm({ ...emptyDaily }); setMsg(null); };
   const startEdit = (r: DailyQuestionAdminRow) => {
     setEditingId(r.id);
-    // The list doesn't carry choices/explanation; the admin re-enters or edits metadata.
-    setForm({ ...emptyDaily, questionText: r.questionText, conceptTag: r.conceptTag, difficulty: r.difficulty, correctAnswer: r.correctAnswer || "A", activeDate: r.activeDate ?? "" });
+    setForm({
+      questionText: r.questionText, type: r.type, choiceA: r.choiceA, choiceB: r.choiceB, choiceC: r.choiceC, choiceD: r.choiceD,
+      correctAnswer: r.correctAnswer || (r.type === "mc" ? "A" : ""), explanation: r.explanation, conceptTag: r.conceptTag,
+      difficulty: r.difficulty, track: r.track, points: r.points, active: r.active, activeDate: r.activeDate ?? "",
+    });
     setMsg(null);
   };
 
+  const setDifficulty = (d: number) => setForm((f) => ({ ...f, difficulty: d, points: DEFAULT_POINTS[d] ?? f.points }));
+  const setType = (t: string) => setForm((f) => ({ ...f, type: t, correctAnswer: t === "mc" ? (["A", "B", "C", "D"].includes(f.correctAnswer) ? f.correctAnswer : "A") : (["A", "B", "C", "D"].includes(f.correctAnswer) ? "" : f.correctAnswer) }));
+
   const save = async () => {
+    // Client-side guard mirrors the server so the admin gets fast feedback.
+    if (!form.questionText.trim() || !form.explanation.trim() || !form.conceptTag.trim()) { setMsg("Question, explanation, and concept are required."); return; }
+    if (form.type === "mc" && (!form.choiceA.trim() || !form.choiceB.trim() || !form.choiceC.trim() || !form.choiceD.trim() || !["A", "B", "C", "D"].includes(form.correctAnswer))) { setMsg("MC questions need all four choices and a correct answer (A–D)."); return; }
+    if (form.type !== "mc" && !form.correctAnswer.trim()) { setMsg("Enter the expected answer."); return; }
     setBusy(true); setMsg(null);
-    const payload = { ...form, difficulty: Number(form.difficulty), activeDate: form.activeDate || null };
-    const res = editingId === "new" ? await createDailyQuestion(payload) : await updateDailyQuestion(editingId!, payload);
+    const payload = { ...form, difficulty: Number(form.difficulty), points: Number(form.points), activeDate: form.activeDate || null };
+    const res = await upsertDailyQuestion(editingId === "new" ? null : editingId, payload);
     setBusy(false);
-    if (res.ok) { setEditingId(null); refresh(); } else setMsg("Fill in the question, all four choices, a valid correct answer, explanation, and concept.");
+    if (res.ok) { setEditingId(null); refresh(); } else setMsg("Could not save — check the required fields for this question type.");
+  };
+
+  const toggleSelect = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  const bulkActive = async (active: boolean) => {
+    if (filteredIds.length === 0) return;
+    setBusy(true);
+    await setDailyQuestionsActive(filteredIds, active);
+    setBusy(false); refresh();
+  };
+  const deleteSelected = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Delete ${selected.size} question(s)? This also removes their student responses and cannot be undone.`)) return;
+    setBusy(true);
+    await deleteDailyQuestions([...selected]);
+    setBusy(false); setSelected(new Set()); refresh();
   };
 
   return (
     <div>
       <section style={panel}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-          <h3 style={{ ...title, margin: 0 }}>Daily Questions ({rows.length})</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <h3 style={{ ...title, margin: 0 }}>Daily Questions ({filtered.length}{filtered.length !== rows.length ? ` of ${rows.length}` : ""})</h3>
           <button onClick={startCreate} style={primaryBtn(false)}>+ Create Question</button>
         </div>
+
+        {/* Filters + bulk actions */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginTop: 14 }}>
+          <Field label="Track"><select style={input} value={filterTrack} onChange={(e) => setFilterTrack(e.target.value)}><option value="all">All</option><option value="101">101</option><option value="201">201</option></select></Field>
+          <Field label="Difficulty"><select style={input} value={filterDiff} onChange={(e) => setFilterDiff(e.target.value)}><option value="all">All</option><option value="1">Rookie</option><option value="2">Pro</option><option value="3">Executive</option></select></Field>
+          <button onClick={() => bulkActive(true)} disabled={busy || filteredIds.length === 0} style={smallBtn}>Activate All Filtered</button>
+          <button onClick={() => bulkActive(false)} disabled={busy || filteredIds.length === 0} style={smallBtn}>Deactivate All Filtered</button>
+          <button onClick={deleteSelected} disabled={busy || selected.size === 0} style={{ ...smallBtn, borderColor: "var(--bow-negative)", color: "var(--bow-negative)" }}>Delete Selected ({selected.size})</button>
+        </div>
+
         {editingId && (
           <div style={{ marginTop: 16, padding: 16, border: "1px solid var(--border-rule)", borderRadius: 6, background: "var(--bow-paper)", display: "flex", flexDirection: "column", gap: 10 }}>
             <Field label="Question"><textarea rows={2} style={{ ...input, resize: "vertical" }} value={form.questionText} onChange={(e) => setForm({ ...form, questionText: e.target.value })} /></Field>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
-              {(["A", "B", "C", "D"] as const).map((L) => (
-                <Field key={L} label={`Choice ${L}`}><input style={input} value={form[`choice${L}` as "choiceA"]} onChange={(e) => setForm({ ...form, [`choice${L}`]: e.target.value })} /></Field>
-              ))}
-            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
-              <Field label="Correct answer"><select style={input} value={form.correctAnswer} onChange={(e) => setForm({ ...form, correctAnswer: e.target.value })}>{["A", "B", "C", "D"].map((c) => <option key={c}>{c}</option>)}</select></Field>
-              <Field label="Difficulty"><select style={input} value={form.difficulty} onChange={(e) => setForm({ ...form, difficulty: Number(e.target.value) })}>{[1, 2, 3].map((d) => <option key={d} value={d}>{d}</option>)}</select></Field>
-              <Field label="Concept tag"><input style={input} value={form.conceptTag} onChange={(e) => setForm({ ...form, conceptTag: e.target.value })} placeholder="opportunity_cost" /></Field>
-              <Field label="Active date (optional)"><input style={input} type="date" value={form.activeDate} onChange={(e) => setForm({ ...form, activeDate: e.target.value })} /></Field>
+              <Field label="Type"><select style={input} value={form.type} onChange={(e) => setType(e.target.value)}>{Object.entries(TYPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+              <Field label="Track"><select style={input} value={form.track} onChange={(e) => setForm({ ...form, track: e.target.value })}><option value="101">101</option><option value="201">201</option></select></Field>
+              <Field label="Difficulty"><select style={input} value={form.difficulty} onChange={(e) => setDifficulty(Number(e.target.value))}>{[1, 2, 3].map((d) => <option key={d} value={d}>{TIER_LABEL[d]}</option>)}</select></Field>
+              <Field label="Points"><input type="number" style={input} value={form.points} onChange={(e) => setForm({ ...form, points: Number(e.target.value) })} /></Field>
             </div>
+            {form.type === "mc" ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
+                  {(["A", "B", "C", "D"] as const).map((L) => (
+                    <Field key={L} label={`Choice ${L}`}><input style={input} value={form[`choice${L}` as "choiceA"]} onChange={(e) => setForm({ ...form, [`choice${L}`]: e.target.value })} /></Field>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+                  <Field label="Correct answer"><select style={input} value={form.correctAnswer} onChange={(e) => setForm({ ...form, correctAnswer: e.target.value })}>{["A", "B", "C", "D"].map((c) => <option key={c}>{c}</option>)}</select></Field>
+                  <Field label="Concept tag"><input style={input} value={form.conceptTag} onChange={(e) => setForm({ ...form, conceptTag: e.target.value })} placeholder="opportunity_cost" /></Field>
+                  <Field label="Active date (optional)"><input style={input} type="date" value={form.activeDate} onChange={(e) => setForm({ ...form, activeDate: e.target.value })} /></Field>
+                </div>
+              </>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+                <Field label={form.type === "math" ? "Correct answer (number)" : "Correct answer (text)"}><input style={input} value={form.correctAnswer} onChange={(e) => setForm({ ...form, correctAnswer: e.target.value })} placeholder={form.type === "math" ? "7.5" : "expected answer"} /></Field>
+                <Field label="Concept tag"><input style={input} value={form.conceptTag} onChange={(e) => setForm({ ...form, conceptTag: e.target.value })} placeholder="luxury_tax" /></Field>
+                <Field label="Active date (optional)"><input style={input} type="date" value={form.activeDate} onChange={(e) => setForm({ ...form, activeDate: e.target.value })} /></Field>
+              </div>
+            )}
             <Field label="Explanation"><textarea rows={2} style={{ ...input, resize: "vertical" }} value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} /></Field>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <button onClick={save} disabled={busy} style={primaryBtn(busy)}>{busy ? "Saving…" : editingId === "new" ? "Create" : "Save"}</button>
               <button onClick={() => setEditingId(null)} style={smallBtn}>Cancel</button>
               {msg && <span style={{ fontFamily: "var(--font-data)", fontSize: 11.5, color: "var(--bow-warning)" }}>{msg}</span>}
             </div>
-            {editingId !== "new" && <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 12, color: "var(--bow-slate)" }}>Editing metadata re-saves the full question — re-enter the four choices and explanation to keep them.</p>}
           </div>
         )}
       </section>
 
       <section style={panel}>
-        {rows.map((r) => (
+        {filtered.map((r) => (
           <div key={r.id} style={row}>
+            <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)} style={{ marginRight: 4 }} aria-label={`Select question ${r.ordinal}`} />
             <span style={{ minWidth: 0, flex: 1 }}>
-              <strong>#{r.ordinal}</strong> {r.questionText.length > 70 ? `${r.questionText.slice(0, 70)}…` : r.questionText}
-              <span style={{ display: "block", fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>{r.conceptTag} · D{r.difficulty} · {r.answeredCount} answered{r.activeDate ? ` · ${r.activeDate}` : ""}</span>
+              <strong>#{r.ordinal}</strong> {r.questionText.length > 60 ? `${r.questionText.slice(0, 60)}…` : r.questionText}
+              <span style={{ display: "block", fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>
+                Track {r.track} · {TIER_LABEL[r.difficulty]} · {TYPE_LABEL[r.type] ?? r.type} · {r.points} XP · {r.conceptTag} · {r.answeredCount} answered{r.activeDate ? ` · ${r.activeDate}` : ""}
+              </span>
             </span>
+            <button onClick={() => setDailyQuestionsActive([r.id], !r.active).then(refresh)} style={{ ...smallBtn, borderColor: r.active ? "var(--bow-positive)" : "var(--border-rule)", color: r.active ? "var(--bow-positive)" : "var(--bow-slate)" }}>
+              {r.active ? "Active" : "Hidden"}
+            </button>
             <button onClick={() => startEdit(r)} style={smallBtn}>Edit</button>
           </div>
         ))}
+        {filtered.length === 0 && <p style={{ margin: "8px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>No questions match the current filter.</p>}
       </section>
+
+      <BulkImport refresh={refresh} />
     </div>
+  );
+}
+
+/* ---- Bulk JSON import ---- */
+function BulkImport({ refresh }: { refresh: () => void }) {
+  const [text, setText] = useState("");
+  const [preview, setPreview] = useState<Record<string, unknown>[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const doPreview = () => {
+    setErr(null); setResult(null); setPreview(null);
+    if (!text.trim()) { setErr("Paste a JSON array first."); return; }
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch { setErr("That isn't valid JSON. Check for trailing commas or missing quotes."); return; }
+    if (!Array.isArray(parsed)) { setErr("JSON must be an array of question objects."); return; }
+    setPreview(parsed as Record<string, unknown>[]);
+  };
+
+  const confirm = async () => {
+    if (!preview) return;
+    setBusy(true); setResult(null);
+    const res = await bulkImportQuestions(preview);
+    setBusy(false);
+    setResult(res.message);
+    if (res.ok && res.inserted > 0) { setText(""); setPreview(null); refresh(); }
+  };
+
+  const str = (v: unknown) => (v == null ? "" : String(v));
+  const pField = (o: Record<string, unknown>, ...keys: string[]) => { for (const k of keys) if (o[k] != null) return str(o[k]); return ""; };
+
+  return (
+    <section style={panel}>
+      <h3 style={title}>Bulk import (JSON)</h3>
+      <p style={{ margin: "0 0 10px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>
+        Paste a JSON array of question objects. Duplicates (by question text) and invalid rows are skipped. Difficulty accepts <code>rookie/pro/executive</code> or <code>1/2/3</code>; MC choices can be an <code>options</code> array.
+      </p>
+      <textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={IMPORT_PLACEHOLDER} style={{ ...input, resize: "vertical", fontFamily: "var(--font-data)", fontSize: 12.5 }} />
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+        <button onClick={doPreview} disabled={busy} style={smallBtn}>Preview Import</button>
+        <button onClick={confirm} disabled={busy || !preview} style={primaryBtn(busy || !preview)}>{busy ? "Importing…" : "Confirm Import"}</button>
+        {err && <span style={{ fontFamily: "var(--font-data)", fontSize: 11.5, color: "var(--bow-negative)" }}>{err}</span>}
+        {result && <span style={{ fontFamily: "var(--font-data)", fontSize: 11.5, color: "var(--bow-positive)" }}>{result}</span>}
+      </div>
+
+      {preview && (
+        <div style={{ marginTop: 12 }}>
+          <p style={{ margin: "0 0 8px", fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Preview — {preview.length} row(s)</p>
+          {preview.slice(0, 50).map((o, i) => {
+            const q = pField(o, "questionText", "question_text", "question");
+            const ok = !!q.trim();
+            return (
+              <div key={i} style={{ ...row, borderColor: "var(--border-rule)" }}>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <strong style={{ color: ok ? "var(--bow-ink)" : "var(--bow-negative)" }}>{ok ? (q.length > 60 ? `${q.slice(0, 60)}…` : q) : "⚠ missing question text"}</strong>
+                  <span style={{ display: "block", fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>
+                    {pField(o, "type") || "mc"} · track {pField(o, "track") || "101"} · {pField(o, "difficulty") || "rookie"}
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+          {preview.length > 50 && <p style={{ margin: "6px 0 0", fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>…and {preview.length - 50} more.</p>}
+        </div>
+      )}
+    </section>
   );
 }
 
