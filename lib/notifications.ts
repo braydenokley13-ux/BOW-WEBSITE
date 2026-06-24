@@ -19,7 +19,8 @@ export type NotificationType =
   | "weekly_challenge"
   | "certificate_earned"
   | "discussion_reply"
-  | "rank_up";
+  | "rank_up"
+  | "streak_milestone";
 
 /** A notification as the bell dropdown renders it (fully serializable). */
 export interface NotificationView {

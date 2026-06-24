@@ -6,6 +6,7 @@ import type { AdminData } from "@/lib/admin";
 import { createCohort, updateUserRole, type RoleToggle } from "@/app/actions/lms";
 import { createPartnerOrg } from "@/app/actions/partners";
 import { PARTNER_ORG_TYPES, partnerTypeLabel } from "@/lib/account";
+import ContentManager from "@/components/admin/ContentManager";
 
 type Tab = "overview" | "cohorts" | "users" | "content" | "partners";
 
@@ -98,6 +99,8 @@ function Overview({ data }: { data: AdminData }) {
     ["Weekly completions", o.weeklyCompletions],
     ["Partner pages", o.partnerPages],
     ["Demo requests", o.demoRequests],
+    ["Daily answers today", o.dailyAnswersToday],
+    ["Glossary terms", o.glossaryTerms],
   ];
   return (
     <div>
@@ -116,6 +119,12 @@ function Overview({ data }: { data: AdminData }) {
           <h3 style={panelTitle}>Recently completed modules</h3>
           {data.health.recentModules.length === 0 ? <Empty /> : data.health.recentModules.map((m, i) => (
             <div key={i} style={rowStyle}><span style={{ minWidth: 0 }}>{m.name} · <span style={{ color: "var(--bow-slate)" }}>{m.moduleTitle}</span></span><span style={{ color: "var(--bow-slate)", fontFamily: "var(--font-data)", fontSize: 12, flexShrink: 0 }}>{m.when}</span></div>
+          ))}
+        </section>
+        <section style={panel}>
+          <h3 style={panelTitle}>Streak leaders</h3>
+          {o.streakLeaders.length === 0 ? <Empty /> : o.streakLeaders.map((s, i) => (
+            <div key={i} style={rowStyle}><span>{s.name}</span><span style={{ color: "#C9A84C", fontFamily: "var(--font-data)", fontSize: 12 }}>🔥 {s.current}</span></div>
           ))}
         </section>
         <section style={panel}>
@@ -282,6 +291,10 @@ function Content({ data }: { data: AdminData }) {
           </div>
         ))}
       </section>
+
+      {/* Content management — Daily Questions, News, Testimonials, Glossary (Feature 8) */}
+      <h3 style={{ ...panelTitle, marginTop: 24 }}>Manage content</h3>
+      <ContentManager data={data.contentMgmt} />
     </div>
   );
 }

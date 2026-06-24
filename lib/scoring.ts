@@ -27,6 +27,13 @@ export const SCORE_WEIGHTS = {
   postMax: 50,
   /** Weekly Challenge completion: +25 each. */
   weekly: 25,
+  /** Daily Question: +3 correct, +1 for showing up, capped at +150 total. */
+  dailyCorrect: 3,
+  dailyIncorrect: 1,
+  dailyMax: 150,
+  /** Streak bonus: current_streak × 2, capped at +100. */
+  streakPerDay: 2,
+  streakMax: 100,
 } as const;
 
 export interface ScoreStats {
@@ -46,6 +53,12 @@ export interface ScoreStats {
   discussionPosts: number;
   /** Weekly Challenge completions (Feature 4). */
   weeklyCompletions: number;
+  /** Daily Questions answered correctly (Feature 1). */
+  dailyCorrect: number;
+  /** Daily Questions answered incorrectly (Feature 1) — partial credit for showing up. */
+  dailyIncorrect: number;
+  /** Current consecutive-day streak (Feature 2) — live, not time-windowed. */
+  currentStreak: number;
 }
 
 export interface BowRank {
@@ -69,6 +82,9 @@ export interface StudentScore {
   certificateEarned: boolean;
   simulationCompleted: boolean;
   lastActiveAt: number | null;
+  /** Current consecutive-day streak (Feature 2) — leaderboard secondary stat. */
+  currentStreak: number;
+  longestStreak: number;
   /** 1-based position once placed in a sorted leaderboard. */
   position?: number;
 }
@@ -112,6 +128,16 @@ export function computeStats(studentId: string, sinceTs = 0): ScoreStats {
     weeklyCompletions: one(
       "SELECT COUNT(*) AS n FROM weekly_completions WHERE student_id = ? AND COALESCE(submitted_at, 0) >= ?",
     ),
+    dailyCorrect: one(
+      "SELECT COUNT(*) AS n FROM daily_responses WHERE student_id = ? AND is_correct = 1 AND COALESCE(responded_at, 0) >= ?",
+    ),
+    dailyIncorrect: one(
+      "SELECT COUNT(*) AS n FROM daily_responses WHERE student_id = ? AND is_correct = 0 AND COALESCE(responded_at, 0) >= ?",
+    ),
+    // Streak is a live, current-state value (not windowed by sinceTs).
+    currentStreak: Number(
+      (db.prepare("SELECT current_streak FROM users WHERE id = ?").get(studentId) as any)?.current_streak,
+    ) || 0,
   };
 }
 
@@ -126,7 +152,12 @@ export function bowScore(s: ScoreStats): number {
     (s.simulationCompleted ? SCORE_WEIGHTS.simulation : 0) +
     (s.eastfieldCompleted ? SCORE_WEIGHTS.eastfield : 0) +
     Math.min(s.discussionPosts * SCORE_WEIGHTS.post, SCORE_WEIGHTS.postMax) +
-    s.weeklyCompletions * SCORE_WEIGHTS.weekly
+    s.weeklyCompletions * SCORE_WEIGHTS.weekly +
+    Math.min(
+      s.dailyCorrect * SCORE_WEIGHTS.dailyCorrect + s.dailyIncorrect * SCORE_WEIGHTS.dailyIncorrect,
+      SCORE_WEIGHTS.dailyMax,
+    ) +
+    Math.min(s.currentStreak * SCORE_WEIGHTS.streakPerDay, SCORE_WEIGHTS.streakMax)
   );
 }
 
@@ -192,7 +223,9 @@ export function publicNameFor(name: string, first: string): string {
  * rank is a durable achievement, not a weekly figure.
  */
 export function getStudentScore(studentId: string, sinceTs = 0): StudentScore | null {
-  const u = getDb().prepare("SELECT id, name, first, last_active_at FROM users WHERE id = ?").get(studentId) as any;
+  const u = getDb()
+    .prepare("SELECT id, name, first, last_active_at, current_streak, longest_streak FROM users WHERE id = ?")
+    .get(studentId) as any;
   if (!u) return null;
 
   const windowStats = computeStats(studentId, sinceTs);
@@ -212,6 +245,8 @@ export function getStudentScore(studentId: string, sinceTs = 0): StudentScore | 
     certificateEarned: allTime.certificateEarned,
     simulationCompleted: allTime.simulationCompleted,
     lastActiveAt: u.last_active_at != null ? Number(u.last_active_at) : null,
+    currentStreak: Number(u.current_streak) || 0,
+    longestStreak: Number(u.longest_streak) || 0,
   };
 }
 

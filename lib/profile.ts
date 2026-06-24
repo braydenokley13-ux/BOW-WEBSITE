@@ -54,6 +54,11 @@ export interface ProfileData {
   /* ---- Community + weekly (Features 3 & 4) ---- */
   discussionPosts: number;
   weeklyCompletions: number;
+  /* ---- Daily Question + Streak (Features 1 & 2) ---- */
+  dailyCorrect: number;
+  dailyAnswered: number;
+  currentStreak: number;
+  longestStreak: number;
 }
 
 export interface PublicProfile {
@@ -152,6 +157,10 @@ export function getProfileData(studentId: string): ProfileData | null {
     eastfieldCompleted: stats.eastfieldCompleted,
     discussionPosts: stats.discussionPosts,
     weeklyCompletions: stats.weeklyCompletions,
+    dailyCorrect: stats.dailyCorrect,
+    dailyAnswered: stats.dailyCorrect + stats.dailyIncorrect,
+    currentStreak: stats.currentStreak,
+    longestStreak: score?.longestStreak ?? 0,
   };
 }
 

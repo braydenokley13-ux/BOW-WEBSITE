@@ -12,6 +12,19 @@
 import { getDb } from "@/lib/db";
 import { getSelfModules } from "@/lib/self-paced";
 import { getAllPartnerOrgs, getDemoRequests, type PartnerOrg, type DemoRequest } from "@/lib/partners";
+import { countDailyAnswersToday } from "@/lib/daily-question";
+import { countGlossaryTerms, getGlossaryTerms, type GlossaryTerm } from "@/lib/glossary";
+import { getStreakLeaders } from "@/lib/streak";
+import {
+  getDailyQuestionsAdmin,
+  getAllNewsItems,
+  getPendingNewsSubmissions,
+  getAllTestimonials,
+  type DailyQuestionAdminRow,
+  type NewsItem,
+  type NewsSubmission,
+  type Testimonial,
+} from "@/lib/content";
 
 export interface AdminOverview {
   totalStudents: number;
@@ -28,6 +41,10 @@ export interface AdminOverview {
   weeklyCompletions: number;
   partnerPages: number;
   demoRequests: number;
+  /* ---- Daily Question, Streak & Glossary (Features 1, 2, 5) ---- */
+  dailyAnswersToday: number;
+  glossaryTerms: number;
+  streakLeaders: { name: string; current: number }[];
 }
 
 export interface AdminCohortRow {
@@ -61,11 +78,21 @@ export interface AdminHealth {
   recentCertificates: { name: string; when: string }[];
 }
 
+/** Editable content lists for the admin Content managers (Feature 8). */
+export interface AdminContentMgmt {
+  dailyQuestions: DailyQuestionAdminRow[];
+  newsItems: NewsItem[];
+  newsSubmissions: NewsSubmission[];
+  testimonials: Testimonial[];
+  glossary: GlossaryTerm[];
+}
+
 export interface AdminData {
   overview: AdminOverview;
   cohorts: AdminCohortRow[];
   users: AdminUserRow[];
   content: AdminContent;
+  contentMgmt: AdminContentMgmt;
   health: AdminHealth;
   instructors: { id: string; name: string }[];
   partners: { orgs: PartnerOrg[]; demoRequests: DemoRequest[] };
@@ -111,6 +138,9 @@ export function getAdminData(adminId: string): AdminData {
     weeklyCompletions: countOf("SELECT COUNT(*) AS n FROM weekly_completions"),
     partnerPages: countOf("SELECT COUNT(*) AS n FROM partner_orgs"),
     demoRequests: countOf("SELECT COUNT(*) AS n FROM demo_requests"),
+    dailyAnswersToday: countDailyAnswersToday(),
+    glossaryTerms: countGlossaryTerms(),
+    streakLeaders: getStreakLeaders(3).map((s) => ({ name: s.name, current: s.current })),
   };
 
   // Cohort management: student count + avg module completion rate.
@@ -179,11 +209,20 @@ export function getAdminData(adminId: string): AdminData {
 
   const instructors = (db.prepare("SELECT id, name FROM users WHERE role = 'instructor' ORDER BY name ASC").all() as any[]).map((r) => ({ id: r.id, name: r.name }));
 
+  const contentMgmt: AdminContentMgmt = {
+    dailyQuestions: getDailyQuestionsAdmin(),
+    newsItems: getAllNewsItems(),
+    newsSubmissions: getPendingNewsSubmissions(),
+    testimonials: getAllTestimonials(),
+    glossary: getGlossaryTerms(),
+  };
+
   return {
     overview,
     cohorts,
     users,
     content,
+    contentMgmt,
     health: { recentStudents, recentModules, recentCertificates },
     instructors,
     partners: { orgs: getAllPartnerOrgs(), demoRequests: getDemoRequests() },

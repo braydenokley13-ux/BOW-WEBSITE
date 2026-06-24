@@ -12,11 +12,19 @@ import {
 } from "@/lib/account";
 import type { WeeklyChallengeView } from "@/lib/weekly";
 import type { NotificationView } from "@/lib/notifications";
+import type { DailyQuestionView } from "@/lib/daily-question";
 import { markSelfModuleComplete, saveSelfReflection, generateCertificate } from "@/app/actions/lms";
 import EconQuiz from "@/components/selfpaced/EconQuiz";
 import DailyScenarios from "@/components/selfpaced/DailyScenarios";
+import DailyQuestionCard from "@/components/selfpaced/DailyQuestionCard";
 import WeeklyChallenge from "@/components/selfpaced/WeeklyChallenge";
 import NotificationBell from "@/components/selfpaced/NotificationBell";
+
+export interface StreakDisplay {
+  current: number;
+  longest: number;
+  label: string | null;
+}
 
 export interface TrackData {
   modules: SelfModuleView[];
@@ -28,6 +36,10 @@ interface Props {
   firstName: string;
   track101: TrackData;
   track201: TrackData;
+  dailyQuestion: DailyQuestionView | null;
+  streak: StreakDisplay;
+  rankName: string;
+  rankKey: string;
   activeScenario: DailyScenarioView | null;
   scenarioArchive: DailyScenarioView[];
   weeklyCurrent: WeeklyChallengeView | null;
@@ -40,6 +52,10 @@ export default function StudentDashboard({
   firstName,
   track101,
   track201,
+  dailyQuestion,
+  streak,
+  rankName,
+  rankKey,
   activeScenario,
   scenarioArchive,
   weeklyCurrent,
@@ -56,13 +72,19 @@ export default function StudentDashboard({
   const simUnlocked = track101.modules.find((m) => m.module.ordinal === 2)?.completed ?? false;
   const frontOfficeUnlocked = track201.modules.find((m) => m.module.ordinal === 2)?.completed ?? false;
 
+  // Quick links live at the bottom of the daily ritual — where students go next.
   const navLinks = [
-    { href: "/profile", label: "My Profile" },
-    { href: "/leaderboard", label: "Leaderboard" },
-    { href: "/discussion", label: "Discussion" },
     ...(simUnlocked ? [{ href: "/simulation-room", label: "Simulation Room" }] : []),
     ...(frontOfficeUnlocked ? [{ href: "/front-office", label: "The Front Office" }] : []),
+    { href: "/discussion", label: "Discussion" },
+    { href: "/leaderboard", label: "Leaderboard" },
+    { href: "/card", label: "My Card" },
+    { href: "/news", label: "News" },
+    { href: "/glossary", label: "Glossary" },
+    { href: "/profile", label: "My Profile" },
   ];
+  const rankColor =
+    rankKey === "front-office" ? "var(--bow-orange)" : rankKey === "analyst" ? "var(--bow-positive)" : rankKey === "scout" ? "var(--bow-blue)" : "var(--bow-slate)";
 
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "100vh", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
@@ -73,32 +95,49 @@ export default function StudentDashboard({
             <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
               Self-Paced · BOW Sports Capital
             </span>
-            <h1 style={{ margin: "8px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
-              Good to see you, {firstName}.
-            </h1>
-            <p style={{ margin: "0 0 16px", fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 560 }}>
-              Two tracks, unlocked one decision at a time. Finish a module and write a short reflection to open the next — then earn your certificate to unlock Track 201.
-            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", margin: "8px 0 6px" }}>
+              <h1 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
+                Good to see you, {firstName}.
+              </h1>
+              {streak.label && (
+                <span
+                  title={`Current streak: ${streak.current} day${streak.current === 1 ? "" : "s"} · Longest: ${streak.longest}`}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--bow-ink)", color: "#fff", borderRadius: 999, padding: "6px 14px", fontFamily: "var(--font-data)", fontSize: 13, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}
+                >
+                  {streak.label}
+                </span>
+              )}
+              <span
+                style={{ display: "inline-flex", alignItems: "center", gap: 7, border: `1px solid ${rankColor}`, color: rankColor, borderRadius: 999, padding: "5px 13px", fontFamily: "var(--font-data)", fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: 999, background: rankColor }} />
+                {rankName}
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", margin: "2px 0 16px" }}>
+              <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 15.5, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 520 }}>
+                Answer today&apos;s question, check your BOW Daily, and keep the streak alive — your whole ritual takes under five minutes.
+              </p>
+              <Link href="/card" style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)", textDecoration: "none", border: "1px solid var(--border-rule)", borderRadius: 999, padding: "7px 14px", whiteSpace: "nowrap" }}>
+                View My Card →
+              </Link>
+            </div>
           </div>
           <div style={{ flexShrink: 0, paddingTop: 4 }}>
             <NotificationBell notifications={notifications} unreadCount={unreadCount} />
           </div>
         </div>
 
-        {/* QUICK NAV */}
-        <nav style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 28 }}>
-          {navLinks.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              style={{ fontFamily: "var(--font-data)", fontSize: 11.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-ink)", textDecoration: "none", border: "1px solid var(--border-strong)", borderRadius: 999, padding: "8px 16px" }}
-            >
-              {l.label} →
-            </Link>
-          ))}
-        </nav>
+        {/* 1 · DAILY QUESTION — the core retention hook, above everything else */}
+        <DailyQuestionCard view={dailyQuestion} />
 
-        {/* TWO TRACKS, SIDE BY SIDE */}
+        {/* 2 · BOW DAILY SCENARIO */}
+        <DailyScenarios active={activeScenario} archive={scenarioArchive} />
+
+        {/* 3 · WEEKLY CHALLENGE */}
+        <WeeklyChallenge current={weeklyCurrent} past={weeklyPast} />
+
+        {/* 4 · TRACK PROGRESS — two tracks side by side */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 24, marginBottom: 40 }}>
           <TrackColumn
             track="101"
@@ -120,10 +159,7 @@ export default function StudentDashboard({
           />
         </div>
 
-        {/* WEEKLY CHALLENGE (between modules and BOW Daily) */}
-        <WeeklyChallenge current={weeklyCurrent} past={weeklyPast} />
-
-        {/* ECON QUIZ — Track 101 always; Track 201 once unlocked */}
+        {/* 5 · ECON QUIZ — Track 101 always; Track 201 once unlocked */}
         <EconQuiz sections={track101.quizSections} eyebrow="Econ Quiz · Track 101" />
         {track201Unlocked && (
           <EconQuiz
@@ -134,8 +170,23 @@ export default function StudentDashboard({
           />
         )}
 
-        {/* BOW DAILY SCENARIOS */}
-        <DailyScenarios active={activeScenario} archive={scenarioArchive} />
+        {/* 6 · QUICK LINKS — where students go after the daily ritual */}
+        <div style={{ borderTop: "1px solid var(--border-rule)", paddingTop: 22, marginTop: 8 }}>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 12 }}>
+            Go deeper
+          </span>
+          <nav style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {navLinks.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                style={{ fontFamily: "var(--font-data)", fontSize: 11.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-ink)", textDecoration: "none", border: "1px solid var(--border-strong)", borderRadius: 999, padding: "8px 16px" }}
+              >
+                {l.label} →
+              </Link>
+            ))}
+          </nav>
+        </div>
       </div>
     </div>
   );
