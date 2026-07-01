@@ -46,7 +46,7 @@ export default function NewsSubmitForm() {
         <label style={label} htmlFor="ns-u">Source link (optional)</label>
         <input id="ns-u" style={input} value={data.sourceUrl} onChange={set("sourceUrl")} placeholder="https://…" />
       </div>
-      {status === "error" && <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-warning)" }}>Add a headline to submit.</p>}
+      {status === "error" && <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-warning-text)" }}>Add a headline to submit.</p>}
       <div>
         <button type="submit" disabled={status === "busy"} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "11px 22px", border: "none", background: status === "busy" ? "var(--bow-inactive)" : "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: status === "busy" ? "wait" : "pointer" }}>
           {status === "busy" ? "Submitting…" : "Submit a Story"}

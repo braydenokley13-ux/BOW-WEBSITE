@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getPartnerBySlug } from "@/lib/partners";
 import {
-  PRESS_OUTLETS,
   PARTNER_STUDENT_BULLETS,
   PARTNER_INSTRUCTOR_BULLETS,
   partnerTypeLabel,
@@ -67,7 +66,6 @@ export default async function PartnerPage({ params }: Props) {
       customBody={org.customBody}
       studentBullets={PARTNER_STUDENT_BULLETS}
       instructorBullets={PARTNER_INSTRUCTOR_BULLETS}
-      pressOutlets={PRESS_OUTLETS}
     />
   );
 }

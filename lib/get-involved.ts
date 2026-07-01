@@ -4,6 +4,8 @@
  * (BOW Sports Capital.dc.html, script block lines ~5350–7475).
  * ============================================================ */
 
+import { getLessonById } from "@/lib/lessons";
+
 /* ---------- Shared types ---------- */
 
 export interface AudienceFaq {
@@ -135,10 +137,15 @@ export interface FeaturedLesson {
 
 /* Flagship cases ['t101-m2-l1', 't101-m4-l2', 't201-m2-l3'] — values
  * ported from the lesson records (concept = concepts[0]). */
+function lessonHref(id: string): string {
+  const lesson = getLessonById(id);
+  return lesson ? `/lessons/${lesson.slug}` : "/lessons";
+}
+
 export const schoolsFeaturedLessons: FeaturedLesson[] = [
-  { id: "t101-m2-l1", title: "You're the GM", summary: "Allocate a limited budget across competing roster needs.", concept: "Scarcity", duration: "16 min", trackmod: "Track 101 · M2", accent: "var(--bow-blue)", href: "/lessons" },
-  { id: "t101-m4-l2", title: "The Price of a Seat", summary: "Design a ticket strategy that lifts revenue without losing fans.", concept: "Supply & Demand", duration: "16 min", trackmod: "Track 101 · M4", accent: "var(--bow-orange)", href: "/lessons" },
-  { id: "t201-m2-l3", title: "Save the Franchise", summary: "Choose a turnaround strategy under real financial pressure.", concept: "Risk", duration: "18 min", trackmod: "Track 201 · M2", accent: "var(--bow-positive)", href: "/lessons" },
+  { id: "t101-m2-l1", title: "You're the GM", summary: "Allocate a limited budget across competing roster needs.", concept: "Scarcity", duration: "16 min", trackmod: "Track 101 · M2", accent: "var(--bow-blue)", href: lessonHref("t101-m2-l1") },
+  { id: "t101-m4-l2", title: "The Price of a Seat", summary: "Design a ticket strategy that lifts revenue without losing fans.", concept: "Supply & Demand", duration: "16 min", trackmod: "Track 101 · M4", accent: "var(--bow-orange)", href: lessonHref("t101-m4-l2") },
+  { id: "t201-m2-l3", title: "Save the Franchise", summary: "Choose a turnaround strategy under real financial pressure.", concept: "Risk", duration: "18 min", trackmod: "Track 201 · M2", accent: "var(--bow-positive)", href: lessonHref("t201-m2-l3") },
 ];
 
 export const schoolsOutcomes: string[] = [

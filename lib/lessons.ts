@@ -110,7 +110,7 @@ interface TrackMeta {
 const TRACK_META: Record<string, TrackMeta> = {
   "101": {
     label: "Track 101",
-    grade: "Grades 6–9",
+    grade: "Grades 5–6",
     mods: {
       1: ["The Economics of Winning", "Why every decision has a cost"],
       2: ["Building the Roster", "Turning constraints into a team"],
@@ -120,7 +120,7 @@ const TRACK_META: Record<string, TrackMeta> = {
   },
   "201": {
     label: "Track 201",
-    grade: "Grades 8–10",
+    grade: "Grades 7–8",
     mods: {
       1: ["Cap Management & Tradeoffs", "Where flexibility is won and lost"],
       2: ["Money in Motion", "Where the money actually comes from"],
@@ -240,6 +240,7 @@ export const lessons: Lesson[] = [
     duration: "14 min",
     status: "available",
     simulationStatus: "available",
+    simulationUrl: "/simulation",
     legacyRoute: "lesson",
     overview: "Every yes is a no somewhere else on the roster.",
     summary: "Trade a cheap young asset for a win-now star — or hold.",

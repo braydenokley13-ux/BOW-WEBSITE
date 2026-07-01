@@ -223,7 +223,7 @@ function Users({ data, refresh }: { data: AdminData; refresh: () => void }) {
   return (
     <section style={panel}>
       <h3 style={panelTitle}>Users ({data.users.length})</h3>
-      {error && <p style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-warning)" }}>{error}</p>}
+      {error && <p style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-warning-text)" }}>{error}</p>}
       {data.users.map((u) => {
         const locked = u.isSelf || u.role === "admin";
         return (
@@ -375,7 +375,7 @@ function Partners({ data, refresh }: { data: AdminData; refresh: () => void }) {
           <button onClick={onCreate} disabled={busy || !name.trim() || !headline.trim() || !body.trim()} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "11px 20px", border: "none", background: busy || !name.trim() || !headline.trim() || !body.trim() ? "var(--bow-inactive)" : "var(--bow-orange)", color: "#fff", borderRadius: 4, cursor: busy ? "wait" : "pointer" }}>
             {busy ? "Creating…" : "Create Page"}
           </button>
-          {msg && <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: msg.startsWith("Created") ? "var(--bow-positive)" : "var(--bow-warning)" }}>{msg}</span>}
+          {msg && <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: msg.startsWith("Created") ? "var(--bow-positive)" : "var(--bow-warning-text)" }}>{msg}</span>}
         </div>
       </section>
 

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAppState } from "@/components/app/AppState";
 import {
   trackLessons,
@@ -47,6 +48,11 @@ export default function StudentLessonPage() {
   // Local podcast fraction so the checklist reflects playback before a refresh.
   const [podLocal, setPodLocal] = useState(prog?.podcastProgress ?? 0);
   const podPersisted = useRef(false);
+  // The case file isn't persisted per-choice (lesson_progress only stores a
+  // done flag) — this local pick just proves the student actually opened the
+  // case and chose an option, rather than blindly checking a box.
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [caseOpen, setCaseOpen] = useState(false);
 
   if (!cohort || !L) {
     return (
@@ -127,14 +133,79 @@ export default function StudentLessonPage() {
     },
     {
       key: "sim",
-      label: "Make the call (simulation)",
-      desc: "Run the decision and see the consequence play out.",
+      label: L.simulationStatus === "available" ? "Make the call (simulation)" : "Make the call (case file)",
+      desc:
+        L.simulationStatus === "available"
+          ? "Read the case, then launch the simulation to make the call and see the consequence."
+          : "Read the case file, weigh the stakeholders and evidence, then make your call.",
       done: !!prog?.simulationDone,
       render: () =>
         prog?.simulationDone ? (
-          <button onClick={() => setSimulationDone(lid, false)} style={ghostBtn}>Undo</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span style={doneTag}>Your call{selectedOption ? `: ${selectedOption}` : " · recorded"}</span>
+            <button onClick={() => setSimulationDone(lid, false)} style={ghostBtn}>Undo</button>
+          </div>
         ) : (
-          <button onClick={() => setSimulationDone(lid, true)} style={primaryBtn}>Mark simulation complete</button>
+          <div style={{ width: "100%" }}>
+            <button onClick={() => setCaseOpen((v) => !v)} style={ghostBtn}>{caseOpen ? "Hide the case file" : "Open the case file"}</button>
+            {caseOpen && (
+              <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+                {L.decisionPrompt && (
+                  <p style={{ margin: 0, fontFamily: "var(--font-editorial)", fontSize: 15, lineHeight: 1.55, color: "var(--bow-ink)" }}>{L.decisionPrompt}</p>
+                )}
+                {L.situation.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {L.situation.map((p, i) => (
+                      <p key={i} style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.55, color: "var(--bow-slate)" }}>{p}</p>
+                    ))}
+                  </div>
+                )}
+                {L.evidence.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {L.evidence.map((e) => (
+                      <div key={e.label} style={{ border: "1px solid var(--border-rule)", borderRadius: 4, padding: "8px 12px", minWidth: 120 }}>
+                        <div style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{e.label}</div>
+                        <div style={{ fontFamily: "var(--font-data)", fontWeight: 600, fontSize: 15, color: "var(--bow-ink)" }}>{e.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {L.stakeholders.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Stakeholders</span>
+                    {L.stakeholders.map((s) => (
+                      <p key={s.name} style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.5, color: "var(--bow-slate)" }}>
+                        <strong style={{ color: "var(--bow-ink)" }}>{s.name}</strong> — wants {s.interest.toLowerCase()} concerned about {s.concern.toLowerCase()}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {L.decisionOptions.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Make your call</span>
+                    {L.decisionOptions.map((opt) => (
+                      <button
+                        key={opt.label}
+                        onClick={() => {
+                          setSelectedOption(opt.label);
+                          setSimulationDone(lid, true);
+                        }}
+                        style={{ textAlign: "left", display: "flex", flexDirection: "column", gap: 3, padding: "12px 14px", cursor: "pointer", background: "var(--bow-paper)", border: "1px solid var(--border-rule)", borderRadius: 4 }}
+                      >
+                        <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)" }}>{opt.label}</span>
+                        {opt.detail && <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{opt.detail}</span>}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <button onClick={() => setSimulationDone(lid, true)} style={primaryBtn}>Mark case complete</button>
+                )}
+                {L.simulationStatus === "available" && (
+                  <Link href={L.simulationUrl ?? "/simulation"} style={{ ...primaryBtn, display: "inline-block", textDecoration: "none", width: "fit-content" }}>Launch Simulation →</Link>
+                )}
+              </div>
+            )}
+          </div>
         ),
     },
     {
@@ -232,7 +303,7 @@ export default function StudentLessonPage() {
         {locked ? (
           <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 24 }}>
             <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "var(--bow-slate)" }}>
-              {inDev ? "This lesson is still in development." : "This lesson unlocks automatically once you finish the previous one — complete its simulation, reflection, and podcast. Your instructor can also open it manually."}
+              {inDev ? "This lesson is still in development." : "This lesson unlocks automatically once you finish the previous one — make your call in its case file, write your reflection, and play the podcast. Your instructor can also open it manually."}
             </p>
           </div>
         ) : (

@@ -293,7 +293,7 @@ export default function HomePage() {
               ))}
             </div>
             <div style={{ marginTop: 8 }}>
-              <Button href="/simulation" variant="primary" size="lg">Open the Simulation</Button>
+              <Button href="/simulation" variant="primary" size="lg">Preview the Simulation</Button>
             </div>
           </div>
           <div>
@@ -306,7 +306,6 @@ export default function HomePage() {
               options={heroDecisionOptions}
               consequence={heroDecisionConsequence}
               primaryLabel="Make the Call"
-              secondaryLabel="Review the Cap Sheet"
             />
           </div>
         </div>

@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import DemoRequestForm from "@/components/partners/DemoRequestForm";
+import { partnerVerifiedFacts } from "@/lib/get-involved";
 
 /* ============================================================
  * Partner / school landing page (Feature 5) — the full marketing
@@ -22,7 +23,6 @@ export interface PartnerLandingProps {
   customBody: string;
   studentBullets: string[];
   instructorBullets: string[];
-  pressOutlets: string[];
 }
 
 const WRAP: CSSProperties = { maxWidth: 1080, margin: "0 auto", padding: "0 clamp(20px,5vw,48px)" };
@@ -110,7 +110,6 @@ export default function PartnerLanding({
   customBody,
   studentBullets,
   instructorBullets,
-  pressOutlets,
 }: PartnerLandingProps) {
   return (
     <main style={{ background: "var(--bow-paper)", minHeight: "100vh" }}>
@@ -194,34 +193,25 @@ export default function PartnerLanding({
         </div>
       </section>
 
-      {/* 5. Press coverage strip. */}
+      {/* 5. Honest numbers strip — the same verified counts shown on /get-involved/partners. */}
       <section style={{ borderTop: "1px solid var(--border-rule)", marginTop: "clamp(32px,5vw,56px)" }}>
         <div style={{ ...WRAP, paddingTop: "clamp(36px,5vw,56px)", paddingBottom: "clamp(36px,5vw,56px)" }}>
-          <span style={{ ...eyebrow, color: "var(--bow-slate)" }}>As seen in</span>
+          <span style={{ ...eyebrow, color: "var(--bow-slate)" }}>Honest numbers</span>
           <div
             style={{
               marginTop: 20,
               display: "flex",
               flexWrap: "wrap",
-              alignItems: "center",
-              gap: "clamp(20px,4vw,48px)",
+              alignItems: "flex-start",
+              gap: "clamp(24px,4vw,48px)",
             }}
           >
-            {pressOutlets.map((outlet) => (
-              <span
-                key={outlet}
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 700,
-                  fontSize: "clamp(16px,2vw,22px)",
-                  letterSpacing: "0.01em",
-                  textTransform: "uppercase",
-                  color: "var(--bow-ink)",
-                  opacity: 0.72,
-                }}
-              >
-                {outlet}
-              </span>
+            {partnerVerifiedFacts.map((fact) => (
+              <div key={fact.label} style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 200 }}>
+                <span style={{ fontFamily: "var(--font-data)", fontWeight: 600, fontSize: "clamp(26px,3vw,36px)", color: "var(--bow-ink)" }}>{fact.value}</span>
+                <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{fact.label}</span>
+                <span style={{ fontFamily: "var(--font-interface)", fontSize: 12.5, color: "var(--bow-slate)", lineHeight: 1.4 }}>{fact.note}</span>
+              </div>
             ))}
           </div>
         </div>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAppState } from "./AppState";
-import { roleLabel as roleLabelFor, roleAccent as roleAccentFor, initials, type Role } from "@/lib/account";
+import { roleLabel as roleLabelFor, roleAccent as roleAccentFor, initials, SELF_PACED_COHORT_ID, type Role } from "@/lib/account";
 
 const NAV_BY_ROLE: Record<Role, { label: string; href: string }[]> = {
   student: [
@@ -33,11 +33,23 @@ function isActive(pathname: string, href: string) {
 }
 
 export default function AuthHeader() {
-  const { role, me, signOut } = useAppState();
+  const { role, me, data, signOut } = useAppState();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const nav = NAV_BY_ROLE[role];
+  // BOW runs two products side by side: this cohort-taught LMS shell (/app/*)
+  // and a separate self-paced product (/dashboard, /instructor). A user
+  // enrolled/assigned in both shouldn't be stranded on one side with no way
+  // to reach the other — surface a link when it applies.
+  const alsoSelfPaced =
+    role === "student"
+      ? data.enrollments.some((e) => e.cohortId === SELF_PACED_COHORT_ID && e.enroll === "active")
+      : role === "instructor"
+        ? data.cohorts.some((c) => c.id === SELF_PACED_COHORT_ID)
+        : false;
+  const nav = alsoSelfPaced
+    ? [...NAV_BY_ROLE[role], { label: "Self-Paced Track", href: role === "student" ? "/dashboard" : "/instructor" }]
+    : NAV_BY_ROLE[role];
   const accent = roleAccentFor(role);
 
   // Sign out clears the session server-side and redirects to the public site.

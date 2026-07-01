@@ -185,7 +185,7 @@ function DailyManager({ rows, refresh }: { rows: DailyQuestionAdminRow[]; refres
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <button onClick={save} disabled={busy} style={primaryBtn(busy)}>{busy ? "Saving…" : editingId === "new" ? "Create" : "Save"}</button>
               <button onClick={() => setEditingId(null)} style={smallBtn}>Cancel</button>
-              {msg && <span style={{ fontFamily: "var(--font-data)", fontSize: 11.5, color: "var(--bow-warning)" }}>{msg}</span>}
+              {msg && <span style={{ fontFamily: "var(--font-data)", fontSize: 11.5, color: "var(--bow-warning-text)" }}>{msg}</span>}
             </div>
           </div>
         )}

@@ -4,18 +4,21 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppState } from "@/components/app/AppState";
 import { nextLessonInTrack, type AttendanceState } from "@/lib/account";
-import { getLessonById } from "@/lib/lessons";
+import { getLessonById, type Lesson } from "@/lib/lessons";
+import LessonGuide from "@/components/app/LessonGuide";
 
-const STAGE_DEFS = [
-  "Open the case",
-  "Introduce the situation",
-  "Review the evidence",
-  "Launch the sports decision",
-  "Discuss the consequence",
-  "Reveal the economics",
-  "Connect beyond sports",
-  "Close the session",
-];
+/** Delivery stages for THIS lesson — drawn from its real content, not a generic checklist. */
+function stagesFor(l: Lesson | null): string[] {
+  if (!l) return ["Open the case", "Discuss", "Close the session"];
+  const stages = ["Open the case: " + (l.centralQuestion || "set the scene")];
+  if (l.situation.length) stages.push("Walk the scenario setup");
+  if (l.needToKnow.length) stages.push("Review what students need to know");
+  if (l.decisionOptions.length) stages.push("Launch the decision: " + l.decisionOptions.map((o) => o.label).join(" vs. "));
+  stages.push(l.simulationStatus === "available" ? "Run the simulation" : "Discuss the decision as a class");
+  if (l.discussionQuestions.length) stages.push("Discuss the consequence");
+  stages.push("Wrap up and connect back to " + (l.concepts[0] ?? "the concept"));
+  return stages;
+}
 
 interface AttRow {
   id: string;
@@ -69,7 +72,7 @@ export default function InstructorSessionPage() {
   const noStudents = activeRoster.length === 0;
   const nextLesson = nextLessonInTrack(c.track, curId);
 
-  const stages = STAGE_DEFS.map((s, i) => ({
+  const stages = stagesFor(L).map((s, i) => ({
     n: String(i + 1).padStart(2, "0"),
     label: s,
     dot: i < sessionStage ? "var(--bow-positive)" : i === sessionStage ? "var(--bow-blue)" : "var(--bow-inactive)",
@@ -138,21 +141,16 @@ export default function InstructorSessionPage() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1.15fr", gap: 22, alignItems: "start" }}>
-          {/* LEFT: lesson brief + stages */}
+          {/* LEFT: lesson guide + stages */}
           <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
             {L && (
-              <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 }}>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 10 }}>Lesson brief</span>
-                <h2 style={{ margin: "0 0 8px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 22, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)", lineHeight: 1.0 }}>{L.title}</h2>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>{"Module " + String(L.moduleNumber).padStart(2, "0") + " · " + L.moduleTitle}</span>
-                <p style={{ margin: "14px 0 16px", fontFamily: "var(--font-editorial)", fontSize: 17, lineHeight: 1.5, color: "var(--bow-ink)" }}>{L.centralQuestion}</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 14, borderTop: "1px solid var(--border-rule)" }}>
-                  <div style={{ display: "flex", gap: 10 }}><span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)", width: 80 }}>Role</span><span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{L.role}</span></div>
-                  <div style={{ display: "flex", gap: 10 }}><span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)", width: 80 }}>Duration</span><span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{L.duration}</span></div>
-                  <div style={{ display: "flex", gap: 10 }}><span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)", width: 80 }}>Concepts</span><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{L.concepts.map((cn) => (<span key={cn} style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-ink)", background: "var(--bow-paper)", border: "1px solid var(--border-rule)", padding: "3px 8px", borderRadius: 999 }}>{cn}</span>))}</div></div>
-                </div>
+              <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22, marginBottom: -8 }}>
+                <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 10 }}>Today&apos;s case</span>
+                <h2 style={{ margin: "0 0 4px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 22, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)", lineHeight: 1.0 }}>{L.title}</h2>
+                <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>{"Module " + String(L.moduleNumber).padStart(2, "0") + " · " + L.moduleTitle + " · " + L.duration}</span>
               </div>
             )}
+            {L && <LessonGuide lesson={L} />}
 
             <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 }}>
               <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 4 }}>Session plan</span>

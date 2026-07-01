@@ -173,7 +173,7 @@ export default function PostThread({ post, firstName, role }: Props) {
         </article>
 
         {error && (
-          <p style={{ margin: "16px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-warning)" }}>
+          <p style={{ margin: "16px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-warning-text)" }}>
             {error}
           </p>
         )}

@@ -5,6 +5,7 @@ import {
   getActiveScenario,
   getScenarioArchive,
   hasCertificate,
+  isEnrolledInCohortClass,
 } from "@/lib/self-paced";
 import { getCurrentWeeklyChallenge, getPastWeeklyChallenges, ensureWeeklyChallengeNotification } from "@/lib/weekly";
 import { getNotifications, getUnreadCount } from "@/lib/notifications";
@@ -50,6 +51,7 @@ export default async function DashboardPage() {
       weeklyPast={getPastWeeklyChallenges(me.id)}
       notifications={getNotifications(me.id, 10)}
       unreadCount={getUnreadCount(me.id)}
+      alsoInCohortClass={isEnrolledInCohortClass(me.id)}
     />
   );
 }

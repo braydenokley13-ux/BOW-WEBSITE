@@ -511,6 +511,19 @@ export function isEnrolledSelfPaced(userId: string): boolean {
   return !!row;
 }
 
+/**
+ * Is this user ALSO actively enrolled in a cohort-taught (non-self-paced)
+ * class? BOW runs two products side by side — this lets a self-paced screen
+ * surface a link back to the cohort LMS shell (/app/student) instead of
+ * stranding a dual-enrolled student on one side.
+ */
+export function isEnrolledInCohortClass(userId: string): boolean {
+  const row = getDb()
+    .prepare("SELECT 1 FROM enrollments WHERE user_id = ? AND cohort_id != ? AND enroll = 'active'")
+    .get(userId, SELF_PACED_COHORT_ID);
+  return !!row;
+}
+
 /** Relative "last active" label from an epoch-ms timestamp. */
 function lastActiveLabel(ts: number | null): string {
   if (ts == null) return "Never";

@@ -246,7 +246,10 @@ export const activity: Activity[] = [
 export const getUser = (id: string | null): User | null => users.find((u) => u.id === id) ?? null;
 export const getOrg = (id: string | null): Organization | null => organizations.find((o) => o.id === id) ?? null;
 export const getCohort = (id: string | null): Cohort | null => cohorts.find((c) => c.id === id) ?? null;
-export const trackLessons = (track: string): Lesson[] => lessons.filter((l) => l.track === track);
+export const trackLessons = (track: string): Lesson[] =>
+  lessons
+    .filter((l) => l.track === track)
+    .sort((a, b) => a.moduleNumber - b.moduleNumber || a.lessonNumber - b.lessonNumber);
 export const cohortRoster = (cohortId: string): (Enrollment & { user: User })[] =>
   enrollments
     .filter((e) => e.cohortId === cohortId)
@@ -445,6 +448,79 @@ export interface AppData {
   notes: SessionNote[];
   /** ids of users who have requested account deletion */
   deletionRequests: string[];
+}
+
+/**
+ * The full AppData snapshot is loaded once server-side and handed to the
+ * client app shell as a prop — which means every field is serialized into
+ * the page's RSC payload and reaches the browser, not just what a
+ * particular role's screens happen to render. Route-level role guards stop
+ * the WRONG ROLE'S PAGES from rendering, but they don't stop this payload
+ * from shipping to every signed-in user on every /app/* request. Scope it
+ * here, before it ever reaches AppStateProvider, so a student's browser
+ * never receives other students' PII, other cohorts' rosters, instructor
+ * session notes, or admin-only invitations/inquiries — and an instructor
+ * only receives the cohorts they actually teach.
+ */
+export function scopeAppDataForUser(data: AppData, me: User): AppData {
+  if (me.role === "admin") return data;
+
+  if (me.role === "instructor") {
+    const cohorts = data.cohorts.filter((c) => c.instructorId === me.id);
+    const cohortIds = new Set(cohorts.map((c) => c.id));
+    const enrollments = data.enrollments.filter((e) => cohortIds.has(e.cohortId));
+    const userIds = new Set<string>([me.id, ...enrollments.map((e) => e.userId)]);
+    const users = data.users.filter((u) => userIds.has(u.id));
+    const orgIds = new Set(cohorts.map((c) => c.orgId));
+    const organizations = data.organizations.filter((o) => orgIds.has(o.id));
+    const notes = data.notes.filter((n) => cohortIds.has(n.cohortId));
+    const attendance: AppData["attendance"] = {};
+    for (const cId of cohortIds) if (data.attendance[cId]) attendance[cId] = data.attendance[cId];
+    const progress: AppData["progress"] = {};
+    for (const uid of userIds) if (data.progress[uid]) progress[uid] = data.progress[uid];
+
+    return {
+      users,
+      organizations,
+      cohorts,
+      enrollments,
+      invitations: [],
+      inquiries: [],
+      activity: [],
+      attendance,
+      progress,
+      notes,
+      deletionRequests: data.deletionRequests.filter((id) => id === me.id),
+    };
+  }
+
+  // student
+  const enrollments = data.enrollments.filter((e) => e.userId === me.id);
+  const cohortIds = new Set(enrollments.map((e) => e.cohortId));
+  const cohorts = data.cohorts.filter((c) => cohortIds.has(c.id));
+  const orgIds = new Set(cohorts.map((c) => c.orgId));
+  const organizations = data.organizations.filter((o) => orgIds.has(o.id));
+  const instructorIds = new Set(cohorts.map((c) => c.instructorId).filter((id): id is string => !!id));
+  const users = data.users.filter((u) => u.id === me.id || instructorIds.has(u.id));
+  const attendance: AppData["attendance"] = {};
+  for (const cId of cohortIds) {
+    const row = data.attendance[cId]?.[me.id];
+    if (row) attendance[cId] = { [me.id]: row };
+  }
+
+  return {
+    users,
+    organizations,
+    cohorts,
+    enrollments,
+    invitations: [],
+    inquiries: [],
+    activity: [],
+    attendance,
+    progress: data.progress[me.id] ? { [me.id]: data.progress[me.id] } : {},
+    notes: [],
+    deletionRequests: data.deletionRequests.filter((id) => id === me.id),
+  };
 }
 
 /** Build the in-memory seed snapshot (used as the DB seed source). */
@@ -2324,15 +2400,6 @@ export const partnerOrgSeed: PartnerOrgSeed[] = [
   },
 ];
 
-/** The six press outlets shown in the partner-page coverage strip. */
-export const PRESS_OUTLETS: string[] = [
-  "The Ringer",
-  "ESPN",
-  "Sports Business Journal",
-  "Front Office Sports",
-  "The Athletic",
-  "Bleacher Report",
-];
 
 /** What partner students and instructors get (shown on every partner page). */
 export const PARTNER_STUDENT_BULLETS: string[] = [
