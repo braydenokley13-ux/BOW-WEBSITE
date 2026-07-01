@@ -72,10 +72,12 @@ function fmtLastActive(ts?: number | null): string {
 export default function InstructorCohortPage() {
   const router = useRouter();
   const {
+    me,
     selectedCohortId,
     getCohort,
     getOrg,
     cohortRoster,
+    cohortsForInstructor,
     cohortCurrentLessonId,
     userStatusOf,
     advanceCohortLesson,
@@ -87,8 +89,20 @@ export default function InstructorCohortPage() {
 
   const [noteDraft, setNoteDraft] = useState("");
 
-  const c = getCohort(selectedCohortId) ?? getCohort("coh-1");
-  if (!c) return null;
+  // Fall back to one of THIS instructor's own cohorts, not a hardcoded id —
+  // "coh-1" isn't guaranteed to be (or even visible to) the signed-in instructor.
+  const c = getCohort(selectedCohortId) ?? cohortsForInstructor(me.id)[0] ?? null;
+  if (!c) {
+    return (
+      <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px)" }}>
+        <div style={{ maxWidth: 640, margin: "0 auto", background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 28 }}>
+          <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)" }}>
+            You&apos;re not assigned to a cohort yet. A BOW administrator will place you with one soon.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const org = getOrg(c.orgId);
   const curId = cohortCurrentLessonId(c);

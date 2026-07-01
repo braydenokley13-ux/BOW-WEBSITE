@@ -471,7 +471,7 @@ export function scopeAppDataForUser(data: AppData, me: User): AppData {
     const enrollments = data.enrollments.filter((e) => cohortIds.has(e.cohortId));
     const userIds = new Set<string>([me.id, ...enrollments.map((e) => e.userId)]);
     const users = data.users.filter((u) => userIds.has(u.id));
-    const orgIds = new Set(cohorts.map((c) => c.orgId));
+    const orgIds = new Set([me.orgId, ...cohorts.map((c) => c.orgId)]);
     const organizations = data.organizations.filter((o) => orgIds.has(o.id));
     const notes = data.notes.filter((n) => cohortIds.has(n.cohortId));
     const attendance: AppData["attendance"] = {};
@@ -494,11 +494,13 @@ export function scopeAppDataForUser(data: AppData, me: User): AppData {
     };
   }
 
-  // student
-  const enrollments = data.enrollments.filter((e) => e.userId === me.id);
+  // student — only currently-active enrollments, so a student removed or
+  // transferred out of a cohort (enroll set to 'inactive') stops receiving
+  // that former cohort's org and instructor identity on their next load.
+  const enrollments = data.enrollments.filter((e) => e.userId === me.id && e.enroll !== "inactive");
   const cohortIds = new Set(enrollments.map((e) => e.cohortId));
   const cohorts = data.cohorts.filter((c) => cohortIds.has(c.id));
-  const orgIds = new Set(cohorts.map((c) => c.orgId));
+  const orgIds = new Set([me.orgId, ...cohorts.map((c) => c.orgId)]);
   const organizations = data.organizations.filter((o) => orgIds.has(o.id));
   const instructorIds = new Set(cohorts.map((c) => c.instructorId).filter((id): id is string => !!id));
   const users = data.users.filter((u) => u.id === me.id || instructorIds.has(u.id));
@@ -718,10 +720,8 @@ export interface SelfRosterEntry {
 }
 
 /** Ordered lessons for a track (module then lesson number). */
-export const orderedTrackLessons = (track: string): Lesson[] =>
-  [...trackLessons(track)].sort(
-    (a, b) => a.moduleNumber - b.moduleNumber || a.lessonNumber - b.lessonNumber,
-  );
+// trackLessons() already returns lessons in module/lesson order.
+export const orderedTrackLessons = trackLessons;
 
 /** The lesson after `lessonId` in a track, or null if last/unknown. */
 export const nextLessonInTrack = (track: string, lessonId: string | null): Lesson | null => {

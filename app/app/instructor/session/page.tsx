@@ -29,10 +29,12 @@ interface AttRow {
 export default function InstructorSessionPage() {
   const router = useRouter();
   const {
+    me,
     selectedCohortId,
     getCohort,
     getOrg,
     cohortRoster,
+    cohortsForInstructor,
     cohortCurrentLessonId,
     attendanceOf,
     setAttendance,
@@ -46,12 +48,36 @@ export default function InstructorSessionPage() {
   const [sessionStage, setSessionStage] = useState(0);
   const [noteDraft, setNoteDraft] = useState("");
 
-  const c = getCohort(selectedCohortId) ?? getCohort("coh-1");
-  if (!c) return null;
+  // Fall back to one of THIS instructor's own cohorts, not a hardcoded id —
+  // "coh-1" isn't guaranteed to be (or even visible to) the signed-in instructor.
+  const c = getCohort(selectedCohortId) ?? cohortsForInstructor(me.id)[0] ?? null;
 
-  const org = getOrg(c.orgId);
-  const curId = cohortCurrentLessonId(c);
+  const org = c ? getOrg(c.orgId) : null;
+  const curId = c ? cohortCurrentLessonId(c) : null;
   const L = curId ? getLessonById(curId) ?? null : null;
+
+  // The delivery stages are derived per-lesson (variable length) — reset the
+  // stage pointer whenever the lesson changes so stale progress from a
+  // previous lesson doesn't render every stage of a new one as "done".
+  // Adjusting state during render (not an effect) per
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  const [prevCurId, setPrevCurId] = useState(curId);
+  if (curId !== prevCurId) {
+    setPrevCurId(curId);
+    setSessionStage(0);
+  }
+
+  if (!c) {
+    return (
+      <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px)" }}>
+        <div style={{ maxWidth: 640, margin: "0 auto", background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 28 }}>
+          <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)" }}>
+            You&apos;re not assigned to a cohort yet. A BOW administrator will place you with one soon.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const roster = cohortRoster(c.id);
   const activeRoster = roster.filter((e) => e.enroll === "active" || e.enroll === "suspended");

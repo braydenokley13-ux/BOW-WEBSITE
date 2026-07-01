@@ -47,12 +47,31 @@ export default function StudentLessonPage() {
   const [reflection, setReflection] = useState(prog?.reflection ?? "");
   // Local podcast fraction so the checklist reflects playback before a refresh.
   const [podLocal, setPodLocal] = useState(prog?.podcastProgress ?? 0);
-  const podPersisted = useRef(false);
+  // Tracks which lesson id the unlock threshold was last persisted for, so
+  // switching lessons doesn't require mutating the ref during render (refs
+  // may only be read/written in event handlers and effects, not render).
+  const podPersistedForLid = useRef<string | null>(null);
   // The case file isn't persisted per-choice (lesson_progress only stores a
   // done flag) — this local pick just proves the student actually opened the
   // case and chose an option, rather than blindly checking a box.
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [caseOpen, setCaseOpen] = useState(false);
+
+  // `lid` can change in place (e.g. an instructor advances the cohort's
+  // current lesson while this tab stays open) without a route change or
+  // remount, so this local, per-lesson draft state has to be reset by hand
+  // whenever the lesson id changes — otherwise a previous lesson's reflection
+  // draft, podcast position, or case-file selection bleeds into the new one.
+  // Adjusting state during render (not an effect) per
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  const [prevLid, setPrevLid] = useState(lid);
+  if (lid !== prevLid) {
+    setPrevLid(lid);
+    setReflection(prog?.reflection ?? "");
+    setPodLocal(prog?.podcastProgress ?? 0);
+    setSelectedOption(null);
+    setCaseOpen(false);
+  }
 
   if (!cohort || !L) {
     return (
@@ -109,8 +128,8 @@ export default function StudentLessonPage() {
 
   const handlePodProgress = (fraction: number) => {
     setPodLocal((prev) => (fraction > prev ? fraction : prev));
-    if (fraction >= PODCAST_UNLOCK_THRESHOLD && !podPersisted.current) {
-      podPersisted.current = true;
+    if (fraction >= PODCAST_UNLOCK_THRESHOLD && podPersistedForLid.current !== lid) {
+      podPersistedForLid.current = lid;
       void (async () => {
         await recordPodcastProgress(lid, fraction);
         await checkAndUnlockNextLesson(lid);

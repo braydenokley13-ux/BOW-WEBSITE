@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   DISCUSSION_CHANNELS,
   REACTION_TYPES,
-  roleHomePath,
   type DiscussionChannel,
   type Role,
 } from "@/lib/account";
@@ -58,7 +57,7 @@ export default function DiscussionBoard({
             BOW Community
           </span>
           <Link
-            href={role === "student" ? "/dashboard" : roleHomePath(role)}
+            href={role === "student" ? "/dashboard" : role === "admin" ? "/admin" : "/instructor"}
             style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)", textDecoration: "none" }}
           >
             ← Back

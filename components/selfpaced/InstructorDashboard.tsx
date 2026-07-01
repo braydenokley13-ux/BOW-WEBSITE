@@ -176,12 +176,19 @@ function StudentCard({
 }) {
   const [noteDraft, setNoteDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
-    await fn();
-    setBusy(false);
-    refresh();
+    setError(null);
+    try {
+      await fn();
+      refresh();
+    } catch {
+      setError("That didn't go through — try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onSaveNote = () =>
@@ -339,6 +346,9 @@ function StudentCard({
             Save Note
           </button>
         </div>
+        {error && (
+          <p style={{ margin: "8px 0 0", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-negative)" }}>{error}</p>
+        )}
       </div>
     </div>
   );

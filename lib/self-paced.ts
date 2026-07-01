@@ -512,6 +512,23 @@ export function isEnrolledSelfPaced(userId: string): boolean {
 }
 
 /**
+ * Is this user the instructor assigned to the self-paced cohort? The
+ * self-paced roster/analytics/leaderboard reads have no cohort picker (there
+ * is only ever one self-paced cohort), so this is the one check that keeps
+ * them in sync with the ownership check already enforced on the matching
+ * write actions (instructorUnlockModule, saveStudentNote, etc. in
+ * app/actions/lms.ts) — without it, any instructor account could read every
+ * self-paced student's roster, reflections, and notes regardless of
+ * assignment, even though they can no longer write to it.
+ */
+export function isInstructorOfSelfPaced(userId: string): boolean {
+  const row = getDb()
+    .prepare("SELECT 1 FROM cohorts WHERE id = ? AND instructor_id = ?")
+    .get(SELF_PACED_COHORT_ID, userId);
+  return !!row;
+}
+
+/**
  * Is this user ALSO actively enrolled in a cohort-taught (non-self-paced)
  * class? BOW runs two products side by side — this lets a self-paced screen
  * surface a link back to the cohort LMS shell (/app/student) instead of
