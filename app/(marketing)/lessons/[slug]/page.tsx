@@ -64,7 +64,7 @@ export default async function LessonDetail({
 
   const s = LESSON_STATUS_META[lesson.status];
   const simAvailable = lesson.simulationStatus === "available";
-  const simLabel = simAvailable ? "Enter the Case" : "Simulation Coming Soon";
+  const simLabel = simAvailable ? "Launch Simulation" : "Simulation Coming Soon";
   const simNote = simAvailable
     ? "Take the role and make the call inside the live simulation."
     : "This case is being built. Read the full brief now — the simulation connects here when it’s ready.";
@@ -520,7 +520,7 @@ function LessonHeroA({ lesson, moduleLabelText, role, deadline, statusLabel, sta
       {/* action row */}
       <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16, padding: "0 clamp(20px,3vw,40px) clamp(26px,3.5vw,40px)" }}>
         {simAvailable ? (
-          <Button href="/simulation" variant="primary" size="lg">
+          <Button href={lesson.simulationUrl ?? "/simulation"} variant="primary" size="lg">
             {simLabel}
           </Button>
         ) : (
@@ -566,7 +566,7 @@ function LessonHeroB({ lesson, moduleLabelText, role, deadline, statusLabel, sta
           <span style={{ display: "block", marginTop: 12, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "clamp(13px,1.4vw,16px)", letterSpacing: "0.04em", textTransform: "uppercase", color: "#6f8bff" }}>{lesson.title}</span>
           <div style={{ marginTop: 26 }}>
             {simAvailable ? (
-              <Button href="/simulation" variant="primary" size="lg">
+              <Button href={lesson.simulationUrl ?? "/simulation"} variant="primary" size="lg">
                 {simLabel}
               </Button>
             ) : (

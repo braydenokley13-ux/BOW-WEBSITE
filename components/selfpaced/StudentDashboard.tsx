@@ -47,6 +47,8 @@ interface Props {
   weeklyPast: WeeklyChallengeView[];
   notifications: NotificationView[];
   unreadCount: number;
+  /** True when this student is ALSO actively enrolled in a cohort-taught class. */
+  alsoInCohortClass?: boolean;
 }
 
 export default function StudentDashboard({
@@ -64,6 +66,7 @@ export default function StudentDashboard({
   weeklyPast,
   notifications,
   unreadCount,
+  alsoInCohortClass,
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -85,6 +88,9 @@ export default function StudentDashboard({
     { href: "/news", label: "News" },
     { href: "/glossary", label: "Glossary" },
     { href: "/profile", label: "My Profile" },
+    // BOW runs two products side by side — a student enrolled in both
+    // shouldn't be stranded here with no way back to their cohort class.
+    ...(alsoInCohortClass ? [{ href: "/app/student", label: "My Cohort Class" }] : []),
   ];
   const rankColor =
     rankKey === "front-office" ? "var(--bow-orange)" : rankKey === "analyst" ? "var(--bow-positive)" : rankKey === "scout" ? "var(--bow-blue)" : "var(--bow-slate)";
@@ -392,7 +398,7 @@ function CertificatePrompt({ firstName, track, earned }: { firstName: string; tr
         </p>
       )}
       {error && (
-        <p style={{ margin: "14px 0 0", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "var(--bow-warning)" }}>
+        <p style={{ margin: "14px 0 0", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "var(--bow-warning-text)" }}>
           Something went wrong generating your certificate. Please try again.
         </p>
       )}
@@ -527,7 +533,7 @@ function ModuleCard({
             </button>
           </div>
           {completed && !met && (
-            <p style={{ margin: "10px 0 0", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-warning)" }}>
+            <p style={{ margin: "10px 0 0", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-warning-text)" }}>
               Add {SELF_MIN_REFLECTION_WORDS - words} more word{SELF_MIN_REFLECTION_WORDS - words === 1 ? "" : "s"} to unlock the next module.
             </p>
           )}

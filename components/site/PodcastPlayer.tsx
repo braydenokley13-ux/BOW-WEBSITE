@@ -31,7 +31,9 @@ function fmtTime(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-// TODO: wire real audio
+// Full episode audio isn't produced yet — this player runs an honest
+// engagement timer (no faked waveform/scrubbing) that still reports played
+// fraction to the lesson auto-unlock, and says so plainly in the UI.
 export default function PodcastPlayer({
   episode,
   eyebrow,
@@ -80,13 +82,13 @@ export default function PodcastPlayer({
 
   const podIcon = playing ? "❚❚" : "▶";
   const podIconPad = playing ? "0px" : "3px";
-  const podBtnLabel = playing ? "Pause" : sec > 0 ? "Resume" : "Play episode";
+  const podBtnLabel = playing ? "Pause" : sec > 0 ? "Resume Preview" : "Start Preview";
   const podPct = `${(sec / lengthSec) * 100}%`;
   const transcriptLabel = transcriptOpen ? "Hide takeaways" : "Key takeaways";
 
   return (
     <div style={{ border: "1px solid var(--bow-dark-border)", background: "var(--bow-dark-surface)", display: "grid", gridTemplateColumns: "132px 1fr", alignItems: "stretch" }}>
-      <button onClick={togglePod} aria-label="Play episode" style={{ border: "none", cursor: "pointer", background: "var(--bow-ink)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", borderRight: "1px solid var(--bow-dark-border)" }}>
+      <button onClick={togglePod} aria-label="Start episode preview timer" style={{ border: "none", cursor: "pointer", background: "var(--bow-ink)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", borderRight: "1px solid var(--bow-dark-border)" }}>
         <span style={{ width: 52, height: 52, borderRadius: 999, background: "var(--bow-blue)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <span style={{ color: "#fff", fontSize: 18, marginLeft: podIconPad }}>{podIcon}</span>
         </span>
@@ -104,6 +106,9 @@ export default function PodcastPlayer({
           </div>
           <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "#9a9da6" }}>{lengthLabel}</span>
         </div>
+        <p style={{ margin: "2px 0 0", fontFamily: "var(--font-data)", fontSize: 11.5, letterSpacing: "0.02em", color: "#6d7078" }}>
+          Full episode audio is coming soon — this is a timed preview, not live playback.
+        </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 10 }}>
           <button onClick={togglePod} style={{ background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.06em", textTransform: "uppercase", color: "#fff" }}>{podBtnLabel}</button>
           <button onClick={toggleTranscript} aria-expanded={transcriptOpen} style={{ background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6f8bff" }}>{transcriptLabel}</button>

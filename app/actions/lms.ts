@@ -40,6 +40,20 @@ function refreshApp() {
   revalidatePath("/app", "layout");
 }
 
+/**
+ * Instructors may only manage cohorts they're assigned to; admins can manage
+ * any cohort. Throws so the mutation aborts instead of silently no-op'ing —
+ * this should never trigger from the UI, only from a forged request.
+ */
+function assertCohortOwnership(me: { id: string; role: string }, cohortId: string) {
+  if (me.role === "admin") return;
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  const cohort = getDb().prepare("SELECT instructor_id FROM cohorts WHERE id = ?").get(cohortId) as any;
+  if (!cohort || cohort.instructor_id !== me.id) {
+    throw new Error("You are not assigned to this cohort.");
+  }
+}
+
 /* ---------------- People (admin) ---------------- */
 
 export async function suspendUser(userId: string): Promise<void> {
@@ -129,7 +143,8 @@ export async function setAttendance(
   userId: string,
   state: AttendanceState,
 ): Promise<void> {
-  await requireRole("instructor", "admin");
+  const me = await requireRole("instructor", "admin");
+  assertCohortOwnership(me, cohortId);
   getDb()
     .prepare(
       "INSERT INTO attendance (cohort_id, user_id, state) VALUES (?, ?, ?) ON CONFLICT(cohort_id, user_id) DO UPDATE SET state = excluded.state",
@@ -139,7 +154,8 @@ export async function setAttendance(
 }
 
 export async function advanceCohortLesson(cohortId: string, nextLessonId: string | null): Promise<void> {
-  await requireRole("instructor", "admin");
+  const me = await requireRole("instructor", "admin");
+  assertCohortOwnership(me, cohortId);
   if (!nextLessonId) return;
   getDb().prepare("UPDATE cohorts SET current_lesson_id = ? WHERE id = ?").run(nextLessonId, cohortId);
   refreshApp();
@@ -262,6 +278,7 @@ export async function createOrganization(input: NewOrganizationInput): Promise<v
 
 export async function addSessionNote(cohortId: string, scope: string, text: string): Promise<void> {
   const me = await requireRole("instructor", "admin");
+  assertCohortOwnership(me, cohortId);
   const body = text.trim();
   if (!body) return;
   const id = `note-${randomUUID().slice(0, 8)}`;
@@ -956,7 +973,8 @@ export async function generatePlayerCard(): Promise<PlayerCardResult> {
  * student's progress row.
  */
 export async function instructorUnlockModule(studentId: string, moduleId: string): Promise<void> {
-  await requireRole("instructor", "admin");
+  const me = await requireRole("instructor", "admin");
+  assertCohortOwnership(me, SELF_PACED_COHORT_ID);
   const now = Date.now();
   getDb()
     .prepare(
@@ -968,7 +986,8 @@ export async function instructorUnlockModule(studentId: string, moduleId: string
 
 /** Reverse a manual override (does not touch the student's own progress). */
 export async function instructorRelockModule(studentId: string, moduleId: string): Promise<void> {
-  await requireRole("instructor", "admin");
+  const me = await requireRole("instructor", "admin");
+  assertCohortOwnership(me, SELF_PACED_COHORT_ID);
   getDb()
     .prepare("UPDATE self_progress SET instructor_unlocked = 0, updated_at = ? WHERE student_id = ? AND module_id = ?")
     .run(Date.now(), studentId, moduleId);
@@ -978,6 +997,7 @@ export async function instructorRelockModule(studentId: string, moduleId: string
 /** Save a per-student session note (stored student-scoped in session_notes). */
 export async function saveStudentNote(studentId: string, note: string): Promise<void> {
   const me = await requireRole("instructor", "admin");
+  assertCohortOwnership(me, SELF_PACED_COHORT_ID);
   const body = note.trim();
   if (!body) return;
   const db = getDb();
@@ -1001,7 +1021,8 @@ export async function saveStudentNote(studentId: string, note: string): Promise<
 
 /** Toggle a student's attendance for one session of the self-paced cohort. */
 export async function setSessionAttendance(studentId: string, sessionNo: number, present: boolean): Promise<void> {
-  await requireRole("instructor", "admin");
+  const me = await requireRole("instructor", "admin");
+  assertCohortOwnership(me, SELF_PACED_COHORT_ID);
   if (!Number.isInteger(sessionNo) || sessionNo < 1 || sessionNo > SELF_PACED_SESSIONS) return;
   getDb()
     .prepare(

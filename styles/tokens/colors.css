@@ -22,6 +22,7 @@
   --bow-negative: #d63b3b;     /* Negative consequence */
   --bow-info:     #3157ff;     /* Information (== Franchise Blue) */
   --bow-inactive: #8b8d93;     /* Locked / disabled */
+  --bow-warning-text: #8a5c0a; /* Darkened --bow-warning for readable text on light surfaces (~4.6:1 on paper) */
 
   /* ---- Tints used for soft fills (derived) ---- */
   --bow-blue-tint:     #e7ecff;

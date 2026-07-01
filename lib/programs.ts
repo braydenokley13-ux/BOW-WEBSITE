@@ -105,12 +105,15 @@ export const trackDelivery: DeliveryFormat[] = [
 /* Track 101                                                             */
 /* ===================================================================== */
 
+const track101Lessons = lessons.filter((l) => l.track === "101");
+const track101PlayableSims = track101Lessons.filter((l) => l.simulationStatus === "available").length;
+
 export const track101Stats: DataItem[] = [
   { label: "Level", value: "Introductory" },
   { label: "Modules", value: "4" },
-  { label: "Lessons", value: "12" },
-  { label: "Simulations", value: "12" },
-  { label: "Ages", value: "11–18" },
+  { label: "Lessons", value: String(track101Lessons.length) },
+  { label: "Playable Sims", value: String(track101PlayableSims) },
+  { label: "Grades", value: "5–6" },
   { label: "Length", value: "~8 weeks" },
 ];
 
@@ -175,12 +178,15 @@ export const track101Modules: TrackModule[] = buildModules("101");
 /* Track 201                                                             */
 /* ===================================================================== */
 
+const track201Lessons = lessons.filter((l) => l.track === "201");
+const track201PlayableSims = track201Lessons.filter((l) => l.simulationStatus === "available").length;
+
 export const track201Stats: DataItem[] = [
   { label: "Level", value: "Advanced" },
   { label: "Modules", value: "4" },
-  { label: "Lessons", value: "12" },
-  { label: "Simulations", value: "12" },
-  { label: "Grades", value: "7–8+" },
+  { label: "Lessons", value: String(track201Lessons.length) },
+  { label: "Playable Sims", value: String(track201PlayableSims) },
+  { label: "Grades", value: "7–8" },
   { label: "Length", value: "~8 weeks" },
 ];
 

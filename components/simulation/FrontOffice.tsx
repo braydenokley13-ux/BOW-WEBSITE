@@ -121,7 +121,7 @@ function Entry({ firstName, busy, onStart }: { firstName: string; busy: boolean;
         disabled={busy}
         style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "15px 30px", border: "none", background: busy ? "var(--bow-inactive)" : "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: busy ? "wait" : "pointer" }}
       >
-        {busy ? "Loading…" : "Take the Job →"}
+        {busy ? "Loading…" : "Launch Simulation →"}
       </button>
     </>
   );

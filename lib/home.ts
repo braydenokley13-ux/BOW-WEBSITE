@@ -1,4 +1,5 @@
 import type { DataItem, DecisionOption, Consequence } from "@/components/ds";
+import { partnerVerifiedFacts } from "@/lib/get-involved";
 
 /* ============================================================
  * Home page content — ported from the design prototype.
@@ -161,9 +162,9 @@ export const featuredLessons: FeaturedLesson[] = [
   { bigNum: "01", category: "Sports Economics", hook: "Every yes is a no.", trackmod: "TRACK 101 · MODULE 1", title: "Opportunity cost, explained in trades.", decision: "Trade or hold", concept: "Opportunity cost", runtime: "14 min", podcast: "EP 04", href: "/lessons/opportunity-cost-in-trades" },
   { bigNum: "02", category: "Roster Construction", hook: "Build under the cap.", trackmod: "TRACK 101 · MODULE 2", title: "You have one roster spot and three good options.", decision: "Who makes the team", concept: "Marginal value", runtime: "14 min", podcast: "EP 06", href: "/lessons/one-spot-three-options" },
   { bigNum: "03", category: "Salary Cap", hook: "Spend now or protect the future.", trackmod: "TRACK 101 · MODULE 3", title: "The extension that wins games — and costs you 2027.", decision: "Extend or trade", concept: "Opportunity cost", runtime: "16 min", podcast: "EP 07", href: "/lessons/the-apron-era" },
-  { bigNum: "04", category: "Revenue & Ownership", hook: "Price the building.", trackmod: "TRACK 101 · MODULE 4", title: "Raise ticket prices, or protect the fan base?", decision: "Price vs. loyalty", concept: "Revenue tradeoffs", runtime: "15 min", podcast: "EP 09", href: "/lessons/the-price-of-a-seat" },
-  { bigNum: "05", category: "Negotiation", hook: "Pay the star.", trackmod: "TRACK 201 · MODULE 1", title: "Max contract or more picks: you can’t have both.", decision: "Max or trade", concept: "Negotiation", runtime: "18 min", podcast: "EP 08", href: "/lessons/the-league-as-a-business" },
-  { bigNum: "06", category: "Stadium Economics", hook: "Who really pays?", trackmod: "TRACK 201 · MODULE 3", title: "Public money, private profit, and your name on the building.", decision: "Accept or reject", concept: "Public economics", runtime: "16 min", podcast: "EP 03", href: "/lessons/save-the-franchise" },
+  { bigNum: "04", category: "Revenue & Ownership", hook: "Price the building.", trackmod: "TRACK 101 · MODULE 4", title: "Raise ticket prices, or protect the fan base?", decision: "Flat or dynamic pricing", concept: "Price elasticity", runtime: "16 min", podcast: "EP 05", href: "/lessons/the-price-of-a-seat" },
+  { bigNum: "05", category: "Revenue Sharing", hook: "Help your rivals? Vote now.", trackmod: "TRACK 201 · MODULE 2", title: "A deal that helps the league can hurt you. Sign it?", decision: "Vote yes or no", concept: "Revenue sharing", runtime: "15 min", podcast: "EP 08", href: "/lessons/the-league-as-a-business" },
+  { bigNum: "06", category: "Franchise Management", hook: "The team is fading. Fix it your way.", trackmod: "TRACK 201 · MODULE 2", title: "The franchise is sliding. Chase relevance now, or rebuild the foundation?", decision: "Win now or rebuild", concept: "Long-term strategy", runtime: "18 min", podcast: "EP 05", href: "/lessons/save-the-franchise" },
 ];
 
 export interface LessonStep {
@@ -254,13 +255,10 @@ export interface Impact {
   label: string;
 }
 
-export const impact: Impact[] = [
-  { value: "1,200+", label: "Students Reached" },
-  { value: "2", label: "Active Tracks" },
-  { value: "24", label: "Simulations" },
-  { value: "18", label: "Podcast Episodes" },
-  { value: "15+", label: "School & Camp Partners" },
-];
+// Sourced from lib/get-involved.ts's partnerVerifiedFacts — the same
+// verified numbers shown on the Partners page's "Honest Numbers" section,
+// so the homepage never claims more than what's actually built and counted.
+export const impact: Impact[] = partnerVerifiedFacts.map((f) => ({ value: f.value, label: f.label }));
 
 export interface Quote {
   text: string;
@@ -280,7 +278,7 @@ export interface Faq {
 }
 
 export const faqs: Faq[] = [
-  { id: "who", q: "Who is BOW Sports Capital for?", a: "BOW is designed for middle and high school students (ages 11–18) who want to learn economics through sports-business decisions. It works for individual students and group settings — schools, camps, and enrichment programs." },
+  { id: "who", q: "Who is BOW Sports Capital for?", a: "BOW is designed for students in grades 5 through 10 (Track 101 for grades 5–6, Track 201 for grades 7–8, both adaptable for older students) who want to learn economics through sports-business decisions. It works for individual students and group settings — schools, camps, and enrichment programs." },
   { id: "econ", q: "Do students need to know economics already?", a: "No. BOW introduces every concept through the sports-business decisions students already care about. You encounter each idea when it matters to the problem you’re solving — not in a vacuum." },
   { id: "sports", q: "Do students need to be sports experts?", a: "No sports expertise required. BOW teaches through the business side of sports — contracts, salaries, stadium deals, media rights. If you’ve ever had a strong opinion about a trade or a salary, you’re already ready." },
   { id: "length", q: "How long is a lesson?", a: "Most lessons take 12–18 minutes to complete, plus an optional simulation running another 8–15 minutes. Full lessons including the podcast extension and discussion typically fit within 45 minutes." },

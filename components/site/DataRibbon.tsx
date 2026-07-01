@@ -13,7 +13,7 @@ const TICKER: { label: string; value: string; color: string }[] = [
 export default function DataRibbon() {
   const items = [...TICKER, ...TICKER];
   return (
-    <div style={{ background: "var(--bow-ink)", color: "#fff", borderBottom: "1px solid var(--bow-dark-border)", overflow: "hidden", padding: "12px 0" }}>
+    <div aria-hidden="true" style={{ background: "var(--bow-ink)", color: "#fff", borderBottom: "1px solid var(--bow-dark-border)", overflow: "hidden", padding: "12px 0" }}>
       <div
         className="bow-marquee"
         style={{

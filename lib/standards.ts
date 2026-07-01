@@ -27,7 +27,7 @@ export interface StandardsEntry {
 /** The standards-alignment seed — all 8 modules across both tracks. */
 export const STANDARDS_ALIGNMENT: StandardsEntry[] = [
   {
-    id: "sa-101-1", ordinal: 1, track: "101", moduleName: "What Is Economics? (Track 101, Module 1)",
+    id: "sa-101-1", ordinal: 1, track: "101", moduleName: "The Economics of Winning (Track 101, Module 1)",
     keyConcepts: ["Scarcity", "Opportunity Cost", "Incentives", "Cost-Benefit Analysis", "Comparative Advantage"],
     apMicroStandards: [
       "Unit 1 — Scarcity, opportunity cost, and the production possibilities curve",
@@ -37,7 +37,7 @@ export const STANDARDS_ALIGNMENT: StandardsEntry[] = [
     apMacroStandards: ["Unit 1 — Scarcity and opportunity cost as the shared foundation of macroeconomics"],
   },
   {
-    id: "sa-101-2", ordinal: 2, track: "101", moduleName: "How Markets Work (Track 101, Module 2)",
+    id: "sa-101-2", ordinal: 2, track: "101", moduleName: "Building the Roster (Track 101, Module 2)",
     keyConcepts: ["Law of Demand", "Law of Supply", "Market Equilibrium", "Price Elasticity", "Consumer & Producer Surplus", "Monopoly", "Oligopoly"],
     apMicroStandards: [
       "Unit 2 — Supply and demand; equilibrium price and quantity",
@@ -48,7 +48,7 @@ export const STANDARDS_ALIGNMENT: StandardsEntry[] = [
     apMacroStandards: [],
   },
   {
-    id: "sa-101-3", ordinal: 3, track: "101", moduleName: "The Big Picture Economy (Track 101, Module 3)",
+    id: "sa-101-3", ordinal: 3, track: "101", moduleName: "The Money Behind the Game (Track 101, Module 3)",
     keyConcepts: ["GDP", "Inflation", "Unemployment", "Fiscal Policy", "Monetary Policy", "Economic Growth", "Business Cycle", "Multiplier Effect"],
     apMicroStandards: [],
     apMacroStandards: [
@@ -60,7 +60,7 @@ export const STANDARDS_ALIGNMENT: StandardsEntry[] = [
     ],
   },
   {
-    id: "sa-101-4", ordinal: 4, track: "101", moduleName: "Applied Economics (Track 101, Module 4)",
+    id: "sa-101-4", ordinal: 4, track: "101", moduleName: "Owning the Franchise (Track 101, Module 4)",
     keyConcepts: ["Market Failure", "Externalities", "Public Goods", "Cost-Benefit Analysis", "Real-World Trade-offs"],
     apMicroStandards: [
       "Unit 6 — Market failure: positive and negative externalities",
@@ -70,7 +70,7 @@ export const STANDARDS_ALIGNMENT: StandardsEntry[] = [
     apMacroStandards: ["Unit 6 — International trade and public-policy trade-offs"],
   },
   {
-    id: "sa-201-1", ordinal: 5, track: "201", moduleName: "The Salary Cap Machine (Track 201, Module 1)",
+    id: "sa-201-1", ordinal: 5, track: "201", moduleName: "Cap Management & Tradeoffs (Track 201, Module 1)",
     keyConcepts: ["Salary Cap", "Bird Rights", "Mid-Level Exception", "Luxury Tax", "Hard & Soft Caps", "Incentives", "Budget Constraints"],
     apMicroStandards: [
       "Unit 1 — Constrained optimization and budget constraints",
@@ -80,7 +80,7 @@ export const STANDARDS_ALIGNMENT: StandardsEntry[] = [
     apMacroStandards: [],
   },
   {
-    id: "sa-201-2", ordinal: 6, track: "201", moduleName: "Revenue, Rights, and Power (Track 201, Module 2)",
+    id: "sa-201-2", ordinal: 6, track: "201", moduleName: "Money in Motion (Track 201, Module 2)",
     keyConcepts: ["Revenue Sharing", "Market Size", "Media Rights", "Gate Revenue", "Antitrust & Market Power", "Income Distribution"],
     apMicroStandards: [
       "Unit 4 — Market power and pricing in monopoly/oligopoly",
@@ -90,7 +90,7 @@ export const STANDARDS_ALIGNMENT: StandardsEntry[] = [
     apMacroStandards: ["Unit 2 — Revenue and the circular flow of income"],
   },
   {
-    id: "sa-201-3", ordinal: 7, track: "201", moduleName: "The Analytics Edge (Track 201, Module 3)",
+    id: "sa-201-3", ordinal: 7, track: "201", moduleName: "Analytics in Action (Track 201, Module 3)",
     keyConcepts: ["Analytics", "Wins Above Replacement", "Market Inefficiency", "Marginal Analysis", "Information & Pricing"],
     apMicroStandards: [
       "Unit 2 — Market efficiency and inefficiency",
@@ -100,7 +100,7 @@ export const STANDARDS_ALIGNMENT: StandardsEntry[] = [
     apMacroStandards: [],
   },
   {
-    id: "sa-201-4", ordinal: 8, track: "201", moduleName: "Draft Economics and Roster Windows (Track 201, Module 4)",
+    id: "sa-201-4", ordinal: 8, track: "201", moduleName: "Draft Strategy & Surplus Value (Track 201, Module 4)",
     keyConcepts: ["Surplus Value", "Pick Value", "Roster Windows", "Comparative Advantage", "Time Value of Decisions"],
     apMicroStandards: [
       "Unit 5 — Factor markets: valuing labor and surplus value",

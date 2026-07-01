@@ -57,7 +57,7 @@ export default function DiscussionBoard({
             BOW Community
           </span>
           <Link
-            href={role === "student" ? "/dashboard" : "/instructor"}
+            href={role === "student" ? "/dashboard" : role === "admin" ? "/admin" : "/instructor"}
             style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)", textDecoration: "none" }}
           >
             ← Back

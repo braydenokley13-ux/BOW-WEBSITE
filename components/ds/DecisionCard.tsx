@@ -193,9 +193,11 @@ export default function DecisionCard({
           >
             {primaryLabel}
           </Button>
-          <Button variant="ghost" onClick={onSecondary} style={{ color: "#9a9da6" }}>
-            {secondaryLabel}
-          </Button>
+          {onSecondary && (
+            <Button variant="ghost" onClick={onSecondary} style={{ color: "#9a9da6" }}>
+              {secondaryLabel}
+            </Button>
+          )}
         </div>
       ) : (
         <Button

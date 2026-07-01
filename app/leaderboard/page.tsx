@@ -46,7 +46,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
           <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-orange)" }}>
             BOW Leaderboard
           </span>
-          <Link href={me.role === "student" ? "/dashboard" : "/instructor"} style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6f8bff", textDecoration: "none" }}>
+          <Link href={me.role === "student" ? "/dashboard" : me.role === "admin" ? "/admin" : "/instructor"} style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6f8bff", textDecoration: "none" }}>
             ← Back
           </Link>
         </div>

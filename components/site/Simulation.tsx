@@ -163,7 +163,7 @@ function EntryScreen({ onBegin }: { onBegin: () => void }) {
             Track 101
           </Link>
           <span aria-hidden>/</span>
-          <Link href="/lessons" style={{ color: "#6f8bff", textDecoration: "none" }}>
+          <Link href="/lessons/opportunity-cost-in-trades" style={{ color: "#6f8bff", textDecoration: "none" }}>
             Lesson 2
           </Link>
           <span aria-hidden>/</span>
@@ -243,10 +243,10 @@ function EntryScreen({ onBegin }: { onBegin: () => void }) {
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 30 }}>
               <Button variant="primary" size="lg" onClick={onBegin}>
-                Enter the Simulation
+                Preview the Simulation
               </Button>
               <Button
-                href="/lessons"
+                href="/lessons/opportunity-cost-in-trades"
                 variant="secondary"
                 size="lg"
                 style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}
@@ -738,10 +738,10 @@ function CompletedScreen({ choices, onReplay, footer }: { choices: Choices; onRe
           <div style={{ marginTop: 32 }}>{footer}</div>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 32 }}>
-            <Button href="/lessons" variant="primary" size="lg">
+            <Button href="/lessons/opportunity-cost-in-trades" variant="primary" size="lg">
               Return to the Lesson
             </Button>
-            <Button href="/lessons" variant="emphasis" size="lg">
+            <Button href="/lessons/the-value-of-a-win" variant="emphasis" size="lg">
               Continue to Lesson 3
             </Button>
             <Button

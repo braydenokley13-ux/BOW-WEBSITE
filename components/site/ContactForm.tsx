@@ -99,7 +99,7 @@ export default function ContactForm() {
         <textarea id="cf-msg" rows={5} style={{ ...inputStyle, resize: "vertical" }} value={data.summary} onChange={set("summary")} placeholder="Tell us about your students, your program, or the partnership you have in mind." />
       </div>
       {status === "error" && (
-        <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12.5, color: "var(--bow-warning)" }}>
+        <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12.5, color: "var(--bow-warning-text)" }}>
           Please add your name, a valid email, and a short message.
         </p>
       )}

@@ -5,9 +5,10 @@ import Toast from "./Toast";
 import ConfirmModal from "./ConfirmModal";
 
 /**
- * Authenticated app chrome. By the time this renders the server
- * layout has already verified the session (`requireUser`), so there
- * is no role gate or mount flash to manage here.
+ * Authenticated app chrome. By the time this renders, app/app/layout.tsx
+ * has verified the session and the nested admin/instructor/student
+ * layout.tsx has verified the role, so there is no gate or mount flash
+ * to manage here.
  */
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (

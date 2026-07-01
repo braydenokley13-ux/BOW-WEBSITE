@@ -1027,6 +1027,16 @@ function migrate(db: DatabaseSync) {
 }
 
 function init(): DatabaseSync {
+  if (process.env.NODE_ENV === "production" && !process.env.SEED_PASSWORD) {
+    // Every seeded account (including the admin account) signs in with this
+    // password. Shipping the "bowdemo123" fallback to a real production
+    // deployment means the admin account has a publicly-known password.
+    console.warn(
+      "[bow] WARNING: SEED_PASSWORD is not set in production. All seeded accounts, " +
+        "including the admin account, are using the publicly-known default password. " +
+        "Set SEED_PASSWORD (and rotate seeded accounts) before real users sign in.",
+    );
+  }
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
   const db = new DatabaseSync(DB_PATH);
   db.exec("PRAGMA journal_mode = WAL;");

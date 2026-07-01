@@ -90,7 +90,7 @@ export default function AboutPage() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
             <Button href="/programs" variant="primary" size="lg">Explore Programs</Button>
             <Button href="/get-involved/schools" variant="secondary" size="lg">Schools &amp; Camps</Button>
-            <Button href="/sign-up" variant="ink" size="lg">Get in Touch</Button>
+            <Button href="/contact" variant="ink" size="lg">Get in Touch</Button>
           </div>
         </div>
       </section>
