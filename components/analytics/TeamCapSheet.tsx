@@ -3,10 +3,13 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { DataStrip } from "@/components/ds";
+import { VerdictBadge } from "@/components/intelligence";
 import CapStackBar from "@/components/analytics/CapStackBar";
 import SliderPanel from "@/components/analytics/SliderPanel";
 import { useAssumptions } from "@/components/analytics/useAssumptions";
-import { fmtMillions, fmtSignedMillions, type AnalyticsPlayer } from "@/lib/aasv";
+import { fmtMillions, fmtSignedMillions, type AnalyticsPlayer, type Assumptions } from "@/lib/aasv";
+import { buildContractVerdict, buildLeagueContext } from "@/lib/intelligence";
+import type { LeagueContext } from "@/lib/intelligence-types";
 import { teamName } from "@/lib/nba-teams";
 import { aggregateTeam, type TeamContract } from "@/lib/team-aasv";
 
@@ -36,10 +39,24 @@ const stepKicker: React.CSSProperties = {
   color: "var(--bow-slate)",
 };
 
-function ContractCard({ label, contract }: { label: string; contract: TeamContract }) {
+function ContractCard({
+  label,
+  contract,
+  assumptions,
+  ctx,
+}: {
+  label: string;
+  contract: TeamContract;
+  assumptions: Assumptions;
+  ctx: LeagueContext;
+}) {
+  const verdict = buildContractVerdict(contract.player, contract.valuation, assumptions, ctx);
   return (
     <div style={{ ...stepCard, borderLeft: `4px solid ${contract.valuation.aasv >= 0 ? "var(--bow-positive)" : "var(--bow-negative)"}` }}>
-      <span style={stepKicker}>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <span style={stepKicker}>{label}</span>
+        <VerdictBadge tier={verdict.tier} size="sm" />
+      </div>
       <Link
         href={`/analytics/players/${contract.player.slug}`}
         className="bow-link"
@@ -61,6 +78,10 @@ export default function TeamCapSheet({ team, players }: { team: string; players:
   const [assumptions, setAssumptions, resetAssumptions] = useAssumptions();
 
   const rollup = useMemo(() => aggregateTeam(players, team, assumptions), [players, team, assumptions]);
+  // League context (tracked-contract ranking) is built off the FULL tracked
+  // list, not just this team, so a verdict here can honestly say "top-5 of N
+  // tracked deals" the same way the player pages do.
+  const ctx = useMemo(() => buildLeagueContext(players, assumptions), [players, assumptions]);
 
   if (rollup == null) {
     return (
@@ -126,11 +147,11 @@ export default function TeamCapSheet({ team, players }: { team: string; players:
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {rollup.trackedCount === 1 && rollup.bestContract ? (
-            <ContractCard label="Only tracked contract" contract={rollup.bestContract} />
+            <ContractCard label="Only tracked contract" contract={rollup.bestContract} assumptions={assumptions} ctx={ctx} />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "clamp(14px,2vw,20px)" }}>
-              {rollup.bestContract && <ContractCard label="Best value" contract={rollup.bestContract} />}
-              {rollup.worstContract && <ContractCard label="Biggest hole" contract={rollup.worstContract} />}
+              {rollup.bestContract && <ContractCard label="Best value" contract={rollup.bestContract} assumptions={assumptions} ctx={ctx} />}
+              {rollup.worstContract && <ContractCard label="Biggest hole" contract={rollup.worstContract} assumptions={assumptions} ctx={ctx} />}
             </div>
           )}
 
@@ -148,26 +169,35 @@ export default function TeamCapSheet({ team, players }: { team: string; players:
                     <th scope="col" style={{ ...thStyle, textAlign: "right" }}>
                       AASV
                     </th>
+                    <th scope="col" style={thStyle}>
+                      Verdict
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rollup.contracts.map((c) => (
-                    <tr key={c.player.slug} style={{ borderTop: "1px solid var(--border-rule)" }}>
-                      <td style={{ padding: "10px 12px" }}>
-                        <Link
-                          href={`/analytics/players/${c.player.slug}`}
-                          className="bow-link"
-                          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--bow-ink)", textDecoration: "none" }}
-                        >
-                          {c.player.name}
-                        </Link>
-                      </td>
-                      <td style={tdMono}>{fmtMillions(c.player.capHit)}</td>
-                      <td style={{ ...tdMono, fontWeight: 700, color: c.valuation.aasv >= 0 ? "var(--bow-positive)" : "var(--bow-negative)" }}>
-                        {fmtSignedMillions(c.valuation.aasv)}
-                      </td>
-                    </tr>
-                  ))}
+                  {rollup.contracts.map((c) => {
+                    const verdict = buildContractVerdict(c.player, c.valuation, assumptions, ctx);
+                    return (
+                      <tr key={c.player.slug} style={{ borderTop: "1px solid var(--border-rule)" }}>
+                        <td style={{ padding: "10px 12px" }}>
+                          <Link
+                            href={`/analytics/players/${c.player.slug}`}
+                            className="bow-link"
+                            style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--bow-ink)", textDecoration: "none" }}
+                          >
+                            {c.player.name}
+                          </Link>
+                        </td>
+                        <td style={tdMono}>{fmtMillions(c.player.capHit)}</td>
+                        <td style={{ ...tdMono, fontWeight: 700, color: c.valuation.aasv >= 0 ? "var(--bow-positive)" : "var(--bow-negative)" }}>
+                          {fmtSignedMillions(c.valuation.aasv)}
+                        </td>
+                        <td style={{ padding: "10px 12px" }}>
+                          <VerdictBadge tier={verdict.tier} size="sm" />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
