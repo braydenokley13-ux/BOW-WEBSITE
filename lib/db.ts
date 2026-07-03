@@ -11,8 +11,10 @@
  * ============================================================ */
 
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { slugify } from "@/lib/slug";
+import { SEED_ARTICLES } from "@/lib/analytics-content";
 import {
   seedAppData,
   orderedTrackLessons,
@@ -493,6 +495,67 @@ CREATE TABLE IF NOT EXISTS standards_alignment (
   ap_macro_standards TEXT NOT NULL
 );
 
+/* ---- NBA Value vs. Contract analytics (/analytics) ----
+ * Curated player list, hand-maintained contracts (seeded from
+ * data-seeds/contracts.csv, dollars stored raw), and cached advanced
+ * stats (seeded from data-seeds/stats-snapshot.csv, refreshed live by
+ * scripts/nba_ingest.py via nba_api). */
+CREATE TABLE IF NOT EXISTS nba_players (
+  slug TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  team TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS nba_contracts (
+  player_slug TEXT PRIMARY KEY,
+  team TEXT NOT NULL,
+  cap_hit REAL NOT NULL,
+  years_remaining INTEGER NOT NULL DEFAULT 1,
+  total_remaining REAL NOT NULL DEFAULT 0,
+  apron_status TEXT NOT NULL DEFAULT 'below'
+);
+CREATE TABLE IF NOT EXISTS nba_player_stats (
+  player_slug TEXT NOT NULL,
+  season TEXT NOT NULL,
+  games INTEGER NOT NULL DEFAULT 0,
+  minutes REAL NOT NULL DEFAULT 0,
+  epm REAL,
+  bpm REAL,
+  source TEXT NOT NULL DEFAULT 'snapshot',
+  updated_at INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (player_slug, season)
+);
+
+/* ---- Analytics publication: articles + revision history ---- */
+CREATE TABLE IF NOT EXISTS articles (
+  id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  dek TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft',
+  author TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT 'Trade Analysis',
+  tags TEXT NOT NULL DEFAULT '',
+  cover_image TEXT NOT NULL DEFAULT '',
+  featured INTEGER NOT NULL DEFAULT 0,
+  view_count INTEGER NOT NULL DEFAULT 0,
+  meta_title TEXT NOT NULL DEFAULT '',
+  meta_description TEXT NOT NULL DEFAULT '',
+  published_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS article_revisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  article_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  dek TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT '',
+  tags TEXT NOT NULL DEFAULT '',
+  saved_at INTEGER NOT NULL
+);
+
 /* ---- Indexes for high-traffic WHERE-clause columns (Feature 8) ---- */
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_sim
   ON simulations (student_id, sim_type) WHERE completed = 0;
@@ -523,6 +586,9 @@ CREATE INDEX IF NOT EXISTS idx_player_cards_student ON player_cards (student_id)
 CREATE INDEX IF NOT EXISTS idx_news_items_active ON news_items (active, created_at);
 CREATE INDEX IF NOT EXISTS idx_news_submissions_status ON news_submissions (status, created_at);
 CREATE INDEX IF NOT EXISTS idx_testimonials_active ON testimonials (active, ordinal);
+CREATE INDEX IF NOT EXISTS idx_nba_stats_player ON nba_player_stats (player_slug, season);
+CREATE INDEX IF NOT EXISTS idx_articles_status ON articles (status, featured, published_at);
+CREATE INDEX IF NOT EXISTS idx_article_revisions ON article_revisions (article_id, saved_at);
 `;
 
 function seed(db: DatabaseSync) {
@@ -975,6 +1041,124 @@ function seedSelfPacedDemo(db: DatabaseSync) {
   }
 }
 
+/* ---------------- NBA analytics + publication seeds ---------------- */
+
+/**
+ * Minimal CSV reader for the hand-maintained seed files. Our CSVs are
+ * plain (no quoted commas): header row + comma-separated values.
+ * Blank lines are skipped; missing trailing fields come back "".
+ */
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cells = line.split(",");
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => (row[h] = (cells[i] ?? "").trim()));
+    return row;
+  });
+}
+
+const APRON_STATUSES = ["below", "first", "second"];
+
+/**
+ * Idempotently load the curated NBA player list from data-seeds/.
+ *
+ * contracts.csv is the system of record for who is tracked and what
+ * they cost (cap_hit / total_remaining are $ MILLIONS in the CSV,
+ * stored as raw dollars). Runs every boot so hand edits to the CSV
+ * flow into the database; players removed from the CSV are pruned.
+ *
+ * stats-snapshot.csv provides advanced-stat fallback values so the
+ * dashboard works out of the box. A snapshot row never overwrites a
+ * row already refreshed by scripts/nba_ingest.py (source='nba_api').
+ */
+function seedNbaFromCsv(db: DatabaseSync) {
+  const dir = path.join(process.cwd(), "data-seeds");
+  const contractsPath = path.join(dir, "contracts.csv");
+  if (!existsSync(contractsPath)) return;
+
+  const contracts = parseCsv(readFileSync(contractsPath, "utf8"));
+  if (contracts.length === 0) return;
+
+  const upsertPlayer = db.prepare(
+    `INSERT INTO nba_players (slug, name, team) VALUES (?, ?, ?)
+     ON CONFLICT(slug) DO UPDATE SET name = excluded.name, team = excluded.team`,
+  );
+  const upsertContract = db.prepare(
+    `INSERT INTO nba_contracts (player_slug, team, cap_hit, years_remaining, total_remaining, apron_status) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(player_slug) DO UPDATE SET team = excluded.team, cap_hit = excluded.cap_hit, years_remaining = excluded.years_remaining, total_remaining = excluded.total_remaining, apron_status = excluded.apron_status`,
+  );
+
+  const slugs: string[] = [];
+  for (const c of contracts) {
+    if (!c.player) continue;
+    const slug = slugify(c.player);
+    const status = APRON_STATUSES.includes(c.apron_status) ? c.apron_status : "below";
+    slugs.push(slug);
+    upsertPlayer.run(slug, c.player, c.team || "");
+    upsertContract.run(
+      slug,
+      c.team || "",
+      Math.round((Number(c.cap_hit) || 0) * 1e6),
+      Number(c.years_remaining) || 1,
+      Math.round((Number(c.total_remaining) || 0) * 1e6),
+      status,
+    );
+  }
+
+  // The CSV is the curated list — drop anyone no longer on it.
+  const ph = slugs.map(() => "?").join(", ");
+  db.prepare(`DELETE FROM nba_players WHERE slug NOT IN (${ph})`).run(...slugs);
+  db.prepare(`DELETE FROM nba_contracts WHERE player_slug NOT IN (${ph})`).run(...slugs);
+  db.prepare(`DELETE FROM nba_player_stats WHERE player_slug NOT IN (${ph})`).run(...slugs);
+
+  const statsPath = path.join(dir, "stats-snapshot.csv");
+  if (!existsSync(statsPath)) return;
+  const upsertStat = db.prepare(
+    `INSERT INTO nba_player_stats (player_slug, season, games, minutes, epm, bpm, source, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'snapshot', ?)
+     ON CONFLICT(player_slug, season) DO UPDATE SET games = excluded.games, minutes = excluded.minutes, epm = excluded.epm, bpm = excluded.bpm, updated_at = excluded.updated_at
+     WHERE nba_player_stats.source = 'snapshot'`,
+  );
+  const now = Date.now();
+  for (const s of parseCsv(readFileSync(statsPath, "utf8"))) {
+    if (!s.player || !s.season) continue;
+    const slug = slugify(s.player);
+    if (!slugs.includes(slug)) continue; // stats only for curated players
+    upsertStat.run(
+      slug,
+      s.season,
+      Number(s.games) || 0,
+      Number(s.minutes) || 0,
+      s.epm === "" ? null : Number(s.epm),
+      s.bpm === "" ? null : Number(s.bpm),
+      now,
+    );
+  }
+}
+
+/**
+ * First-boot publication seed: three pieces demonstrating live data
+ * embeds. Articles are owner-editable content, so this only runs when
+ * the articles table is EMPTY — admin edits are never overwritten.
+ */
+function seedArticlesDemo(db: DatabaseSync) {
+  const count = (db.prepare("SELECT COUNT(*) AS n FROM articles").get() as { n: number }).n;
+  if (count > 0) return;
+  const insert = db.prepare(
+    `INSERT INTO articles (id, slug, title, dek, body, status, author, category, tags, cover_image, featured, view_count, meta_title, meta_description, published_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 0, '', '', ?, ?, ?)`,
+  );
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+  for (const a of SEED_ARTICLES) {
+    const publishedAt = a.publishedDaysAgo == null ? null : now - a.publishedDaysAgo * DAY;
+    const createdAt = publishedAt ?? now;
+    insert.run(a.id, a.slug, a.title, a.dek, a.body, a.status, a.author, a.category, a.tags, a.featured, publishedAt, createdAt, createdAt);
+  }
+}
+
 /**
  * Idempotent column migrations for databases created before a feature landed.
  * `data/` is gitignored and usually re-created fresh, but this keeps an existing
@@ -1081,6 +1265,11 @@ function init(): DatabaseSync {
     seedConceptMap(db);
     seedGlossaryTerms(db);
     seedStandardsAlignment(db);
+    // NBA analytics reference data (curated contracts + cached stats) is
+    // re-read from data-seeds/ every boot; the demo articles only seed an
+    // empty publication so owner edits survive reboots.
+    seedNbaFromCsv(db);
+    seedArticlesDemo(db);
     if (fresh) {
       seedSelfPacedDemo(db);
       // Discussion seed posts are authored by the demo students, so they only

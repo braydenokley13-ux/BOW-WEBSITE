@@ -34,7 +34,9 @@ export function proxy(request: NextRequest) {
     pathname === "/discussion" ||
     pathname.startsWith("/discussion/") ||
     pathname === "/admin" ||
-    pathname.startsWith("/admin/");
+    pathname.startsWith("/admin/") ||
+    pathname === "/analytics/admin" ||
+    pathname.startsWith("/analytics/admin/");
   if (guarded) {
     if (!hasSession) {
       const url = new URL("/sign-in", request.url);
@@ -70,6 +72,8 @@ export const config = {
     "/discussion/:path*",
     "/admin",
     "/admin/:path*",
+    "/analytics/admin",
+    "/analytics/admin/:path*",
     "/sign-in",
   ],
 };

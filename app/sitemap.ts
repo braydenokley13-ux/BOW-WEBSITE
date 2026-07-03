@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next";
 import { SITE } from "@/lib/site";
 import { lessons } from "@/lib/lessons";
 import { getAllPartnerOrgs } from "@/lib/partners";
+import { getAnalyticsPlayers } from "@/lib/nba";
+import { getPublishedArticles } from "@/lib/articles";
 
 /** Static marketing routes; lesson-detail routes are appended below. */
 const ROUTES = [
@@ -11,6 +13,8 @@ const ROUTES = [
   "/programs/track-201",
   "/programs/track-301",
   "/lessons",
+  "/analytics",
+  "/analytics/articles",
   "/simulation",
   "/podcast",
   "/feed",
@@ -47,5 +51,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
     changeFrequency: "monthly",
     priority: 0.5,
   }));
-  return [...staticEntries, ...lessonEntries, ...partnerEntries];
+  // Analytics: player breakdown pages + every published article.
+  const playerEntries: MetadataRoute.Sitemap = getAnalyticsPlayers().map((p) => ({
+    url: `${SITE.url}/analytics/players/${p.slug}`,
+    lastModified: now,
+    changeFrequency: "weekly",
+    priority: 0.5,
+  }));
+  const articleEntries: MetadataRoute.Sitemap = getPublishedArticles().map((a) => ({
+    url: `${SITE.url}/analytics/articles/${a.slug}`,
+    lastModified: new Date(a.updatedAt || a.publishedAt || Date.now()),
+    changeFrequency: "weekly",
+    priority: 0.8,
+  }));
+  return [...staticEntries, ...lessonEntries, ...partnerEntries, ...playerEntries, ...articleEntries];
 }
