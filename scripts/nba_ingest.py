@@ -27,6 +27,7 @@ Usage
     pip install nba_api          # one-time
     python3 scripts/nba_ingest.py                 # current season
     python3 scripts/nba_ingest.py --season 2025-26
+    python3 scripts/nba_ingest.py --seasons 2023-24,2024-25,2025-26  # backfill multiple seasons in one run
     python3 scripts/nba_ingest.py --dry-run       # fetch + print, no writes
 
 Safe to re-run any time (idempotent upserts); wire it to cron for a
@@ -154,22 +155,10 @@ def resolve_player_ids(names: dict[str, str]) -> dict[str, int]:
     return ids
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Cache curated-player advanced stats from stats.nba.com into SQLite.")
-    ap.add_argument("--season", default=current_season(), help="season label, e.g. 2025-26 (default: current)")
-    ap.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"SQLite path (default {DEFAULT_DB})")
-    ap.add_argument("--csv", type=Path, default=DEFAULT_CSV, help="contracts.csv fallback for the curated list")
-    ap.add_argument("--dry-run", action="store_true", help="fetch and print, write nothing")
-    args = ap.parse_args()
-
-    players = curated_players(args.db, args.csv)
-    print(f"curated list: {len(players)} players · season {args.season}")
-
-    ids = resolve_player_ids(players)
-    print(f"resolved {len(ids)}/{len(players)} player ids")
-
-    print("fetching league estimated metrics …")
-    metrics = fetch_estimated_metrics(args.season)
+def ingest_season(season: str, players: dict[str, str], ids: dict[str, int]) -> list[tuple]:
+    """Fetch + shape one season's rows for the curated player list."""
+    print(f"fetching league estimated metrics for {season} …")
+    metrics = fetch_estimated_metrics(season)
     by_id = {row["PLAYER_ID"]: row for row in metrics}
 
     rows = []
@@ -177,18 +166,44 @@ def main() -> None:
     for slug, pid in ids.items():
         m = by_id.get(pid)
         if m is None:
-            print(f"  ! {players[slug]}: no {args.season} row (hasn't played?) — skipped", file=sys.stderr)
+            print(f"  ! {players[slug]}: no {season} row (hasn't played?) — skipped", file=sys.stderr)
             continue
         games = int(m.get("GP") or 0)
         # MIN in this endpoint is minutes per game; the model wants totals.
         minutes = round(float(m.get("MIN") or 0.0) * games, 1)
         epm = m.get("E_NET_RATING")
-        rows.append((slug, args.season, games, minutes, None if epm is None else float(epm), now_ms))
+        rows.append((slug, season, games, minutes, None if epm is None else float(epm), now_ms))
+    return rows
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Cache curated-player advanced stats from stats.nba.com into SQLite.")
+    ap.add_argument("--season", default=current_season(), help="season label, e.g. 2025-26 (default: current)")
+    ap.add_argument(
+        "--seasons",
+        help="comma-separated season labels to backfill in one run, e.g. 2023-24,2024-25,2025-26 (overrides --season)",
+    )
+    ap.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"SQLite path (default {DEFAULT_DB})")
+    ap.add_argument("--csv", type=Path, default=DEFAULT_CSV, help="contracts.csv fallback for the curated list")
+    ap.add_argument("--dry-run", action="store_true", help="fetch and print, write nothing")
+    args = ap.parse_args()
+
+    seasons = [s.strip() for s in args.seasons.split(",") if s.strip()] if args.seasons else [args.season]
+
+    players = curated_players(args.db, args.csv)
+    print(f"curated list: {len(players)} players · season(s) {', '.join(seasons)}")
+
+    ids = resolve_player_ids(players)
+    print(f"resolved {len(ids)}/{len(players)} player ids")
+
+    all_rows: list[tuple] = []
+    for season in seasons:
+        all_rows.extend(ingest_season(season, players, ids))
 
     if args.dry_run:
-        for slug, season, games, minutes, epm, _ in sorted(rows):
+        for slug, season, games, minutes, epm, _ in sorted(all_rows):
             print(f"  {slug:32s} {season} gp={games:3d} min={minutes:7.1f} epm={epm}")
-        print(f"dry run: {len(rows)} rows, nothing written")
+        print(f"dry run: {len(all_rows)} rows, nothing written")
         return
 
     args.db.parent.mkdir(parents=True, exist_ok=True)
@@ -196,10 +211,10 @@ def main() -> None:
     con.execute("PRAGMA journal_mode = WAL")
     con.execute("PRAGMA busy_timeout = 8000")
     con.execute(STATS_TABLE_SQL)
-    con.executemany(UPSERT_SQL, rows)
+    con.executemany(UPSERT_SQL, all_rows)
     con.commit()
     con.close()
-    print(f"cached {len(rows)} stat rows into {args.db} (source=nba_api)")
+    print(f"cached {len(all_rows)} stat rows into {args.db} (source=nba_api)")
 
 
 if __name__ == "__main__":
