@@ -33,12 +33,15 @@ export default function TrendLine({
   height = 220,
   sparkline = false,
   title,
+  note,
 }: {
   history: SeasonStat[];
   metric?: "epm" | "bpm";
   height?: number;
   sparkline?: boolean;
   title?: string;
+  /** Optional one-sentence tie-in — e.g. how this trend feeds the memo's aging-risk verdict. */
+  note?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -269,6 +272,22 @@ export default function TrendLine({
           <span aria-hidden style={{ display: "inline-block", width: 8, height: 8, borderRadius: 999, background: "var(--bow-white)", border: "2px solid var(--bow-blue)" }} />
           Hollow marker = {METRIC_LABEL[metric === "epm" ? "bpm" : "epm"]} fallback — no{" "}
           {METRIC_LABEL[metric].split(" ")[0]} on file that season.
+        </p>
+      )}
+
+      {note && (
+        <p
+          style={{
+            margin: "10px 0 0",
+            fontFamily: "var(--font-interface)",
+            fontSize: 13.5,
+            lineHeight: 1.55,
+            color: "var(--bow-ink)",
+            borderLeft: "3px solid var(--bow-blue)",
+            paddingLeft: 10,
+          }}
+        >
+          {note}
         </p>
       )}
     </div>

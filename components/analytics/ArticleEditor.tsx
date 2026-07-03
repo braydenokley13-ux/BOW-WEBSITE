@@ -321,6 +321,16 @@ export default function ArticleEditor({
         <button type="button" style={{ ...toolBtn, color: "var(--bow-blue)" }} onClick={() => insertBlock(`<TrendChart player="${exampleSlug}" />`)}>
           + Trend chart
         </button>
+        <span style={{ width: 1, height: 20, background: "var(--border-rule)", margin: "0 4px" }} />
+        <button type="button" style={{ ...toolBtn, color: "var(--bow-orange)" }} onClick={() => insertBlock(`<ContractVerdict player="${exampleSlug}" />`)}>
+          + Contract verdict
+        </button>
+        <button type="button" style={{ ...toolBtn, color: "var(--bow-orange)" }} onClick={() => insertBlock(`<TeamFlex team="OKC" />`)}>
+          + Team flex
+        </button>
+        <button type="button" style={{ ...toolBtn, color: "var(--bow-orange)" }} onClick={() => insertBlock(`<ScenarioBand player="${exampleSlug}" />`)}>
+          + Scenario band
+        </button>
         <span style={{ marginLeft: "auto", display: "flex", gap: 0 }}>
           {(["write", "split", "preview"] as const).map((m) => (
             <button
@@ -383,7 +393,7 @@ export default function ArticleEditor({
               </h1>
             )}
             {dek && <p style={{ margin: "0 0 22px", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.55, color: "var(--bow-slate)" }}>{dek}</p>}
-            <MarkdownView blocks={blocks} players={players} playerHistories={playerHistories} />
+            <MarkdownView blocks={blocks} players={players} playerHistories={playerHistories} allPlayers={Object.values(players)} />
           </div>
         )}
       </div>

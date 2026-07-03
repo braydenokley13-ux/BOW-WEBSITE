@@ -13,6 +13,14 @@
  *   <AASVTable players="jaylen-brown,derrick-white" />
  *   <TeamCapSheet team="OKC" />
  *   <TrendChart player="jaylen-brown" />
+ *   <ContractVerdict player="jaylen-brown" />
+ *   <TeamFlex team="OKC" />
+ *   <ScenarioBand player="jaylen-brown" />
+ *
+ * Every embed recomputes live under the READER's tuned assumptions
+ * (sessionStorage sliders on /analytics) once the page hydrates, not a
+ * frozen "at time of writing" number — see components/analytics/embeds/
+ * LiveAssumptions.tsx.
  * ============================================================ */
 
 export interface SeedArticle {
@@ -71,9 +79,13 @@ The model is only as good as its assumptions, so argue with them directly:
 2. **The apron multiplier itself.** If you think the first apron is a speed bump rather than a wall, drop the multiplier toward 1.2× and watch half the league's "overpays" become fair deals.
 3. **Availability.** Brown's durability is the deal's real moat. The wins term is built from minutes actually played — not reputation.
 
+Here is that sensitivity run directly, bear to bull, on the same contract:
+
+<ScenarioBand player="jaylen-brown" />
+
 The honest conclusion: the contract was rational *for Boston specifically* — a team whose title window, supporting cost structure, and tolerance for the tax made an apron-priced star the least-bad option. Copy-paste the same deal onto a team without a Derrick White on the books and the model says something much uglier.
 
-*Every number in this piece is generated live from the model at its default assumptions. Disagree with a default? [Change it and see.](/analytics)*`,
+*Every number and every module in this piece recomputes live under YOUR assumptions — the sliders you've set on the [dashboard](/analytics) travel with you here. Haven't touched them? You're looking at the model's defaults.*`,
     status: "published",
     author: "BOW Front Office",
     category: "Contract Deep Dives",
@@ -106,13 +118,17 @@ Cleveland's core is young, homegrown, and productive — and the model still fla
 
 <AASVTable players="donovan-mitchell,evan-mobley" />
 
-The uncomfortable arithmetic: a second-apron team needs its stars to produce at historic levels just to break even on them. The teams the model actually likes are the ones paying *below*-apron prices for star production — which, not coincidentally, is a list headed by Oklahoma City.
+The uncomfortable arithmetic: a second-apron team needs its stars to produce at historic levels just to break even on them. The teams the model actually likes are the ones paying *below*-apron prices for star production — which, not coincidentally, is a list headed by Oklahoma City:
+
+<TeamFlex team="OKC" />
+
+That flexibility read is the whole argument in one module: a below-apron team banks optionality that a repeater second-apron team has already spent.
 
 ## What this means for trades
 
 When an apron team trades a big contract to a below-apron team, **value is created out of thin air** — the same production, the same salary, but a lower true cost on the receiving end. That asymmetry is going to drive the next five years of star movement, and it's why "who won the trade?" now has a third answer: sometimes both teams did, because the contract itself changed price in transit.
 
-*Slide the second-apron multiplier on the [dashboard](/analytics) to your own number — the argument in this piece survives anywhere above about 1.4×.*`,
+*The charts above already reflect whatever second-apron multiplier you've set on the [dashboard](/analytics) — no need to re-run anything. The argument in this piece survives anywhere above about 1.4×.*`,
     status: "published",
     author: "BOW Front Office",
     category: "Trade Analysis",
@@ -133,7 +149,9 @@ That makes the draft the last reliable source of surplus value in the league, an
 
 <PlayerCard player="victor-wembanyama" />
 
-Wembanyama produces like a max player and costs like a rotation guard. The gap between those two numbers is the single largest surplus in the database — larger than any veteran bargain, at any slider setting. And because San Antonio sits below the aprons, the model charges his dollars at face value.
+Wembanyama produces like a max player and costs like a rotation guard. The gap between those two numbers is the single largest surplus in the database — larger than any veteran bargain, at any slider setting. And because San Antonio sits below the aprons, the model charges his dollars at face value. Run it through the full verdict engine and the case only gets louder:
+
+<ContractVerdict player="victor-wembanyama" />
 
 It isn't a one-season blip, either — the impact trend has climbed every year he's been healthy:
 

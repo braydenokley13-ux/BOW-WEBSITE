@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import TeamCapSheet from "@/components/analytics/TeamCapSheet";
+import TeamBrief from "@/components/analytics/TeamBrief";
 import { getAnalyticsPlayers } from "@/lib/nba";
 import { teamFromSlug, teamName } from "@/lib/nba-teams";
 
@@ -11,8 +11,8 @@ export async function generateMetadata({ params }: { params: Promise<{ team: str
   const { team: slug } = await params;
   const team = teamFromSlug(slug);
   const name = teamName(team);
-  const title = `${name} — Cap Sheet | BOW Sports Capital Analytics`;
-  const description = `Apron-Adjusted Surplus Value for every tracked ${name} contract: production value vs. true, apron-adjusted cost.`;
+  const title = `${name} — Front Office Brief | BOW Sports Capital Analytics`;
+  const description = `The GM brief on every tracked ${name} contract: roster thesis, Franchise Strategy Index, best asset, worst liability, and the next decision — under BOW's Apron-Adjusted Surplus Value model.`;
   return {
     title,
     description,
@@ -33,7 +33,7 @@ export default async function TeamPage({ params }: { params: Promise<{ team: str
   if (players.length === 0) notFound();
 
   return (
-    <div data-screen-label="Team Cap Sheet">
+    <div data-screen-label="Front Office Brief">
       {/* breadcrumb + header, same pattern as the player page */}
       <section style={{ background: "var(--bow-paper)", padding: "clamp(20px,3vw,32px) clamp(18px,4vw,40px) clamp(24px,3vw,36px)", borderBottom: "1px solid var(--border-rule)" }}>
         <div className="bow-container-wide">
@@ -54,10 +54,10 @@ export default async function TeamPage({ params }: { params: Promise<{ team: str
         </div>
       </section>
 
-      {/* the cap sheet */}
+      {/* the front office brief + audit-trail cap sheet */}
       <section style={{ background: "var(--bow-paper)", padding: "clamp(24px,3.4vw,44px) clamp(18px,4vw,40px)" }}>
         <div className="bow-container-wide">
-          <TeamCapSheet team={team} players={allPlayers} />
+          <TeamBrief team={team} players={allPlayers} />
         </div>
       </section>
     </div>

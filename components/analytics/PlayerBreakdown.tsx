@@ -1,75 +1,100 @@
-"use client";
-
-import { DataStrip } from "@/components/ds";
-import ApronBadge from "@/components/analytics/ApronBadge";
 import SliderPanel from "@/components/analytics/SliderPanel";
 import TrendLine from "@/components/analytics/TrendLine";
-import { useAssumptions } from "@/components/analytics/useAssumptions";
+import ApronBadge from "@/components/analytics/ApronBadge";
+import { RISK_LABELS, type RiskLevel } from "@/lib/intelligence-types";
 import {
   APRON_LABELS,
   POSSESSIONS_PER_MINUTE,
   fmtMillions,
   fmtSignedMillions,
   fmtWins,
-  valuate,
   type AnalyticsPlayer,
+  type Assumptions,
+  type Valuation,
 } from "@/lib/aasv";
 import type { SeasonStat } from "@/lib/nba";
 
 const num = (v: number, digits = 1) =>
   v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
+const stepCard: React.CSSProperties = {
+  background: "var(--bow-white)",
+  border: "1px solid var(--border-rule)",
+  padding: "clamp(16px,2vw,22px)",
+};
+const stepKicker: React.CSSProperties = {
+  fontFamily: "var(--font-data)",
+  fontSize: 10.5,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+  color: "var(--bow-slate)",
+};
+const formula: React.CSSProperties = {
+  fontFamily: "var(--font-data)",
+  fontSize: 13.5,
+  lineHeight: 1.7,
+  color: "var(--bow-ink)",
+  fontVariantNumeric: "tabular-nums",
+  margin: "8px 0 0",
+};
+
+/** Impact history is oldest-season-first; latest−earliest impact (EPM else BPM), or null if <2 usable seasons. Mirrors lib/intelligence's aging proxy so the tie-in sentence below never disagrees with the verdict above it. */
+function impactTrend(history?: SeasonStat[]): number | null {
+  if (!history || history.length < 2) return null;
+  const vals = history.map((h) => h.epm ?? h.bpm).filter((x): x is number => x != null);
+  if (vals.length < 2) return null;
+  return vals[vals.length - 1] - vals[0];
+}
+
+/** One sentence tying the season-over-season trend to the memo's aging-risk read — never a bare chart. */
+function trendVerdictSentence(playerName: string, trend: number | null, agingRisk: RiskLevel): string | null {
+  if (trend == null) return null;
+  const riskWord = RISK_LABELS[agingRisk].toLowerCase();
+  const magnitude = `${trend >= 0 ? "+" : ""}${trend.toFixed(1)}`;
+  if (trend >= 0.3) {
+    return `${playerName}'s impact is trending up (${magnitude} across tracked seasons) — that upward line is why the aging-risk read stays at ${riskWord} rather than climbing.`;
+  }
+  if (trend <= -0.3) {
+    return `${playerName}'s impact is trending down (${magnitude} across tracked seasons) — that decline is a direct input into the ${riskWord} aging-risk grade on the years still owed.`;
+  }
+  return `${playerName}'s impact has held flat across tracked seasons (${magnitude}) — the ${riskWord} aging-risk grade here is driven by forward money exposure, not a trend line.`;
+}
+
 /**
  * The transparent-math view: every intermediate number between the raw
- * inputs and the final AASV figure, recomputed live from the same
- * session-persisted sliders the dashboard uses. No black box — if a
- * reader disagrees with the answer, the step they disagree with is
- * visible and adjustable.
+ * inputs and the final AASV figure, driven by the assumptions the parent
+ * memo container owns (so this section and the verdict above it never
+ * disagree). No black box — if a reader disagrees with the answer, the
+ * step they disagree with is visible and adjustable via the shared
+ * slider panel.
  */
-export default function PlayerBreakdown({ player, history }: { player: AnalyticsPlayer; history?: SeasonStat[] }) {
-  const [assumptions, setAssumptions, resetAssumptions] = useAssumptions();
-  const v = valuate(player, assumptions);
+export default function PlayerBreakdown({
+  player,
+  history,
+  assumptions,
+  onChange,
+  onReset,
+  valuation,
+  agingRisk,
+}: {
+  player: AnalyticsPlayer;
+  history?: SeasonStat[];
+  assumptions: Assumptions;
+  onChange: (a: Assumptions) => void;
+  onReset: () => void;
+  valuation: Valuation;
+  agingRisk: RiskLevel;
+}) {
+  const v = valuation;
   const noStats = v.metricUsed == null;
-
-  const stepCard: React.CSSProperties = {
-    background: "var(--bow-white)",
-    border: "1px solid var(--border-rule)",
-    padding: "clamp(16px,2vw,22px)",
-  };
-  const stepKicker: React.CSSProperties = {
-    fontFamily: "var(--font-data)",
-    fontSize: 10.5,
-    letterSpacing: "0.1em",
-    textTransform: "uppercase",
-    color: "var(--bow-slate)",
-  };
-  const formula: React.CSSProperties = {
-    fontFamily: "var(--font-data)",
-    fontSize: 13.5,
-    lineHeight: 1.7,
-    color: "var(--bow-ink)",
-    fontVariantNumeric: "tabular-nums",
-    margin: "8px 0 0",
-  };
+  const trend = impactTrend(history);
+  const trendSentence = trendVerdictSentence(player.name, trend, agingRisk);
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 380px) minmax(0, 1fr)", gap: "clamp(16px,2.4vw,28px)", alignItems: "start" }} className="bow-analytics-grid">
-      <SliderPanel assumptions={assumptions} onChange={setAssumptions} onReset={resetAssumptions} />
+      <SliderPanel assumptions={assumptions} onChange={onChange} onReset={onReset} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <DataStrip
-          dense
-          items={[
-            { label: "Production value", value: fmtMillions(v.productionValue) },
-            { label: "True cost", value: fmtMillions(v.trueCost) },
-            {
-              label: "AASV (surplus)",
-              value: fmtSignedMillions(v.aasv),
-              tone: v.aasv >= 0 ? "positive" : "negative",
-            },
-          ]}
-        />
-
         {noStats && (
           <div style={{ ...stepCard, borderLeft: "4px solid var(--bow-warning)" }}>
             <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.55, color: "var(--bow-ink)" }}>
@@ -158,21 +183,21 @@ export default function PlayerBreakdown({ player, history }: { player: Analytics
           </p>
         </div>
 
-        {/* Step 6 — season-over-season trend (only when history was fetched) */}
+        {/* Step 6 — season-over-season trend (only when history was fetched), tied into the verdict's aging-risk read */}
         {history != null && history.length >= 2 && (
           <div style={stepCard}>
-            <span style={stepKicker}>Season-over-season impact</span>
+            <span style={stepKicker}>Step 6 · Season-over-season impact</span>
             <div style={{ marginTop: 10 }}>
-              <TrendLine history={history} title={`${player.name} — EPM trend`} />
+              <TrendLine history={history} title={`${player.name} — EPM trend`} note={trendSentence ?? undefined} />
             </div>
           </div>
         )}
 
         {history != null && history.length <= 1 && (
           <div style={{ ...stepCard, borderLeft: "4px solid var(--bow-warning)" }}>
-            <span style={stepKicker}>Season-over-season impact</span>
+            <span style={stepKicker}>Step 6 · Season-over-season impact</span>
             <p style={{ margin: "8px 0 0", fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.55, color: "var(--bow-ink)" }}>
-              First season on file — the trend view unlocks once another season lands.
+              First season on file — the trend view, and its tie-in to aging risk, unlocks once another season lands.
             </p>
           </div>
         )}

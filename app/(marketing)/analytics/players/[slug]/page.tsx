@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import PlayerBreakdown from "@/components/analytics/PlayerBreakdown";
+import PlayerMemo from "@/components/analytics/PlayerMemo";
 import ArticleCard from "@/components/analytics/ArticleCard";
 import ApronBadge from "@/components/analytics/ApronBadge";
-import { getAnalyticsPlayer, getPlayerSeasonHistory } from "@/lib/nba";
+import { getAnalyticsPlayer, getAnalyticsPlayers, getPlayerSeasonHistory } from "@/lib/nba";
 import { getArticlesMentioningPlayer } from "@/lib/articles";
-import { fmtMillions } from "@/lib/aasv";
+import { buildPlayerMemo } from "@/lib/intelligence";
+import { ACTION_LABELS } from "@/lib/intelligence-types";
+import { fmtMillions, DEFAULT_ASSUMPTIONS } from "@/lib/aasv";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +16,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const player = getAnalyticsPlayer(slug);
   if (!player) return { title: "Player Not Found — BOW Analytics" };
-  const title = `${player.name} — AASV Breakdown | BOW Sports Capital Analytics`;
-  const description = `Full Apron-Adjusted Surplus Value calculation for ${player.name} (${player.team}): production value vs. the true, apron-adjusted cost of his ${fmtMillions(player.capHit)} cap hit.`;
+  const allPlayers = getAnalyticsPlayers();
+  const history = getPlayerSeasonHistory(slug);
+  const memo = buildPlayerMemo(player, allPlayers, DEFAULT_ASSUMPTIONS, history);
+  const title = `${player.name} — Investment Memo | BOW Sports Capital Analytics`;
+  const description = `${player.name} (${player.team}): ${memo.verdict.headline}. Value thesis, upside/downside cases, risk factors, and a ${ACTION_LABELS[memo.recommendation.action].toLowerCase()} recommendation — built live from the model's apron-adjusted surplus value.`;
   return {
     title,
     description,
@@ -29,13 +34,14 @@ export default async function PlayerPage({ params }: { params: Promise<{ slug: s
   const player = getAnalyticsPlayer(slug);
   if (!player) notFound();
 
+  const allPlayers = getAnalyticsPlayers();
   const coverage = getArticlesMentioningPlayer(player.slug, 3);
   const history = getPlayerSeasonHistory(player.slug);
 
   return (
     <div data-screen-label="Player Breakdown">
       {/* breadcrumb + header */}
-      <section style={{ background: "var(--bow-paper)", padding: "clamp(20px,3vw,32px) clamp(18px,4vw,40px) clamp(24px,3vw,36px)", borderBottom: "1px solid var(--border-rule)" }}>
+      <section style={{ background: "var(--bow-paper)", padding: "clamp(20px,3vw,32px) clamp(18px,4vw,40px) clamp(24px,3vw,36px)" }}>
         <div className="bow-container-wide">
           <nav aria-label="Breadcrumb" style={{ display: "flex", flexWrap: "wrap", gap: 8, fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "var(--bow-slate)" }}>
             <Link href="/analytics" style={{ color: "var(--bow-blue)" }}>
@@ -66,12 +72,8 @@ export default async function PlayerPage({ params }: { params: Promise<{ slug: s
         </div>
       </section>
 
-      {/* the transparent math */}
-      <section style={{ background: "var(--bow-paper)", padding: "clamp(24px,3.4vw,44px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
-        <div className="bow-container-wide">
-          <PlayerBreakdown player={player} history={history} />
-        </div>
-      </section>
+      {/* the investment memo — verdict deck, executive summary, memo sections, and the model's audit trail */}
+      <PlayerMemo player={player} allPlayers={allPlayers} history={history} />
 
       {/* coverage */}
       {coverage.length > 0 && (

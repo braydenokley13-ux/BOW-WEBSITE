@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { VerdictBadge } from "@/components/intelligence";
 import ApronBadge from "@/components/analytics/ApronBadge";
 import {
   fmtMillions,
@@ -11,6 +12,8 @@ import {
   type ApronStatus,
   type Assumptions,
 } from "@/lib/aasv";
+import { buildContractVerdict, buildLeagueContext } from "@/lib/intelligence";
+import type { ContractVerdict } from "@/lib/intelligence-types";
 
 type SortKey = "name" | "team" | "capHit" | "apron" | "production" | "aasv";
 
@@ -19,6 +22,7 @@ interface Row {
   production: number;
   trueCost: number;
   aasv: number;
+  verdict: ContractVerdict;
   rank: number;
 }
 
@@ -49,15 +53,20 @@ export default function ValueTable({
   const [query, setQuery] = useState("");
   const [apron, setApron] = useState<ApronStatus | "all">("all");
 
+  // League context (tracked-contract ranking) off the full list, so a
+  // verdict headline here can honestly say "top-5 of N tracked deals".
+  const ctx = useMemo(() => buildLeagueContext(players, assumptions), [players, assumptions]);
+
   const rows = useMemo(() => {
     const valued = players.map((p) => {
       const v = valuate(p, assumptions);
-      return { p, production: v.productionValue, trueCost: v.trueCost, aasv: v.aasv, rank: 0 };
+      const verdict = buildContractVerdict(p, v, assumptions, ctx);
+      return { p, production: v.productionValue, trueCost: v.trueCost, aasv: v.aasv, verdict, rank: 0 };
     });
     // Rank across the FULL list (not the filtered view) so #1 means #1 overall.
     [...valued].sort((a, b) => b.aasv - a.aasv).forEach((r, i) => (r.rank = i + 1));
     return valued;
-  }, [players, assumptions]);
+  }, [players, assumptions, ctx]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -156,6 +165,9 @@ export default function ValueTable({
                   </button>
                 </th>
               ))}
+              <th scope="col" style={thStyle}>
+                Verdict
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -180,11 +192,14 @@ export default function ValueTable({
                 <td style={{ ...tdMono, textAlign: "right", fontWeight: 700, color: r.aasv >= 0 ? "var(--bow-positive)" : "var(--bow-negative)" }}>
                   {fmtSignedMillions(r.aasv)}
                 </td>
+                <td style={{ padding: "10px 12px" }}>
+                  <VerdictBadge tier={r.verdict.tier} size="sm" />
+                </td>
               </tr>
             ))}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ padding: "22px 16px", fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)", textAlign: "center" }}>
+                <td colSpan={8} style={{ padding: "22px 16px", fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)", textAlign: "center" }}>
                   No players match that filter.
                 </td>
               </tr>
