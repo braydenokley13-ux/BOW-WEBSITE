@@ -586,9 +586,8 @@ function positiveAssetCount(r: TeamRollup): number {
   return r.contracts.filter((c) => classifyLiquidity(c.player, c.valuation) === "positive-asset").length;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- in the signature for symmetry with the other builders; the rollups passed in already carry valuations computed under these assumptions.
 export function buildFranchiseIndex(rollup: TeamRollup, allRollups: TeamRollup[], _assumptions: Assumptions): FranchiseIndex {
-  // _assumptions is in the signature for symmetry with the other builders; the rollups
-  // passed in already carry valuations computed under those assumptions.
   const n = allRollups.length;
   const allPlayers = allRollups.flatMap((r) => r.contracts.map((c) => c.player));
   const medianCap = median(allPlayers.map((p) => p.capHit));

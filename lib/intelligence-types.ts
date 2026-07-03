@@ -11,7 +11,7 @@
  * opinion — it is the model's opinion under the reader's assumptions.
  * ============================================================ */
 
-import type { AnalyticsPlayer, Assumptions, Valuation } from "@/lib/aasv";
+import type { AnalyticsPlayer, Valuation } from "@/lib/aasv";
 import type { TeamRollup } from "@/lib/team-aasv";
 
 /* ---------------- contract verdicts ---------------- */
