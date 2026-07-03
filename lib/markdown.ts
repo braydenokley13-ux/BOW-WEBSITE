@@ -19,6 +19,14 @@
  *
  *   <TeamCapSheet team="OKC" />
  *   <TrendChart player="jaylen-brown" />
+ *
+ * Three "decision module" shortcodes wrap the intelligence engine
+ * (lib/intelligence.ts) so a claim in the prose renders live analysis,
+ * not just a number:
+ *
+ *   <ContractVerdict player="victor-wembanyama" />
+ *   <TeamFlex team="OKC" />
+ *   <ScenarioBand player="jaylen-brown" />
  * ============================================================ */
 
 export type InlineNode =
@@ -29,7 +37,15 @@ export type InlineNode =
   | { type: "link"; href: string; children: InlineNode[] }
   | { type: "image"; alt: string; src: string };
 
-export type EmbedName = "PlayerCard" | "AASVChart" | "AASVTable" | "TeamCapSheet" | "TrendChart";
+export type EmbedName =
+  | "PlayerCard"
+  | "AASVChart"
+  | "AASVTable"
+  | "TeamCapSheet"
+  | "TrendChart"
+  | "ContractVerdict"
+  | "TeamFlex"
+  | "ScenarioBand";
 
 export type Block =
   | { type: "heading"; level: 2 | 3 | 4; children: InlineNode[] }
@@ -41,26 +57,37 @@ export type Block =
   | { type: "image"; alt: string; src: string }
   | { type: "embed"; name: EmbedName; attrs: Record<string, string> };
 
-const EMBED_NAMES: EmbedName[] = ["PlayerCard", "AASVChart", "AASVTable", "TeamCapSheet", "TrendChart"];
-const EMBED_RE = /^<(PlayerCard|AASVChart|AASVTable|TeamCapSheet|TrendChart)\s*((?:\w+="[^"]*"\s*)*)\/>\s*$/;
+const EMBED_NAMES: EmbedName[] = [
+  "PlayerCard",
+  "AASVChart",
+  "AASVTable",
+  "TeamCapSheet",
+  "TrendChart",
+  "ContractVerdict",
+  "TeamFlex",
+  "ScenarioBand",
+];
+const EMBED_RE =
+  /^<(PlayerCard|AASVChart|AASVTable|TeamCapSheet|TrendChart|ContractVerdict|TeamFlex|ScenarioBand)\s*((?:\w+="[^"]*"\s*)*)\/>\s*$/;
 
 /** Player slugs referenced by every embed in a document (to prefetch data in one query). */
 export function collectEmbedSlugs(blocks: Block[]): string[] {
   const slugs = new Set<string>();
   for (const b of blocks) {
     if (b.type !== "embed") continue;
-    // Covers PlayerCard/TrendChart's "player" attr and AASVChart/AASVTable's "players" attr.
+    // Covers PlayerCard/TrendChart/ContractVerdict/ScenarioBand's "player" attr
+    // and AASVChart/AASVTable's "players" attr.
     const raw = b.attrs.player ?? b.attrs.players ?? "";
     for (const s of raw.split(",").map((x) => x.trim()).filter(Boolean)) slugs.add(s);
   }
   return [...slugs];
 }
 
-/** Team abbreviations referenced by every TeamCapSheet embed (uppercased, deduped). */
+/** Team abbreviations referenced by every TeamCapSheet/TeamFlex embed (uppercased, deduped). */
 export function collectEmbedTeams(blocks: Block[]): string[] {
   const teams = new Set<string>();
   for (const b of blocks) {
-    if (b.type !== "embed" || b.name !== "TeamCapSheet") continue;
+    if (b.type !== "embed" || (b.name !== "TeamCapSheet" && b.name !== "TeamFlex")) continue;
     const raw = (b.attrs.team ?? "").trim();
     if (raw) teams.add(raw.toUpperCase());
   }
