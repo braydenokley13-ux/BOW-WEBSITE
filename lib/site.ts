@@ -26,6 +26,7 @@ export const NAV: NavItem[] = [
   { label: "Glossary", href: "/glossary" },
   { label: "Standards", href: "/standards" },
   { label: "Lessons", href: "/lessons" },
+  { label: "Analytics", href: "/analytics" },
   { label: "Simulations", href: "/simulation" },
   { label: "Podcast", href: "/podcast" },
   { label: "Highway World", href: "/highway-world" },
@@ -52,6 +53,8 @@ export const FOOTER_COLS: FooterCol[] = [
     head: "Explore",
     links: [
       { label: "Lessons", href: "/lessons" },
+      { label: "NBA Analytics", href: "/analytics" },
+      { label: "Analytics Articles", href: "/analytics/articles" },
       { label: "Simulations", href: "/simulation" },
       { label: "Podcast", href: "/podcast" },
       { label: "Highway World", href: "/highway-world" },
