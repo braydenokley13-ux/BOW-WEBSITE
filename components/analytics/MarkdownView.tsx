@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Block, InlineNode } from "@/lib/markdown";
 import { DEFAULT_ASSUMPTIONS, type AnalyticsPlayer, type Assumptions } from "@/lib/aasv";
-import { AASVChartEmbed, AASVTableEmbed, EmbedMissing, PlayerCardEmbed } from "@/components/analytics/embeds";
+import { AASVChartEmbed, AASVTableEmbed, EmbedMissing, PlayerCardEmbed, TeamCapSheetEmbed, TrendChartEmbed } from "@/components/analytics/embeds";
+import type { SeasonStat } from "@/lib/nba";
 
 /* ============================================================
  * MarkdownView — renders the publication's markdown AST with the
@@ -15,8 +16,12 @@ import { AASVChartEmbed, AASVTableEmbed, EmbedMissing, PlayerCardEmbed } from "@
 
 interface MarkdownViewProps {
   blocks: Block[];
-  /** Prefetched players keyed by slug — the data the embeds draw from. */
+  /** Prefetched players keyed by slug — the data the embeds draw from. TeamCapSheet needs every
+   *  tracked player for the teams it references, not just embed-referenced slugs — see the
+   *  article page's prefetch, which merges those in under the same shape. */
   players: Record<string, AnalyticsPlayer>;
+  /** Season histories keyed by slug, for <TrendChart/> — only populated for embed-referenced slugs. */
+  playerHistories?: Record<string, SeasonStat[]>;
   assumptions?: Assumptions;
 }
 
@@ -66,12 +71,22 @@ function renderInline(nodes: InlineNode[], keyPrefix = ""): React.ReactNode[] {
 function EmbedBlock({
   block,
   players,
+  playerHistories,
   assumptions,
 }: {
   block: Extract<Block, { type: "embed" }>;
   players: Record<string, AnalyticsPlayer>;
+  playerHistories: Record<string, SeasonStat[]>;
   assumptions: Assumptions;
 }) {
+  // TeamCapSheet keys off a team abbreviation, not a player slug — the
+  // full players map is handed to aggregateTeam, which filters by team
+  // itself, so an unknown/empty team just yields an empty rollup (missing state).
+  if (block.name === "TeamCapSheet") {
+    const team = (block.attrs.team ?? "").trim().toUpperCase();
+    return <TeamCapSheetEmbed team={team} players={Object.values(players)} assumptions={assumptions} />;
+  }
+
   const requested = (block.attrs.player ?? block.attrs.players ?? "")
     .split(",")
     .map((s) => s.trim())
@@ -89,11 +104,12 @@ function EmbedBlock({
       {block.name === "PlayerCard" && <PlayerCardEmbed player={found[0]} assumptions={assumptions} />}
       {block.name === "AASVChart" && <AASVChartEmbed players={found} assumptions={assumptions} />}
       {block.name === "AASVTable" && <AASVTableEmbed players={found} assumptions={assumptions} />}
+      {block.name === "TrendChart" && <TrendChartEmbed player={found[0]} history={playerHistories[found[0].slug] ?? []} />}
     </>
   );
 }
 
-export default function MarkdownView({ blocks, players, assumptions = DEFAULT_ASSUMPTIONS }: MarkdownViewProps) {
+export default function MarkdownView({ blocks, players, playerHistories = {}, assumptions = DEFAULT_ASSUMPTIONS }: MarkdownViewProps) {
   return (
     <div>
       {blocks.map((b, i) => {
@@ -168,7 +184,7 @@ export default function MarkdownView({ blocks, players, assumptions = DEFAULT_AS
               </figure>
             );
           case "embed":
-            return <EmbedBlock key={i} block={b} players={players} assumptions={assumptions} />;
+            return <EmbedBlock key={i} block={b} players={players} playerHistories={playerHistories} assumptions={assumptions} />;
         }
       })}
     </div>

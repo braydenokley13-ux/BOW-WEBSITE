@@ -45,6 +45,9 @@ export default function AnalyticsPage() {
             <Link href="/analytics/articles" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
               Read the publication →
             </Link>
+            <Link href="/analytics/teams" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
+              See the team rollup →
+            </Link>
             <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.05em", color: "#6d7078" }}>
               AASV = wins × $/win − cap hit × apron multiplier
             </span>

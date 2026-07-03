@@ -3,6 +3,7 @@
 import { DataStrip } from "@/components/ds";
 import ApronBadge from "@/components/analytics/ApronBadge";
 import SliderPanel from "@/components/analytics/SliderPanel";
+import TrendLine from "@/components/analytics/TrendLine";
 import { useAssumptions } from "@/components/analytics/useAssumptions";
 import {
   APRON_LABELS,
@@ -13,6 +14,7 @@ import {
   valuate,
   type AnalyticsPlayer,
 } from "@/lib/aasv";
+import type { SeasonStat } from "@/lib/nba";
 
 const num = (v: number, digits = 1) =>
   v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -24,7 +26,7 @@ const num = (v: number, digits = 1) =>
  * reader disagrees with the answer, the step they disagree with is
  * visible and adjustable.
  */
-export default function PlayerBreakdown({ player }: { player: AnalyticsPlayer }) {
+export default function PlayerBreakdown({ player, history }: { player: AnalyticsPlayer; history?: SeasonStat[] }) {
   const [assumptions, setAssumptions, resetAssumptions] = useAssumptions();
   const v = valuate(player, assumptions);
   const noStats = v.metricUsed == null;
@@ -155,6 +157,25 @@ export default function PlayerBreakdown({ player }: { player: AnalyticsPlayer })
               : `${player.name} costs more than he produces under these assumptions — the contract eats value.`}
           </p>
         </div>
+
+        {/* Step 6 — season-over-season trend (only when history was fetched) */}
+        {history != null && history.length >= 2 && (
+          <div style={stepCard}>
+            <span style={stepKicker}>Season-over-season impact</span>
+            <div style={{ marginTop: 10 }}>
+              <TrendLine history={history} title={`${player.name} — EPM trend`} />
+            </div>
+          </div>
+        )}
+
+        {history != null && history.length <= 1 && (
+          <div style={{ ...stepCard, borderLeft: "4px solid var(--bow-warning)" }}>
+            <span style={stepKicker}>Season-over-season impact</span>
+            <p style={{ margin: "8px 0 0", fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.55, color: "var(--bow-ink)" }}>
+              First season on file — the trend view unlocks once another season lands.
+            </p>
+          </div>
+        )}
 
         <style>{`@media (max-width: 900px) { .bow-analytics-grid { grid-template-columns: 1fr !important; } }`}</style>
       </div>

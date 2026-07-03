@@ -72,6 +72,48 @@ export interface StatsFreshness {
   season: string | null;
 }
 
+/** One season of a player's cached advanced-stat row (source: snapshot CSV or nba_ingest.py). */
+export interface SeasonStat {
+  season: string;
+  games: number;
+  minutes: number;
+  epm: number | null;
+  bpm: number | null;
+  statSource: string;
+}
+
+function rowToSeasonStat(r: any): SeasonStat {
+  return {
+    season: r.season,
+    games: Number(r.games) || 0,
+    minutes: Number(r.minutes) || 0,
+    epm: r.epm == null ? null : Number(r.epm),
+    bpm: r.bpm == null ? null : Number(r.bpm),
+    statSource: r.source ?? "snapshot",
+  };
+}
+
+/** One player's full stat history, oldest season first (season labels sort lexically: "2023-24" < "2024-25" < "2025-26"). */
+export function getPlayerSeasonHistory(slug: string): SeasonStat[] {
+  const rows = getDb()
+    .prepare(`SELECT season, games, minutes, epm, bpm, source FROM nba_player_stats WHERE player_slug = ? ORDER BY season ASC`)
+    .all(slug) as any[];
+  return rows.map(rowToSeasonStat);
+}
+
+/** Every curated player's season history in one query, grouped by slug. Not consumed yet this phase — for a future bulk trends view. */
+export function getAllPlayerSeasonHistories(): Record<string, SeasonStat[]> {
+  const rows = getDb()
+    .prepare(`SELECT player_slug, season, games, minutes, epm, bpm, source FROM nba_player_stats ORDER BY player_slug ASC, season ASC`)
+    .all() as any[];
+  const bySlug: Record<string, SeasonStat[]> = {};
+  for (const r of rows) {
+    const slug = r.player_slug as string;
+    (bySlug[slug] ??= []).push(rowToSeasonStat(r));
+  }
+  return bySlug;
+}
+
 export function getStatsFreshness(): StatsFreshness {
   const db = getDb();
   const players = (db.prepare("SELECT COUNT(*) AS n FROM nba_players").get() as any).n as number;

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import PlayerBreakdown from "@/components/analytics/PlayerBreakdown";
 import ArticleCard from "@/components/analytics/ArticleCard";
 import ApronBadge from "@/components/analytics/ApronBadge";
-import { getAnalyticsPlayer } from "@/lib/nba";
+import { getAnalyticsPlayer, getPlayerSeasonHistory } from "@/lib/nba";
 import { getArticlesMentioningPlayer } from "@/lib/articles";
 import { fmtMillions } from "@/lib/aasv";
 
@@ -30,6 +30,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ slug: s
   if (!player) notFound();
 
   const coverage = getArticlesMentioningPlayer(player.slug, 3);
+  const history = getPlayerSeasonHistory(player.slug);
 
   return (
     <div data-screen-label="Player Breakdown">
@@ -68,7 +69,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ slug: s
       {/* the transparent math */}
       <section style={{ background: "var(--bow-paper)", padding: "clamp(24px,3.4vw,44px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
         <div className="bow-container-wide">
-          <PlayerBreakdown player={player} />
+          <PlayerBreakdown player={player} history={history} />
         </div>
       </section>
 

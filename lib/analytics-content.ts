@@ -4,9 +4,15 @@
  * Content only (no database imports) so lib/db.ts can seed from it
  * without a circular dependency, the same way lib/account feeds the
  * LMS seed. These three pieces demonstrate the publication's core
- * trick: articles that embed live model output via shortcodes
- * (<PlayerCard/>, <AASVChart/>, <AASVTable/>) instead of pasted
- * screenshots that go stale.
+ * trick: articles that embed live model output via shortcodes instead
+ * of pasted screenshots that go stale. Self-closing, one per line
+ * (see lib/markdown.ts for the parser):
+ *
+ *   <PlayerCard player="jaylen-brown" />
+ *   <AASVChart players="jaylen-brown,jayson-tatum" />
+ *   <AASVTable players="jaylen-brown,derrick-white" />
+ *   <TeamCapSheet team="OKC" />
+ *   <TrendChart player="jaylen-brown" />
  * ============================================================ */
 
 export interface SeedArticle {
@@ -128,6 +134,10 @@ That makes the draft the last reliable source of surplus value in the league, an
 <PlayerCard player="victor-wembanyama" />
 
 Wembanyama produces like a max player and costs like a rotation guard. The gap between those two numbers is the single largest surplus in the database — larger than any veteran bargain, at any slider setting. And because San Antonio sits below the aprons, the model charges his dollars at face value.
+
+It isn't a one-season blip, either — the impact trend has climbed every year he's been healthy:
+
+<TrendChart player="victor-wembanyama" />
 
 ## Draft economics, stated plainly
 

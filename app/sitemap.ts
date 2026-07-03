@@ -4,6 +4,7 @@ import { lessons } from "@/lib/lessons";
 import { getAllPartnerOrgs } from "@/lib/partners";
 import { getAnalyticsPlayers } from "@/lib/nba";
 import { getPublishedArticles } from "@/lib/articles";
+import { teamSlug } from "@/lib/nba-teams";
 
 /** Static marketing routes; lesson-detail routes are appended below. */
 const ROUTES = [
@@ -15,6 +16,7 @@ const ROUTES = [
   "/lessons",
   "/analytics",
   "/analytics/articles",
+  "/analytics/teams",
   "/simulation",
   "/podcast",
   "/feed",
@@ -64,5 +66,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     changeFrequency: "weekly",
     priority: 0.8,
   }));
-  return [...staticEntries, ...lessonEntries, ...partnerEntries, ...playerEntries, ...articleEntries];
+  // One entry per team that actually has tracked players — no point
+  // indexing a cap-sheet page that would just 404.
+  const teamsWithPlayers = new Set(getAnalyticsPlayers().map((p) => p.team));
+  const teamEntries: MetadataRoute.Sitemap = [...teamsWithPlayers].map((team) => ({
+    url: `${SITE.url}/analytics/teams/${teamSlug(team)}`,
+    lastModified: now,
+    changeFrequency: "weekly",
+    priority: 0.5,
+  }));
+  return [...staticEntries, ...lessonEntries, ...partnerEntries, ...playerEntries, ...articleEntries, ...teamEntries];
 }
