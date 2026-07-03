@@ -39,13 +39,12 @@ export default function CapStackBar({
   const { blocks, denom } = useMemo(() => {
     const sum = segments.reduce((s, seg) => s + Math.max(0, seg.value), 0);
     const denom = total ?? sum;
-    let x = 0;
-    const blocks = segments.map((seg) => {
-      const w = denom > 0 ? (Math.max(0, seg.value) / denom) * W : 0;
-      const block = { seg, x, w };
-      x += w;
-      return block;
-    });
+    const widths = segments.map((seg) => (denom > 0 ? (Math.max(0, seg.value) / denom) * W : 0));
+    const blocks = segments.map((seg, i) => ({
+      seg,
+      w: widths[i],
+      x: widths.slice(0, i).reduce((s, v) => s + v, 0),
+    }));
     return { blocks, denom };
   }, [segments, total]);
 

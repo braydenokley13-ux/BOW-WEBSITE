@@ -9,6 +9,7 @@ import { restoreRevision, saveArticle, setArticleStatus, type ArticleInput } fro
 import { ARTICLE_CATEGORIES, type Article, type ArticleRevision } from "@/lib/articles-shared";
 import { parseMarkdown } from "@/lib/markdown";
 import type { AnalyticsPlayer } from "@/lib/aasv";
+import type { SeasonStat } from "@/lib/nba";
 
 /**
  * The authoring interface: markdown editor with a live preview that
@@ -20,10 +21,13 @@ import type { AnalyticsPlayer } from "@/lib/aasv";
 export default function ArticleEditor({
   article,
   players,
+  playerHistories = {},
   revisions,
 }: {
   article: Article | null;
   players: Record<string, AnalyticsPlayer>;
+  /** Season histories keyed by slug, for the live preview's <TrendChart/>. */
+  playerHistories?: Record<string, SeasonStat[]>;
   revisions: ArticleRevision[];
 }) {
   const router = useRouter();
@@ -311,6 +315,12 @@ export default function ArticleEditor({
         <button type="button" style={{ ...toolBtn, color: "var(--bow-blue)" }} onClick={() => insertBlock(`<AASVTable players="${slugList.slice(0, 3).join(",")}" />`)}>
           + AASV table
         </button>
+        <button type="button" style={{ ...toolBtn, color: "var(--bow-blue)" }} onClick={() => insertBlock(`<TeamCapSheet team="OKC" />`)}>
+          + Team cap sheet
+        </button>
+        <button type="button" style={{ ...toolBtn, color: "var(--bow-blue)" }} onClick={() => insertBlock(`<TrendChart player="${exampleSlug}" />`)}>
+          + Trend chart
+        </button>
         <span style={{ marginLeft: "auto", display: "flex", gap: 0 }}>
           {(["write", "split", "preview"] as const).map((m) => (
             <button
@@ -373,7 +383,7 @@ export default function ArticleEditor({
               </h1>
             )}
             {dek && <p style={{ margin: "0 0 22px", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.55, color: "var(--bow-slate)" }}>{dek}</p>}
-            <MarkdownView blocks={blocks} players={players} />
+            <MarkdownView blocks={blocks} players={players} playerHistories={playerHistories} />
           </div>
         )}
       </div>

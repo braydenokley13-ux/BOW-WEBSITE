@@ -5,8 +5,8 @@ import MarkdownView from "@/components/analytics/MarkdownView";
 import ArticleCard, { formatArticleDate } from "@/components/analytics/ArticleCard";
 import ShareButtons from "@/components/analytics/ShareButtons";
 import { bumpViewCount, getPublishedArticleBySlug, getRelatedArticles } from "@/lib/articles";
-import { getAnalyticsPlayersBySlugs } from "@/lib/nba";
-import { collectEmbedSlugs, parseMarkdown } from "@/lib/markdown";
+import { getAnalyticsPlayers, getAnalyticsPlayersBySlugs, getPlayerSeasonHistory, type SeasonStat } from "@/lib/nba";
+import { collectEmbedSlugs, collectEmbedTeams, parseMarkdown } from "@/lib/markdown";
 import type { AnalyticsPlayer } from "@/lib/aasv";
 
 // Embeds must show the model's CURRENT values, and reads count views.
@@ -52,6 +52,21 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   const embedPlayers = getAnalyticsPlayersBySlugs(collectEmbedSlugs(blocks));
   const playerMap: Record<string, AnalyticsPlayer> = {};
   for (const p of embedPlayers) playerMap[p.slug] = p;
+
+  // <TeamCapSheet/> needs every tracked player for its team, not just the
+  // slugs an author explicitly embedded — pull the full curated list and
+  // merge its team members in when the body actually references a team.
+  const embedTeams = collectEmbedTeams(blocks);
+  if (embedTeams.length > 0) {
+    for (const p of getAnalyticsPlayers()) {
+      if (embedTeams.includes(p.team)) playerMap[p.slug] = p;
+    }
+  }
+
+  // <TrendChart/> needs each embedded player's season history.
+  const playerHistories: Record<string, SeasonStat[]> = Object.fromEntries(
+    collectEmbedSlugs(blocks).map((s) => [s, getPlayerSeasonHistory(s)]),
+  );
 
   const related = getRelatedArticles(article, 3);
 
@@ -109,7 +124,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
         {/* body */}
         <div style={{ background: "#fff", padding: "clamp(36px,5vw,64px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
           <div style={{ maxWidth: 780, margin: "0 auto" }}>
-            <MarkdownView blocks={blocks} players={playerMap} />
+            <MarkdownView blocks={blocks} players={playerMap} playerHistories={playerHistories} />
 
             {/* tags */}
             {article.tags.length > 0 && (

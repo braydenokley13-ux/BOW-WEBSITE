@@ -23,40 +23,21 @@ import { aggregateTeam, type TeamContract } from "@/lib/team-aasv";
  * signal on a per-contract bar: it says WHERE the value sits, not just
  * how expensive the team's tax bracket is.
  */
-export default function TeamCapSheet({ team, players }: { team: string; players: AnalyticsPlayer[] }) {
-  const [assumptions, setAssumptions, resetAssumptions] = useAssumptions();
+const stepCard: React.CSSProperties = {
+  background: "var(--bow-white)",
+  border: "1px solid var(--border-rule)",
+  padding: "clamp(16px,2vw,22px)",
+};
+const stepKicker: React.CSSProperties = {
+  fontFamily: "var(--font-data)",
+  fontSize: 10.5,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+  color: "var(--bow-slate)",
+};
 
-  const rollup = useMemo(() => aggregateTeam(players, team, assumptions), [players, team, assumptions]);
-
-  const stepCard: React.CSSProperties = {
-    background: "var(--bow-white)",
-    border: "1px solid var(--border-rule)",
-    padding: "clamp(16px,2vw,22px)",
-  };
-  const stepKicker: React.CSSProperties = {
-    fontFamily: "var(--font-data)",
-    fontSize: 10.5,
-    letterSpacing: "0.1em",
-    textTransform: "uppercase",
-    color: "var(--bow-slate)",
-  };
-
-  if (rollup == null) {
-    return (
-      <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)" }}>
-        No tracked contracts for {teamName(team)} yet.
-      </p>
-    );
-  }
-
-  const segments = rollup.contracts.map((c) => ({
-    slug: c.player.slug,
-    label: c.player.name,
-    value: c.player.capHit,
-    color: c.valuation.aasv >= 0 ? "#158a55" /* --bow-positive */ : "#d63b3b" /* --bow-negative */,
-  }));
-
-  const ContractCard = ({ label, contract }: { label: string; contract: TeamContract }) => (
+function ContractCard({ label, contract }: { label: string; contract: TeamContract }) {
+  return (
     <div style={{ ...stepCard, borderLeft: `4px solid ${contract.valuation.aasv >= 0 ? "var(--bow-positive)" : "var(--bow-negative)"}` }}>
       <span style={stepKicker}>{label}</span>
       <Link
@@ -74,6 +55,27 @@ export default function TeamCapSheet({ team, players }: { team: string; players:
       </p>
     </div>
   );
+}
+
+export default function TeamCapSheet({ team, players }: { team: string; players: AnalyticsPlayer[] }) {
+  const [assumptions, setAssumptions, resetAssumptions] = useAssumptions();
+
+  const rollup = useMemo(() => aggregateTeam(players, team, assumptions), [players, team, assumptions]);
+
+  if (rollup == null) {
+    return (
+      <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)" }}>
+        No tracked contracts for {teamName(team)} yet.
+      </p>
+    );
+  }
+
+  const segments = rollup.contracts.map((c) => ({
+    slug: c.player.slug,
+    label: c.player.name,
+    value: c.player.capHit,
+    color: c.valuation.aasv >= 0 ? "#158a55" /* --bow-positive */ : "#d63b3b" /* --bow-negative */,
+  }));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "clamp(18px,2.4vw,28px)" }}>

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import ApronBadge from "@/components/analytics/ApronBadge";
 import ValueScatter from "@/components/analytics/ValueScatter";
+import CapStackBar from "@/components/analytics/CapStackBar";
+import TrendLine from "@/components/analytics/TrendLine";
 import {
   DEFAULT_ASSUMPTIONS,
   fmtMillions,
@@ -10,16 +12,23 @@ import {
   type AnalyticsPlayer,
   type Assumptions,
 } from "@/lib/aasv";
+import { teamName, teamSlug } from "@/lib/nba-teams";
+import { aggregateTeam } from "@/lib/team-aasv";
+import type { SeasonStat } from "@/lib/nba";
 
 /* ============================================================
  * Article data embeds — the presentational halves of the
- * <PlayerCard/>, <AASVChart/>, <AASVTable/> shortcodes.
+ * <PlayerCard/>, <AASVChart/>, <AASVTable/>, <TeamCapSheet/>, and
+ * <TrendChart/> shortcodes.
  *
  * They receive already-fetched player rows (the article page and the
- * editor preview both prefetch via collectEmbedSlugs), compute values
- * with lib/aasv, and reuse the same visual language as /analytics —
- * so a number quoted in a story is ALWAYS the model's current number.
- * No directives: rendered by server pages and the client editor alike.
+ * editor preview both prefetch via collectEmbedSlugs / collectEmbedTeams),
+ * compute values with lib/aasv or lib/team-aasv, and reuse the same
+ * visual language as /analytics — so a number quoted in a story is
+ * ALWAYS the model's current number. No directives: rendered by server
+ * pages and the client editor alike. lib/nba.ts is server-only, so this
+ * file never imports its functions — only the SeasonStat TYPE, with
+ * history handed in as a prop.
  * ============================================================ */
 
 export function EmbedMissing({ slugs }: { slugs: string[] }) {
@@ -160,6 +169,86 @@ export function AASVChartEmbed({ players, assumptions = DEFAULT_ASSUMPTIONS }: {
       <p style={{ margin: "6px 0 0", fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
         Rendered at default model assumptions · same chart, all players, on the <Link href="/analytics" style={{ color: "var(--bow-blue)" }}>dashboard</Link>
       </p>
+    </div>
+  );
+}
+
+/** Team-label variant of EmbedMissing — a team with no tracked contracts on file. */
+function TeamEmbedMissing({ team }: { team: string }) {
+  return (
+    <div
+      style={{
+        border: "1px dashed var(--bow-negative)",
+        background: "var(--bow-negative-tint)",
+        padding: "12px 16px",
+        fontFamily: "var(--font-data)",
+        fontSize: 13,
+        color: "var(--bow-negative)",
+        margin: "22px 0",
+      }}
+    >
+      No tracked contracts for {team ? teamName(team) : "(no team attribute)"} — check the abbreviation against the
+      curated list on /analytics.
+    </div>
+  );
+}
+
+export function TeamCapSheetEmbed({ team, players, assumptions = DEFAULT_ASSUMPTIONS }: { team: string; players: AnalyticsPlayer[]; assumptions?: Assumptions }) {
+  const rollup = aggregateTeam(players, team, assumptions);
+  if (rollup == null) return <TeamEmbedMissing team={team} />;
+
+  const segments = rollup.contracts.map((c) => ({
+    slug: c.player.slug,
+    label: c.player.name,
+    value: c.player.capHit,
+    color: c.valuation.aasv >= 0 ? "#158a55" /* --bow-positive */ : "#d63b3b" /* --bow-negative */,
+  }));
+
+  return (
+    <div style={{ margin: "26px 0", border: "1px solid var(--border-rule)", background: "var(--bow-white)", padding: "18px 20px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+        <Link
+          href={`/analytics/teams/${teamSlug(team)}`}
+          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)", textDecoration: "none" }}
+        >
+          {teamName(team)} · Cap Sheet →
+        </Link>
+        <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)", border: "1px solid var(--border-rule)", padding: "3px 9px" }}>
+          {rollup.trackedCount} contract{rollup.trackedCount === 1 ? "" : "s"} tracked
+        </span>
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <CapStackBar segments={segments} />
+      </div>
+      <p style={{ margin: "14px 0 0", fontFamily: "var(--font-data)", fontSize: 15, fontWeight: 700, color: rollup.totalAasv >= 0 ? "var(--bow-positive)" : "var(--bow-negative)" }}>
+        {fmtSignedMillions(rollup.totalAasv)} total AASV
+      </p>
+      <p style={{ margin: "6px 0 0", fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
+        Live at default model assumptions · full sheet on{" "}
+        <Link href={`/analytics/teams/${teamSlug(team)}`} style={{ color: "var(--bow-blue)" }}>
+          the team page
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+export function TrendChartEmbed({ player, history }: { player: AnalyticsPlayer; history: SeasonStat[] }) {
+  if (history.length <= 1) {
+    return (
+      <div style={{ margin: "26px 0", border: "1px solid var(--border-rule)", borderLeft: "4px solid var(--bow-warning)", background: "var(--bow-white)", padding: "14px 18px" }}>
+        <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
+          Season-over-season impact
+        </span>
+        <p style={{ margin: "8px 0 0", fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.55, color: "var(--bow-ink)" }}>
+          First season on file for {player.name} — the trend view unlocks once another season lands.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div style={{ margin: "26px 0", border: "1px solid var(--border-rule)", background: "var(--bow-white)", padding: "18px 20px" }}>
+      <TrendLine history={history} title={`${player.name} — season-over-season impact`} />
     </div>
   );
 }

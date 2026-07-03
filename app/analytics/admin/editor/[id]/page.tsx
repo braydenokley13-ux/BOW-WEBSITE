@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import ArticleEditor from "@/components/analytics/ArticleEditor";
 import { getArticleByIdAdmin, getArticleRevisions } from "@/lib/articles";
-import { getAnalyticsPlayers } from "@/lib/nba";
+import { getAllPlayerSeasonHistories, getAnalyticsPlayers } from "@/lib/nba";
 import type { AnalyticsPlayer } from "@/lib/aasv";
 
 export const dynamic = "force-dynamic";
@@ -22,11 +22,16 @@ export default async function EditorPage({ params }: { params: Promise<{ id: str
   const playerMap: Record<string, AnalyticsPlayer> = {};
   for (const p of players) playerMap[p.slug] = p;
 
+  // One query for every player's history — cheap at this data size, and it
+  // lets the live preview render <TrendChart/> for ANY slug the author types,
+  // not just the ones already referenced in the body.
+  const playerHistories = getAllPlayerSeasonHistories();
+
   const revisions = article ? getArticleRevisions(article.id) : [];
 
   return (
     <div style={{ padding: "clamp(18px,2.6vw,32px) clamp(14px,3vw,32px)" }}>
-      <ArticleEditor article={article} players={playerMap} revisions={revisions} />
+      <ArticleEditor article={article} players={playerMap} playerHistories={playerHistories} revisions={revisions} />
     </div>
   );
 }
