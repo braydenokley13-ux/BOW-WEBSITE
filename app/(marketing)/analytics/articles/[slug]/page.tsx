@@ -53,12 +53,15 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   const playerMap: Record<string, AnalyticsPlayer> = {};
   for (const p of embedPlayers) playerMap[p.slug] = p;
 
-  // <TeamCapSheet/> needs every tracked player for its team, not just the
-  // slugs an author explicitly embedded — pull the full curated list and
-  // merge its team members in when the body actually references a team.
+  // The full curated list — <TeamCapSheet/>/<TeamFlex/> need every tracked
+  // player for their team (not just the slugs an author explicitly
+  // embedded), and <ContractVerdict/>/<TeamFlex/> need the whole tracked
+  // set to rank/score against, not just this article's referenced slugs.
+  const allPlayers = getAnalyticsPlayers();
+
   const embedTeams = collectEmbedTeams(blocks);
   if (embedTeams.length > 0) {
-    for (const p of getAnalyticsPlayers()) {
+    for (const p of allPlayers) {
       if (embedTeams.includes(p.team)) playerMap[p.slug] = p;
     }
   }
@@ -124,7 +127,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
         {/* body */}
         <div style={{ background: "#fff", padding: "clamp(36px,5vw,64px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
           <div style={{ maxWidth: 780, margin: "0 auto" }}>
-            <MarkdownView blocks={blocks} players={playerMap} playerHistories={playerHistories} />
+            <MarkdownView blocks={blocks} players={playerMap} playerHistories={playerHistories} allPlayers={allPlayers} />
 
             {/* tags */}
             {article.tags.length > 0 && (
