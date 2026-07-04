@@ -128,6 +128,12 @@ That flexibility read is the whole argument in one module: a below-apron team ba
 
 When an apron team trades a big contract to a below-apron team, **value is created out of thin air** — the same production, the same salary, but a lower true cost on the receiving end. That asymmetry is going to drive the next five years of star movement, and it's why "who won the trade?" now has a third answer: sometimes both teams did, because the contract itself changed price in transit.
 
+Here is that mechanism on a concrete pair — the model reprices each contract at its new team's apron tier and reports the surplus the move creates before anyone judges the basketball fit:
+
+<TradeAnalysis send="karl-anthony-towns" receive="zion-williamson" />
+
+Run any two contracts through it yourself in the [Trade Machine](/analytics/trade). The lesson repeats: the biggest surplus almost always appears when the most expensive contract moves toward the lowest-multiplier books.
+
 *The charts above already reflect whatever second-apron multiplier you've set on the [dashboard](/analytics) — no need to re-run anything. The argument in this piece survives anywhere above about 1.4×.*`,
     status: "published",
     author: "BOW Front Office",

@@ -17,8 +17,8 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
-// Values come from the live SQLite cache (refreshed by the Python ingest);
-// render per-request so a data refresh shows without a rebuild.
+// Values come from the live SQLite cache (refreshed by the TypeScript nba
+// ingest); render per-request so a data refresh shows without a rebuild.
 export const dynamic = "force-dynamic";
 
 export default function AnalyticsPage() {
@@ -47,6 +47,9 @@ export default function AnalyticsPage() {
             </Link>
             <Link href="/analytics/teams" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
               See the team rollup →
+            </Link>
+            <Link href="/analytics/trade" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
+              Open the trade machine →
             </Link>
             <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.05em", color: "#6d7078" }}>
               AASV = wins × $/win − cap hit × apron multiplier

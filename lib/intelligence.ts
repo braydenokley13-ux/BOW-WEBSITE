@@ -26,6 +26,7 @@ import {
   fmtSignedMillions,
   fmtWins,
   ASSUMPTION_BOUNDS,
+  APRON_LABELS,
   type AnalyticsPlayer,
   type Assumptions,
   type ApronStatus,
@@ -50,6 +51,9 @@ import {
   type WindowState,
   type TeamBrief,
   type LeagueContext,
+  type TradeSide,
+  type TradeSideVerdict,
+  type TradeAnalysis,
 } from "@/lib/intelligence-types";
 
 /* ============================================================
@@ -831,4 +835,187 @@ export function buildTeamBrief(
     .replace(/\.$/, "")}.`;
 
   return { rollup, thesis, window, index, bestAsset, worstLiability, apronRisk, nextDecision, strategicWarning };
+}
+
+/* ============================================================
+ * 7. Trade analysis — the apron era's defining trick.
+ *
+ * The same contract has a DIFFERENT true cost on different teams, because
+ * the apron multiplier is a property of the receiving team, not the player.
+ * Production, by contrast, travels with the player unchanged. So when two
+ * contracts swap teams, surplus can be created (or destroyed) out of nothing
+ * but the apron math:
+ *
+ *   valueCreated = (capA − capB) × (multA − multB)
+ *
+ * — strictly positive when the pricier contract moves to the lower-multiplier
+ * team. That asymmetry is why an apron team and a below-apron team can BOTH
+ * win the same trade, and it's the mechanism this module makes visible.
+ *
+ * Pure and deterministic like every other builder here: it recomputes live
+ * as the reader drags the apron-multiplier sliders, so "who won?" is always
+ * the model's answer under the reader's assumptions.
+ * ============================================================ */
+
+/** ± surplus swing (raw dollars) at which a side reads as a clear winner or loser rather than a wash. */
+const TRADE_SIDE_THRESHOLD = 4_000_000;
+/** |valueCreated| under this reads as "no real repricing" — the trade is about fit, not price. */
+const TRADE_EVEN_BAND = 1_000_000;
+/** Straight-swap salary match within this fraction of the larger salary passes the CBA proxy. */
+const SALARY_MATCH_TOLERANCE = 0.25;
+
+function tradeSideVerdict(net: number): TradeSideVerdict {
+  if (net >= TRADE_SIDE_THRESHOLD) return "wins";
+  if (net <= -TRADE_SIDE_THRESHOLD) return "loses";
+  return "neutral";
+}
+
+/** Build one team's side of the swap. `sends` is the departing player (whose team + tier govern this side). */
+function buildTradeSide(
+  sends: AnalyticsPlayer,
+  receives: AnalyticsPlayer,
+  assumptions: Assumptions,
+): TradeSide {
+  const mult = assumptions.apronMultipliers[sends.apronStatus] ?? 1;
+  const outgoing = valuate(sends, assumptions); // what we give up, on our books
+  const incomingProduction = valuate(receives, assumptions).productionValue; // travels with the player
+  const incomingTrueCost = receives.capHit * mult; // repriced at OUR apron tier
+  const incomingAasv = incomingProduction - incomingTrueCost;
+  const netAasvChange = incomingAasv - outgoing.aasv;
+  const verdict = tradeSideVerdict(netAasvChange);
+
+  const note =
+    verdict === "wins"
+      ? `${sends.team} banks ${fmtSignedMillions(netAasvChange)} of surplus: ${receives.name} reprices to ${fmtMillions(
+          incomingTrueCost,
+        )} of true cost at the ${APRON_LABELS[sends.apronStatus].toLowerCase()}, cheaper value than ${sends.name} was returning.`
+      : verdict === "loses"
+        ? `${sends.team} gives up ${fmtSignedMillions(netAasvChange)} of surplus: ${receives.name}'s ${fmtMillions(
+            incomingTrueCost,
+          )} true cost at the ${APRON_LABELS[sends.apronStatus].toLowerCase()} outruns the ${fmtSignedMillions(
+            outgoing.aasv,
+          )} ${sends.name} provided.`
+        : `${sends.team} lands close to even (${fmtSignedMillions(
+            netAasvChange,
+          )}): ${receives.name}'s repriced value roughly matches what ${sends.name} was worth here.`;
+
+  return {
+    team: sends.team,
+    apronStatus: sends.apronStatus,
+    multiplier: mult,
+    sends,
+    receives,
+    capOut: sends.capHit,
+    capIn: receives.capHit,
+    capDelta: receives.capHit - sends.capHit,
+    incomingTrueCost,
+    outgoingAasv: outgoing.aasv,
+    incomingAasv,
+    netAasvChange,
+    verdict,
+    note,
+  };
+}
+
+/**
+ * Analyze a straight two-player swap between the players' current teams. Each
+ * side is valued from its OWN team's apron tier, which is where the repricing
+ * — and the possibility of both sides winning — comes from.
+ */
+export function buildTradeAnalysis(
+  playerA: AnalyticsPlayer,
+  playerB: AnalyticsPlayer,
+  assumptions: Assumptions,
+): TradeAnalysis {
+  const a = buildTradeSide(playerA, playerB, assumptions);
+  const b = buildTradeSide(playerB, playerA, assumptions);
+
+  // Leaguewide creation = the sum of both sides' swings (production cancels).
+  const valueCreated = a.netAasvChange + b.netAasvChange;
+  const mutualGain = a.netAasvChange > 0 && b.netAasvChange > 0;
+  const sameTeam = playerA.team === playerB.team;
+
+  // Headline.
+  let headline: string;
+  if (sameTeam) {
+    headline = "Same-team swap — no apron repricing to capture";
+  } else if (mutualGain) {
+    headline = `Both win — ${fmtSignedMillions(valueCreated)} of surplus created by the apron gap`;
+  } else if (valueCreated > TRADE_EVEN_BAND) {
+    headline = `${fmtSignedMillions(valueCreated)} of value created in transit`;
+  } else if (valueCreated < -TRADE_EVEN_BAND) {
+    headline = `${fmtSignedMillions(valueCreated)} of value destroyed — the money moves the wrong way`;
+  } else {
+    headline = "A wash on price — this trade is about fit, not the cap";
+  }
+
+  // Narrative.
+  const narrative: string[] = [];
+  if (sameTeam) {
+    narrative.push(
+      `${playerA.name} and ${playerB.name} are both on ${playerA.team}, so no apron repricing happens — swapping them changes nothing about either contract's true cost.`,
+    );
+  } else if (a.apronStatus === b.apronStatus) {
+    narrative.push(
+      `Both teams sit at the ${APRON_LABELS[a.apronStatus].toLowerCase()}, so each dollar is priced the same on either side — the swap creates only ${fmtSignedMillions(
+        valueCreated,
+      )} of value from the money itself. Whatever makes this trade worth doing is fit and talent, not the cap.`,
+    );
+  } else {
+    const cheaper = playerA.capHit >= playerB.capHit ? playerA : playerB;
+    const cheaperSide = cheaper === playerA ? a : b;
+    const otherSide = cheaper === playerA ? b : a;
+    narrative.push(
+      `${cheaper.name}'s ${fmtMillions(cheaper.capHit)} is priced at ${cheaperSide.multiplier.toFixed(
+        2,
+      )}× on ${cheaperSide.team} but ${otherSide.multiplier.toFixed(2)}× on ${otherSide.team} — moving the bigger salary toward the ${
+        cheaperSide.multiplier < otherSide.multiplier ? otherSide.team : cheaperSide.team
+      } tier is what ${valueCreated >= 0 ? "creates" : "destroys"} ${fmtSignedMillions(valueCreated)} of surplus, before either roster plays a game.`,
+    );
+  }
+
+  if (mutualGain) {
+    narrative.push(
+      `Under these assumptions both front offices come out ahead — ${a.team} ${fmtSignedMillions(
+        a.netAasvChange,
+      )}, ${b.team} ${fmtSignedMillions(
+        b.netAasvChange,
+      )}. That is the outcome the apron era makes possible: the same production is simply worth more on the cheaper books.`,
+    );
+  } else if (!sameTeam) {
+    const winner = a.netAasvChange >= b.netAasvChange ? a : b;
+    const loser = winner === a ? b : a;
+    narrative.push(
+      `On value alone ${winner.team} is the better side of the deal (${fmtSignedMillions(
+        winner.netAasvChange,
+      )} vs ${fmtSignedMillions(loser.netAasvChange)} for ${loser.team})${
+        winner.verdict === "wins" && loser.verdict === "loses"
+          ? " — a clear win-one-side trade"
+          : winner.verdict === "neutral"
+            ? " — though both sides land near even"
+            : ""
+      }.`,
+    );
+  }
+
+  // Salary-matching proxy.
+  const gap = Math.abs(playerA.capHit - playerB.capHit);
+  const larger = Math.max(playerA.capHit, playerB.capHit, 1);
+  const matches = gap / larger <= SALARY_MATCH_TOLERANCE;
+  const secondApronTakingOn =
+    (a.apronStatus === "second" && a.capDelta > 0) || (b.apronStatus === "second" && b.capDelta > 0);
+  const legalityNote = sameTeam
+    ? "Same-team swap — salary matching doesn't apply."
+    : matches
+      ? `Salaries are ${fmtMillions(gap)} apart (within the ~25% straight-swap tolerance), so this works as a one-for-one under standard matching rules.`
+      : secondApronTakingOn
+        ? `Salaries are ${fmtMillions(
+            gap,
+          )} apart AND a second-apron team is taking on money — the CBA bars second-apron teams from aggregating or absorbing extra salary, so in reality this needs a third team or added filler.`
+        : `Salaries are ${fmtMillions(gap)} apart — a straight swap likely needs filler contracts to satisfy salary matching.`;
+
+  const caveats =
+    "Pure value only: this ignores positional fit, roster construction, draft compensation, health, and contract length. A real front office weighs all of them — the surplus math is the starting point of the conversation, not the end of it.";
+
+  return { a, b, valueCreated, mutualGain, headline, narrative, legalityNote, caveats };
 }

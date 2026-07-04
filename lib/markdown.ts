@@ -27,6 +27,11 @@
  *   <ContractVerdict player="victor-wembanyama" />
  *   <TeamFlex team="OKC" />
  *   <ScenarioBand player="jaylen-brown" />
+ *
+ * And a two-player trade module that reprices both contracts across apron
+ * tiers to show the surplus a swap creates (or destroys) out of the cap alone:
+ *
+ *   <TradeAnalysis send="donovan-mitchell" receive="shai-gilgeous-alexander" />
  * ============================================================ */
 
 export type InlineNode =
@@ -45,7 +50,8 @@ export type EmbedName =
   | "TrendChart"
   | "ContractVerdict"
   | "TeamFlex"
-  | "ScenarioBand";
+  | "ScenarioBand"
+  | "TradeAnalysis";
 
 export type Block =
   | { type: "heading"; level: 2 | 3 | 4; children: InlineNode[] }
@@ -66,18 +72,19 @@ const EMBED_NAMES: EmbedName[] = [
   "ContractVerdict",
   "TeamFlex",
   "ScenarioBand",
+  "TradeAnalysis",
 ];
 const EMBED_RE =
-  /^<(PlayerCard|AASVChart|AASVTable|TeamCapSheet|TrendChart|ContractVerdict|TeamFlex|ScenarioBand)\s*((?:\w+="[^"]*"\s*)*)\/>\s*$/;
+  /^<(PlayerCard|AASVChart|AASVTable|TeamCapSheet|TrendChart|ContractVerdict|TeamFlex|ScenarioBand|TradeAnalysis)\s*((?:\w+="[^"]*"\s*)*)\/>\s*$/;
 
 /** Player slugs referenced by every embed in a document (to prefetch data in one query). */
 export function collectEmbedSlugs(blocks: Block[]): string[] {
   const slugs = new Set<string>();
   for (const b of blocks) {
     if (b.type !== "embed") continue;
-    // Covers PlayerCard/TrendChart/ContractVerdict/ScenarioBand's "player" attr
-    // and AASVChart/AASVTable's "players" attr.
-    const raw = b.attrs.player ?? b.attrs.players ?? "";
+    // Covers PlayerCard/TrendChart/ContractVerdict/ScenarioBand's "player" attr,
+    // AASVChart/AASVTable's "players" attr, and TradeAnalysis's "send"/"receive".
+    const raw = [b.attrs.player, b.attrs.players, b.attrs.send, b.attrs.receive].filter(Boolean).join(",");
     for (const s of raw.split(",").map((x) => x.trim()).filter(Boolean)) slugs.add(s);
   }
   return [...slugs];

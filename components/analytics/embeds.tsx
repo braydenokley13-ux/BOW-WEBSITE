@@ -15,13 +15,17 @@ import {
 import { teamName, teamSlug } from "@/lib/nba-teams";
 import { aggregateTeam, aggregateTeams } from "@/lib/team-aasv";
 import type { SeasonStat } from "@/lib/nba";
-import { buildContractVerdict, buildLeagueContext, buildScenarioBand, buildTeamBrief } from "@/lib/intelligence";
+import { buildContractVerdict, buildLeagueContext, buildScenarioBand, buildTeamBrief, buildTradeAnalysis } from "@/lib/intelligence";
 import {
   LIQUIDITY_LABELS,
   WINDOW_LABELS,
+  TRADE_SIDE_LABELS,
+  TRADE_SIDE_COLORS,
   type IndexScore,
   type RiskLevel,
   type TradeLiquidity,
+  type TradeAnalysis,
+  type TradeSide,
 } from "@/lib/intelligence-types";
 import { DecisionModule, RiskPill, ScenarioRange, VerdictBadge } from "@/components/intelligence";
 
@@ -472,4 +476,109 @@ export function ScenarioBandEmbed({ player, assumptions = DEFAULT_ASSUMPTIONS }:
       <p style={captionStyle}>{provenanceText(assumptions)}</p>
     </div>
   );
+}
+
+/* ============================================================
+ * Trade analysis — the apron era's defining trick, made interactive.
+ * TradeAnalysisView is the pure presentational half, shared by the
+ * <TradeAnalysis/> article embed AND the live TradeMachine dashboard tool
+ * so a trade quoted in a story and one built on the desk look identical.
+ * ============================================================ */
+
+/** One team's column in the trade view — sends → receives, cap delta, and the value swing. */
+function TradeSideCard({ side }: { side: TradeSide }) {
+  const color = TRADE_SIDE_COLORS[side.verdict];
+  const takesOn = side.capDelta >= 0;
+  return (
+    <div style={{ flex: "1 1 240px", minWidth: 0, border: "1px solid var(--border-rule)", background: "var(--bow-paper)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Link
+          href={`/analytics/teams/${teamSlug(side.team)}`}
+          style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--bow-ink)", textDecoration: "none" }}
+        >
+          {teamName(side.team)}
+        </Link>
+        <ApronBadge status={side.apronStatus} compact />
+      </div>
+      <div style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, color: "var(--bow-ink)" }}>
+        <span style={{ color: "var(--bow-negative)" }}>▼ Sends</span>{" "}
+        <Link href={`/analytics/players/${side.sends.slug}`} className="bow-link" style={{ color: "var(--bow-ink)", fontWeight: 600, textDecoration: "none" }}>
+          {side.sends.name}
+        </Link>{" "}
+        <span style={{ fontFamily: "var(--font-data)", color: "var(--bow-slate)" }}>({fmtMillions(side.capOut)})</span>
+        <br />
+        <span style={{ color: "var(--bow-positive)" }}>▲ Gets</span>{" "}
+        <Link href={`/analytics/players/${side.receives.slug}`} className="bow-link" style={{ color: "var(--bow-ink)", fontWeight: 600, textDecoration: "none" }}>
+          {side.receives.name}
+        </Link>{" "}
+        <span style={{ fontFamily: "var(--font-data)", color: "var(--bow-slate)" }}>({fmtMillions(side.capIn)})</span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", fontFamily: "var(--font-data)", fontSize: 11.5, color: "var(--bow-slate)" }}>
+        <span>Cap {takesOn ? "+" : "−"}{fmtMillions(Math.abs(side.capDelta)).replace("−", "")}</span>
+        <span>Incoming true cost {fmtMillions(side.incomingTrueCost)} ({side.multiplier.toFixed(2)}×)</span>
+      </div>
+      <div style={{ marginTop: "auto", paddingTop: 8, borderTop: "1px solid var(--border-rule)", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color }}>{TRADE_SIDE_LABELS[side.verdict]}</span>
+        <span style={{ fontFamily: "var(--font-data)", fontWeight: 700, fontSize: 22, fontVariantNumeric: "tabular-nums", color }}>{fmtSignedMillions(side.netAasvChange)}</span>
+      </div>
+      <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 12.5, lineHeight: 1.5, color: "var(--bow-slate)" }}>{side.note}</p>
+    </div>
+  );
+}
+
+export function TradeAnalysisView({ analysis, assumptions = DEFAULT_ASSUMPTIONS, standalone = true }: { analysis: TradeAnalysis; assumptions?: Assumptions; standalone?: boolean }) {
+  const created = analysis.valueCreated;
+  const createdColor = created > 1_000_000 ? "var(--bow-positive)" : created < -1_000_000 ? "var(--bow-negative)" : "var(--bow-slate)";
+  return (
+    <div style={standalone ? { margin: "26px 0", border: "1px solid var(--border-rule)", background: "var(--bow-white)", padding: "clamp(18px,2.4vw,26px)", display: "flex", flexDirection: "column", gap: 16 } : { display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+        <span style={{ fontFamily: "var(--font-data)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)" }}>
+          Trade Analysis · Apron Repricing
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 8 }}>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Value created</span>
+          <span style={{ fontFamily: "var(--font-data)", fontWeight: 700, fontSize: 22, fontVariantNumeric: "tabular-nums", color: createdColor }}>{fmtSignedMillions(created)}</span>
+        </span>
+      </div>
+
+      <p style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(18px,2vw,22px)", lineHeight: 1.3, color: "var(--bow-ink)", textWrap: "pretty" }}>
+        {analysis.headline}
+      </p>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "stretch" }}>
+        <TradeSideCard side={analysis.a} />
+        <TradeSideCard side={analysis.b} />
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {analysis.narrative.map((s, i) => (
+          <p key={i} style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14.5, lineHeight: 1.6, color: "var(--bow-ink)" }}>
+            {s}
+          </p>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid var(--border-rule)", paddingTop: 12 }}>
+        <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.5, color: "var(--bow-slate)" }}>
+          <strong style={{ color: "var(--bow-ink)" }}>Legality read:</strong> {analysis.legalityNote}
+        </p>
+        <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.5, color: "var(--bow-slate)" }}>
+          <strong style={{ color: "var(--bow-ink)" }}>What this ignores:</strong> {analysis.caveats}
+        </p>
+      </div>
+
+      <p style={captionStyle}>{provenanceText(assumptions)}</p>
+    </div>
+  );
+}
+
+/**
+ * <TradeAnalysis send="player-a" receive="player-b" /> — "who wins this swap,
+ * and how much value does the apron gap create?" Runs the same pure engine the
+ * live TradeMachine uses, so a trade quoted in prose reflects the reader's
+ * assumptions the moment the page hydrates.
+ */
+export function TradeAnalysisEmbed({ playerA, playerB, assumptions = DEFAULT_ASSUMPTIONS }: { playerA: AnalyticsPlayer; playerB: AnalyticsPlayer; assumptions?: Assumptions }) {
+  const analysis = buildTradeAnalysis(playerA, playerB, assumptions);
+  return <TradeAnalysisView analysis={analysis} assumptions={assumptions} />;
 }

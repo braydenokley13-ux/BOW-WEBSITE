@@ -10,6 +10,7 @@ import {
   LiveScenarioBand,
   LiveTeamCapSheet,
   LiveTeamFlex,
+  LiveTradeAnalysis,
 } from "@/components/analytics/embeds/LiveAssumptions";
 import type { SeasonStat } from "@/lib/nba";
 
@@ -108,6 +109,21 @@ function EmbedBlock({
   if (block.name === "TeamFlex") {
     const team = (block.attrs.team ?? "").trim().toUpperCase();
     return <LiveTeamFlex team={team} allPlayers={allPlayers} />;
+  }
+  // TradeAnalysis keys off two slugs — a "send" and a "receive" — not the
+  // shared player/players attrs, so resolve it before the generic path.
+  if (block.name === "TradeAnalysis") {
+    const sendSlug = (block.attrs.send ?? "").trim();
+    const receiveSlug = (block.attrs.receive ?? "").trim();
+    const pa = players[sendSlug];
+    const pb = players[receiveSlug];
+    if (!pa || !pb) {
+      const missing: string[] = [];
+      if (!pa) missing.push(sendSlug || "(no send)");
+      if (!pb) missing.push(receiveSlug || "(no receive)");
+      return <EmbedMissing slugs={missing} />;
+    }
+    return <LiveTradeAnalysis playerA={pa} playerB={pb} />;
   }
 
   const requested = (block.attrs.player ?? block.attrs.players ?? "")

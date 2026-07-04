@@ -11,7 +11,7 @@
  * opinion — it is the model's opinion under the reader's assumptions.
  * ============================================================ */
 
-import type { AnalyticsPlayer, Valuation } from "@/lib/aasv";
+import type { AnalyticsPlayer, ApronStatus, Valuation } from "@/lib/aasv";
 import type { TeamRollup } from "@/lib/team-aasv";
 
 /* ---------------- contract verdicts ---------------- */
@@ -175,6 +175,74 @@ export interface TeamBrief {
   /** The single next decision this front office actually faces. */
   nextDecision: { title: string; body: string };
   strategicWarning: string;
+}
+
+/* ---------------- trade analysis ---------------- */
+
+/**
+ * Whether a side comes out ahead in PURE apron-adjusted value. This is a
+ * value-only read — it deliberately ignores fit, positional need, draft
+ * compensation, health, and roster construction (see TradeAnalysis.caveats).
+ */
+export type TradeSideVerdict = "wins" | "neutral" | "loses";
+
+export const TRADE_SIDE_LABELS: Record<TradeSideVerdict, string> = {
+  wins: "Gains value",
+  neutral: "Roughly even",
+  loses: "Loses value",
+};
+
+export const TRADE_SIDE_COLORS: Record<TradeSideVerdict, string> = {
+  wins: "#158a55", // --bow-positive
+  neutral: "#4a5568", // --bow-slate
+  loses: "#d63b3b", // --bow-negative
+};
+
+/** One team's side of a two-player swap, valued from THAT team's apron tier. */
+export interface TradeSide {
+  /** Receiving team abbreviation (the team this side belongs to). */
+  team: string;
+  /** That team's tracked apron tier — this is the multiplier it pays on the incoming deal. */
+  apronStatus: ApronStatus;
+  multiplier: number;
+  /** The player this team gives up. */
+  sends: AnalyticsPlayer;
+  /** The player this team takes on. */
+  receives: AnalyticsPlayer;
+  capOut: number;
+  capIn: number;
+  /** capIn − capOut; positive means the team is taking on salary. */
+  capDelta: number;
+  /** True cost of the incoming contract once repriced at THIS team's apron tier. */
+  incomingTrueCost: number;
+  /** Surplus the departing player was providing this team (his AASV here). */
+  outgoingAasv: number;
+  /** Surplus the arriving player provides this team, repriced at this tier. */
+  incomingAasv: number;
+  /** incomingAasv − outgoingAasv — the value swing for this front office. */
+  netAasvChange: number;
+  verdict: TradeSideVerdict;
+  note: string;
+}
+
+export interface TradeAnalysis {
+  a: TradeSide;
+  b: TradeSide;
+  /**
+   * Leaguewide surplus created purely by repricing the two contracts across
+   * apron tiers. Equals (capA − capB) × (multA − multB): production travels
+   * with the player and cancels, so what's left is the apron math alone.
+   */
+  valueCreated: number;
+  /** True when BOTH front offices gain value — the "both won" case the apron era makes possible. */
+  mutualGain: boolean;
+  headline: string;
+  /** 2–3 memo sentences a GM could read aloud. */
+  narrative: string[];
+  /** Salary-matching read (a CBA-legality proxy) — informational, not a hard rule. */
+  legalityNote: string;
+  /** What the value-only model deliberately leaves out. */
+  caveats: string;
 }
 
 /* ---------------- league-wide context ---------------- */
