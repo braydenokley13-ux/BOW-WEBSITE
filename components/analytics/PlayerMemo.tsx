@@ -6,9 +6,13 @@ import { CapLine, Eyebrow } from "@/components/ds";
 import { ExecutiveSummary, VerdictBadge, RiskPill, ScenarioRange, MemoSection } from "@/components/intelligence";
 import PlayerBreakdown from "@/components/analytics/PlayerBreakdown";
 import { useAssumptions } from "@/components/analytics/useAssumptions";
-import { buildPlayerMemo, buildLeagueContext, buildContractVerdict } from "@/lib/intelligence";
-import { ACTION_LABELS, VERDICT_LABELS } from "@/lib/intelligence-types";
-import { fmtMillions, fmtSignedMillions, type AnalyticsPlayer } from "@/lib/aasv";
+import ClipButton from "@/components/research/ClipButton";
+import ContestedBadge from "@/components/research/ContestedBadge";
+import { useLens } from "@/components/research/useLens";
+import { buildPlayerMemo, buildLeagueContext, buildContractVerdict, classifyTier } from "@/lib/intelligence";
+import { ACTION_LABELS, VERDICT_LABELS, VERDICT_COLORS } from "@/lib/intelligence-types";
+import { buildLensSplit, PRESET_LENSES } from "@/lib/lenses";
+import { fmtMillions, fmtSignedMillions, valuate, type AnalyticsPlayer } from "@/lib/aasv";
 import type { SeasonStat } from "@/lib/nba";
 
 /** "1st" / "2nd" / "3rd" / "4th" ... */
@@ -76,6 +80,16 @@ const compRow: React.CSSProperties = {
   borderTop: "1px solid var(--border-rule)",
 };
 
+const deskRow: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 14,
+  padding: "10px 0",
+  borderTop: "1px solid var(--border-rule)",
+};
+
 /**
  * PLAYER MEMO — the single "use client" container for the player page's
  * decision content. Owns the assumption sliders and recomputes the FULL
@@ -96,11 +110,22 @@ export default function PlayerMemo({
   history?: SeasonStat[];
 }) {
   const [assumptions, setAssumptions, resetAssumptions] = useAssumptions();
+  const { lensName } = useLens();
 
   const memo = useMemo(
     () => buildPlayerMemo(player, allPlayers, assumptions, history),
     [player, allPlayers, assumptions, history],
   );
+
+  // Every preset worldview's verdict on this same contract — the desk-by-desk
+  // readout that makes "who's right about what a win costs" a computable
+  // question instead of a vibe.
+  const otherDesks = useMemo(
+    () => PRESET_LENSES.map((lens) => ({ lens, tier: classifyTier(valuate(player, lens.assumptions)) })),
+    [player],
+  );
+  const lensSplit = useMemo(() => buildLensSplit(player), [player]);
+  const disagreeingCount = otherDesks.filter((d) => d.tier !== memo.verdict.tier).length;
 
   const leagueCtx = useMemo(() => buildLeagueContext(allPlayers, assumptions), [allPlayers, assumptions]);
   const rank = leagueCtx.rankBySurplus.get(player.slug);
@@ -124,9 +149,17 @@ export default function PlayerMemo({
       <div style={deckSection}>
         <div className="bow-container-wide" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <VerdictBadge tier={verdict.tier} size="lg" />
+          <ContestedBadge player={player} />
           <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.5, color: "var(--bow-ink)" }}>
             {verdict.headline}
           </p>
+          <ClipButton
+            kind="verdict"
+            title={`${player.name}: ${verdict.headline}`}
+            detail={`AASV ${fmtSignedMillions(memo.valuation.aasv)} · production ${fmtMillions(memo.valuation.productionValue)} vs true cost ${fmtMillions(memo.valuation.trueCost)} · under ${lensName}`}
+            refs={[{ kind: "player", slugs: [player.slug], label: player.name }]}
+            style={{ marginLeft: "auto" }}
+          />
         </div>
       </div>
 
@@ -191,6 +224,62 @@ export default function PlayerMemo({
                 case but <strong style={{ color: "var(--bow-ink)" }}>{VERDICT_LABELS[bullVerdict.tier]}</strong> in
                 the bull case — treat the verdict above as a live read of today&rsquo;s sliders, not a settled fact.
               </p>
+            )}
+            <ClipButton
+              kind="scenario"
+              title={`${player.name} — bear/base/bull AASV`}
+              detail={`Bear ${fmtSignedMillions(memo.sensitivity.bear.aasv)} · Base ${fmtSignedMillions(memo.sensitivity.base.aasv)} · Bull ${fmtSignedMillions(memo.sensitivity.bull.aasv)}`}
+              refs={[{ kind: "player", slugs: [player.slug], label: player.name }]}
+              style={{ alignSelf: "flex-start" }}
+            />
+          </MemoSection>
+
+          <MemoSection label="What the other desks say">
+            <div>
+              {otherDesks.map(({ lens, tier }) => (
+                <div key={lens.id} style={deskRow}>
+                  <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+                    <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.02em", color: "var(--bow-ink)" }}>
+                      {lens.name}
+                    </span>
+                    <p style={{ margin: "3px 0 0", fontFamily: "var(--font-interface)", fontSize: 12.5, lineHeight: 1.45, color: "var(--bow-slate)" }}>
+                      {lens.philosophy}
+                    </p>
+                  </div>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-data)",
+                      fontWeight: 600,
+                      fontSize: 11,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      color: VERDICT_COLORS[tier],
+                      border: `1px solid ${VERDICT_COLORS[tier]}`,
+                      borderRadius: 2,
+                      padding: "3px 9px",
+                      whiteSpace: "nowrap",
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    {VERDICT_LABELS[tier]}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {disagreeingCount > 0 && (
+              <p style={{ ...bodyText, fontSize: 14, color: "var(--bow-slate)" }}>
+                {disagreeingCount} of {otherDesks.length} desks disagree with the verdict above — that disagreement
+                is the story.
+              </p>
+            )}
+            {lensSplit.span >= 2 && (
+              <Link
+                href="/analytics/questions"
+                className="bow-link"
+                style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--bow-blue)", textDecoration: "none" }}
+              >
+                Take the question to the docket →
+              </Link>
             )}
           </MemoSection>
 

@@ -55,6 +55,8 @@ export const FOOTER_COLS: FooterCol[] = [
       { label: "Lessons", href: "/lessons" },
       { label: "NBA Analytics", href: "/analytics" },
       { label: "Analytics Articles", href: "/analytics/articles" },
+      { label: "The Open Docket", href: "/analytics/questions" },
+      { label: "Research Notebook", href: "/analytics/notebook" },
       { label: "Simulations", href: "/simulation" },
       { label: "Podcast", href: "/podcast" },
       { label: "Highway World", href: "/highway-world" },

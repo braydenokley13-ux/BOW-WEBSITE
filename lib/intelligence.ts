@@ -147,8 +147,9 @@ function impactTrend(history?: SeasonStat[]): number | null {
  * per-player and league views can never disagree.
  * ============================================================ */
 
-/** Verdict tier from a valuation. Percentage-first, with absolute-dollar overrides at both ends. */
-function classifyTier(v: Valuation): VerdictTier {
+/** Verdict tier from a valuation. Percentage-first, with absolute-dollar overrides at both ends.
+ * Exported for the research layer (lib/lenses.ts) so lens-split math uses the exact same cutoffs. */
+export function classifyTier(v: Valuation): VerdictTier {
   const pct = surplusPct(v);
   if (pct >= TIER.bargainPct || v.aasv >= TIER.bargainAbs) return "bargain";
   if (v.aasv <= TIER.albatrossAbs || pct <= TIER.albatrossPct) return "albatross";
