@@ -10,6 +10,7 @@ import {
   ScenarioBandEmbed,
   TeamCapSheetEmbed,
   TeamFlexEmbed,
+  TradeAnalysisEmbed,
 } from "@/components/analytics/embeds";
 
 /* ============================================================
@@ -68,4 +69,9 @@ export function LiveTeamFlex({ team, allPlayers }: { team: string; allPlayers: A
 export function LiveScenarioBand({ player }: { player: AnalyticsPlayer }) {
   const [assumptions] = useAssumptions();
   return <ScenarioBandEmbed player={player} assumptions={assumptions} />;
+}
+
+export function LiveTradeAnalysis({ playerA, playerB }: { playerA: AnalyticsPlayer; playerB: AnalyticsPlayer }) {
+  const [assumptions] = useAssumptions();
+  return <TradeAnalysisEmbed playerA={playerA} playerB={playerB} assumptions={assumptions} />;
 }

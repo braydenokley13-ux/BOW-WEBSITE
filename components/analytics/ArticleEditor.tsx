@@ -331,6 +331,9 @@ export default function ArticleEditor({
         <button type="button" style={{ ...toolBtn, color: "var(--bow-orange)" }} onClick={() => insertBlock(`<ScenarioBand player="${exampleSlug}" />`)}>
           + Scenario band
         </button>
+        <button type="button" style={{ ...toolBtn, color: "var(--bow-orange)" }} onClick={() => insertBlock(`<TradeAnalysis send="${slugList[0] ?? "player-a"}" receive="${slugList[1] ?? "player-b"}" />`)}>
+          + Trade analysis
+        </button>
         <span style={{ marginLeft: "auto", display: "flex", gap: 0 }}>
           {(["write", "split", "preview"] as const).map((m) => (
             <button

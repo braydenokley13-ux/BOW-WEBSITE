@@ -6,6 +6,7 @@ import { DecisionModule } from "@/components/intelligence";
 import SliderPanel from "@/components/analytics/SliderPanel";
 import ValueScatter from "@/components/analytics/ValueScatter";
 import ValueTable from "@/components/analytics/ValueTable";
+import TradeMachine from "@/components/analytics/TradeMachine";
 import { useAssumptions } from "@/components/analytics/useAssumptions";
 import { fmtMillions, fmtSignedMillions, valuate, type AnalyticsPlayer } from "@/lib/aasv";
 import { buildContractVerdict, buildLeagueContext } from "@/lib/intelligence";
@@ -67,6 +68,8 @@ export default function AnalyticsDashboard({ players }: { players: AnalyticsPlay
       </div>
 
       <ValueTable players={players} assumptions={assumptions} />
+
+      <TradeMachine players={players} />
 
       {/* stacking for narrow screens without a CSS file change */}
       <style>{`@media (max-width: 900px) { .bow-analytics-grid { grid-template-columns: 1fr !important; } }`}</style>
