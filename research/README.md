@@ -40,6 +40,7 @@ not a hedge — it changes where the highest-leverage build effort actually is.
 | [`05-product-critique.md`](./05-product-critique.md) | Product Critique | 6 personas (GM, Yankees exec, journalist, college student, casual fan, professor) each answering 4 fixed questions, plus a cross-persona pattern table at the end — read that table first if short on time. |
 | [`06-future-roadmap.md`](./06-future-roadmap.md) | The Future Roadmap | 78 ideas across MVP/Next/Future/Moonshot, each rated impact/difficulty/educational value/uniqueness, with sequencing notes (Tier 1 is mostly wiring existing infra; Tier 3 is gated by data access, not engineering). |
 | [`07-article-publishing-system.md`](./07-article-publishing-system.md) | Article Publishing System | Gap analysis against the CMS brief. ~2/3 of the brief is already built. The one launch-blocking issue: SQLite doesn't survive Vercel's serverless filesystem — migrate to Postgres/Prisma before anything else in this area. |
+| [`08-research-loop-architecture.md`](./08-research-loop-architecture.md) | The Research Loop (BUILT) | The implemented product vision: lenses → open docket → evidence notebook → article drafts. Read this FIRST before extending anything under `lib/lenses\|tensions\|questions\|notebook*` or `components/research/` — it records the invariants and the highest-leverage extension points. |
 
 ## How to read this as an implementation backlog
 
