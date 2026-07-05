@@ -17,6 +17,8 @@ const ROUTES = [
   "/analytics",
   "/analytics/articles",
   "/analytics/teams",
+  "/analytics/questions",
+  "/analytics/notebook",
   "/simulation",
   "/podcast",
   "/feed",

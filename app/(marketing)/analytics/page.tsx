@@ -3,8 +3,11 @@ import Link from "next/link";
 import { SectionHeader } from "@/components/ds";
 import AnalyticsDashboard from "@/components/analytics/AnalyticsDashboard";
 import ArticleCard from "@/components/analytics/ArticleCard";
+import LensSwitcher from "@/components/research/LensSwitcher";
 import { getAnalyticsPlayers } from "@/lib/nba";
 import { getPublishedArticles } from "@/lib/articles";
+import { getOpenDocket } from "@/lib/questions";
+import { QUESTION_KIND_LABELS } from "@/lib/research-types";
 
 const TITLE = "NBA Value vs. Contract — BOW Sports Capital Analytics";
 const DESCRIPTION =
@@ -24,6 +27,8 @@ export const dynamic = "force-dynamic";
 export default function AnalyticsPage() {
   const players = getAnalyticsPlayers();
   const latest = getPublishedArticles().slice(0, 3);
+  const docket = getOpenDocket();
+  const teaser = docket.slice(0, 4);
 
   return (
     <div data-screen-label="Analytics">
@@ -51,6 +56,12 @@ export default function AnalyticsPage() {
             <Link href="/analytics/trade" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
               Open the trade machine →
             </Link>
+            <Link href="/analytics/questions" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
+              Open the docket →
+            </Link>
+            <Link href="/analytics/notebook" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
+              Your notebook →
+            </Link>
             <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.05em", color: "#6d7078" }}>
               AASV = wins × $/win − cap hit × apron multiplier
             </span>
@@ -58,10 +69,97 @@ export default function AnalyticsPage() {
         </div>
       </section>
 
-      {/* DASHBOARD */}
+      {/* STEP 1 — ADOPT A WORLDVIEW */}
+      <section className="bow-front-office" style={{ background: "var(--bow-ink)", padding: "clamp(36px,5vw,64px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--bow-dark-border)" }}>
+        <div className="bow-container-wide">
+          <SectionHeader kicker="Step 1 · Worldview" title="Adopt a worldview" style={{ marginBottom: 22 }} />
+          <p style={{ margin: "0 0 24px", fontFamily: "var(--font-interface)", fontSize: "clamp(14px,1.4vw,16px)", lineHeight: 1.6, color: "#c8cad0", maxWidth: 640, textWrap: "pretty" }}>
+            The model&rsquo;s every number depends on what you believe a win costs. Pick a desk to sit at — everything
+            on this site recomputes under it.
+          </p>
+          <LensSwitcher dark />
+        </div>
+      </section>
+
+      {/* STEP 2 — THE OPEN DOCKET */}
+      <section style={{ background: "#fff", padding: "clamp(28px,4vw,48px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
+        <div className="bow-container-wide">
+          <SectionHeader
+            kicker="Step 2 · Pick a fight"
+            title="The Open Docket"
+            action={{ label: `All ${docket.length} open questions →`, href: "/analytics/questions" }}
+            style={{ marginBottom: 22 }}
+          />
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {teaser.map((q, i) => (
+              <div
+                key={q.id}
+                style={{
+                  display: "flex",
+                  gap: 16,
+                  alignItems: "baseline",
+                  padding: "16px 0",
+                  borderTop: i === 0 ? "none" : "1px solid var(--border-rule)",
+                }}
+              >
+                <span style={{ fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-slate)", flex: "0 0 22px" }}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1, minWidth: 0 }}>
+                  <span style={{ fontFamily: "var(--font-data)", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-orange)" }}>
+                    {QUESTION_KIND_LABELS[q.kind]}
+                  </span>
+                  <Link
+                    href={`/analytics/questions/${encodeURIComponent(q.id)}`}
+                    className="bow-link"
+                    style={{ fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(16px,1.8vw,19px)", lineHeight: 1.35, color: "var(--bow-ink)", textDecoration: "none", textWrap: "pretty" }}
+                  >
+                    {q.question}
+                  </Link>
+                  {q.setup[0] && (
+                    <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, color: "var(--bow-slate)" }}>
+                      {q.setup[0]}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+            {teaser.length === 0 && (
+              <p style={{ fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>
+                No open questions on the current slate.
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* STEP 3 — DASHBOARD */}
       <section style={{ background: "var(--bow-paper)", padding: "clamp(28px,4vw,48px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
         <div className="bow-container-wide">
+          <span style={{ display: "block", marginBottom: 16, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)" }}>
+            Step 3 · Run the numbers yourself
+          </span>
           <AnalyticsDashboard players={players} />
+        </div>
+      </section>
+
+      {/* STEP 4 — PUBLISH */}
+      <section style={{ background: "#fff", padding: "clamp(16px,2.2vw,24px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
+        <div className="bow-container-wide" style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "8px 16px" }}>
+          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)" }}>
+            Step 4 · Publish
+          </span>
+          <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.5, color: "var(--bow-slate)", flex: "1 1 320px" }}>
+            Clip evidence anywhere you see &ldquo;+ Clip&rdquo;, arrange it in the notebook, and compile a draft the
+            publication&rsquo;s editor understands.
+          </p>
+          <Link
+            href="/analytics/notebook"
+            className="bow-link"
+            style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--bow-blue)", textDecoration: "none" }}
+          >
+            Open your notebook →
+          </Link>
         </div>
       </section>
 

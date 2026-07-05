@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DecisionModule, ExecutiveSummary, IndexScorecard, MemoSection, RiskPill, VerdictBadge } from "@/components/intelligence";
 import TeamCapSheet from "@/components/analytics/TeamCapSheet";
 import { useAssumptions } from "@/components/analytics/useAssumptions";
+import ClipButton from "@/components/research/ClipButton";
 import { fmtMillions, fmtSignedMillions, valuate, type AnalyticsPlayer } from "@/lib/aasv";
 import { buildContractVerdict, buildLeagueContext, buildTeamBrief } from "@/lib/intelligence";
 import { WINDOW_LABELS, type VerdictTier } from "@/lib/intelligence-types";
@@ -77,6 +78,14 @@ export default function TeamBrief({ team, players }: { team: string; players: An
           { label: "FSI grade", value: `${brief.index.overall.grade} · ${brief.index.overall.score}/100` },
         ]}
         recommendation={{ action: brief.nextDecision.title, rationale: brief.nextDecision.body }}
+      />
+
+      <ClipButton
+        kind="team"
+        title={`${teamName(team)}: ${firstSentence}`}
+        detail={`Cap ${fmtMillions(rollup.totalCap)} · true cost ${fmtMillions(rollup.totalTrueCost)} · AASV ${fmtSignedMillions(rollup.totalAasv)}`}
+        refs={[{ kind: "team", slugs: [], team, label: `${teamName(team)} cap sheet` }]}
+        style={{ alignSelf: "flex-start" }}
       />
 
       <IndexScorecard index={brief.index} title={`${teamName(team)} · Franchise Strategy Index`} />

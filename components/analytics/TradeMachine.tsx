@@ -3,7 +3,8 @@
 import { useId, useMemo, useState } from "react";
 import { TradeAnalysisView } from "@/components/analytics/embeds";
 import { useAssumptions } from "@/components/analytics/useAssumptions";
-import { fmtMillions, type AnalyticsPlayer } from "@/lib/aasv";
+import ClipButton from "@/components/research/ClipButton";
+import { fmtMillions, fmtSignedMillions, type AnalyticsPlayer } from "@/lib/aasv";
 import { buildTradeAnalysis } from "@/lib/intelligence";
 
 /* ============================================================
@@ -125,6 +126,14 @@ export default function TradeMachine({ players }: { players: AnalyticsPlayer[] }
       )}
 
       <TradeAnalysisView analysis={analysis} assumptions={assumptions} standalone={false} />
+
+      <ClipButton
+        kind="trade"
+        title={analysis.headline}
+        detail={`${playerA.team} nets ${fmtSignedMillions(analysis.a.netAasvChange)}, ${playerB.team} nets ${fmtSignedMillions(analysis.b.netAasvChange)} · value created ${fmtSignedMillions(analysis.valueCreated)}`}
+        refs={[{ kind: "trade", slugs: [playerA.slug, playerB.slug], label: `${playerA.name} for ${playerB.name}` }]}
+        style={{ alignSelf: "flex-start" }}
+      />
     </div>
   );
 }

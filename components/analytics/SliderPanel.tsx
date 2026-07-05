@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import LensSwitcher from "@/components/research/LensSwitcher";
 import {
   ASSUMPTION_BOUNDS,
   DEFAULT_ASSUMPTIONS,
@@ -77,6 +78,9 @@ export default function SliderPanel({
 
   return (
     <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", padding: "clamp(18px,2.4vw,26px)" }}>
+      <LensSwitcher compact />
+      <div style={{ borderTop: "1px solid var(--border-rule)", margin: "16px 0" }} />
+
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
         <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)" }}>
           Model Assumptions
