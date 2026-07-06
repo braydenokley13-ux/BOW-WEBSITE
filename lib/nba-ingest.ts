@@ -28,6 +28,16 @@
  * returned summary rather than thrown, so a cron/CLI run (or a flaky
  * network) can never take the site down.
  *
+ * This endpoint carries no BPM figure at all, so the upsert never
+ * writes one: UPSERT_SQL preserves whatever bpm value the row already
+ * had (COALESCE(excluded.bpm, nba_player_stats.bpm) — excluded.bpm is
+ * always NULL here, so the existing column wins) instead of nulling
+ * it out. That matters beyond this file: lib/tensions.ts's
+ * detectMetricDisagreements() needs both epm and bpm populated on the
+ * same row to flag a tracker disagreement, and a live ingest that
+ * clobbered bpm on every run would make that detector permanently
+ * empty.
+ *
  * Player-id resolution
  * ---------------------
  * The Python original resolved stats.nba.com player ids offline via
@@ -227,6 +237,7 @@ const UPSERT_SQL = `
     games = excluded.games,
     minutes = excluded.minutes,
     epm = excluded.epm,
+    bpm = COALESCE(excluded.bpm, nba_player_stats.bpm),
     source = 'nba_api',
     updated_at = excluded.updated_at
 `;

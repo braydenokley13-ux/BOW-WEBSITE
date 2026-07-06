@@ -51,6 +51,13 @@ export default async function TeamPage({ params }: { params: Promise<{ team: str
           <h1 style={{ margin: "18px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(34px,5.5vw,60px)", lineHeight: 0.92, textTransform: "uppercase", letterSpacing: "-0.015em", color: "var(--bow-ink)" }}>
             {teamName(team)}
           </h1>
+          <p style={{ margin: "12px 0 0", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "var(--bow-slate)" }}>
+            Covers the {players.length} tracked contract{players.length === 1 ? "" : "s"} at the top of this cap sheet — not the
+            full 15-man roster ·{" "}
+            <Link href="/analytics/methods" style={{ color: "var(--bow-blue)" }}>
+              methods →
+            </Link>
+          </p>
         </div>
       </section>
 
