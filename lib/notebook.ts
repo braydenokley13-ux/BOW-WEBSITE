@@ -33,7 +33,7 @@ import {
 /** Hard cap on notebook size — oldest clips drop first once exceeded. */
 export const MAX_CLIPS = 60;
 
-const CLIP_KINDS: ClipKind[] = ["verdict", "valuation", "scenario", "trade", "team", "question", "note"];
+const CLIP_KINDS: ClipKind[] = ["verdict", "valuation", "scenario", "trade", "team", "question", "ledger", "note"];
 const STANCES: Stance[] = ["supports", "challenges", "open"];
 const EVIDENCE_KINDS: EvidenceRef["kind"][] = ["player", "team", "trade"];
 

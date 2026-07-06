@@ -119,6 +119,7 @@ export type ClipKind =
   | "trade" // a two-player trade analysis
   | "team" // a team rollup / brief
   | "question" // a docket question taken into the notebook
+  | "ledger" // a dated ledger event — the model changing its mind
   | "note"; // freehand thought, no model payload
 
 /** Where a clip sits in the reader's argument. */

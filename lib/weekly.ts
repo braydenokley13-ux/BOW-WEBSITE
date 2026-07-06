@@ -14,6 +14,8 @@
 import { getDb } from "@/lib/db";
 import { WEEK_MS } from "@/lib/account";
 import { createNotification } from "@/lib/notifications";
+import { getLedgerEventsSync, getLedgerDepth } from "@/lib/ledger-store";
+import { summarizeWindow } from "@/lib/ledger";
 
 export interface WeeklyChallengeView {
   id: string;
@@ -54,13 +56,58 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** The currently open challenge: the one whose window contains today, else a weekly rotation. */
+/** The current week's Sunday → Saturday window as ISO dates (UTC). */
+function currentWeekWindow(): { start: string; end: string; startMs: number } {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - now.getUTCDay()));
+  const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10), startMs: start.getTime() };
+}
+
+/**
+ * A challenge generated from this week's Open Ledger — the model changed
+ * its mind about something real, and arguing with the model IS the
+ * curriculum. Only fills weeks the content bank left empty (an authored,
+ * in-window challenge always wins), and only when the ledger actually
+ * moved this week — otherwise the old rotation fallback still runs.
+ * The id is stable for the week, so weekly_completions rows work
+ * unchanged and one submission per student per week still holds.
+ */
+function ledgerChallenge(): ChallengeRow | null {
+  try {
+    if (getLedgerDepth() < 2) return null; // day one has no diffs to argue with
+    const week = currentWeekWindow();
+    const top = summarizeWindow(getLedgerEventsSync(), week.startMs).top;
+    if (!top) return null;
+    return {
+      id: `wc-ledger-${week.start}`,
+      title: "The model changed its mind this week",
+      prompt:
+        `From the Open Ledger (/analytics/ledger): ${top.headline}. ` +
+        `The model's own explanation: ${top.detail} ` +
+        `Your challenge: do you buy it? In a paragraph, name the assumption that did the work ` +
+        `(dollars per win? the apron multiplier? replacement level?), say whether YOU would have ` +
+        `made the same call, and defend it. There is no answer key — there is only your argument.`,
+      week_start: week.start,
+      week_end: week.end,
+      ordinal: 0,
+    };
+  } catch {
+    return null; // a ledger hiccup must never blank the dashboard
+  }
+}
+
+/** The currently open challenge: an authored in-window one, else this week's ledger event, else the rotation. */
 function pickCurrent(rows: ChallengeRow[]): ChallengeRow | null {
-  if (rows.length === 0) return null;
   const today = todayIso();
   const inWindow = rows.find((r) => r.week_start <= today && today <= r.week_end);
   if (inWindow) return inWindow;
-  // Fallback so a live challenge always shows: rotate by week number.
+  // The ledger fills empty weeks with something REAL before the canned
+  // rotation gets a turn — a non-repeating reason to come back.
+  const fromLedger = ledgerChallenge();
+  if (fromLedger) return fromLedger;
+  if (rows.length === 0) return null;
+  // Last resort so a live challenge always shows: rotate by week number.
   const idx = Math.floor(Date.now() / WEEK_MS) % rows.length;
   return rows[idx];
 }

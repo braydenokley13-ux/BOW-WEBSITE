@@ -4,9 +4,11 @@ import { SectionHeader } from "@/components/ds";
 import AnalyticsDashboard from "@/components/analytics/AnalyticsDashboard";
 import ArticleCard from "@/components/analytics/ArticleCard";
 import LensSwitcher from "@/components/research/LensSwitcher";
-import { getAnalyticsPlayers } from "@/lib/nba";
+import { getAnalyticsPlayers, getDataProvenance } from "@/lib/nba";
 import { getPublishedArticles } from "@/lib/articles";
 import { getOpenDocket } from "@/lib/questions";
+import { getLedgerEventsSync } from "@/lib/ledger-store";
+import { summarizeLastWeek } from "@/lib/ledger";
 import { QUESTION_KIND_LABELS } from "@/lib/research-types";
 
 const TITLE = "NBA Value vs. Contract — BOW Sports Capital Analytics";
@@ -29,6 +31,11 @@ export default function AnalyticsPage() {
   const latest = getPublishedArticles().slice(0, 3);
   const docket = getOpenDocket();
   const teaser = docket.slice(0, 4);
+  const provenance = getDataProvenance();
+  // Sync read of whatever ledger history exists — /analytics/ledger is
+  // the surface that actually turns the daily page.
+  const week = summarizeLastWeek(getLedgerEventsSync());
+  const weekMoves = week.flips + week.opened + week.reopened + week.settled;
 
   return (
     <div data-screen-label="Analytics">
@@ -59,6 +66,9 @@ export default function AnalyticsPage() {
             <Link href="/analytics/questions" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
               Open the docket →
             </Link>
+            <Link href="/analytics/ledger" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
+              The ledger →
+            </Link>
             <Link href="/analytics/notebook" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
               Your notebook →
             </Link>
@@ -66,6 +76,31 @@ export default function AnalyticsPage() {
               AASV = wins × $/win − cap hit × apron multiplier
             </span>
           </div>
+          <p style={{ margin: "16px 0 0", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#6d7078" }}>
+            {provenance.playerCount} tracked contracts · {provenance.teamCount} teams · hand-curated from public
+            reporting{provenance.asOf ? ` as of ${provenance.asOf}` : ""} ·{" "}
+            <Link href="/analytics/methods" style={{ color: "#6f8bff" }}>
+              how the model works →
+            </Link>
+          </p>
+        </div>
+      </section>
+
+      {/* NEW HERE? — the plain-English onramp from the classroom side of the house */}
+      <section style={{ background: "var(--bow-paper)", padding: "clamp(18px,2.6vw,28px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
+        <div className="bow-container-wide" style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "8px 16px" }}>
+          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)" }}>
+            New here?
+          </span>
+          <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.55, color: "var(--bow-slate)", flex: "1 1 380px", textWrap: "pretty" }}>
+            The whole idea in one sentence: a player is worth what he produces minus what he truly costs — and every
+            number that goes into that sentence is a dial you can turn, not a fact we hand you. If terms like
+            &ldquo;apron&rdquo; or &ldquo;surplus value&rdquo; are new,{" "}
+            <Link href="/glossary" className="bow-link" style={{ color: "var(--bow-blue)" }}>the glossary</Link> defines
+            every one, and{" "}
+            <Link href="/programs/track-101" className="bow-link" style={{ color: "var(--bow-blue)" }}>Track 101</Link>{" "}
+            teaches the economics behind the dials.
+          </p>
         </div>
       </section>
 
@@ -90,6 +125,15 @@ export default function AnalyticsPage() {
             action={{ label: `All ${docket.length} open questions →`, href: "/analytics/questions" }}
             style={{ marginBottom: 22 }}
           />
+          {weekMoves > 0 && (
+            <p style={{ margin: "-10px 0 18px", fontFamily: "var(--font-data)", fontSize: 12.5, letterSpacing: "0.03em", color: "var(--bow-slate)" }}>
+              This week the model went on the record: {week.flips} verdict flip{week.flips === 1 ? "" : "s"} ·{" "}
+              {week.opened + week.reopened} question{week.opened + week.reopened === 1 ? "" : "s"} opened · {week.settled} settled ·{" "}
+              <Link href="/analytics/ledger" className="bow-link" style={{ color: "var(--bow-blue)" }}>
+                read the ledger →
+              </Link>
+            </p>
+          )}
           <div style={{ display: "flex", flexDirection: "column" }}>
             {teaser.map((q, i) => (
               <div
