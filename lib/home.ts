@@ -126,23 +126,9 @@ export const tracks: Track[] = [
     topPad: "0px",
     href: "/programs/track-201",
   },
-  {
-    num: "301",
-    kind: "In Development",
-    kindColor: "var(--bow-warning)",
-    recommended: false,
-    title: "The next level is being built.",
-    desc: "A future pathway into advanced sports strategy, connected systems, and executive-level decisions.",
-    meta: ["In development", "Advanced pathway", "Launch updates available"],
-    cta: "Preview Track 301",
-    btnVariant: "ink",
-    bg: "var(--bow-ink)",
-    fg: "#fff",
-    muted: "#9a9da6",
-    line: "var(--bow-orange)",
-    topPad: "0px",
-    href: "/programs/track-301",
-  },
+  // Track 301 is not yet a real, purchasable track — it's intentionally left out of this
+  // comparison grid so visitors only compare tracks that actually exist. It's still
+  // reachable at /programs/track-301, linked only from the footer ("Track 301 — Coming").
 ];
 
 export interface FeaturedLesson {
@@ -202,21 +188,6 @@ export const homeEpisodes: Episode[] = [
   { num: "EP 06", topic: "Team Building", title: "Stars, Role Players, and the Math of a Contender", meta: "41 MIN · TRACK 101 · M2 L1" },
   { num: "EP 05", topic: "Ownership", title: "Who Really Pays When a Team Wins?", meta: "35 MIN · TRACK 201 · M1 L3" },
   { num: "EP 04", topic: "Sports Economics", title: "Opportunity Cost, Explained in Trades", meta: "33 MIN · TRACK 101 · M1 L2" },
-];
-
-export interface Destination {
-  code: string;
-  title: string;
-  body: string;
-}
-
-export const destinations: Destination[] = [
-  { code: "DISTRICT 01", title: "Stadium District", body: "Operations, gamedays, and the cost of a full building." },
-  { code: "TOWER 02", title: "Media Tower", body: "Rights, ratings, and the business of attention." },
-  { code: "ROW 03", title: "Sponsor Row", body: "Deals, brand value, and the price of a logo." },
-  { code: "OFFICE 04", title: "League Offices", body: "Rules, parity, and leaguewide economics." },
-  { code: "HQ 05", title: "Ownership HQ", body: "Valuation, risk, and the long game." },
-  { code: "ROOM 06", title: "Draft War Room", body: "Assets, projections, and the clock." },
 ];
 
 export interface Pathway {

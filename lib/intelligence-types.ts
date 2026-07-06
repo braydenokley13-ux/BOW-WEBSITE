@@ -144,7 +144,6 @@ export interface FranchiseIndex {
   rosterQuality: IndexScore;
   capFlexibility: IndexScore;
   assetBase: IndexScore;
-  youngCore: IndexScore;
   championshipWindow: IndexScore;
   downsideRisk: IndexScore; // higher score = LESS downside risk
   optionality: IndexScore;

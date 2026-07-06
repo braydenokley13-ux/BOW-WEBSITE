@@ -12,9 +12,16 @@ import type { SeasonStat } from "@/lib/nba";
  * neither metric on file breaks the line — never interpolated across.
  */
 
+// Copy only — the underlying "epm" field actually holds the league's estimated net rating,
+// not real estimated plus-minus, so the display label reads "est. impact" rather than "EPM".
 const METRIC_LABEL: Record<"epm" | "bpm", string> = {
-  epm: "EPM (estimated plus-minus)",
+  epm: "Est. Impact (league estimated net rating, per 100 poss.)",
   bpm: "BPM (box plus-minus)",
+};
+
+const METRIC_SHORT: Record<"epm" | "bpm", string> = {
+  epm: "EST. IMPACT",
+  bpm: "BPM",
 };
 
 interface PlottedPoint {
@@ -261,7 +268,7 @@ export default function TrendLine({
           >
             <div style={{ fontFamily: "var(--font-data)", fontWeight: 700, fontSize: 12.5, letterSpacing: "0.04em" }}>{hovered.season}</div>
             <div style={{ fontFamily: "var(--font-data)", fontSize: 11.5, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
-              {hovered.source.toUpperCase()} {num(hovered.value)}
+              {METRIC_SHORT[hovered.source]} {num(hovered.value)}
             </div>
           </div>
         )}
@@ -270,8 +277,8 @@ export default function TrendLine({
       {anyBpm && (
         <p style={{ margin: "8px 0 0", display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.02em", color: "var(--bow-slate)" }}>
           <span aria-hidden style={{ display: "inline-block", width: 8, height: 8, borderRadius: 999, background: "var(--bow-white)", border: "2px solid var(--bow-blue)" }} />
-          Hollow marker = {METRIC_LABEL[metric === "epm" ? "bpm" : "epm"]} fallback — no{" "}
-          {METRIC_LABEL[metric].split(" ")[0]} on file that season.
+          Hollow marker = {METRIC_SHORT[metric === "epm" ? "bpm" : "epm"]} fallback — no{" "}
+          {METRIC_SHORT[metric]} on file that season.
         </p>
       )}
 

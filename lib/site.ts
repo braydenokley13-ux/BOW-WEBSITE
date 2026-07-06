@@ -29,7 +29,6 @@ export const NAV: NavItem[] = [
   { label: "Analytics", href: "/analytics" },
   { label: "Simulations", href: "/simulation" },
   { label: "Podcast", href: "/podcast" },
-  { label: "Highway World", href: "/highway-world" },
   { label: "Get Involved", href: "/get-involved" },
   { label: "About", href: "/about" },
 ];

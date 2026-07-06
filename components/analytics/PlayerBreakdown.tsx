@@ -17,6 +17,14 @@ import type { SeasonStat } from "@/lib/nba";
 const num = (v: number, digits = 1) =>
   v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
+// Copy only — metricUsed's "EPM" value marks which column the number came from (unchanged
+// identifier), but the epm column actually holds the league's estimated net rating, so the
+// on-screen label reads "Est. Impact" instead of claiming real estimated plus-minus.
+const METRIC_DISPLAY: Record<"EPM" | "BPM", string> = {
+  EPM: "Est. Impact",
+  BPM: "BPM",
+};
+
 const stepCard: React.CSSProperties = {
   background: "var(--bow-white)",
   border: "1px solid var(--border-rule)",
@@ -110,13 +118,13 @@ export default function PlayerBreakdown({
           <span style={stepKicker}>Step 1 · On-court impact</span>
           <p style={{ margin: "8px 0 0", fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.55, color: "var(--bow-slate)" }}>
             {v.metricUsed === "EPM" && (
-              <>Estimated plus-minus impact (net points per 100 possessions vs. an average player), cached from stats.nba.com{player.statSource === "snapshot" ? " (seed snapshot)" : ""}.</>
+              <>League estimated net rating (per 100 poss. vs. an average player), cached from stats.nba.com{player.statSource === "snapshot" ? " (seed snapshot)" : ""}.</>
             )}
-            {v.metricUsed === "BPM" && <>No EPM on file — falling back to Box Plus/Minus from the editable snapshot.</>}
+            {v.metricUsed === "BPM" && <>No est. impact metric on file — falling back to Box Plus/Minus from the editable snapshot.</>}
             {v.metricUsed == null && <>No advanced metric available for this season.</>}
           </p>
           <p style={formula}>
-            {v.metricUsed ?? "impact"} = <strong>{v.metricUsed ? num(v.impact) : "—"}</strong>
+            {v.metricUsed ? METRIC_DISPLAY[v.metricUsed] : "impact"} = <strong>{v.metricUsed ? num(v.impact) : "—"}</strong>
             {"   ·   "}
             {player.season || "no season"} · {player.games} games · {num(player.minutes, 0)} minutes
           </p>
@@ -188,7 +196,7 @@ export default function PlayerBreakdown({
           <div style={stepCard}>
             <span style={stepKicker}>Step 6 · Season-over-season impact</span>
             <div style={{ marginTop: 10 }}>
-              <TrendLine history={history} title={`${player.name} — EPM trend`} note={trendSentence ?? undefined} />
+              <TrendLine history={history} title={`${player.name} — est. impact trend`} note={trendSentence ?? undefined} />
             </div>
           </div>
         )}

@@ -8,11 +8,16 @@ interface VerdictBadgeProps {
 /**
  * VerdictBadge — the contract-verdict chip. Sibling of components/analytics/ApronBadge:
  * a color dot plus an always-present text label, so the verdict never rides on color alone.
+ *
+ * The `lg` size is reserved for headline verdict spots (executive summaries, contract-verdict
+ * embeds) — those get a quiet "under these assumptions" caption so the tier never reads as
+ * settled fact. `sm` badges (table rows, asset cards) stay caption-free; repeating the
+ * reminder on every row would just be noise.
  */
 export default function VerdictBadge({ tier, size = "sm" }: VerdictBadgeProps) {
   const color = VERDICT_COLORS[tier];
   const lg = size === "lg";
-  return (
+  const pill = (
     <span
       style={{
         display: "inline-flex",
@@ -32,6 +37,25 @@ export default function VerdictBadge({ tier, size = "sm" }: VerdictBadgeProps) {
     >
       <span aria-hidden="true" style={{ width: lg ? 9 : 8, height: lg ? 9 : 8, borderRadius: 999, background: color, flexShrink: 0 }} />
       {VERDICT_LABELS[tier]}
+    </span>
+  );
+
+  if (!lg) return pill;
+
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+      {pill}
+      <span
+        style={{
+          fontFamily: "var(--font-data)",
+          fontSize: 10,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: "var(--bow-slate)",
+        }}
+      >
+        under these assumptions
+      </span>
     </span>
   );
 }

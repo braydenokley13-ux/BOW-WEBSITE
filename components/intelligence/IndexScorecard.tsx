@@ -11,7 +11,6 @@ const DIMENSION_LABELS: Record<Dimension, string> = {
   rosterQuality: "Roster quality",
   capFlexibility: "Cap flexibility",
   assetBase: "Asset base",
-  youngCore: "Young core",
   championshipWindow: "Championship window",
   downsideRisk: "Downside risk (inverse — higher is safer)",
   optionality: "Optionality",
@@ -21,7 +20,6 @@ const DIMENSION_ORDER: Dimension[] = [
   "rosterQuality",
   "capFlexibility",
   "assetBase",
-  "youngCore",
   "championshipWindow",
   "downsideRisk",
   "optionality",
@@ -81,7 +79,7 @@ function ScoreBar({ label, score, prominent = false }: { label: string; score: I
 }
 
 /**
- * IndexScorecard — the seven FranchiseIndex dimensions plus the overall
+ * IndexScorecard — the six FranchiseIndex dimensions plus the overall
  * score, rendered as horizontal bars with letter grades and one-sentence
  * drivers. A financial-report reading, not a gamer dashboard: no chart
  * library, just divs.
@@ -100,18 +98,40 @@ export default function IndexScorecard({ index, title = "Franchise Index" }: Ind
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingBottom: 18, borderBottom: "1px solid var(--border-rule)" }}>
-        <span
-          style={{
-            fontFamily: "var(--font-data)",
-            fontWeight: 600,
-            fontSize: 12,
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            color: "var(--bow-slate)",
-          }}
-        >
-          {title}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-data)",
+              fontWeight: 600,
+              fontSize: 12,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              color: "var(--bow-slate)",
+            }}
+          >
+            {title}
+          </span>
+          <span
+            title="This index has not yet been backtested against outcomes — read it as a model, not a track record."
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              fontFamily: "var(--font-data)",
+              fontWeight: 600,
+              fontSize: 9.5,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              border: "1px solid var(--bow-warning-text)",
+              color: "var(--bow-warning-text)",
+              borderRadius: 2,
+              padding: "2px 7px",
+              cursor: "help",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Experimental
+          </span>
+        </div>
         <ScoreBar label="Overall" score={index.overall} prominent />
       </div>
 
