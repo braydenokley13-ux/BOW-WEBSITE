@@ -224,6 +224,75 @@ export function parseMarkdown(src: string): Block[] {
   return blocks;
 }
 
+
+/* ---------------- glossary auto-linking ---------------- */
+
+/** One linkable curriculum term: display text to match, href to teach it. */
+export interface GlossaryLinkTarget {
+  term: string;
+  href: string;
+}
+
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Link the FIRST occurrence of each glossary term in a document to its
+ * glossary entry — the connective tissue between the publication and
+ * the curriculum. Pure and client-safe (terms arrive as plain data, so
+ * this file still never imports a server module). Rules that keep the
+ * prose readable: only paragraph/list/blockquote text is touched (never
+ * headings, code, or embeds), matching is case-insensitive on word
+ * boundaries, existing links are never nested, and each term links at
+ * most once per document.
+ */
+export function linkGlossaryTerms(blocks: Block[], targets: GlossaryLinkTarget[]): Block[] {
+  if (targets.length === 0) return blocks;
+  const pending = new Map<string, GlossaryLinkTarget>();
+  for (const t of targets) if (t.term.trim()) pending.set(t.term.toLowerCase(), t);
+
+  function linkNodes(nodes: InlineNode[]): InlineNode[] {
+    const out: InlineNode[] = [];
+    for (const n of nodes) {
+      if (n.type === "strong" || n.type === "em") {
+        out.push({ ...n, children: linkNodes(n.children) });
+        continue;
+      }
+      if (n.type !== "text" || pending.size === 0) {
+        out.push(n); // links/code/images pass through untouched
+        continue;
+      }
+      let rest = n.text;
+      while (rest.length > 0 && pending.size > 0) {
+        let earliest: { index: number; length: number; target: GlossaryLinkTarget } | null = null;
+        for (const target of pending.values()) {
+          const m = rest.match(new RegExp(`\\b${escapeRe(target.term)}\\b`, "i"));
+          if (m && m.index != null && (earliest === null || m.index < earliest.index)) {
+            earliest = { index: m.index, length: m[0].length, target };
+          }
+        }
+        if (!earliest) break;
+        if (earliest.index > 0) out.push({ type: "text", text: rest.slice(0, earliest.index) });
+        out.push({
+          type: "link",
+          href: earliest.target.href,
+          children: [{ type: "text", text: rest.slice(earliest.index, earliest.index + earliest.length) }],
+        });
+        pending.delete(earliest.target.term.toLowerCase());
+        rest = rest.slice(earliest.index + earliest.length);
+      }
+      if (rest.length > 0) out.push({ type: "text", text: rest });
+    }
+    return out;
+  }
+
+  return blocks.map((b) => {
+    if (b.type === "paragraph") return { ...b, children: linkNodes(b.children) };
+    if (b.type === "list") return { ...b, items: b.items.map(linkNodes) };
+    if (b.type === "blockquote") return { ...b, children: b.children.map(linkNodes) };
+    return b;
+  });
+}
+
 /* ---------------- inline parsing ---------------- */
 
 /**
