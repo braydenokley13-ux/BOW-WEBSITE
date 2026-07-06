@@ -2,6 +2,14 @@ import Link from "next/link";
 import type { PublicProfile } from "@/lib/profile";
 import RankBadge from "@/components/profile/RankBadge";
 
+/** A published research paper on the credential (see /analytics/notebook → submit). */
+export interface ProfilePaper {
+  slug: string;
+  title: string;
+  abstract: string;
+  publishedAt: number | null;
+}
+
 function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--bow-dark-border)", borderRadius: 6, padding: "16px 18px" }}>
@@ -15,7 +23,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
  * The public, shareable student profile (Feature 3). No reflections or personal
  * data — just the achievement record students put on college applications.
  */
-export default function PublicProfileView({ profile }: { profile: PublicProfile }) {
+export default function PublicProfileView({ profile, papers = [] }: { profile: PublicProfile; papers?: ProfilePaper[] }) {
   return (
     <div className="bow-front-office" style={{ background: "var(--bow-ink)", color: "#fff", minHeight: "100vh", padding: "clamp(28px,5vw,64px) clamp(16px,4vw,32px) 80px" }}>
       <div style={{ maxWidth: 760, margin: "0 auto" }}>
@@ -50,6 +58,35 @@ export default function PublicProfileView({ profile }: { profile: PublicProfile 
           <Stat label="The Front Office" value={profile.eastfieldCompleted ? "Complete" : "Not yet"} accent={profile.eastfieldCompleted ? "#5fcf99" : undefined} />
           <Stat label="Discussion posts" value={String(profile.discussionPosts)} />
         </div>
+
+        {papers.length > 0 && (
+          <div style={{ marginBottom: 30 }}>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9a9da6" }}>
+              Published research
+            </span>
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+              {papers.map((paper) => (
+                <Link
+                  key={paper.slug}
+                  href={`/analytics/articles/${paper.slug}`}
+                  style={{ display: "block", background: "rgba(255,255,255,0.04)", border: "1px solid var(--bow-dark-border)", borderRadius: 6, padding: "14px 18px", textDecoration: "none" }}
+                >
+                  <div style={{ fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: 17, lineHeight: 1.35, color: "#fff", textWrap: "pretty" }}>
+                    {paper.title}
+                  </div>
+                  {paper.abstract && (
+                    <p style={{ margin: "6px 0 0", fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.55, color: "#9a9da6" }}>
+                      {paper.abstract}
+                    </p>
+                  )}
+                  <div style={{ marginTop: 8, fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#6f8bff" }}>
+                    {paper.publishedAt ? new Date(paper.publishedAt).toISOString().slice(0, 10) : ""} · Read the paper →
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ borderTop: "1px solid var(--bow-dark-border)", paddingTop: 22, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
           <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.6, color: "#9a9da6", maxWidth: 420 }}>

@@ -14,13 +14,14 @@
  * teach the reader two different interactions for one action.
  * ============================================================ */
 
-import { useState, type CSSProperties } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ds";
 import { useNotebook } from "@/components/research/useNotebook";
 import { draftFromNotebook } from "@/lib/notebook-draft";
 import { formatClipAge } from "@/lib/notebook";
 import { fmtMillions } from "@/lib/aasv";
+import { submitPaper } from "@/app/actions/articles";
 import { STANCE_LABELS, type Clip, type Stance } from "@/lib/research-types";
 
 const STANCE_ORDER = Object.keys(STANCE_LABELS) as Stance[];
@@ -185,10 +186,14 @@ function EmptyState() {
   );
 }
 
-export default function NotebookWorkbench() {
+export default function NotebookWorkbench({ viewer }: { viewer: { name: string } | null }) {
   const { notebook, clipCount, remove, setStance, setNote, setHypothesis, clear } = useNotebook();
   const [draft, setDraft] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [paperTitle, setPaperTitle] = useState("");
+  const [abstract, setAbstract] = useState("");
+  const [submitState, setSubmitState] = useState<{ ok: boolean; message: string } | null>(null);
+  const [submitting, startSubmit] = useTransition();
 
   const columns: Record<Stance, Clip[]> = { supports: [], challenges: [], open: [] };
   for (const clip of notebook.clips) columns[clip.stance].push(clip);
@@ -220,6 +225,22 @@ export default function NotebookWorkbench() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+  }
+
+  function handleSubmitPaper() {
+    if (!draft) return;
+    startSubmit(async () => {
+      const result = await submitPaper({
+        title: paperTitle.trim() || notebook.hypothesis.trim(),
+        abstract: abstract.trim(),
+        body: draft,
+      });
+      setSubmitState(
+        result.ok
+          ? { ok: true, message: "Submitted — your paper is in the desk's review queue. If it holds up, it publishes under your name." }
+          : { ok: false, message: result.error ?? "Something went wrong — try again." },
+      );
+    });
   }
 
   function handleClear() {
@@ -329,6 +350,52 @@ export default function NotebookWorkbench() {
               <Button size="sm" variant="secondary" onClick={handleDownload}>
                 Download .md
               </Button>
+            </div>
+
+            {/* submit for publication — the loop's terminus */}
+            <div style={{ borderTop: "1px solid var(--border-rule)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
+                Submit as a research paper
+              </span>
+              {viewer === null ? (
+                <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.55, color: "var(--bow-slate)" }}>
+                  <Link href="/sign-in" style={{ color: "var(--bow-blue)" }}>Sign in</Link> to submit this draft to the
+                  desk — accepted papers publish on the site with your name on the byline.
+                </p>
+              ) : submitState?.ok ? (
+                <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.55, color: "var(--bow-positive)" }}>
+                  {submitState.message}
+                </p>
+              ) : (
+                <>
+                  <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.55, color: "var(--bow-slate)" }}>
+                    Sends the compiled draft above to the editorial desk for review, byline{" "}
+                    <strong style={{ color: "var(--bow-ink)" }}>{viewer.name}</strong>. The assumptions disclosure and
+                    evidence travel with it — that&rsquo;s the honesty contract.
+                  </p>
+                  <input
+                    value={paperTitle}
+                    onChange={(e) => setPaperTitle(e.target.value)}
+                    placeholder={notebook.hypothesis.trim() ? `Title (default: your claim)` : "Paper title"}
+                    style={{ fontFamily: "var(--font-editorial)", fontSize: 15, padding: "8px 10px", border: "1px solid var(--border-rule)", background: "var(--bow-white)", color: "var(--bow-ink)" }}
+                  />
+                  <textarea
+                    value={abstract}
+                    onChange={(e) => setAbstract(e.target.value)}
+                    placeholder="Abstract — two or three sentences: what you claim, what the evidence shows, what stays open."
+                    rows={3}
+                    style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, padding: "8px 10px", border: "1px solid var(--border-rule)", background: "var(--bow-white)", color: "var(--bow-ink)", resize: "vertical" }}
+                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <Button size="sm" variant="ink" onClick={handleSubmitPaper} disabled={submitting || !abstract.trim()}>
+                      {submitting ? "Submitting…" : "Submit for review"}
+                    </Button>
+                    {submitState && !submitState.ok && (
+                      <span style={{ fontFamily: "var(--font-interface)", fontSize: 12.5, color: "var(--bow-negative)" }}>{submitState.message}</span>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}

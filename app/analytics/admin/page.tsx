@@ -1,10 +1,13 @@
 import AdminArticleList from "@/components/analytics/AdminArticleList";
-import { getAllArticlesAdmin } from "@/lib/articles";
+import { getAllArticlesAdmin, rehydrateArticlesFromMirror } from "@/lib/articles";
 import { getStatsFreshness } from "@/lib/nba";
 
 export const dynamic = "force-dynamic";
 
-export default function AnalyticsAdminPage() {
+export default async function AnalyticsAdminPage() {
+  // Reader submissions must survive a cold start — pull the mirror
+  // back before the desk reads its queue.
+  await rehydrateArticlesFromMirror();
   const articles = getAllArticlesAdmin();
   const freshness = getStatsFreshness();
   return (
