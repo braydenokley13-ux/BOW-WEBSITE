@@ -83,6 +83,7 @@ function embedForClip(clip: Clip): string | null {
       return team ? `<TeamFlex team="${team.toUpperCase()}" />` : null;
     }
     case "question":
+    case "ledger": // a dated before/after — the frozen prose IS the evidence
     case "note":
       return null;
   }

@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
-import { getDb } from "@/lib/db";
-import { requireRole } from "@/lib/dal";
+import { requireRole, requireUser } from "@/lib/dal";
 import { slugify } from "@/lib/slug";
-import { ARTICLE_CATEGORIES, parseTags } from "@/lib/articles";
+import { ARTICLE_CATEGORIES, articlesDb, countOpenSubmissions, parseTags, rowToArticle } from "@/lib/articles";
+import { blobDelete, blobList, blobPutJson } from "@/lib/blob-mirror";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -30,6 +30,21 @@ export interface SaveArticleResult {
   id?: string;
   slug?: string;
   error?: string;
+}
+
+/**
+ * Copy one article's current row to the Blob mirror (fire-and-forget
+ * durability — see lib/articles.ts's rehydrateArticlesFromMirror).
+ * SQLite already committed; a mirror failure only costs redundancy.
+ */
+async function mirrorArticle(id: string): Promise<void> {
+  const row = articlesDb().prepare("SELECT * FROM articles WHERE id = ?").get(id);
+  if (row) await blobPutJson(`articles/${id}.json`, rowToArticle(row));
+}
+
+async function unmirrorArticle(id: string): Promise<void> {
+  const entries = await blobList(`articles/${id}.json`);
+  if (entries.length > 0) await blobDelete(entries.map((e) => e.url));
 }
 
 function refresh(slug?: string) {
@@ -97,7 +112,7 @@ export async function saveArticle(id: string | null, input: ArticleInput): Promi
   const v = cleanInput(input);
   if (!v.title) return { ok: false, error: "A title is required." };
 
-  const db = getDb();
+  const db = articlesDb();
   const now = Date.now();
 
   if (id) {
@@ -109,6 +124,7 @@ export async function saveArticle(id: string | null, input: ArticleInput): Promi
     db.prepare(
       `UPDATE articles SET slug=?, title=?, dek=?, body=?, author=?, category=?, tags=?, cover_image=?, meta_title=?, meta_description=?, updated_at=? WHERE id=?`,
     ).run(slug, v.title, v.dek, v.body, v.author, v.category, v.tags, v.coverImage, v.metaTitle, v.metaDescription, now, id);
+    await mirrorArticle(id);
     refresh(slug);
     return { ok: true, id, slug };
   }
@@ -119,13 +135,56 @@ export async function saveArticle(id: string | null, input: ArticleInput): Promi
     `INSERT INTO articles (id, slug, title, dek, body, status, author, category, tags, cover_image, featured, view_count, meta_title, meta_description, published_at, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, 0, 0, ?, ?, NULL, ?, ?)`,
   ).run(newId, slug, v.title, v.dek, v.body, v.author, v.category, v.tags, v.coverImage, v.metaTitle, v.metaDescription, now, now);
+  await mirrorArticle(newId);
+  refresh(slug);
+  return { ok: true, id: newId, slug };
+}
+
+/** What the notebook workbench sends when a reader submits their compiled draft. */
+export interface PaperInput {
+  title: string;
+  /** The abstract — becomes the paper's dek. */
+  abstract: string;
+  /** Compiled notebook markdown (case / counter-case / open / assumptions disclosure). */
+  body: string;
+}
+
+/** A reader can only have this many papers sitting in review at once. */
+const MAX_OPEN_SUBMISSIONS = 3;
+
+/**
+ * Submit a research paper from the notebook workbench. Any signed-in
+ * account can submit; nothing goes public without an admin publishing
+ * it from the review queue — students submit, the desk decides.
+ */
+export async function submitPaper(input: PaperInput): Promise<SaveArticleResult> {
+  const me = await requireUser();
+  const title = (input.title ?? "").trim();
+  const abstract = (input.abstract ?? "").trim();
+  const body = (input.body ?? "").trim();
+  if (!title) return { ok: false, error: "A title is required." };
+  if (!abstract) return { ok: false, error: "Write a short abstract — what does the paper claim?" };
+  if (body.length < 200) return { ok: false, error: "The paper needs a compiled draft — clip evidence and compile it first." };
+  if (countOpenSubmissions(me.id) >= MAX_OPEN_SUBMISSIONS) {
+    return { ok: false, error: "You already have papers in review — wait for the desk before submitting more." };
+  }
+
+  const db = articlesDb();
+  const now = Date.now();
+  const newId = `art-${randomUUID().slice(0, 8)}`;
+  const slug = uniqueSlug(db, title, null);
+  db.prepare(
+    `INSERT INTO articles (id, slug, title, dek, body, status, kind, author, author_user_id, category, tags, cover_image, featured, view_count, meta_title, meta_description, published_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'submitted', 'paper', ?, ?, 'Research Papers', 'paper', '', 0, 0, '', '', NULL, ?, ?)`,
+  ).run(newId, slug, title, abstract, body, me.name, me.id, now, now);
+  await mirrorArticle(newId);
   refresh(slug);
   return { ok: true, id: newId, slug };
 }
 
 export async function setArticleStatus(id: string, publish: boolean): Promise<{ ok: boolean }> {
   await requireRole("admin");
-  const db = getDb();
+  const db = articlesDb();
   const existing = db.prepare("SELECT slug, published_at FROM articles WHERE id = ?").get(id) as any;
   if (!existing) return { ok: false };
   if (publish) {
@@ -138,27 +197,30 @@ export async function setArticleStatus(id: string, publish: boolean): Promise<{ 
   } else {
     db.prepare("UPDATE articles SET status = 'draft', updated_at = ? WHERE id = ?").run(Date.now(), id);
   }
+  await mirrorArticle(id);
   refresh(existing.slug);
   return { ok: true };
 }
 
 export async function setArticleFeatured(id: string, featured: boolean): Promise<{ ok: boolean }> {
   await requireRole("admin");
-  const db = getDb();
+  const db = articlesDb();
   const existing = db.prepare("SELECT slug FROM articles WHERE id = ?").get(id) as any;
   if (!existing) return { ok: false };
   db.prepare("UPDATE articles SET featured = ?, updated_at = ? WHERE id = ?").run(featured ? 1 : 0, Date.now(), id);
+  await mirrorArticle(id);
   refresh(existing.slug);
   return { ok: true };
 }
 
 export async function deleteArticle(id: string): Promise<{ ok: boolean }> {
   await requireRole("admin");
-  const db = getDb();
+  const db = articlesDb();
   const existing = db.prepare("SELECT slug FROM articles WHERE id = ?").get(id) as any;
   if (!existing) return { ok: false };
   db.prepare("DELETE FROM article_revisions WHERE article_id = ?").run(id);
   db.prepare("DELETE FROM articles WHERE id = ?").run(id);
+  await unmirrorArticle(id);
   refresh(existing.slug);
   return { ok: true };
 }
@@ -169,7 +231,7 @@ export async function deleteArticle(id: string): Promise<{ ok: boolean }> {
  */
 export async function restoreRevision(articleId: string, revisionId: number): Promise<{ ok: boolean }> {
   await requireRole("admin");
-  const db = getDb();
+  const db = articlesDb();
   const rev = db.prepare("SELECT * FROM article_revisions WHERE id = ? AND article_id = ?").get(revisionId, articleId) as any;
   const existing = db.prepare("SELECT slug, status FROM articles WHERE id = ?").get(articleId) as any;
   if (!rev || !existing) return { ok: false };
@@ -185,6 +247,7 @@ export async function restoreRevision(articleId: string, revisionId: number): Pr
     Date.now(),
     articleId,
   );
+  await mirrorArticle(articleId);
   refresh(slug);
   return { ok: true };
 }

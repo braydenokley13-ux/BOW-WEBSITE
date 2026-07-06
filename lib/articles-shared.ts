@@ -12,18 +12,31 @@ export const ARTICLE_CATEGORIES = [
   "Draft Economics",
   "Cap Strategy",
   "Model Notes",
+  "Research Papers",
 ] as const;
 
-export type ArticleStatus = "draft" | "published";
+/**
+ * "submitted" is the review queue: a reader compiled their notebook into
+ * a paper and sent it in. Only an admin can move it to "published" —
+ * students submit, the desk decides.
+ */
+export type ArticleStatus = "draft" | "submitted" | "published";
+
+/** House-written article vs. a reader-authored research paper. */
+export type ArticleKind = "article" | "paper";
 
 export interface Article {
   id: string;
   slug: string;
   title: string;
+  /** For kind "paper" this is the abstract. */
   dek: string;
   body: string;
   status: ArticleStatus;
+  kind: ArticleKind;
   author: string;
+  /** Account id of the submitting reader (papers only), for the profile byline. */
+  authorUserId: string | null;
   category: string;
   tags: string[];
   coverImage: string;

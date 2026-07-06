@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import MarkdownView from "@/components/analytics/MarkdownView";
 import ArticleCard, { formatArticleDate } from "@/components/analytics/ArticleCard";
 import ShareButtons from "@/components/analytics/ShareButtons";
-import { bumpViewCount, getPublishedArticleBySlug, getRelatedArticles } from "@/lib/articles";
+import { bumpViewCount, getPublishedArticleBySlug, getRelatedArticles, rehydrateArticlesFromMirror } from "@/lib/articles";
 import { getAnalyticsPlayers, getAnalyticsPlayersBySlugs, getPlayerSeasonHistory, type SeasonStat } from "@/lib/nba";
-import { collectEmbedSlugs, collectEmbedTeams, parseMarkdown } from "@/lib/markdown";
+import { collectEmbedSlugs, collectEmbedTeams, linkGlossaryTerms, parseMarkdown } from "@/lib/markdown";
+import { glossaryLinkTargets } from "@/lib/glossary";
 import type { AnalyticsPlayer } from "@/lib/aasv";
 
 // Embeds must show the model's CURRENT values, and reads count views.
@@ -41,6 +42,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
+  // A published paper's URL must survive a cold start (no-op without Blob).
+  await rehydrateArticlesFromMirror();
   const { slug } = await params;
   const article = getPublishedArticleBySlug(slug);
   if (!article) notFound();
@@ -48,7 +51,9 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   bumpViewCount(article.id);
 
   // One query prefetches every player any embed in the body references.
-  const blocks = parseMarkdown(article.body);
+  // First mention of any curriculum term links to its glossary entry —
+  // a reader who hits "second apron" cold is one click from the lesson.
+  const blocks = linkGlossaryTerms(parseMarkdown(article.body), glossaryLinkTargets());
   const embedPlayers = getAnalyticsPlayersBySlugs(collectEmbedSlugs(blocks));
   const playerMap: Record<string, AnalyticsPlayer> = {};
   for (const p of embedPlayers) playerMap[p.slug] = p;

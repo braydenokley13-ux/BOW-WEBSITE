@@ -67,10 +67,12 @@ export interface BuildStep {
 /* Programs page                                                         */
 /* ===================================================================== */
 
+// Track 301 is intentionally left out of this progression grid — it isn't a real,
+// purchasable track yet. It's still reachable at /programs/track-301, linked only
+// from the footer ("Track 301 — Coming").
 export const progression: ProgressionStage[] = [
   { num: "101", label: "Understand the Organization", dev: "How a sports business works — money, talent, and the cost of every choice.", status: "Available", tone: "var(--bow-blue)", cta: "Enter Track 101", href: "/programs/track-101" },
   { num: "201", label: "Operate the Organization", dev: "Run the front office: cap management, analytics, ownership, and the draft.", status: "Available", tone: "var(--bow-orange)", cta: "Enter Track 201", href: "/programs/track-201" },
-  { num: "301", label: "Shape the Industry", dev: "Negotiation, valuation, media rights, and league-level strategy.", status: "In Development", tone: "var(--bow-warning)", cta: "Preview Track 301", href: "/programs/track-301" },
   { num: "HW", label: "Live in the Universe", dev: "Apply every decision across Highway World — a living sports-business overworld.", status: "In Development", tone: "var(--bow-positive)", cta: "See Highway World", href: "/highway-world" },
 ];
 

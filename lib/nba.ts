@@ -114,6 +114,31 @@ export function getAllPlayerSeasonHistories(): Record<string, SeasonStat[]> {
   return bySlug;
 }
 
+/** Data-credibility readout for footers/methods pages: how big and how fresh the curated list is. */
+export interface DataProvenance {
+  playerCount: number;
+  teamCount: number;
+  /** Latest `as_of` curation date across nba_players (ISO string), or null if none is set. */
+  asOf: string | null;
+  /** Latest nba_player_stats.updated_at among rows written by the live ingest, or null if it has never run. */
+  statsUpdatedAt: number | null;
+}
+
+/** How many players/teams are tracked, and how fresh the contract + stats data is — for provenance stamps. */
+export function getDataProvenance(): DataProvenance {
+  const db = getDb();
+  const agg = db
+    .prepare(`SELECT COUNT(*) AS players, COUNT(DISTINCT team) AS teams, MAX(as_of) AS asOf FROM nba_players`)
+    .get() as any;
+  const ingest = db.prepare(`SELECT MAX(updated_at) AS last FROM nba_player_stats WHERE source = 'nba_api'`).get() as any;
+  return {
+    playerCount: Number(agg?.players) || 0,
+    teamCount: Number(agg?.teams) || 0,
+    asOf: agg?.asOf || null,
+    statsUpdatedAt: ingest?.last != null ? Number(ingest.last) : null,
+  };
+}
+
 export function getStatsFreshness(): StatsFreshness {
   const db = getDb();
   const players = (db.prepare("SELECT COUNT(*) AS n FROM nba_players").get() as any).n as number;

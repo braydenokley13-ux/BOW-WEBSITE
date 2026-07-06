@@ -17,6 +17,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { ingestSeasons, currentSeason } from "@/lib/nba-ingest";
+import { recordDailySnapshot } from "@/lib/ledger-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,5 +48,19 @@ export async function GET(request: NextRequest) {
   const results = await ingestSeasons(seasons, { dryRun });
   const ok = results.every((r) => r.errors.length === 0);
 
-  return NextResponse.json({ ok, dryRun, results }, { status: ok ? 200 : 502 });
+  // Turn the ledger's page: freeze today's model read against the fresh
+  // stats (force, so a re-run after a partial ingest re-freezes the day).
+  // A ledger failure must never fail the ingest report — it's a mirror
+  // of the model, not the model.
+  let ledger: { events: number } | { error: string } | { skipped: true } = { skipped: true };
+  if (!dryRun) {
+    try {
+      const recorded = await recordDailySnapshot({ force: true });
+      ledger = recorded ? { events: recorded.events.length } : { skipped: true };
+    } catch (err) {
+      ledger = { error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  return NextResponse.json({ ok, dryRun, results, ledger }, { status: ok ? 200 : 502 });
 }

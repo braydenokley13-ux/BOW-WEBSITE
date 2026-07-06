@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import TradeMachine from "@/components/analytics/TradeMachine";
-import { getAnalyticsPlayers } from "@/lib/nba";
+import { getAnalyticsPlayers, getDataProvenance } from "@/lib/nba";
 
 const TITLE = "Trade Machine — BOW Sports Capital Analytics";
 const DESCRIPTION =
@@ -19,6 +19,7 @@ export const dynamic = "force-dynamic";
 
 export default function TradePage() {
   const players = getAnalyticsPlayers();
+  const provenance = getDataProvenance();
 
   return (
     <div data-screen-label="Trade Machine">
@@ -42,7 +43,8 @@ export default function TradePage() {
             Under the CBA, the apron multiplier belongs to the <em>team</em>, not the player — so the same contract
             costs more on a taxed roster than on a clean one. Production, meanwhile, travels with the player unchanged.
             Move the pricier deal to the cheaper books and you create surplus before either roster plays a game. That
-            asymmetry is going to drive the next five years of star movement. Here it is, live.
+            asymmetry is going to drive the next five years of star movement. Here it is — priced under your
+            assumptions, on the contracts we track.
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginTop: 22 }}>
             <Link href="/analytics" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
@@ -55,6 +57,13 @@ export default function TradePage() {
               value created = (cap gap) × (apron-multiplier gap)
             </span>
           </div>
+          <p style={{ margin: "16px 0 0", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#6d7078" }}>
+            {provenance.playerCount} tracked contracts{provenance.asOf ? ` · curated as of ${provenance.asOf}` : ""} · salary matching and apron
+            aggregation only, not the full CBA ·{" "}
+            <Link href="/analytics/methods" style={{ color: "#6f8bff" }}>
+              methods →
+            </Link>
+          </p>
         </div>
       </section>
 

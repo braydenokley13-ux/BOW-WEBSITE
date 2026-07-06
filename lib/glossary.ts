@@ -32,6 +32,18 @@ export const GLOSSARY_CATEGORY_LABEL: Record<GlossaryCategory, string> = {
   business: "Business",
 };
 
+/**
+ * Every term as a markdown link target (lib/markdown.ts's
+ * linkGlossaryTerms) — the auto-link bridge from the publication's
+ * prose to the curriculum's definitions. Longest terms first so
+ * "Second Apron" wins over "Apron" when both could match.
+ */
+export function glossaryLinkTargets(): { term: string; href: string }[] {
+  return [...GLOSSARY_TERMS]
+    .sort((a, b) => b.term.length - a.term.length)
+    .map((t) => ({ term: t.term, href: `/glossary#${t.id}` }));
+}
+
 /** The glossary seed — 42 terms across both tracks. */
 export const GLOSSARY_TERMS: GlossaryTerm[] = [
   /* ---- Cap mechanics (Track 201, Module 1) ---- */

@@ -35,7 +35,7 @@ export const QUESTION_KIND_EXPLANATIONS: Record<QuestionKind, string> = {
   "lens-split": "Every preset worldview is legitimate; when the extremes land two-plus tiers apart, naming the lens you trust is the argument.",
   "price-production-gap": "Salary rank is a bet made in advance; production rank is what showed up. Far enough apart, that gap is a real question.",
   "aging-cliff": "No ages in the data — a trend-plus-exposure proxy. A decline only becomes a question once real money is riding on whether it's real.",
-  "metric-disagreement": "The model defaults to EPM over BPM. When the two trackers disagree hard enough, that default stops being invisible.",
+  "metric-disagreement": "The model defaults to est. net impact over BPM. When the two trackers disagree hard enough, that default stops being invisible.",
   "mutual-gain-trade": "The apron multiplier belongs to the receiving team, not the player — sometimes repricing lets both sides win, and nobody's made the call.",
   "window-contradiction": "A team's stated window and its cap posture can argue with each other — that tension is the story, not a bug in either read.",
 };

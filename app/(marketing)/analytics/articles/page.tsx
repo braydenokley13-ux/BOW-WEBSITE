@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import ArticleCard from "@/components/analytics/ArticleCard";
-import { ARTICLE_CATEGORIES, getPublishedArticles, getPublishedTags } from "@/lib/articles";
+import { ARTICLE_CATEGORIES, getPublishedArticles, getPublishedTags, rehydrateArticlesFromMirror } from "@/lib/articles";
+import { getDataProvenance } from "@/lib/nba";
 
 const TITLE = "Analytics Articles — BOW Sports Capital";
 const DESCRIPTION =
-  "Front-office analysis built on live model output: trade breakdowns, contract deep dives, and draft economics, every number generated from the AASV model at read time.";
+  "Front-office analysis and reader-submitted research papers where every embedded number is recomputed from the AASV model at read time — with the data's limits stated on the methods page.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -21,11 +22,15 @@ export default async function ArticlesIndex({
 }: {
   searchParams: Promise<{ category?: string; tag?: string }>;
 }) {
+  // Published work must survive a cold start — pull the durable mirror
+  // back before reading (no-op without a Blob token).
+  await rehydrateArticlesFromMirror();
   const { category, tag } = await searchParams;
   const activeCategory = category && (ARTICLE_CATEGORIES as readonly string[]).includes(category) ? category : undefined;
   const activeTag = tag?.toLowerCase() || undefined;
 
   const articles = getPublishedArticles({ category: activeCategory, tag: activeTag });
+  const provenance = getDataProvenance();
   const tags = getPublishedTags();
   const filtered = Boolean(activeCategory || activeTag);
   const featured = !filtered ? articles.filter((a) => a.featured) : [];
@@ -68,7 +73,14 @@ export default async function ArticlesIndex({
             <Link href="/analytics" style={{ color: "#6f8bff" }}>
               AASV model
             </Link>{" "}
-            directly, so a player card or chart inside a story always shows the model&rsquo;s current values.
+            directly, so a player card or chart inside a story always shows the model&rsquo;s current values. Reader
+            research that survives the desk&rsquo;s review publishes here too, under the author&rsquo;s own name.
+          </p>
+          <p style={{ margin: "14px 0 0", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#6d7078" }}>
+            {provenance.playerCount} tracked contracts{provenance.asOf ? ` · curated as of ${provenance.asOf}` : ""} ·{" "}
+            <Link href="/analytics/methods" style={{ color: "#6f8bff" }}>
+              methods &amp; data →
+            </Link>
           </p>
         </div>
       </section>

@@ -13,7 +13,9 @@ import { getDailyQuestionView } from "@/lib/daily-question";
 import { getStreak, streakLabel, getUserXp } from "@/lib/streak";
 import { rankForStudent } from "@/lib/scoring";
 import { TRACK_101, TRACK_201 } from "@/lib/account";
+import { getAnalyticsPlayers } from "@/lib/nba";
 import StudentDashboard from "@/components/selfpaced/StudentDashboard";
+import FrontOfficeLab from "@/components/selfpaced/FrontOfficeLab";
 
 export default async function DashboardPage() {
   const me = await requireRole("student");
@@ -35,8 +37,18 @@ export default async function DashboardPage() {
   const streak = getStreak(me.id);
   const rank = rankForStudent(me.id);
 
+  // Front Office Lab: the same live model the research desk runs, on one
+  // real contract. Biggest cap hit on the tracked list = the deal every
+  // student has an instinct about, which is what the exercise needs.
+  const labPlayers = getAnalyticsPlayers();
+  const labPlayer = labPlayers.reduce<(typeof labPlayers)[number] | null>(
+    (best, p) => (best === null || p.capHit > best.capHit ? p : best),
+    null,
+  );
+
   return (
-    <StudentDashboard
+    <>
+      <StudentDashboard
       firstName={me.first}
       track101={track101}
       track201={track201}
@@ -52,6 +64,14 @@ export default async function DashboardPage() {
       notifications={getNotifications(me.id, 10)}
       unreadCount={getUnreadCount(me.id)}
       alsoInCohortClass={isEnrolledInCohortClass(me.id)}
-    />
+      />
+      {labPlayer && (
+        <div style={{ padding: "0 clamp(16px,4vw,32px) clamp(28px,4vw,48px)" }}>
+          <div style={{ maxWidth: 1060, margin: "0 auto" }}>
+            <FrontOfficeLab player={labPlayer} allPlayers={labPlayers} />
+          </div>
+        </div>
+      )}
+    </>
   );
 }

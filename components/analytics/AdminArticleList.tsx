@@ -26,8 +26,12 @@ export default function AdminArticleList({ articles, freshness }: { articles: Ar
     });
 
   const drafts = articles.filter((a) => a.status === "draft").length;
-  const published = articles.length - drafts;
+  const submitted = articles.filter((a) => a.status === "submitted").length;
+  const published = articles.length - drafts - submitted;
   const totalViews = articles.reduce((s, a) => s + a.viewCount, 0);
+  // The review queue outranks everything else on the desk: reader papers
+  // waiting for a decision float to the top of the table.
+  const ordered = [...articles.filter((a) => a.status === "submitted"), ...articles.filter((a) => a.status !== "submitted")];
 
   const smallBtn: React.CSSProperties = {
     fontFamily: "var(--font-display)",
@@ -64,6 +68,7 @@ export default function AdminArticleList({ articles, freshness }: { articles: Ar
         items={[
           { label: "Published", value: String(published) },
           { label: "Drafts", value: String(drafts) },
+          { label: "Review queue", value: String(submitted), tone: submitted > 0 ? "warning" : undefined },
           { label: "Total reads", value: totalViews.toLocaleString("en-US") },
           { label: "Players tracked", value: String(freshness.players) },
           {
@@ -98,7 +103,7 @@ export default function AdminArticleList({ articles, freshness }: { articles: Ar
             </tr>
           </thead>
           <tbody>
-            {articles.map((a) => (
+            {ordered.map((a) => (
               <tr key={a.id} style={{ borderTop: "1px solid var(--border-rule)", opacity: pending ? 0.6 : 1 }}>
                 <td style={{ padding: "10px 14px" }}>
                   <span
@@ -108,13 +113,18 @@ export default function AdminArticleList({ articles, freshness }: { articles: Ar
                       letterSpacing: "0.08em",
                       textTransform: "uppercase",
                       padding: "3px 8px",
-                      color: a.status === "published" ? "var(--bow-positive)" : "var(--bow-warning-text)",
+                      color:
+                        a.status === "published"
+                          ? "var(--bow-positive)"
+                          : a.status === "submitted"
+                            ? "var(--bow-blue)"
+                            : "var(--bow-warning-text)",
                       background: a.status === "published" ? "var(--bow-positive-tint)" : "var(--bow-warning-tint)",
                       border: "1px solid var(--border-rule)",
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {a.status}
+                    {a.status === "submitted" ? "in review" : a.status}
                     {a.featured ? " · ★" : ""}
                   </span>
                 </td>
@@ -122,7 +132,10 @@ export default function AdminArticleList({ articles, freshness }: { articles: Ar
                   <Link href={`/analytics/admin/editor/${a.id}`} className="bow-link" style={{ fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: 16.5, lineHeight: 1.25, color: "var(--bow-ink)", textDecoration: "none" }}>
                     {a.title}
                   </Link>
-                  <div style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", marginTop: 3 }}>/{a.slug}</div>
+                  <div style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", marginTop: 3 }}>
+                    /{a.slug}
+                    {a.kind === "paper" && ` · paper by ${a.author || "unknown"}`}
+                  </div>
                 </td>
                 <td style={{ padding: "10px 14px", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{a.category}</td>
                 <td style={{ padding: "10px 14px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)", whiteSpace: "nowrap" }}>{formatArticleDate(a.updatedAt)}</td>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import NotebookWorkbench from "@/components/research/NotebookWorkbench";
+import { getCurrentUser } from "@/lib/dal";
 
 const TITLE = "The Notebook — BOW Sports Capital Analytics";
 const DESCRIPTION =
@@ -12,7 +13,11 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
-export default function NotebookPage() {
+export default async function NotebookPage() {
+  // Anyone can compile a draft; submitting it as a paper needs a name
+  // on the byline, so the workbench learns who (if anyone) is signed in.
+  const user = await getCurrentUser();
+  const viewer = user ? { name: user.name } : null;
   return (
     <div data-screen-label="Analytics Notebook">
       {/* header */}
@@ -35,7 +40,7 @@ export default function NotebookPage() {
       {/* workbench */}
       <section style={{ background: "var(--bow-paper)", padding: "clamp(24px,3.4vw,44px) clamp(18px,4vw,40px)" }}>
         <div className="bow-container-wide">
-          <NotebookWorkbench />
+          <NotebookWorkbench viewer={viewer} />
         </div>
       </section>
     </div>

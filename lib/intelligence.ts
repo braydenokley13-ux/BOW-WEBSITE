@@ -554,7 +554,7 @@ export function buildPlayerMemo(
 }
 
 /* ============================================================
- * 5. Franchise index — seven 0–100 scores, percentile-normalized
+ * 5. Franchise index — six 0–100 scores, percentile-normalized
  *    against the tracked team set.
  * ============================================================ */
 
@@ -571,16 +571,6 @@ function makeScore(raw: number, driver: string): IndexScore {
   return { score, grade: grade(score), driver };
 }
 
-/** Share of a team's positive surplus coming from young-and-cheap deals (yearsRemaining ≥ 4 AND capHit < tracked median). */
-function youngCoreShare(r: TeamRollup, medianCap: number): number {
-  const totalPos = r.contracts.reduce((s, c) => s + Math.max(0, c.valuation.aasv), 0);
-  if (totalPos <= 0) return 0;
-  // PROXY for rookie-scale / young cheap deals — the data has no ages, so "long control on
-  // below-median money" stands in for "young and team-friendly".
-  const young = r.contracts.filter((c) => c.player.yearsRemaining >= 4 && c.player.capHit < medianCap);
-  return young.reduce((s, c) => s + Math.max(0, c.valuation.aasv), 0) / totalPos;
-}
-
 /** How much of a team's spend is tied up in negative-surplus money (higher = riskier). */
 function negativeMoneyShare(r: TeamRollup): number {
   if (r.totalTrueCost <= 0) return 0;
@@ -594,14 +584,11 @@ function positiveAssetCount(r: TeamRollup): number {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- in the signature for symmetry with the other builders; the rollups passed in already carry valuations computed under these assumptions.
 export function buildFranchiseIndex(rollup: TeamRollup, allRollups: TeamRollup[], _assumptions: Assumptions): FranchiseIndex {
   const n = allRollups.length;
-  const allPlayers = allRollups.flatMap((r) => r.contracts.map((c) => c.player));
-  const medianCap = median(allPlayers.map((p) => p.capHit));
 
   // Comparison arrays across the tracked team set.
   const prodArr = allRollups.map((r) => r.totalProduction);
   const aasvArr = allRollups.map((r) => r.totalAasv);
   const capArr = allRollups.map((r) => r.totalCap);
-  const ycShareArr = allRollups.map((r) => youngCoreShare(r, medianCap));
   const negShareArr = allRollups.map((r) => negativeMoneyShare(r));
   const posAssetArr = allRollups.map((r) => positiveAssetCount(r));
 
@@ -628,16 +615,6 @@ export function buildFranchiseIndex(rollup: TeamRollup, allRollups: TeamRollup[]
   const assetBase = makeScore(
     abPct,
     `${fmtSignedMillions(rollup.totalAasv)} of aggregate surplus ranks ${ordinal(rankDesc(rollup.totalAasv, aasvArr))} of ${n} tracked teams.`,
-  );
-
-  // youngCore = percentile of young-cheap surplus share.
-  const ycShare = youngCoreShare(rollup, medianCap);
-  const ycPct = percentileRank(ycShare, ycShareArr);
-  const youngCore = makeScore(
-    ycPct,
-    ycShare > 0
-      ? `${Math.round(ycShare * 100)}% of the team's surplus comes from long-control, below-median-money deals (a young-core proxy).`
-      : `No surplus is coming from long-control, below-median-money deals — no young-core engine on the tracked books.`,
   );
 
   // championshipWindow = win-now firepower (rosterQuality) blended with the surplus to keep improving.
@@ -667,14 +644,17 @@ export function buildFranchiseIndex(rollup: TeamRollup, allRollups: TeamRollup[]
   );
 
   // overall = weighted mean. Weights favor real on-court value and surplus, then flexibility.
+  // Renormalized after dropping the youngCore sub-score (a proxy-of-a-proxy: it stood in for
+  // "young" using long-control + below-median cap hit, with no actual age data behind it).
+  // Each remaining weight is the old weight ÷ 0.94 (the old weights minus youngCore's 0.06),
+  // so the six that remain keep the same relative proportions to one another and still sum to 1.
   const overallRaw =
-    0.22 * rosterQuality.score +
-    0.2 * assetBase.score +
-    0.15 * capFlexibility.score +
-    0.15 * championshipWindow.score +
-    0.12 * downsideRisk.score +
-    0.1 * optionality.score +
-    0.06 * youngCore.score;
+    0.234 * rosterQuality.score +
+    0.2128 * assetBase.score +
+    0.1596 * capFlexibility.score +
+    0.1596 * championshipWindow.score +
+    0.1277 * downsideRisk.score +
+    0.1063 * optionality.score;
   // Driver names the single strongest sub-score.
   const subs: Array<[string, number]> = [
     ["roster quality", rosterQuality.score],
@@ -683,12 +663,11 @@ export function buildFranchiseIndex(rollup: TeamRollup, allRollups: TeamRollup[]
     ["championship window", championshipWindow.score],
     ["downside safety", downsideRisk.score],
     ["optionality", optionality.score],
-    ["young core", youngCore.score],
   ];
   const topSub = subs.reduce((a, b) => (b[1] > a[1] ? b : a));
   const overall = makeScore(overallRaw, `Weighted profile led by ${topSub[0]} (${topSub[1]}/100).`);
 
-  return { rosterQuality, capFlexibility, assetBase, youngCore, championshipWindow, downsideRisk, optionality, overall };
+  return { rosterQuality, capFlexibility, assetBase, championshipWindow, downsideRisk, optionality, overall };
 }
 
 /* ============================================================

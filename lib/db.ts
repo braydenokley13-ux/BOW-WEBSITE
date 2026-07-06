@@ -503,7 +503,9 @@ CREATE TABLE IF NOT EXISTS standards_alignment (
 CREATE TABLE IF NOT EXISTS nba_players (
   slug TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  team TEXT NOT NULL
+  team TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  as_of TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS nba_contracts (
   player_slug TEXT PRIMARY KEY,
@@ -533,7 +535,9 @@ CREATE TABLE IF NOT EXISTS articles (
   dek TEXT NOT NULL DEFAULT '',
   body TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'draft',
+  kind TEXT NOT NULL DEFAULT 'article',
   author TEXT NOT NULL DEFAULT '',
+  author_user_id TEXT,
   category TEXT NOT NULL DEFAULT 'Trade Analysis',
   tags TEXT NOT NULL DEFAULT '',
   cover_image TEXT NOT NULL DEFAULT '',
@@ -1069,6 +1073,10 @@ const APRON_STATUSES = ["below", "first", "second"];
  * they cost (cap_hit / total_remaining are $ MILLIONS in the CSV,
  * stored as raw dollars). Runs every boot so hand edits to the CSV
  * flow into the database; players removed from the CSV are pruned.
+ * Its `source` / `as_of` columns (a short provenance string and an
+ * ISO curation date) carry straight onto nba_players so the site can
+ * disclose where the contract data came from — see getDataProvenance()
+ * in lib/nba.ts.
  *
  * stats-snapshot.csv provides advanced-stat fallback values so the
  * dashboard works out of the box. A snapshot row never overwrites a
@@ -1083,8 +1091,8 @@ function seedNbaFromCsv(db: DatabaseSync) {
   if (contracts.length === 0) return;
 
   const upsertPlayer = db.prepare(
-    `INSERT INTO nba_players (slug, name, team) VALUES (?, ?, ?)
-     ON CONFLICT(slug) DO UPDATE SET name = excluded.name, team = excluded.team`,
+    `INSERT INTO nba_players (slug, name, team, source, as_of) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(slug) DO UPDATE SET name = excluded.name, team = excluded.team, source = excluded.source, as_of = excluded.as_of`,
   );
   const upsertContract = db.prepare(
     `INSERT INTO nba_contracts (player_slug, team, cap_hit, years_remaining, total_remaining, apron_status) VALUES (?, ?, ?, ?, ?, ?)
@@ -1097,7 +1105,7 @@ function seedNbaFromCsv(db: DatabaseSync) {
     const slug = slugify(c.player);
     const status = APRON_STATUSES.includes(c.apron_status) ? c.apron_status : "below";
     slugs.push(slug);
-    upsertPlayer.run(slug, c.player, c.team || "");
+    upsertPlayer.run(slug, c.player, c.team || "", c.source || "", c.as_of || "");
     upsertContract.run(
       slug,
       c.team || "",
@@ -1193,6 +1201,14 @@ function migrate(db: DatabaseSync) {
   add("simulations", "sim_type", "TEXT NOT NULL DEFAULT 'westbrook'");
   // Weekly Challenge ordering (Feature 4).
   add("weekly_challenges", "ordinal", "INTEGER NOT NULL DEFAULT 0");
+  // Data provenance on the curated NBA player list (Workstream 1): where a
+  // row's contract data came from and when it was last curated.
+  add("nba_players", "source", "TEXT NOT NULL DEFAULT ''");
+  add("nba_players", "as_of", "TEXT NOT NULL DEFAULT ''");
+  // Reader-submitted research papers (Workstream 4): house article vs.
+  // reader paper, and the submitting account for the profile byline.
+  add("articles", "kind", "TEXT NOT NULL DEFAULT 'article'");
+  add("articles", "author_user_id", "TEXT");
   // Daily Streak (Feature 2): per-user consecutive-day tracking.
   add("users", "current_streak", "INTEGER NOT NULL DEFAULT 0");
   add("users", "longest_streak", "INTEGER NOT NULL DEFAULT 0");

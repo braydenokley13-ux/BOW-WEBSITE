@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getPublicProfile } from "@/lib/profile";
+import { getPublishedPapersByAuthor, rehydrateArticlesFromMirror } from "@/lib/articles";
 import PublicProfileView from "@/components/profile/PublicProfileView";
 
 type Props = { params: Promise<{ studentId: string }> };
@@ -35,5 +36,14 @@ export default async function PublicProfilePage({ params }: Props) {
   const { studentId } = await params;
   const profile = getPublicProfile(studentId);
   if (!profile) notFound();
-  return <PublicProfileView profile={profile} />;
+  // Published research belongs on the credential — it's the strongest
+  // line on it. Rehydrate first so papers survive a cold start.
+  await rehydrateArticlesFromMirror();
+  const papers = getPublishedPapersByAuthor(studentId).map((a) => ({
+    slug: a.slug,
+    title: a.title,
+    abstract: a.dek,
+    publishedAt: a.publishedAt,
+  }));
+  return <PublicProfileView profile={profile} papers={papers} />;
 }

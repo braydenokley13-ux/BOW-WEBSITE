@@ -15,7 +15,6 @@ import {
   featuredLessons,
   lessonSteps,
   homeEpisodes,
-  destinations,
   pathways,
   formats,
   impact,
@@ -347,36 +346,6 @@ export default function HomePage() {
                 </Link>
               ))}
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ===== HIGHWAY WORLD ===== */}
-      <section id="highway" className="bow-front-office" style={{ background: "var(--bow-ink)", color: "#fff", padding: "clamp(64px,9vw,140px) clamp(18px,4vw,40px)", position: "relative", overflow: "hidden", borderBottom: "1px solid var(--bow-dark-border)" }}>
-        <div aria-hidden style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 2, background: "repeating-linear-gradient(to bottom, var(--bow-orange) 0 22px, transparent 22px 44px)", opacity: 0.5 }} />
-        <div className="bow-para-sink" aria-hidden style={{ position: "absolute", left: "50%", top: "18%", marginLeft: "-0.5em", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,28vw,520px)", lineHeight: 0.7, color: "rgba(255,255,255,0.03)", letterSpacing: "-0.05em", textTransform: "uppercase", pointerEvents: "none", zIndex: 0 }}>GM</div>
-        <div className="bow-container" style={{ position: "relative" }}>
-          <div style={{ textAlign: "center", maxWidth: 900, margin: "0 auto" }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-orange)" }}>The BOW Universe Is Expanding</span>
-            <h2 style={{ margin: "16px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(38px,6vw,86px)", lineHeight: 0.9, letterSpacing: "-0.02em", textTransform: "uppercase", textWrap: "balance" }}>The road to the front office is about to become a world.</h2>
-            <p style={{ margin: "22px auto 0", fontFamily: "var(--font-interface)", fontSize: "clamp(16px,1.4vw,20px)", lineHeight: 1.6, color: "#b9bcc4", maxWidth: 620 }}>Drive through a connected sports city, enter the buildings where decisions are made, and confront the economic forces shaping every franchise.</p>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 18, border: "1px solid var(--bow-dark-border)", padding: "6px 14px", borderRadius: 999 }}>
-              <span style={{ width: 7, height: 7, borderRadius: 999, background: "var(--bow-warning)", display: "inline-block" }} />
-              <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#b9bcc4" }}>Currently in Development</span>
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 1, background: "var(--bow-dark-border)", border: "1px solid var(--bow-dark-border)", marginTop: 56 }}>
-            {destinations.map((d) => (
-              <div key={d.code} className="bow-reveal-sm" style={{ background: "var(--bow-dark-surface)", padding: "24px 20px", display: "flex", flexDirection: "column", gap: 10, minHeight: 150 }}>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.1em", color: "var(--bow-blue)" }}>{d.code}</span>
-                <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 24, textTransform: "uppercase", lineHeight: 0.95, letterSpacing: "-0.01em" }}>{d.title}</span>
-                <span style={{ fontFamily: "var(--font-interface)", fontSize: 13, color: "#9a9da6", lineHeight: 1.45, marginTop: "auto" }}>{d.body}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center", marginTop: 44 }}>
-            <Button href="/highway-world" variant="primary" size="lg">Discover Highway World</Button>
-            <Button href="/sign-up" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}>Get Launch Updates</Button>
           </div>
         </div>
       </section>
