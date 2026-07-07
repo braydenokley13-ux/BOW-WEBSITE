@@ -66,6 +66,9 @@ export default function AnalyticsPage() {
             <Link href="/analytics/questions" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
               Open the docket →
             </Link>
+            <Link href="/analytics/desk" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
+              The research desk →
+            </Link>
             <Link href="/analytics/ledger" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "#6f8bff" }}>
               The ledger →
             </Link>
