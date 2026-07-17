@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Badge, SectionHeader } from "@/components/ds";
 import { getDb, rowToPerson } from "@/lib/db";
 import { getClassDetail, listEligibleInstructors, listStudents, listActivity, classStatusFlags } from "@/lib/hiring";
+import { sessionHref } from "@/lib/routes";
 import ClassDetailActions, { RemoveInstructorButton, WithdrawStudentButton } from "@/components/app/classes/ClassDetailActions";
 
 const cardStyle = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 } as const;
@@ -111,9 +112,9 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
         {sessions.length === 0 && <p style={valueStyle}>No sessions scheduled.</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sessions.map((s) => (
-            <p key={s.id} style={valueStyle}>
+            <Link key={s.id} href={sessionHref(id, s.id)} style={{ ...valueStyle, color: "var(--bow-blue)", display: "block" }}>
               {new Date(s.sessionDate).toLocaleString()} {s.location ? `— ${s.location}` : ""}
-            </p>
+            </Link>
           ))}
         </div>
       </div>
