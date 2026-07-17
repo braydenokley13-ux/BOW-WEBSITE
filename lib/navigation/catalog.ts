@@ -28,6 +28,8 @@ export const NAV_CATALOG: NavItem[] = [
   { label: "Today", href: "/app/instructor", roles: ["instructor"] },
   { label: "Cohorts", href: "/app/instructor/cohort", roles: ["instructor"] },
   { label: "My Onboarding/Training", href: "/app/teach", roles: ["instructor"] },
+  { label: "My Classes", href: "/app/teach/classes", roles: ["instructor"] },
+  { label: "Proposals", href: "/app/teach/proposals", roles: ["instructor"] },
   { label: "Account", href: "/app/settings", roles: ["instructor"] },
 
   // ---- admin (unchanged) ----
