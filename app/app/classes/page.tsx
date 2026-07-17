@@ -1,6 +1,6 @@
-import { Badge, Button, SectionHeader } from "@/components/ds";
+import { Badge, Button, SectionHeader, Tabs } from "@/components/ds";
 import { getDb, rowToClass } from "@/lib/db";
-import { classStatusFlags, type Class, type ClassStatus } from "@/lib/hiring";
+import { classStatusFlags, listClassProposals, type Class, type ClassStatus } from "@/lib/hiring";
 
 const STATUS_ORDER: ClassStatus[] = ["planning", "staffing", "ready_to_launch", "active", "completed", "cancelled"];
 const STATUS_LABEL: Record<ClassStatus, string> = {
@@ -43,12 +43,21 @@ export default function ClassesPage() {
     return classStatusFlags(cls, hasEligibleLead, enrollmentCount);
   };
 
+  const submittedProposalCount = listClassProposals().filter((p) => p.status === "submitted").length;
+
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
       <SectionHeader kicker="BOW HQ" title="Classes" action={{ label: "New Class", href: "/app/classes/new" }} />
       <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)", maxWidth: 640 }}>
         Class scheduling, staffing, and rosters. {classes.length} total.
       </p>
+
+      <Tabs
+        items={[
+          { label: "Classes", href: "/app/classes" },
+          { label: "Proposals", href: "/app/classes/proposals", count: submittedProposalCount },
+        ]}
+      />
 
       {STATUS_ORDER.filter((s) => (byStatus.get(s) ?? []).length > 0).map((status) => {
         const rows = byStatus.get(status) ?? [];

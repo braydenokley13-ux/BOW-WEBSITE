@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireStaff, requireInstructorSelf, requireRole } from "@/lib/dal";
 import { logActivity, type ClassStatus } from "@/lib/hiring";
+import { createNotification } from "@/lib/notifications";
 
 export interface ActionResult {
   ok: boolean;
@@ -465,7 +466,29 @@ export async function decideClassProposal(id: string, decision: "approved" | "de
   db.prepare("UPDATE class_proposals SET status = ?, updated_at = ? WHERE id = ?").run(decision, Date.now(), id);
   logActivity("class_proposal", id, "stage_change", `Proposal ${decision}.${note ? ` ${note.slice(0, 500)}` : ""}`, me.id);
 
+  const proposal = db.prepare("SELECT instructor_id, title FROM class_proposals WHERE id = ?").get(id) as
+    | { instructor_id: string; title: string }
+    | undefined;
+  if (proposal) {
+    const instructorRow = db.prepare("SELECT person_id FROM instructors WHERE id = ?").get(proposal.instructor_id) as
+      | { person_id: string }
+      | undefined;
+    const person = instructorRow
+      ? (db.prepare("SELECT user_id FROM people WHERE id = ?").get(instructorRow.person_id) as { user_id: string | null } | undefined)
+      : undefined;
+    if (person?.user_id) {
+      createNotification({
+        userId: person.user_id,
+        type: "class_ops",
+        title: `Proposal ${decision}`,
+        body: `Your class proposal "${proposal.title}" was ${decision}.${note ? ` ${note.slice(0, 200)}` : ""}`,
+        link: "/app/teach/proposals",
+      });
+    }
+  }
+
   revalidatePath("/app/tasks");
+  revalidatePath("/app/classes/proposals");
   return { ok: true };
 }
 
@@ -506,6 +529,7 @@ export async function convertProposalToClass(id: string, curriculumId?: string):
   logActivity("class", classId, "note", `Created from proposal ${id}.`, me.id);
 
   revalidatePath("/app/classes");
+  revalidatePath("/app/classes/proposals");
   revalidatePath("/app/tasks");
   return { ok: true, classId };
 }

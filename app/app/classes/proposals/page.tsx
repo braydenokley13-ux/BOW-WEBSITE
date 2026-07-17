@@ -1,0 +1,68 @@
+import { Badge, DataTable, SectionHeader, Tabs } from "@/components/ds";
+import { getDb, rowToPerson } from "@/lib/db";
+import { listClassProposals, listCurricula } from "@/lib/hiring";
+import ProposalActions from "@/components/app/classes/ProposalActions";
+
+const STATUS_BADGE: Record<string, "positive" | "warning" | "negative" | "info" | "neutral"> = {
+  draft: "neutral",
+  submitted: "warning",
+  approved: "positive",
+  declined: "negative",
+};
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export default function ClassProposalsPage() {
+  const proposals = listClassProposals().filter((p) => p.status !== "draft");
+  const curricula = listCurricula();
+  const db = getDb();
+
+  const instructorName = (instructorId: string): string => {
+    const row = db.prepare("SELECT person_id FROM instructors WHERE id = ?").get(instructorId) as { person_id: string } | undefined;
+    if (!row) return instructorId;
+    const person = db.prepare("SELECT * FROM people WHERE id = ?").get(row.person_id) as any;
+    return person ? rowToPerson(person).name : instructorId;
+  };
+
+  return (
+    <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
+      <SectionHeader kicker="BOW HQ" title="Classes" />
+      <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)", maxWidth: 640 }}>
+        Instructor-submitted class proposals awaiting review, decision, or conversion into a real class.
+      </p>
+
+      <Tabs
+        items={[
+          { label: "Classes", href: "/app/classes" },
+          { label: "Proposals", href: "/app/classes/proposals", count: proposals.filter((p) => p.status === "submitted").length },
+        ]}
+      />
+
+      <DataTable
+        columns={["Title", "Instructor", "Age group", "Format", "Status", ""]}
+        isEmpty={proposals.length === 0}
+        emptyLabel="No proposals submitted yet."
+      >
+        {proposals.map((p) => (
+          <tr key={p.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
+            <td style={{ padding: "11px 12px", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{p.title}</td>
+            <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{instructorName(p.instructorId)}</td>
+            <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{p.ageGroup || "—"}</td>
+            <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{p.format || "—"}</td>
+            <td style={{ padding: "11px 12px" }}>
+              <Badge status={STATUS_BADGE[p.status] ?? "neutral"}>{p.status}</Badge>
+            </td>
+            <td style={{ padding: "11px 12px", textAlign: "right" }}>
+              <ProposalActions
+                proposalId={p.id}
+                status={p.status}
+                convertedClassId={p.convertedClassId}
+                description={p.description}
+                curricula={curricula.map((c) => ({ id: c.id, title: c.title }))}
+              />
+            </td>
+          </tr>
+        ))}
+      </DataTable>
+    </div>
+  );
+}
