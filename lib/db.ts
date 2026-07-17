@@ -11,6 +11,7 @@
  * ============================================================ */
 
 import { DatabaseSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { slugify } from "@/lib/slug";
@@ -560,6 +561,223 @@ CREATE TABLE IF NOT EXISTS article_revisions (
   saved_at INTEGER NOT NULL
 );
 
+/* ---- BOW HQ (Phase A) — merged people/instructor/class data layer ---- */
+CREATE TABLE IF NOT EXISTS people (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  user_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS instructors (
+  id TEXT PRIMARY KEY,
+  person_id TEXT NOT NULL,
+  stage TEXT NOT NULL DEFAULT 'applied',
+  source TEXT,
+  owner_user_id TEXT,
+  answers TEXT NOT NULL DEFAULT '{}',
+  interview_at INTEGER,
+  interview_notes TEXT,
+  founder_decision TEXT,
+  decided_by TEXT,
+  decided_at INTEGER,
+  onboarding_status TEXT NOT NULL DEFAULT 'not_started',
+  training_status TEXT NOT NULL DEFAULT 'not_started',
+  eligibility_status TEXT NOT NULL DEFAULT 'not_eligible',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS instructor_availability (
+  id TEXT PRIMARY KEY,
+  instructor_id TEXT NOT NULL,
+  day_of_week INTEGER NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  notes TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS training_modules (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'training',
+  required INTEGER NOT NULL DEFAULT 1,
+  content_type TEXT NOT NULL DEFAULT 'link',
+  content TEXT,
+  ordinal INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS training_module_completions (
+  id TEXT PRIMARY KEY,
+  instructor_id TEXT NOT NULL,
+  module_id TEXT NOT NULL,
+  completed_at INTEGER NOT NULL,
+  notes TEXT
+);
+CREATE TABLE IF NOT EXISTS training_sessions (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  scheduled_at INTEGER NOT NULL,
+  location TEXT,
+  meeting_link TEXT,
+  facilitator_user_id TEXT,
+  required INTEGER NOT NULL DEFAULT 1,
+  facilitator_notes TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS training_session_registrations (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  instructor_id TEXT NOT NULL,
+  registered_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS training_session_attendance (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  instructor_id TEXT NOT NULL,
+  attended INTEGER NOT NULL DEFAULT 0,
+  recorded_at INTEGER NOT NULL,
+  recorded_by TEXT
+);
+CREATE TABLE IF NOT EXISTS practice_evaluations (
+  id TEXT PRIMARY KEY,
+  instructor_id TEXT NOT NULL,
+  evaluator_user_id TEXT,
+  evaluated_at INTEGER NOT NULL,
+  lesson_used TEXT,
+  rating_curriculum_delivery INTEGER NOT NULL,
+  rating_communication_engagement INTEGER NOT NULL,
+  rating_preparedness_reliability INTEGER NOT NULL,
+  strengths TEXT,
+  concerns TEXT,
+  decision TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS curricula (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  age_range TEXT,
+  published INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS classes (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  curriculum_id TEXT NOT NULL,
+  partner_org_id TEXT,
+  location TEXT,
+  online_format TEXT,
+  start_date TEXT,
+  end_date TEXT,
+  recurrence TEXT,
+  age_range TEXT,
+  capacity INTEGER,
+  lead_instructor_id TEXT,
+  status TEXT NOT NULL DEFAULT 'planning',
+  internal_notes TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS class_instructors (
+  id TEXT PRIMARY KEY,
+  class_id TEXT NOT NULL,
+  instructor_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'additional',
+  added_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS class_sessions (
+  id TEXT PRIMARY KEY,
+  class_id TEXT NOT NULL,
+  session_date INTEGER NOT NULL,
+  location TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS class_session_reports (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  notes TEXT,
+  flagged INTEGER NOT NULL DEFAULT 0,
+  flag_reason TEXT,
+  completed INTEGER NOT NULL DEFAULT 0,
+  reported_by TEXT,
+  reported_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS students (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  age INTEGER,
+  grade TEXT,
+  email TEXT,
+  guardian_person_id TEXT,
+  emergency_notes TEXT,
+  enrollment_status TEXT NOT NULL DEFAULT 'active',
+  form_status TEXT NOT NULL DEFAULT 'missing',
+  communication_notes TEXT,
+  user_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS class_enrollments (
+  id TEXT PRIMARY KEY,
+  class_id TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'enrolled',
+  enrolled_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS attendance_records (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  present INTEGER NOT NULL DEFAULT 0,
+  note TEXT,
+  recorded_by TEXT,
+  recorded_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS class_proposals (
+  id TEXT PRIMARY KEY,
+  instructor_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  age_group TEXT,
+  curriculum_topic TEXT,
+  format TEXT,
+  schedule TEXT,
+  description TEXT,
+  resources TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  converted_class_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  owner_user_id TEXT,
+  due_at INTEGER,
+  status TEXT NOT NULL DEFAULT 'open',
+  entity_type TEXT,
+  entity_id TEXT,
+  handoff_to_founder INTEGER NOT NULL DEFAULT 0,
+  completed_at INTEGER,
+  completion_note TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS crm_activity (
+  id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'note',
+  body TEXT,
+  actor_user_id TEXT,
+  created_at INTEGER NOT NULL
+);
+
 /* ---- Indexes for high-traffic WHERE-clause columns (Feature 8) ---- */
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_sim
   ON simulations (student_id, sim_type) WHERE completed = 0;
@@ -593,6 +811,36 @@ CREATE INDEX IF NOT EXISTS idx_testimonials_active ON testimonials (active, ordi
 CREATE INDEX IF NOT EXISTS idx_nba_stats_player ON nba_player_stats (player_slug, season);
 CREATE INDEX IF NOT EXISTS idx_articles_status ON articles (status, featured, published_at);
 CREATE INDEX IF NOT EXISTS idx_article_revisions ON article_revisions (article_id, saved_at);
+
+/* ---- BOW HQ (Phase A) indexes ---- */
+CREATE INDEX IF NOT EXISTS idx_people_email ON people (email);
+CREATE INDEX IF NOT EXISTS idx_people_user ON people (user_id);
+CREATE INDEX IF NOT EXISTS idx_instructors_person ON instructors (person_id);
+CREATE INDEX IF NOT EXISTS idx_instructors_stage ON instructors (stage);
+CREATE INDEX IF NOT EXISTS idx_instructor_availability_instructor ON instructor_availability (instructor_id);
+CREATE INDEX IF NOT EXISTS idx_training_completions_instructor ON training_module_completions (instructor_id);
+CREATE INDEX IF NOT EXISTS idx_training_completions_module ON training_module_completions (module_id);
+CREATE INDEX IF NOT EXISTS idx_session_regs_session ON training_session_registrations (session_id);
+CREATE INDEX IF NOT EXISTS idx_session_regs_instructor ON training_session_registrations (instructor_id);
+CREATE INDEX IF NOT EXISTS idx_session_att_session ON training_session_attendance (session_id);
+CREATE INDEX IF NOT EXISTS idx_session_att_instructor ON training_session_attendance (instructor_id);
+CREATE INDEX IF NOT EXISTS idx_practice_evals_instructor ON practice_evaluations (instructor_id);
+CREATE INDEX IF NOT EXISTS idx_classes_status ON classes (status);
+CREATE INDEX IF NOT EXISTS idx_classes_curriculum ON classes (curriculum_id);
+CREATE INDEX IF NOT EXISTS idx_classes_lead_instructor ON classes (lead_instructor_id);
+CREATE INDEX IF NOT EXISTS idx_class_instructors_class ON class_instructors (class_id);
+CREATE INDEX IF NOT EXISTS idx_class_instructors_instructor ON class_instructors (instructor_id);
+CREATE INDEX IF NOT EXISTS idx_class_sessions_class_date ON class_sessions (class_id, session_date);
+CREATE INDEX IF NOT EXISTS idx_class_session_reports_session ON class_session_reports (session_id);
+CREATE INDEX IF NOT EXISTS idx_students_guardian ON students (guardian_person_id);
+CREATE INDEX IF NOT EXISTS idx_class_enrollments_class ON class_enrollments (class_id);
+CREATE INDEX IF NOT EXISTS idx_class_enrollments_student ON class_enrollments (student_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_session ON attendance_records (session_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_student ON attendance_records (student_id);
+CREATE INDEX IF NOT EXISTS idx_class_proposals_instructor_status ON class_proposals (instructor_id, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_owner_status_due ON tasks (owner_user_id, status, due_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_entity ON tasks (entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_crm_activity_entity ON crm_activity (entity_type, entity_id, created_at);
 `;
 
 function seed(db: DatabaseSync) {
@@ -1226,6 +1474,97 @@ function migrate(db: DatabaseSync) {
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_sim ON simulations (student_id, sim_type) WHERE completed = 0");
 }
 
+/* ---- BOW HQ (Phase A) — idempotent init backfills ---- */
+
+/** Ensure every `users` row has a linked `people` row (people.user_id). */
+function backfillPeople(db: DatabaseSync) {
+  const now = Date.now();
+  const linked = new Set(
+    (db.prepare("SELECT user_id FROM people WHERE user_id IS NOT NULL").all() as { user_id: string }[]).map((r) => r.user_id),
+  );
+  const users = db.prepare("SELECT id, name, email FROM users").all() as { id: string; name: string; email: string }[];
+  const insert = db.prepare(
+    "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  );
+  for (const u of users) {
+    if (linked.has(u.id)) continue;
+    insert.run(`ppl-${randomUUID().slice(0, 8)}`, u.name, u.email, "", u.id, now, now);
+  }
+}
+
+/**
+ * Copy every `cohorts` row into `classes` (same id, so cohort_id FKs keep
+ * working) without touching or dropping the `cohorts` table. LMS reads stay
+ * pointed at `cohorts` for now — this only makes the merged `classes` table
+ * a complete superset going forward.
+ */
+function migrateCohortsToClasses(db: DatabaseSync) {
+  const now = Date.now();
+  let legacyCurriculumId = (
+    db.prepare("SELECT id FROM curricula WHERE title = ?").get("Legacy LMS Program") as { id: string } | undefined
+  )?.id;
+  if (!legacyCurriculumId) {
+    legacyCurriculumId = `crc-${randomUUID().slice(0, 8)}`;
+    db.prepare(
+      "INSERT INTO curricula (id, title, description, age_range, published, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+    ).run(legacyCurriculumId, "Legacy LMS Program", "Placeholder curriculum for cohorts migrated from the LMS.", null, now, now);
+  }
+  const existing = new Set((db.prepare("SELECT id FROM classes").all() as { id: string }[]).map((r) => r.id));
+  const cohorts = db.prepare("SELECT * FROM cohorts").all() as any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const insert = db.prepare(
+    `INSERT INTO classes
+      (id, title, curriculum_id, partner_org_id, location, online_format, start_date, end_date, recurrence, age_range, capacity, lead_instructor_id, status, internal_notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const c of cohorts) {
+    if (existing.has(c.id)) continue;
+    const status = c.status === "active" ? "active" : c.status === "completed" ? "completed" : c.status === "enrolling" ? "staffing" : "planning";
+    insert.run(
+      c.id, c.name, legacyCurriculumId, null, null, c.format, c.start, c.end_date, c.schedule,
+      null, c.cap, c.instructor_id, status, `Migrated from LMS cohort ${c.id}.`, now, now,
+    );
+  }
+}
+
+/** Backfill a `students` row (with user_id link) for every existing student-role user. */
+function backfillStudentsFromUsers(db: DatabaseSync) {
+  const now = Date.now();
+  const linked = new Set(
+    (db.prepare("SELECT user_id FROM students WHERE user_id IS NOT NULL").all() as { user_id: string }[]).map((r) => r.user_id),
+  );
+  const users = db.prepare("SELECT id, name, email FROM users WHERE role = 'student'").all() as { id: string; name: string; email: string }[];
+  const insert = db.prepare(
+    `INSERT INTO students
+      (id, name, age, grade, email, guardian_person_id, emergency_notes, enrollment_status, form_status, communication_notes, user_id, created_at, updated_at)
+     VALUES (?, ?, NULL, NULL, ?, NULL, NULL, 'active', 'missing', NULL, ?, ?, ?)`,
+  );
+  for (const u of users) {
+    if (linked.has(u.id)) continue;
+    insert.run(`stu-${randomUUID().slice(0, 8)}`, u.name, u.email, u.id, now, now);
+  }
+}
+
+/** Reference data for the hiring/training pipeline — idempotent, safe every boot. */
+function seedHiringReferenceData(db: DatabaseSync) {
+  const now = Date.now();
+  const insCurr = db.prepare(
+    "INSERT OR IGNORE INTO curricula (id, title, description, age_range, published, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+  );
+  insCurr.run("crc-trading101", "Trading Fundamentals 101", "Core Track 101 curriculum — scarcity, markets, and trade-offs through sport.", "Grades 6–9", now, now);
+  insCurr.run("crc-marketlit", "Market Literacy Camp", "Camp-format intensive covering market mechanics and financial literacy basics.", "Grades 8–10", now, now);
+
+  const insMod = db.prepare(
+    "INSERT OR IGNORE INTO training_modules (id, title, category, required, content_type, content, ordinal, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+  );
+  insMod.run("tm-onboard-req", "BOW Onboarding Handbook", "onboarding", 1, "text", "Welcome to BOW Sports Capital — read through our mission, expectations, and code of conduct before your first session.", 1, now, now);
+  insMod.run("tm-onboard-opt", "Founder Welcome Video", "onboarding", 0, "link", "https://example.com/bow-welcome", 2, now, now);
+  insMod.run("tm-training-req", "Track 101 Facilitation Guide", "training", 1, "link", "https://example.com/bow-facilitation-guide", 1, now, now);
+
+  db.prepare(
+    "INSERT OR IGNORE INTO training_sessions (id, title, scheduled_at, location, meeting_link, facilitator_user_id, required, facilitator_notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
+  ).run("ts-kickoff", "Instructor Kickoff Training", now + 7 * 86400000, null, "https://example.com/bow-kickoff", "u-growth", null, now, now);
+}
+
 function init(): DatabaseSync {
   if (process.env.NODE_ENV === "production" && !process.env.SEED_PASSWORD) {
     // Every seeded account (including the admin account) signs in with this
@@ -1286,6 +1625,11 @@ function init(): DatabaseSync {
     // empty publication so owner edits survive reboots.
     seedNbaFromCsv(db);
     seedArticlesDemo(db);
+    // BOW HQ (Phase A) — idempotent backfills + reference data, every boot.
+    backfillPeople(db);
+    migrateCohortsToClasses(db);
+    backfillStudentsFromUsers(db);
+    seedHiringReferenceData(db);
     if (fresh) {
       seedSelfPacedDemo(db);
       // Discussion seed posts are authored by the demo students, so they only
@@ -1370,6 +1714,66 @@ export function rowToNote(r: any): SessionNote {
   return {
     id: r.id, cohortId: r.cohort_id, authorId: r.author_id,
     authorName: r.author_name ?? "BOW", scope: r.scope, text: r.text, when: r.created_at,
+  };
+}
+/* ---- BOW HQ (Phase A) row -> domain mappers ---- */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export function rowToPerson(r: any): import("@/lib/hiring").Person {
+  return { id: r.id, name: r.name, email: r.email, phone: r.phone ?? "", userId: r.user_id ?? null, createdAt: r.created_at, updatedAt: r.updated_at };
+}
+
+export function rowToInstructor(r: any): import("@/lib/hiring").Instructor {
+  return {
+    id: r.id, personId: r.person_id, stage: r.stage, source: r.source ?? null, ownerUserId: r.owner_user_id ?? null,
+    answers: r.answers ?? "{}", interviewAt: r.interview_at ?? null, interviewNotes: r.interview_notes ?? null,
+    founderDecision: r.founder_decision ?? null, decidedBy: r.decided_by ?? null, decidedAt: r.decided_at ?? null,
+    onboardingStatus: r.onboarding_status, trainingStatus: r.training_status, eligibilityStatus: r.eligibility_status,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function rowToCurriculum(r: any): import("@/lib/hiring").Curriculum {
+  return { id: r.id, title: r.title, description: r.description ?? null, ageRange: r.age_range ?? null, published: !!r.published, createdAt: r.created_at, updatedAt: r.updated_at };
+}
+
+export function rowToTrainingModule(r: any): import("@/lib/hiring").TrainingModule {
+  return {
+    id: r.id, title: r.title, category: r.category, required: !!r.required, contentType: r.content_type,
+    content: r.content ?? null, ordinal: r.ordinal, active: !!r.active, createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function rowToTrainingSession(r: any): import("@/lib/hiring").TrainingSession {
+  return {
+    id: r.id, title: r.title, scheduledAt: r.scheduled_at, location: r.location ?? null, meetingLink: r.meeting_link ?? null,
+    facilitatorUserId: r.facilitator_user_id ?? null, required: !!r.required, facilitatorNotes: r.facilitator_notes ?? null,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function rowToClass(r: any): import("@/lib/hiring").Class {
+  return {
+    id: r.id, title: r.title, curriculumId: r.curriculum_id, partnerOrgId: r.partner_org_id ?? null, location: r.location ?? null,
+    onlineFormat: r.online_format ?? null, startDate: r.start_date ?? null, endDate: r.end_date ?? null, recurrence: r.recurrence ?? null,
+    ageRange: r.age_range ?? null, capacity: r.capacity ?? null, leadInstructorId: r.lead_instructor_id ?? null,
+    status: r.status, internalNotes: r.internal_notes ?? null, createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function rowToStudent(r: any): import("@/lib/hiring").Student {
+  return {
+    id: r.id, name: r.name, age: r.age ?? null, grade: r.grade ?? null, email: r.email ?? null,
+    guardianPersonId: r.guardian_person_id ?? null, emergencyNotes: r.emergency_notes ?? null,
+    enrollmentStatus: r.enrollment_status, formStatus: r.form_status, communicationNotes: r.communication_notes ?? null,
+    userId: r.user_id ?? null, createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function rowToTask(r: any): import("@/lib/hiring").Task {
+  return {
+    id: r.id, title: r.title, ownerUserId: r.owner_user_id ?? null, dueAt: r.due_at ?? null, status: r.status,
+    entityType: r.entity_type ?? null, entityId: r.entity_id ?? null, handoffToFounder: !!r.handoff_to_founder,
+    completedAt: r.completed_at ?? null, completionNote: r.completion_note ?? null, createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
