@@ -10,14 +10,16 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { requireStaff, requireAdmin } from "@/lib/dal";
+import { requireStaff, requireAdmin, requireInstructorSelf, requireRole } from "@/lib/dal";
 import {
   logActivity,
   upsertPersonByEmail,
   getActiveInstructorForPerson,
   listStaffUserIds,
   createInvitationInternal,
+  recomputeInstructorStatuses,
   type InstructorStage,
+  type PracticeEvalDecision,
 } from "@/lib/hiring";
 import { createNotification } from "@/lib/notifications";
 
@@ -255,6 +257,200 @@ export async function updateApplicantOwner(id: string, ownerUserId: string): Pro
   const row = getInstructorRow(id);
   if (!row) return { ok: false, error: "Not found." };
   getDb().prepare("UPDATE instructors SET owner_user_id = ?, updated_at = ? WHERE id = ?").run(ownerUserId || null, Date.now(), id);
+
+  revalidatePath(`/app/instructors/${id}`);
+  revalidatePath("/app/instructors");
+  return { ok: true };
+}
+
+/* ---------------- training / practice eval / lifecycle (Phase C) ---------------- */
+
+const REQUIRED_ONBOARDING_STAGE_FROM: InstructorStage[] = ["onboarding"];
+const REQUIRED_TRAINING_STAGE_FROM: InstructorStage[] = ["training"];
+
+/**
+ * Instructor-self or staff. Idempotent — completing an already-completed
+ * module is a no-op. Auto-advances stage forward only:
+ * onboarding -> training once all required onboarding modules are done,
+ * training -> practice_evaluation once all required training modules are done.
+ */
+export async function completeTrainingModule(instructorId: string, moduleId: string, notes?: string): Promise<ActionResult> {
+  const me = await requireRole("admin", "growth", "instructor");
+  if (me.role === "instructor") {
+    const { instructor } = await requireInstructorSelf();
+    if (instructor.id !== instructorId) return { ok: false, error: "You may only complete your own modules." };
+  }
+
+  const db = getDb();
+  const row = getInstructorRow(instructorId);
+  if (!row) return { ok: false, error: "Instructor not found." };
+  const trainingModule = db.prepare("SELECT * FROM training_modules WHERE id = ? AND active = 1").get(moduleId) as { id: string } | undefined;
+  if (!trainingModule) return { ok: false, error: "Module not found." };
+
+  const now = Date.now();
+  const existing = db
+    .prepare("SELECT id FROM training_module_completions WHERE instructor_id = ? AND module_id = ?")
+    .get(instructorId, moduleId);
+  if (!existing) {
+    db.prepare(
+      "INSERT INTO training_module_completions (id, instructor_id, module_id, completed_at, notes) VALUES (?, ?, ?, ?, ?)",
+    ).run(`pfx-${randomUUID().slice(0, 8)}`, instructorId, moduleId, now, (notes ?? "").trim().slice(0, 2000) || null);
+    logActivity("instructor", instructorId, "note", "Training module completed.", me.id);
+  }
+
+  recomputeInstructorStatuses(instructorId);
+
+  // Auto-advance forward only, never backward.
+  const refreshed = getInstructorRow(instructorId);
+  if (REQUIRED_ONBOARDING_STAGE_FROM.includes(refreshed.stage) && refreshed.onboarding_status === "complete") {
+    setStage(instructorId, "training");
+    logActivity("instructor", instructorId, "stage_change", "Onboarding complete — advanced to training.", me.id);
+  } else if (REQUIRED_TRAINING_STAGE_FROM.includes(refreshed.stage) && refreshed.training_status === "complete") {
+    setStage(instructorId, "practice_evaluation");
+    logActivity("instructor", instructorId, "stage_change", "Training complete — advanced to practice evaluation.", me.id);
+  }
+
+  revalidatePath(`/app/instructors/${instructorId}`);
+  revalidatePath("/app/instructors");
+  revalidatePath("/app/teach");
+  return { ok: true };
+}
+
+export async function moveToPracticeEvaluation(id: string): Promise<ActionResult> {
+  const me = await requireStaff();
+  const row = getInstructorRow(id);
+  if (!row) return { ok: false, error: "Not found." };
+  if (row.training_status !== "complete") return { ok: false, error: "Training isn't complete yet." };
+
+  setStage(id, "practice_evaluation");
+  logActivity("instructor", id, "stage_change", "Moved to practice evaluation.", me.id);
+
+  revalidatePath(`/app/instructors/${id}`);
+  revalidatePath("/app/instructors");
+  return { ok: true };
+}
+
+export interface PracticeEvalInput {
+  evaluatorUserId: string;
+  evaluatedAt: number;
+  lessonUsed?: string;
+  ratingCurriculumDelivery: number;
+  ratingCommunicationEngagement: number;
+  ratingPreparednessReliability: number;
+  strengths?: string;
+  concerns?: string;
+  decision: PracticeEvalDecision;
+}
+
+const DECISIONS = new Set(["pass", "revise_retry", "fail"]);
+
+function validRating(n: unknown): n is number {
+  return Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 5;
+}
+
+/** Staff. Does not auto-advance stage — markEligible/staff decide next steps. */
+export async function recordPracticeEvaluation(id: string, input: PracticeEvalInput): Promise<ActionResult> {
+  const me = await requireStaff();
+  const row = getInstructorRow(id);
+  if (!row) return { ok: false, error: "Not found." };
+  if (!DECISIONS.has(input.decision)) return { ok: false, error: "Invalid decision." };
+  if (!validRating(input.ratingCurriculumDelivery) || !validRating(input.ratingCommunicationEngagement) || !validRating(input.ratingPreparednessReliability)) {
+    return { ok: false, error: "Ratings must be integers 1–5." };
+  }
+  if (!Number.isFinite(input.evaluatedAt) || input.evaluatedAt <= 0) return { ok: false, error: "Invalid evaluation date." };
+
+  const now = Date.now();
+  getDb()
+    .prepare(
+      `INSERT INTO practice_evaluations
+        (id, instructor_id, evaluator_user_id, evaluated_at, lesson_used, rating_curriculum_delivery, rating_communication_engagement, rating_preparedness_reliability, strengths, concerns, decision, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      `pfx-${randomUUID().slice(0, 8)}`,
+      id,
+      (input.evaluatorUserId || me.id).slice(0, 60),
+      input.evaluatedAt,
+      (input.lessonUsed ?? "").trim().slice(0, 200) || null,
+      input.ratingCurriculumDelivery,
+      input.ratingCommunicationEngagement,
+      input.ratingPreparednessReliability,
+      (input.strengths ?? "").trim().slice(0, 2000) || null,
+      (input.concerns ?? "").trim().slice(0, 2000) || null,
+      input.decision,
+      now,
+    );
+
+  recomputeInstructorStatuses(id);
+  logActivity("instructor", id, "note", `Practice evaluation recorded: ${input.decision}.`, me.id);
+
+  if (input.decision === "revise_retry") {
+    const person = getDb().prepare("SELECT name FROM people WHERE id = ?").get(row.person_id) as { name: string } | undefined;
+    getDb()
+      .prepare(
+        "INSERT INTO tasks (id, title, owner_user_id, due_at, status, entity_type, entity_id, handoff_to_founder, created_at, updated_at) VALUES (?, ?, NULL, NULL, 'open', 'instructor', ?, 0, ?, ?)",
+      )
+      .run(`pfx-${randomUUID().slice(0, 8)}`, `Re-evaluate ${person?.name ?? "instructor"}`, id, now, now);
+  }
+
+  revalidatePath(`/app/instructors/${id}`);
+  revalidatePath("/app/instructors");
+  return { ok: true };
+}
+
+export async function markEligible(id: string): Promise<ActionResult> {
+  const me = await requireAdmin();
+  const row = getInstructorRow(id);
+  if (!row) return { ok: false, error: "Not found." };
+
+  const latestEval = getDb()
+    .prepare("SELECT decision FROM practice_evaluations WHERE instructor_id = ? ORDER BY evaluated_at DESC LIMIT 1")
+    .get(id) as { decision: PracticeEvalDecision } | undefined;
+  if (latestEval?.decision !== "pass" || row.training_status !== "complete") {
+    return { ok: false, error: "not_ready" };
+  }
+
+  const now = Date.now();
+  getDb()
+    .prepare("UPDATE instructors SET stage = 'eligible', eligibility_status = 'eligible', updated_at = ? WHERE id = ?")
+    .run(now, id);
+  logActivity("instructor", id, "stage_change", "Marked eligible.", me.id);
+
+  const person = getDb().prepare("SELECT name FROM people WHERE id = ?").get(row.person_id) as { name: string } | undefined;
+  for (const staffId of listStaffUserIds()) {
+    createNotification({
+      id: `ntf-instr-eligible-${id}-${staffId}`,
+      userId: staffId,
+      type: "instructor_pipeline",
+      title: "Instructor eligible",
+      body: `${person?.name ?? "An instructor"} is now eligible to teach.`,
+      link: `/app/instructors/${id}`,
+    });
+  }
+
+  revalidatePath(`/app/instructors/${id}`);
+  revalidatePath("/app/instructors");
+  return { ok: true };
+}
+
+export async function markActive(id: string): Promise<ActionResult> {
+  const me = await requireAdmin();
+  const row = getInstructorRow(id);
+  if (!row) return { ok: false, error: "Not found." };
+  setStage(id, "active");
+  logActivity("instructor", id, "stage_change", "Marked active.", me.id);
+
+  revalidatePath(`/app/instructors/${id}`);
+  revalidatePath("/app/instructors");
+  return { ok: true };
+}
+
+export async function markInactive(id: string, reason?: string): Promise<ActionResult> {
+  const me = await requireAdmin();
+  const row = getInstructorRow(id);
+  if (!row) return { ok: false, error: "Not found." };
+  setStage(id, "inactive");
+  logActivity("instructor", id, "stage_change", `Marked inactive.${reason ? ` ${reason.trim().slice(0, 500)}` : ""}`, me.id);
 
   revalidatePath(`/app/instructors/${id}`);
   revalidatePath("/app/instructors");
