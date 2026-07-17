@@ -12,7 +12,7 @@
 
 import { lessons, getLessonById, type Lesson } from "@/lib/lessons";
 
-export type Role = "student" | "instructor" | "admin";
+export type Role = "student" | "instructor" | "admin" | "growth";
 export type UserStatus = "active" | "invited" | "suspended";
 
 export interface User {
@@ -171,6 +171,7 @@ export interface Activity {
 
 export const users: User[] = [
   { id: "u-admin", name: "Dana Whitfield", first: "Dana", email: "dana@bowsportscapital.org", role: "admin", orgId: "org-bow", status: "active", last: "12 min ago", signin: "Email + password" },
+  { id: "u-growth", name: "Jordan Fields", first: "Jordan", email: "jordan@bowsportscapital.org", role: "growth", orgId: "org-bow", status: "active", last: "20 min ago", signin: "Email + password" },
   { id: "u-coach", name: "Marcus Reyes", first: "Marcus", email: "marcus.reyes@lincolnhs.edu", role: "instructor", orgId: "org-school", status: "active", last: "1 h ago", signin: "Email + password" },
   { id: "u-coach2", name: "Priya Anand", first: "Priya", email: "priya@eastsideyouth.org", role: "instructor", orgId: "org-youth", status: "invited", last: "—", signin: "—" },
   { id: "u-s1", name: "Jalen Brooks", first: "Jalen", email: "jalen.b@lincolnhs.edu", role: "student", orgId: "org-school", grade: "Grades 6–9", status: "active", last: "2 h ago", signin: "Email + password" },
@@ -260,16 +261,16 @@ export const cohortLesson = (c: Cohort): Lesson | null => (c.currentLessonId ? g
 
 /* default signed-in user per role (prototype) */
 export const defaultUserForRole = (role: Role): string =>
-  role === "admin" ? "u-admin" : role === "instructor" ? "u-coach" : "u-s1";
+  role === "admin" ? "u-admin" : role === "instructor" ? "u-coach" : role === "growth" ? "u-growth" : "u-s1";
 
 export const roleHomePath = (role: Role): string =>
-  role === "admin" ? "/app/admin" : role === "instructor" ? "/app/instructor" : "/app/student";
+  role === "admin" ? "/app/admin" : role === "instructor" ? "/app/instructor" : role === "growth" ? "/app" : "/app/student";
 
 export const roleLabel = (role: Role | null): string =>
-  role === "admin" ? "BOW Administration" : role === "instructor" ? "Instructor" : role === "student" ? "Student" : "Not signed in";
+  role === "admin" ? "BOW Administration" : role === "instructor" ? "Instructor" : role === "student" ? "Student" : role === "growth" ? "Growth Lead" : "Not signed in";
 
 export const roleAccent = (role: Role | null): string =>
-  role === "admin" ? "var(--bow-orange)" : role === "instructor" ? "var(--bow-positive)" : "var(--bow-blue)";
+  role === "admin" ? "var(--bow-orange)" : role === "instructor" ? "var(--bow-positive)" : role === "growth" ? "var(--bow-orange)" : "var(--bow-blue)";
 
 export const initials = (name: string): string =>
   name.split(" ").map((w) => w[0]).slice(0, 2).join("");
@@ -462,7 +463,27 @@ export interface AppData {
  * session notes, or admin-only invitations/inquiries — and an instructor
  * only receives the cohorts they actually teach.
  */
+/**
+ * Empty LMS snapshot shape, used for the `growth` role: growth-role users
+ * work entirely in the new BOW HQ data layer (lib/hiring.ts), not the LMS
+ * AppData shape, so they must never receive LMS users/cohorts/enrollments.
+ */
+export const EMPTY_APP_DATA: AppData = {
+  users: [],
+  organizations: [],
+  cohorts: [],
+  enrollments: [],
+  invitations: [],
+  inquiries: [],
+  activity: [],
+  attendance: {},
+  progress: {},
+  notes: [],
+  deletionRequests: [],
+};
+
 export function scopeAppDataForUser(data: AppData, me: User): AppData {
+  if (me.role === "growth") return EMPTY_APP_DATA;
   if (me.role === "admin") return data;
 
   if (me.role === "instructor") {

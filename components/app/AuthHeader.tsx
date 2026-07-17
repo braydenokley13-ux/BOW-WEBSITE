@@ -4,28 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAppState } from "./AppState";
-import { roleLabel as roleLabelFor, roleAccent as roleAccentFor, initials, SELF_PACED_COHORT_ID, type Role } from "@/lib/account";
-
-const NAV_BY_ROLE: Record<Role, { label: string; href: string }[]> = {
-  student: [
-    { label: "Home", href: "/app/student" },
-    { label: "My Track", href: "/app/student/track" },
-    { label: "Account", href: "/app/settings" },
-  ],
-  instructor: [
-    { label: "Today", href: "/app/instructor" },
-    { label: "Cohorts", href: "/app/instructor/cohort" },
-    { label: "Account", href: "/app/settings" },
-  ],
-  admin: [
-    { label: "Overview", href: "/app/admin" },
-    { label: "Inquiries", href: "/app/admin/inquiries" },
-    { label: "Organizations", href: "/app/admin/organizations" },
-    { label: "Cohorts", href: "/app/admin/cohorts" },
-    { label: "People", href: "/app/admin/people" },
-    { label: "Invitations", href: "/app/admin/invitations" },
-  ],
-};
+import { roleLabel as roleLabelFor, roleAccent as roleAccentFor, initials, SELF_PACED_COHORT_ID } from "@/lib/account";
+import { navForRole } from "@/lib/navigation/catalog";
 
 function isActive(pathname: string, href: string) {
   if (href === "/app/instructor/cohort") return pathname.startsWith("/app/instructor/cohort") || pathname.startsWith("/app/instructor/session");
@@ -47,9 +27,10 @@ export default function AuthHeader() {
       : role === "instructor"
         ? data.cohorts.some((c) => c.id === SELF_PACED_COHORT_ID)
         : false;
+  const baseNav = navForRole(role);
   const nav = alsoSelfPaced
-    ? [...NAV_BY_ROLE[role], { label: "Self-Paced Track", href: role === "student" ? "/dashboard" : "/instructor" }]
-    : NAV_BY_ROLE[role];
+    ? [...baseNav, { label: "Self-Paced Track", href: role === "student" ? "/dashboard" : "/instructor" }]
+    : baseNav;
   const accent = roleAccentFor(role);
 
   // Sign out clears the session server-side and redirects to the public site.

@@ -3,8 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
-import { requireRole } from "@/lib/dal";
+import { requireRole, requireStaff } from "@/lib/dal";
 import { isPartnerOrgType, type PartnerOrgType } from "@/lib/account";
+import { logActivity } from "@/lib/hiring";
+import { revalidateEntity } from "@/lib/routes";
+
+export interface ActionResult {
+  ok: boolean;
+  error?: string;
+}
 
 /* ============================================================
  * Partner / school landing pages — server actions (Feature 5).
@@ -112,4 +119,51 @@ function slugify(raw: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Staff. Creates a follow-up task from a website "Request a Demo"
+ * submission and marks it dispositioned so it drops out of the
+ * pending queue on /app/partners. If an `organizations` row matches
+ * the demo request's org_slug (via partner_orgs.name) the task links
+ * to that organization; otherwise it's created unlinked.
+ */
+export async function createFollowUpFromDemoRequest(demoRequestId: string): Promise<ActionResult & { taskId?: string }> {
+  const me = await requireStaff();
+  const db = getDb();
+  const request = db.prepare("SELECT * FROM demo_requests WHERE id = ?").get(demoRequestId) as
+    | { id: string; org_slug: string; requester_name: string; requester_email: string; dispositioned: number }
+    | undefined;
+  if (!request) return { ok: false, error: "Not found." };
+  if (request.dispositioned) return { ok: false, error: "Already dispositioned." };
+
+  const partnerOrg = db.prepare("SELECT name FROM partner_orgs WHERE slug = ?").get(request.org_slug) as { name: string } | undefined;
+  let entityId: string | null = null;
+  if (partnerOrg) {
+    const org = db.prepare("SELECT id FROM organizations WHERE name = ?").get(partnerOrg.name) as { id: string } | undefined;
+    entityId = org?.id ?? null;
+  }
+
+  const taskId = `pfx-${randomUUID().slice(0, 8)}`;
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO tasks (id, title, owner_user_id, due_at, status, entity_type, entity_id, handoff_to_founder, created_at, updated_at) VALUES (?, ?, ?, ?, 'open', ?, ?, 0, ?, ?)",
+  ).run(
+    taskId,
+    `Follow up: demo request from ${request.requester_name} (${request.requester_email})`,
+    me.id,
+    null,
+    entityId ? "organization" : null,
+    entityId,
+    now,
+    now,
+  );
+
+  db.prepare("UPDATE demo_requests SET dispositioned = 1 WHERE id = ?").run(demoRequestId);
+  if (entityId) logActivity("organization", entityId, "note", `Follow-up task created from demo request (${request.requester_name}).`, me.id);
+
+  revalidatePath("/app/partners");
+  revalidatePath("/app/tasks");
+  if (entityId) revalidateEntity("organization", entityId);
+  return { ok: true, taskId };
 }

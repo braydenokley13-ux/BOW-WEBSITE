@@ -1,3 +1,4 @@
+import Link from "next/link";
 import InquiryForm from "@/components/site/InquiryForm";
 
 export const metadata = {
@@ -18,6 +19,21 @@ export default function GetInvolvedPage() {
         }}
       >
         <InquiryForm />
+        <p
+          style={{
+            maxWidth: 620,
+            margin: "48px auto 0",
+            fontFamily: "var(--font-interface)",
+            fontSize: 14.5,
+            color: "#9a9da6",
+            textAlign: "center",
+          }}
+        >
+          Want to teach for BOW instead?{" "}
+          <Link href="/get-involved/apply" className="bow-link" style={{ color: "var(--bow-orange)", textDecoration: "underline" }}>
+            Apply to teach →
+          </Link>
+        </p>
       </section>
     </div>
   );

@@ -20,7 +20,11 @@ export type NotificationType =
   | "certificate_earned"
   | "discussion_reply"
   | "rank_up"
-  | "streak_milestone";
+  | "streak_milestone"
+  | "instructor_pipeline"
+  | "partner_pipeline"
+  | "class_ops"
+  | "quality";
 
 /** A notification as the bell dropdown renders it (fully serializable). */
 export interface NotificationView {

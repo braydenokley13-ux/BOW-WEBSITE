@@ -30,7 +30,7 @@ export default function PartnersPage() {
           <h1 style={{ margin: "14px 0 0", fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(38px,5.5vw,72px)", lineHeight: 0.98, letterSpacing: "-0.015em", maxWidth: "18ch", textWrap: "balance" }}>Build the program. Expand the access.</h1>
           <p style={{ margin: "22px 0 0", fontFamily: "var(--font-interface)", fontSize: "clamp(17px,1.5vw,21px)", lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 580 }}>BOW is actively building relationships with organizations that can strengthen the curriculum, grow distribution, support access, or deepen the program&apos;s credibility. This is not a generic sponsorship page.</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 32 }}>
-            <Button href="/get-involved" variant="primary" size="lg">Explore a Partnership</Button>
+            <Button href="/get-involved/partner-inquiry" variant="primary" size="lg">Start a Partnership</Button>
             <Button href="/lessons" variant="secondary" size="lg">Understand the Curriculum</Button>
           </div>
         </div>
