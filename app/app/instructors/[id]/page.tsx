@@ -134,7 +134,24 @@ export default async function InstructorDetailPage({ params }: { params: Promise
         </div>
       )}
 
-      <InstructorDetailActions instructorId={id} stage={instructor.stage} isAdmin={me?.role === "admin"} />
+      <div style={cardStyle}>
+        <span style={{ ...labelStyle, marginBottom: 8 }}>Training progress</span>
+        <p style={valueStyle}>{completions.length} module(s) completed</p>
+        <p style={{ ...valueStyle, color: "var(--bow-slate)" }}>Onboarding: {instructor.onboardingStatus} · Training: {instructor.trainingStatus}</p>
+        {evaluations[0] && (
+          <p style={{ ...valueStyle, color: "var(--bow-slate)", marginTop: 4 }}>
+            Latest practice evaluation: {evaluations[0].decision} ({new Date(evaluations[0].evaluatedAt).toLocaleDateString()})
+          </p>
+        )}
+      </div>
+
+      <InstructorDetailActions
+        instructorId={id}
+        stage={instructor.stage}
+        trainingStatus={instructor.trainingStatus}
+        isAdmin={me?.role === "admin"}
+        isStaff={me?.role === "admin" || me?.role === "growth"}
+      />
 
       {openTasks.length > 0 && (
         <div style={cardStyle}>

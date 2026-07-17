@@ -10,6 +10,11 @@ import {
   submitForFounderReview,
   recordFounderDecision,
   updateApplicantOwner,
+  moveToPracticeEvaluation,
+  recordPracticeEvaluation,
+  markEligible,
+  markActive,
+  markInactive,
 } from "@/app/actions/instructors";
 import { addActivityNote } from "@/app/actions/activity";
 import { createTask } from "@/app/actions/tasks";
@@ -30,12 +35,14 @@ const inputStyle: CSSProperties = {
 interface Props {
   instructorId: string;
   stage: string;
+  trainingStatus?: string;
   isAdmin: boolean;
+  isStaff: boolean;
 }
 
-export default function InstructorDetailActions({ instructorId, stage, isAdmin }: Props) {
+export default function InstructorDetailActions({ instructorId, stage, trainingStatus, isAdmin, isStaff }: Props) {
   const router = useRouter();
-  const [modal, setModal] = useState<null | "interview" | "notes" | "note" | "task" | "owner">(null);
+  const [modal, setModal] = useState<null | "interview" | "notes" | "note" | "task" | "owner" | "eval">(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +51,14 @@ export default function InstructorDetailActions({ instructorId, stage, isAdmin }
   const [noteInput, setNoteInput] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
   const [ownerId, setOwnerId] = useState("");
+
+  const [lessonUsed, setLessonUsed] = useState("");
+  const [ratingCurriculum, setRatingCurriculum] = useState(3);
+  const [ratingCommunication, setRatingCommunication] = useState(3);
+  const [ratingPreparedness, setRatingPreparedness] = useState(3);
+  const [strengths, setStrengths] = useState("");
+  const [concerns, setConcerns] = useState("");
+  const [decision, setDecision] = useState<"pass" | "revise_retry" | "fail">("pass");
 
   const refresh = () => {
     setModal(null);
@@ -109,6 +124,31 @@ export default function InstructorDetailActions({ instructorId, stage, isAdmin }
             Awaiting a founder (admin) decision.
           </span>
         )}
+        {isStaff && stage === "training" && trainingStatus === "complete" && (
+          <Button size="sm" variant="secondary" onClick={() => run(() => moveToPracticeEvaluation(instructorId))} disabled={busy}>
+            Move to Practice Evaluation
+          </Button>
+        )}
+        {isStaff && stage === "practice_evaluation" && (
+          <Button size="sm" variant="secondary" onClick={() => setModal("eval")}>
+            Record Practice Evaluation
+          </Button>
+        )}
+        {isAdmin && stage === "practice_evaluation" && (
+          <Button size="sm" variant="primary" onClick={() => run(() => markEligible(instructorId))} disabled={busy}>
+            Mark Eligible
+          </Button>
+        )}
+        {isAdmin && stage === "eligible" && (
+          <Button size="sm" variant="primary" onClick={() => run(() => markActive(instructorId))} disabled={busy}>
+            Mark Active
+          </Button>
+        )}
+        {isAdmin && (stage === "active" || stage === "eligible") && (
+          <Button size="sm" variant="secondary" onClick={() => run(() => markInactive(instructorId))} disabled={busy}>
+            Mark Inactive
+          </Button>
+        )}
         <Button size="sm" variant="secondary" onClick={() => setModal("owner")}>
           Assign Owner
         </Button>
@@ -160,6 +200,60 @@ export default function InstructorDetailActions({ instructorId, stage, isAdmin }
           onClick={() => run(() => createTask({ title: taskTitle, entityType: "instructor", entityId: instructorId }))}
         >
           {busy ? "Creating…" : "Create Task"}
+        </Button>
+      </Modal>
+
+      <Modal open={modal === "eval"} onClose={() => setModal(null)} title="Record Practice Evaluation" maxWidth={560}>
+        <input style={inputStyle} placeholder="Lesson used" value={lessonUsed} onChange={(e) => setLessonUsed(e.target.value)} />
+        {(
+          [
+            ["Curriculum delivery", ratingCurriculum, setRatingCurriculum],
+            ["Communication / engagement", ratingCommunication, setRatingCommunication],
+            ["Preparedness / reliability", ratingPreparedness, setRatingPreparedness],
+          ] as const
+        ).map(([label, value, setter]) => (
+          <div key={label} style={{ marginBottom: 12 }}>
+            <label style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>
+              {label} (1–5)
+            </label>
+            <select style={inputStyle} value={value} onChange={(e) => setter(Number(e.target.value))}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
+        <textarea rows={3} style={{ ...inputStyle, resize: "vertical" }} value={strengths} onChange={(e) => setStrengths(e.target.value)} placeholder="Strengths" />
+        <textarea rows={3} style={{ ...inputStyle, resize: "vertical" }} value={concerns} onChange={(e) => setConcerns(e.target.value)} placeholder="Concerns" />
+        <label style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Decision</label>
+        <select style={inputStyle} value={decision} onChange={(e) => setDecision(e.target.value as "pass" | "revise_retry" | "fail")}>
+          <option value="pass">Pass</option>
+          <option value="revise_retry">Revise / Retry</option>
+          <option value="fail">Fail</option>
+        </select>
+        <Button
+          variant="primary"
+          full
+          disabled={busy}
+          onClick={() =>
+            run(() =>
+              recordPracticeEvaluation(instructorId, {
+                evaluatorUserId: "",
+                evaluatedAt: Date.now(),
+                lessonUsed,
+                ratingCurriculumDelivery: ratingCurriculum,
+                ratingCommunicationEngagement: ratingCommunication,
+                ratingPreparednessReliability: ratingPreparedness,
+                strengths,
+                concerns,
+                decision,
+              }),
+            )
+          }
+        >
+          {busy ? "Saving…" : "Save Evaluation"}
         </Button>
       </Modal>
 
