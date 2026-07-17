@@ -462,6 +462,20 @@ export function getStudentDetail(id: string) {
   return { student, guardian: guardian ? rowToPerson(guardian) : null, enrollments };
 }
 
+export function getStudentAttendanceHistory(studentId: string) {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT ar.*, cs.session_date, cs.class_id, c.title AS class_title
+       FROM attendance_records ar
+       JOIN class_sessions cs ON cs.id = ar.session_id
+       JOIN classes c ON c.id = cs.class_id
+       WHERE ar.student_id = ?
+       ORDER BY cs.session_date DESC`,
+    )
+    .all(studentId) as any[];
+}
+
 export function listCurricula(): Curriculum[] {
   const db = getDb();
   return (db.prepare("SELECT * FROM curricula ORDER BY title").all() as any[]).map(rowToCurriculum);
@@ -470,6 +484,76 @@ export function listCurricula(): Curriculum[] {
 export function listTasks(): Task[] {
   const db = getDb();
   return (db.prepare("SELECT * FROM tasks ORDER BY status, due_at").all() as any[]).map(rowToTask);
+}
+
+/** Instructors eligible to lead/assist a class (stage eligible or active). */
+export function listEligibleInstructors(): (Instructor & { person: Person | null })[] {
+  const db = getDb();
+  const rows = (db.prepare("SELECT * FROM instructors WHERE stage IN ('eligible','active') ORDER BY updated_at DESC").all() as any[]).map(
+    rowToInstructor,
+  );
+  return rows.map((i) => {
+    const p = db.prepare("SELECT * FROM people WHERE id = ?").get(i.personId) as any;
+    return { ...i, person: p ? rowToPerson(p) : null };
+  });
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  type: string;
+  location: string;
+  status: string;
+}
+
+export function listOrganizations(): Organization[] {
+  const db = getDb();
+  return db.prepare("SELECT * FROM organizations ORDER BY name").all() as unknown as Organization[];
+}
+
+export function getOrganizationDetail(id: string) {
+  const db = getDb();
+  const org = db.prepare("SELECT * FROM organizations WHERE id = ?").get(id) as unknown as Organization | undefined;
+  if (!org) return null;
+  const relatedClasses = (db.prepare("SELECT * FROM classes WHERE partner_org_id = ? ORDER BY updated_at DESC").all(id) as any[]).map(rowToClass);
+  return { org, relatedClasses };
+}
+
+export function listClassProposals(): ClassProposal[] {
+  const db = getDb();
+  return (db.prepare("SELECT * FROM class_proposals ORDER BY updated_at DESC").all() as any[]).map(
+    (r): ClassProposal => ({
+      id: r.id,
+      instructorId: r.instructor_id,
+      title: r.title,
+      ageGroup: r.age_group ?? null,
+      curriculumTopic: r.curriculum_topic ?? null,
+      format: r.format ?? null,
+      schedule: r.schedule ?? null,
+      description: r.description ?? null,
+      resources: r.resources ?? null,
+      status: r.status,
+      convertedClassId: r.converted_class_id ?? null,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }),
+  );
+}
+
+export function listClassProposalsForInstructor(instructorId: string): ClassProposal[] {
+  return listClassProposals().filter((p) => p.instructorId === instructorId);
+}
+
+/** Classes where the given instructor is lead or additional. */
+export function listClassesForInstructor(instructorId: string): Class[] {
+  const db = getDb();
+  return (
+    db
+      .prepare(
+        "SELECT c.* FROM classes c JOIN class_instructors ci ON ci.class_id = c.id WHERE ci.instructor_id = ? ORDER BY c.updated_at DESC",
+      )
+      .all(instructorId) as any[]
+  ).map(rowToClass);
 }
 
 /** Leadership Home buckets — real queries where the underlying tables are ready. */
@@ -510,6 +594,21 @@ export function getLeadershipHomeData() {
       )
       .all() as any[]
   ).map(rowToClass);
+
+  const activeClasses = (db.prepare("SELECT * FROM classes WHERE status NOT IN ('completed','cancelled')").all() as any[]).map(rowToClass);
+  const classesLaunchingSoonIncomplete: Class[] = activeClasses.filter((cls) => {
+    const enrollmentCount = (
+      db.prepare("SELECT COUNT(*) AS n FROM class_enrollments WHERE class_id = ? AND status = 'enrolled'").get(cls.id) as { n: number }
+    ).n;
+    const hasEligibleLead = !!(
+      cls.leadInstructorId &&
+      (db
+        .prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible'")
+        .get(cls.leadInstructorId) as { 1: number } | undefined)
+    );
+    return classStatusFlags(cls, hasEligibleLead, enrollmentCount).launchingSoonIncomplete;
+  });
+
   const missingStudentForms = (
     db.prepare("SELECT * FROM students WHERE enrollment_status = 'active' AND form_status != 'complete' ORDER BY updated_at").all() as any[]
   ).map(rowToStudent);
@@ -527,9 +626,7 @@ export function getLeadershipHomeData() {
     behindOnOnboardingOrTraining,
     practiceEvalsNeeded,
     classesWithoutEligibleInstructor,
-    // TODO(Phase B): "classes launching <14d with incomplete setup" needs classStatusFlags
-    // wired against real enrollment counts + eligible-lead lookups per class.
-    classesLaunchingSoonIncomplete: [] as Class[],
+    classesLaunchingSoonIncomplete,
     missingStudentForms,
     flaggedSessionReports,
     openFounderHandoffTasks,
