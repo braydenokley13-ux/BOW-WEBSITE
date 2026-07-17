@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AppStateProvider } from "@/components/app/AppState";
 import AppShell from "@/components/app/AppShell";
 import { requireUser, loadAppData } from "@/lib/dal";
-import { scopeAppDataForUser } from "@/lib/account";
+import { scopeAppDataForUser, EMPTY_APP_DATA } from "@/lib/account";
 
 export const metadata: Metadata = {
   title: "Front Office",
@@ -14,11 +14,9 @@ export const metadata: Metadata = {
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Authoritative auth check (the proxy only does an optimistic cookie check).
   const me = await requireUser();
-  const data = await loadAppData();
-  // Never ship other users' PII, other cohorts' rosters, or admin-only data
-  // to a student/instructor browser — see scopeAppDataForUser for why this
-  // can't just be a route-level guard.
-  const scoped = scopeAppDataForUser(data, me);
+  // growth-role users work entirely in the new BOW HQ data layer — never
+  // load or ship the LMS snapshot to them.
+  const scoped = me.role === "growth" ? EMPTY_APP_DATA : scopeAppDataForUser(await loadAppData(), me);
 
   return (
     <AppStateProvider me={me} data={scoped}>
