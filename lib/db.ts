@@ -356,6 +356,7 @@ CREATE TABLE IF NOT EXISTS demo_requests (
   requester_name TEXT NOT NULL,
   requester_email TEXT NOT NULL,
   message TEXT NOT NULL DEFAULT '',
+  dispositioned INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 
@@ -1467,6 +1468,9 @@ function migrate(db: DatabaseSync) {
   add("daily_questions", "track", "TEXT NOT NULL DEFAULT '101'");
   add("daily_questions", "points", "INTEGER NOT NULL DEFAULT 10");
   add("daily_questions", "active", "INTEGER NOT NULL DEFAULT 1");
+  // Disposition flag for the demo-request inbox (Phase E / Wave E2):
+  // marks a request as handled once staff create a follow-up task from it.
+  add("demo_requests", "dispositioned", "INTEGER NOT NULL DEFAULT 0");
   // The active-simulation guard moved from one-per-student to one-per-type so a
   // student can hold an active Westbrook AND Eastfield run. Recreate the index
   // for any database that still has the older single-column form.
