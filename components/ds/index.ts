@@ -12,3 +12,7 @@ export type { DecisionOption, Consequence } from "./DecisionCard";
 export { default as FrontOfficeMemo } from "./FrontOfficeMemo";
 export type { MemoSection } from "./FrontOfficeMemo";
 export { default as Modal } from "./Modal";
+export { default as Tabs } from "./Tabs";
+export type { TabItem } from "./Tabs";
+export { default as DataTable } from "./DataTable";
+export type { DataTableColumn } from "./DataTable";
