@@ -511,6 +511,39 @@ export function listOrganizations(): Organization[] {
   return db.prepare("SELECT * FROM organizations ORDER BY name").all() as unknown as Organization[];
 }
 
+export interface DemoRequest {
+  id: string;
+  orgSlug: string;
+  orgName: string | null;
+  requesterName: string;
+  requesterEmail: string;
+  message: string;
+  dispositioned: boolean;
+  createdAt: number;
+}
+
+/** Website "Request a Demo" submissions, joined to partner_orgs for a display name. Newest first. */
+export function listDemoRequests(): DemoRequest[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT d.*, p.name AS org_name FROM demo_requests d
+       LEFT JOIN partner_orgs p ON p.slug = d.org_slug
+       ORDER BY d.created_at DESC`,
+    )
+    .all() as any[];
+  return rows.map((r) => ({
+    id: r.id,
+    orgSlug: r.org_slug,
+    orgName: r.org_name ?? null,
+    requesterName: r.requester_name,
+    requesterEmail: r.requester_email,
+    message: r.message,
+    dispositioned: r.dispositioned === 1,
+    createdAt: r.created_at,
+  }));
+}
+
 export function getOrganizationDetail(id: string) {
   const db = getDb();
   const org = db.prepare("SELECT * FROM organizations WHERE id = ?").get(id) as unknown as Organization | undefined;
@@ -613,7 +646,11 @@ export function getLeadershipHomeData() {
     db.prepare("SELECT * FROM students WHERE enrollment_status = 'active' AND form_status != 'complete' ORDER BY updated_at").all() as any[]
   ).map(rowToStudent);
   const flaggedSessionReports = db
-    .prepare("SELECT * FROM class_session_reports WHERE flagged = 1 AND reported_at > ? ORDER BY reported_at DESC")
+    .prepare(
+      `SELECT r.*, s.class_id AS class_id FROM class_session_reports r
+       JOIN class_sessions s ON s.id = r.session_id
+       WHERE r.flagged = 1 AND r.reported_at > ? ORDER BY r.reported_at DESC`,
+    )
     .all(now - STALE_DAYS * DAY_MS) as any[];
   const openFounderHandoffTasks = (
     db.prepare("SELECT * FROM tasks WHERE handoff_to_founder = 1 AND status = 'open' ORDER BY due_at").all() as any[]
@@ -721,6 +758,24 @@ export function getActiveInstructorForPerson(personId: string): Instructor | nul
 export function listStaffUserIds(): string[] {
   const db = getDb();
   return (db.prepare("SELECT id FROM users WHERE role IN ('admin','growth')").all() as { id: string }[]).map((r) => r.id);
+}
+
+/** Staff (admin | growth) users by name — feeds UserSelect pickers. */
+export function listStaffUsers(): { id: string; name: string }[] {
+  const db = getDb();
+  return db.prepare("SELECT id, name FROM users WHERE role IN ('admin','growth') ORDER BY name").all() as { id: string; name: string }[];
+}
+
+/** Resolves a set of user ids to display names (any role, not just staff). Unknown ids pass through unchanged. */
+export function resolveUserNames(ids: (string | null | undefined)[]): Map<string, string> {
+  const db = getDb();
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  const map = new Map<string, string>();
+  for (const id of unique) {
+    const row = db.prepare("SELECT name FROM users WHERE id = ?").get(id) as { name: string } | undefined;
+    map.set(id, row?.name ?? id);
+  }
+  return map;
 }
 
 /* ---------------- invitation writer (shared with app/actions/lms.ts) ---------------- */

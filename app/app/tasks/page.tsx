@@ -1,24 +1,14 @@
 import { Badge, SectionHeader } from "@/components/ds";
-import { listTasks } from "@/lib/hiring";
+import { listTasks, resolveUserNames } from "@/lib/hiring";
+import { entityHref } from "@/lib/routes";
 import TaskRowActions from "@/components/app/tasks/TaskRowActions";
-
-const ENTITY_HREF: Record<string, (id: string) => string> = {
-  instructor: (id) => `/app/instructors/${id}`,
-  class: (id) => `/app/classes/${id}`,
-  student: (id) => `/app/students/${id}`,
-  organization: (id) => `/app/partners/${id}`,
-};
-
-function entityHref(entityType: string | null, entityId: string | null): string | null {
-  if (!entityType || !entityId) return null;
-  return ENTITY_HREF[entityType]?.(entityId) ?? null;
-}
 
 export default function TasksPage() {
   const tasks = listTasks();
   const open = tasks.filter((t) => t.status === "open");
   const handoffs = open.filter((t) => t.handoffToFounder);
   const done = tasks.filter((t) => t.status === "done");
+  const ownerNames = resolveUserNames(tasks.map((t) => t.ownerUserId));
 
   const renderRows = (rows: typeof tasks) => (
     <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, overflowX: "auto" }}>
@@ -40,7 +30,9 @@ export default function TasksPage() {
                 <td style={{ padding: "11px 12px", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>
                   {t.title} {t.handoffToFounder && <Badge status="negative">Founder</Badge>}
                 </td>
-                <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{t.ownerUserId ?? "Unassigned"}</td>
+                <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>
+                  {t.ownerUserId ? ownerNames.get(t.ownerUserId) ?? t.ownerUserId : "Unassigned"}
+                </td>
                 <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>
                   {t.dueAt ? new Date(t.dueAt).toLocaleDateString() : "—"}
                 </td>

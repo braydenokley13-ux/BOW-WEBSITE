@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import { Button, Modal } from "@/components/ds";
+import UserSelect from "@/components/app/UserSelect";
+import AvailabilityEditor, { type AvailabilitySlot } from "@/components/app/hiring/AvailabilityEditor";
 import {
   scheduleInterview,
   recordInterviewNotes,
@@ -38,11 +40,13 @@ interface Props {
   trainingStatus?: string;
   isAdmin: boolean;
   isStaff: boolean;
+  staffUsers: { id: string; name: string }[];
+  availability: AvailabilitySlot[];
 }
 
-export default function InstructorDetailActions({ instructorId, stage, trainingStatus, isAdmin, isStaff }: Props) {
+export default function InstructorDetailActions({ instructorId, stage, trainingStatus, isAdmin, isStaff, staffUsers, availability }: Props) {
   const router = useRouter();
-  const [modal, setModal] = useState<null | "interview" | "notes" | "note" | "task" | "owner" | "eval">(null);
+  const [modal, setModal] = useState<null | "interview" | "notes" | "note" | "task" | "owner" | "eval" | "availability">(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -152,6 +156,9 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
         <Button size="sm" variant="secondary" onClick={() => setModal("owner")}>
           Assign Owner
         </Button>
+        <Button size="sm" variant="secondary" onClick={() => setModal("availability")}>
+          Edit Availability
+        </Button>
         <Button size="sm" variant="secondary" onClick={() => setModal("note")}>
           Add Note
         </Button>
@@ -258,10 +265,15 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
       </Modal>
 
       <Modal open={modal === "owner"} onClose={() => setModal(null)} title="Assign Owner">
-        <input style={inputStyle} placeholder="Staff user id (e.g. u-admin)" value={ownerId} onChange={(e) => setOwnerId(e.target.value)} />
-        <Button variant="primary" full disabled={busy || !ownerId.trim()} onClick={() => run(() => updateApplicantOwner(instructorId, ownerId))}>
+        <UserSelect users={staffUsers} value={ownerId} onChange={setOwnerId} />
+        <div style={{ height: 12 }} />
+        <Button variant="primary" full disabled={busy} onClick={() => run(() => updateApplicantOwner(instructorId, ownerId))}>
           {busy ? "Saving…" : "Assign"}
         </Button>
+      </Modal>
+
+      <Modal open={modal === "availability"} onClose={() => setModal(null)} title="Edit Availability" maxWidth={640}>
+        <AvailabilityEditor instructorId={instructorId} initialSlots={availability} />
       </Modal>
     </div>
   );

@@ -5,6 +5,7 @@ import { roleHomePath } from "@/lib/account";
 import { Badge, SectionHeader } from "@/components/ds";
 import { getLeadershipHomeData } from "@/lib/hiring";
 import { getDb, rowToPerson } from "@/lib/db";
+import { entityHref, sessionHref } from "@/lib/routes";
 
 const cardStyle = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 20 } as const;
 const labelStyle = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--bow-slate)" };
@@ -41,42 +42,42 @@ export default async function AppHome() {
     {
       key: "newApplications",
       title: "New applications",
-      items: data.newApplications.map((i) => ({ id: i.id, label: personName(i.personId), href: `/app/instructors/${i.id}` })),
+      items: data.newApplications.map((i) => ({ id: i.id, label: personName(i.personId), href: entityHref("instructor", i.id)! })),
     },
     {
       key: "interviewsToSchedule",
       title: "Interviews to schedule",
-      items: data.interviewsToSchedule.map((i) => ({ id: i.id, label: personName(i.personId), href: `/app/instructors/${i.id}` })),
+      items: data.interviewsToSchedule.map((i) => ({ id: i.id, label: personName(i.personId), href: entityHref("instructor", i.id)! })),
     },
     {
       key: "awaitingFounderReview",
       title: "Awaiting founder review",
-      items: data.awaitingFounderReview.map((i) => ({ id: i.id, label: personName(i.personId), href: `/app/instructors/${i.id}` })),
+      items: data.awaitingFounderReview.map((i) => ({ id: i.id, label: personName(i.personId), href: entityHref("instructor", i.id)! })),
     },
     {
       key: "behindOnOnboardingOrTraining",
       title: "Behind on onboarding/training",
-      items: data.behindOnOnboardingOrTraining.map((i) => ({ id: i.id, label: personName(i.personId), href: `/app/instructors/${i.id}` })),
+      items: data.behindOnOnboardingOrTraining.map((i) => ({ id: i.id, label: personName(i.personId), href: entityHref("instructor", i.id)! })),
     },
     {
       key: "practiceEvalsNeeded",
       title: "Practice evals needed",
-      items: data.practiceEvalsNeeded.map((i) => ({ id: i.id, label: personName(i.personId), href: `/app/instructors/${i.id}` })),
+      items: data.practiceEvalsNeeded.map((i) => ({ id: i.id, label: personName(i.personId), href: entityHref("instructor", i.id)! })),
     },
     {
       key: "classesWithoutEligibleInstructor",
       title: "Classes without an eligible instructor",
-      items: data.classesWithoutEligibleInstructor.map((c) => ({ id: c.id, label: c.title, href: `/app/classes/${c.id}` })),
+      items: data.classesWithoutEligibleInstructor.map((c) => ({ id: c.id, label: c.title, href: entityHref("class", c.id)! })),
     },
     {
       key: "classesLaunchingSoonIncomplete",
       title: "Launching soon, setup incomplete",
-      items: data.classesLaunchingSoonIncomplete.map((c) => ({ id: c.id, label: c.title, href: `/app/classes/${c.id}` })),
+      items: data.classesLaunchingSoonIncomplete.map((c) => ({ id: c.id, label: c.title, href: entityHref("class", c.id)! })),
     },
     {
       key: "missingStudentForms",
       title: "Missing student forms",
-      items: data.missingStudentForms.map((s) => ({ id: s.id, label: s.name, href: `/app/students/${s.id}` })),
+      items: data.missingStudentForms.map((s) => ({ id: s.id, label: s.name, href: entityHref("student", s.id)! })),
     },
     {
       key: "flaggedSessionReports",
@@ -84,13 +85,13 @@ export default async function AppHome() {
       items: data.flaggedSessionReports.map((r) => ({
         id: r.id,
         label: r.flag_reason || "Flagged session",
-        href: `/app/classes`,
+        href: sessionHref(r.class_id, r.session_id),
       })),
     },
     {
       key: "openFounderHandoffTasks",
       title: "Open founder handoffs",
-      items: data.openFounderHandoffTasks.map((t) => ({ id: t.id, label: t.title, href: "/app/tasks" })),
+      items: data.openFounderHandoffTasks.map((t) => ({ id: t.id, label: t.title, href: entityHref("task", t.id) ?? "/app/tasks" })),
     },
   ];
 

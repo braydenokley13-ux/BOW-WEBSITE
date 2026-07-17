@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Badge, SectionHeader } from "@/components/ds";
 import { getCurrentUser } from "@/lib/dal";
-import { getInstructorDetail, listActivity, listOpenTasksForEntity } from "@/lib/hiring";
+import { getInstructorDetail, listActivity, listOpenTasksForEntity, listStaffUsers, resolveUserNames } from "@/lib/hiring";
 import InstructorDetailActions from "@/components/app/hiring/InstructorDetailActions";
 
 const STAGE_LABEL: Record<string, string> = {
@@ -33,6 +33,8 @@ export default async function InstructorDetailPage({ params }: { params: Promise
   const { instructor, person, availability, completions, evaluations } = detail;
   const activity = listActivity("instructor", id);
   const openTasks = listOpenTasksForEntity("instructor", id);
+  const staffUsers = listStaffUsers();
+  const ownerName = instructor.ownerUserId ? resolveUserNames([instructor.ownerUserId]).get(instructor.ownerUserId) ?? instructor.ownerUserId : null;
   let answers: Record<string, string> = {};
   try {
     answers = JSON.parse(instructor.answers || "{}");
@@ -68,7 +70,7 @@ export default async function InstructorDetailPage({ params }: { params: Promise
         </div>
         <div style={cardStyle}>
           <span style={labelStyle}>Owner</span>
-          <span style={valueStyle}>{instructor.ownerUserId ?? "Unassigned"}</span>
+          <span style={valueStyle}>{ownerName ?? "Unassigned"}</span>
         </div>
       </div>
 
@@ -151,6 +153,8 @@ export default async function InstructorDetailPage({ params }: { params: Promise
         trainingStatus={instructor.trainingStatus}
         isAdmin={me?.role === "admin"}
         isStaff={me?.role === "admin" || me?.role === "growth"}
+        staffUsers={staffUsers}
+        availability={availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startTime: a.startTime, endTime: a.endTime, notes: a.notes ?? "" }))}
       />
 
       {openTasks.length > 0 && (
