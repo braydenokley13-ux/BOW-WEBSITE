@@ -24,9 +24,10 @@ export const NAV_CATALOG: NavItem[] = [
   { label: "My Track", href: "/app/student/track", roles: ["student"] },
   { label: "Account", href: "/app/settings", roles: ["student"] },
 
-  // ---- instructor (unchanged) ----
+  // ---- instructor (unchanged, plus BOW HQ self-service) ----
   { label: "Today", href: "/app/instructor", roles: ["instructor"] },
   { label: "Cohorts", href: "/app/instructor/cohort", roles: ["instructor"] },
+  { label: "My Onboarding/Training", href: "/app/teach", roles: ["instructor"] },
   { label: "Account", href: "/app/settings", roles: ["instructor"] },
 
   // ---- admin (unchanged) ----
