@@ -456,3 +456,59 @@ export async function markInactive(id: string, reason?: string): Promise<ActionR
   revalidatePath("/app/instructors");
   return { ok: true };
 }
+
+/* ---------------- availability ---------------- */
+
+export interface AvailabilitySlotInput {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  notes?: string;
+}
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * Replace-all semantics: the instructor's (or, for staff, the target
+ * instructor's) full availability set is deleted and re-inserted.
+ * Self-service (instructor editing their own row) OR staff.
+ */
+export async function updateInstructorAvailability(instructorId: string, slots: AvailabilitySlotInput[]): Promise<ActionResult> {
+  const me = await requireRole("admin", "growth", "instructor");
+  const row = getInstructorRow(instructorId);
+  if (!row) return { ok: false, error: "Not found." };
+
+  if (me.role === "instructor") {
+    const { instructor } = await requireInstructorSelf();
+    if (instructor.id !== instructorId) return { ok: false, error: "forbidden" };
+  }
+
+  if (!Array.isArray(slots)) return { ok: false, error: "Invalid slots." };
+  if (slots.length > 50) return { ok: false, error: "Too many slots." };
+
+  const clean: { dayOfWeek: number; startTime: string; endTime: string; notes: string | null }[] = [];
+  for (const s of slots) {
+    const dayOfWeek = Number(s.dayOfWeek);
+    if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) return { ok: false, error: "Day of week must be 0–6." };
+    const startTime = (s.startTime ?? "").trim();
+    const endTime = (s.endTime ?? "").trim();
+    if (!TIME_RE.test(startTime) || !TIME_RE.test(endTime)) return { ok: false, error: "Times must be HH:MM." };
+    if (startTime >= endTime) return { ok: false, error: "Start time must be before end time." };
+    clean.push({ dayOfWeek, startTime, endTime, notes: (s.notes ?? "").trim().slice(0, 300) || null });
+  }
+
+  const db = getDb();
+  const now = Date.now();
+  db.prepare("DELETE FROM instructor_availability WHERE instructor_id = ?").run(instructorId);
+  const insert = db.prepare(
+    "INSERT INTO instructor_availability (id, instructor_id, day_of_week, start_time, end_time, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  );
+  for (const s of clean) {
+    insert.run(`pfx-${randomUUID().slice(0, 8)}`, instructorId, s.dayOfWeek, s.startTime, s.endTime, s.notes, now);
+  }
+
+  logActivity("instructor", instructorId, "note", `Availability updated (${clean.length} slot(s)).`, me.id);
+  revalidatePath(`/app/instructors/${instructorId}`);
+  revalidatePath("/app/teach");
+  return { ok: true };
+}

@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db";
 import { getInstructorDetail, listTrainingModules, listTrainingSessions, type Task } from "@/lib/hiring";
 import CompleteModuleButton from "@/components/app/teach/CompleteModuleButton";
 import RegisterSessionButton from "@/components/app/teach/RegisterSessionButton";
+import AvailabilityEditor from "@/components/app/hiring/AvailabilityEditor";
 
 const STAGE_LABEL: Record<string, string> = {
   accepted: "Accepted",
@@ -132,6 +133,14 @@ export default async function TeachHomePage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section style={cardStyle}>
+        <span style={{ ...labelStyle, display: "block", marginBottom: 12 }}>Availability</span>
+        <AvailabilityEditor
+          instructorId={instructor.id}
+          initialSlots={detail.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startTime: a.startTime, endTime: a.endTime, notes: a.notes ?? "" }))}
+        />
       </section>
 
       {openTasks.length > 0 && (
