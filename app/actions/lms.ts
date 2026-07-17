@@ -14,6 +14,7 @@ import {
   CERT_TRACK_201,
 } from "@/lib/certificate";
 import { createNotification } from "@/lib/notifications";
+import { createInvitationInternal } from "@/lib/hiring";
 import { recordDailyVisit as applyDailyVisitStreak, type RecordVisitResult } from "@/lib/streak";
 import { conceptLabel, getDailyQuestionById, gradeAnswer, tierLabel } from "@/lib/daily-question";
 import { checkAndAwardBadges } from "@/lib/badges";
@@ -87,20 +88,9 @@ export interface NewInvitationInput {
 
 export async function createInvitation(input: NewInvitationInput): Promise<Invitation> {
   await requireRole("admin");
-  const id = `inv-${randomUUID().slice(0, 8)}`;
-  const today = new Date();
-  const created = fmtDate(today);
-  const expires = fmtDate(new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000));
-  const email = input.email.trim().toLowerCase();
-
-  getDb()
-    .prepare(
-      "INSERT INTO invitations (id, email, role, org_id, cohort_id, created, expires, status, token) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
-    )
-    .run(id, email, input.role, input.orgId, input.cohortId, created, expires, id);
-
+  const created = createInvitationInternal(input);
   refreshApp();
-  return { id, email, role: input.role, orgId: input.orgId, cohortId: input.cohortId, created, expires, status: "pending" };
+  return created;
 }
 
 /* ---------------- Inquiries ---------------- */

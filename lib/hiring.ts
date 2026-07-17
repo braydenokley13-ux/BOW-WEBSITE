@@ -6,6 +6,7 @@
  * Server-only (imports lib/db).
  * ============================================================ */
 
+import { randomUUID } from "node:crypto";
 import {
   getDb,
   rowToPerson,
@@ -533,5 +534,139 @@ export function getLeadershipHomeData() {
     flaggedSessionReports,
     openFounderHandoffTasks,
   };
+}
+
+/* ---------------- shared write helpers (Phase B) ---------------- */
+
+/**
+ * Internal (non "use server") activity-log writer. Server actions in
+ * app/actions/*.ts import this directly rather than going through
+ * app/actions/activity.ts, so a mutation and its audit trail land in
+ * the same transaction-less call without crossing the action boundary
+ * twice.
+ */
+export function logActivity(entityType: string, entityId: string, kind: string, body: string | null, actorUserId: string | null): void {
+  const db = getDb();
+  const id = `pfx-${randomUUID().slice(0, 8)}`;
+  db.prepare(
+    "INSERT INTO crm_activity (id, entity_type, entity_id, kind, body, actor_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(id, entityType, entityId, kind, body ?? null, actorUserId, Date.now());
+}
+
+export function listActivity(entityType: string, entityId: string): CrmActivity[] {
+  const db = getDb();
+  return (
+    db
+      .prepare("SELECT * FROM crm_activity WHERE entity_type = ? AND entity_id = ? ORDER BY created_at DESC")
+      .all(entityType, entityId) as any[]
+  ).map(
+    (r): CrmActivity => ({
+      id: r.id,
+      entityType: r.entity_type,
+      entityId: r.entity_id,
+      kind: r.kind,
+      body: r.body ?? null,
+      actorUserId: r.actor_user_id ?? null,
+      createdAt: r.created_at,
+    }),
+  );
+}
+
+export function listOpenTasksForEntity(entityType: string, entityId: string): Task[] {
+  const db = getDb();
+  return (
+    db
+      .prepare("SELECT * FROM tasks WHERE entity_type = ? AND entity_id = ? AND status = 'open' ORDER BY due_at")
+      .all(entityType, entityId) as any[]
+  ).map(rowToTask);
+}
+
+/**
+ * Upsert a `people` row by lower-cased email. Returns the person id.
+ * Name/phone are only written on insert or when the existing value is
+ * blank — an applicant filling the public form twice shouldn't clobber
+ * a name staff has since corrected.
+ */
+export function upsertPersonByEmail(name: string, email: string, phone: string): string {
+  const db = getDb();
+  const normalized = email.trim().toLowerCase();
+  const existing = db.prepare("SELECT * FROM people WHERE lower(email) = ?").get(normalized) as any;
+  const now = Date.now();
+  if (existing) {
+    db.prepare(
+      "UPDATE people SET name = CASE WHEN name IS NULL OR name = '' THEN ? ELSE name END, phone = CASE WHEN phone IS NULL OR phone = '' THEN ? ELSE phone END, updated_at = ? WHERE id = ?",
+    ).run(name, phone, now, existing.id);
+    return existing.id;
+  }
+  const id = `pfx-${randomUUID().slice(0, 8)}`;
+  db.prepare(
+    "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)",
+  ).run(id, name, normalized, phone ?? "", now, now);
+  return id;
+}
+
+export function getPersonByEmail(email: string): Person | null {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM people WHERE lower(email) = ?").get(email.trim().toLowerCase()) as any;
+  return row ? rowToPerson(row) : null;
+}
+
+/** The active (non-terminal) instructors row for a person, if any. */
+export function getActiveInstructorForPerson(personId: string): Instructor | null {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM instructors WHERE person_id = ? AND stage NOT IN ('rejected','inactive') ORDER BY created_at DESC LIMIT 1")
+    .get(personId) as any;
+  return row ? rowToInstructor(row) : null;
+}
+
+/** Staff (admin | growth) user ids — used to fan out pipeline notifications. */
+export function listStaffUserIds(): string[] {
+  const db = getDb();
+  return (db.prepare("SELECT id FROM users WHERE role IN ('admin','growth')").all() as { id: string }[]).map((r) => r.id);
+}
+
+/* ---------------- invitation writer (shared with app/actions/lms.ts) ---------------- */
+
+export interface NewInvitationInput {
+  role: "student" | "instructor";
+  email: string;
+  orgId: string;
+  cohortId: string | null;
+}
+
+export interface InvitationRecord {
+  id: string;
+  email: string;
+  role: "student" | "instructor";
+  orgId: string;
+  cohortId: string | null;
+  created: string;
+  expires: string;
+  status: "pending";
+}
+
+/**
+ * Internal (non "use server") invitation writer. app/actions/lms.ts's
+ * `createInvitation` action calls this after its own `requireRole("admin")`
+ * check; app/actions/instructors.ts's founder-decision handoff calls it
+ * after `requireAdmin()`. Lives here (not in the "use server" lms.ts file)
+ * because every export of a "use server" module must itself be an async
+ * action — a plain sync helper can't live there.
+ */
+export function createInvitationInternal(input: NewInvitationInput): InvitationRecord {
+  const db = getDb();
+  const id = `inv-${randomUUID().slice(0, 8)}`;
+  const today = new Date();
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const created = fmt(today);
+  const expires = fmt(new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000));
+  const email = input.email.trim().toLowerCase();
+
+  db.prepare(
+    "INSERT INTO invitations (id, email, role, org_id, cohort_id, created, expires, status, token) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
+  ).run(id, email, input.role, input.orgId, input.cohortId, created, expires, id);
+
+  return { id, email, role: input.role, orgId: input.orgId, cohortId: input.cohortId, created, expires, status: "pending" };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

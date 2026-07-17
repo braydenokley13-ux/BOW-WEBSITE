@@ -11,3 +11,4 @@ export { default as DecisionCard } from "./DecisionCard";
 export type { DecisionOption, Consequence } from "./DecisionCard";
 export { default as FrontOfficeMemo } from "./FrontOfficeMemo";
 export type { MemoSection } from "./FrontOfficeMemo";
+export { default as Modal } from "./Modal";
