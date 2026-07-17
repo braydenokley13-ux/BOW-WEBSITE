@@ -164,6 +164,17 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
 
   db.prepare("UPDATE invitations SET status = 'accepted' WHERE id = ?").run(inv.id);
 
+  // Backfill the linked `people` row so /app/instructors and instructor
+  // self-service pages (requireInstructorSelf) resolve this user to
+  // their hiring-pipeline record. Only when unset — never steal a link.
+  if (inv.role === "instructor") {
+    db.prepare("UPDATE people SET user_id = ?, updated_at = ? WHERE lower(email) = ? AND user_id IS NULL").run(
+      userId,
+      Date.now(),
+      email,
+    );
+  }
+
   await createSession(userId);
   redirect(roleHomePath(inv.role as Role));
 }

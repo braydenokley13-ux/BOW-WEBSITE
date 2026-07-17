@@ -21,7 +21,7 @@ export default function AccountSettingsPage() {
   const setv = {
     role: roleLabel(role),
     cohort: cohort ? cohort.name : role === "admin" ? "All BOW programs" : "—",
-    cohortRole: role === "instructor" ? "Instructor" : role === "admin" ? "Administrator" : "Student",
+    cohortRole: roleLabel(role),
     roleAccent: roleAccent(role),
     org: org ? org.name : "—",
   };
