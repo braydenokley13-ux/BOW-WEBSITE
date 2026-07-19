@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { useAppState } from "@/components/app/AppState";
+import { Button } from "@/components/ds";
 import {
   initials,
   roleAccent,
@@ -37,15 +38,6 @@ export default function AccountSettingsPage() {
       onConfirm: async () => (await requestAccountDeletion()),
     });
 
-  const cardStyle: React.CSSProperties = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 24, marginBottom: 16 };
-  const lockLabel: React.CSSProperties = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block" };
-  const lockValue: React.CSSProperties = { fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-ink)" };
-  const lockTag: React.CSSProperties = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" };
-  const lockRow: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "13px 15px", background: "var(--bow-paper)", border: "1px solid var(--border-rule)", borderRadius: 5 };
-  const actionBtn: React.CSSProperties = { textAlign: "left", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", padding: "15px 18px", borderRadius: 5, cursor: "pointer" };
-  const pwInput: React.CSSProperties = { width: "100%", background: "var(--bow-paper)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: 11, borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 };
-  const pwLabel: React.CSSProperties = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 6 };
-
   const locked: { label: string; value: string }[] = [
     { label: "Role", value: setv.cohortRole },
     { label: "Organization", value: setv.org },
@@ -53,86 +45,93 @@ export default function AccountSettingsPage() {
   ];
 
   return (
-    <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
-      <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{setv.role}</span>
-        <h1 style={{ margin: "8px 0 26px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(30px,4vw,46px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>Account</h1>
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">{setv.role}</span>
+          <h1 className="ops-title">Account</h1>
+        </div>
+      </header>
 
-        {/* identity */}
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
-            <span style={{ width: 52, height: 52, borderRadius: 999, background: setv.roleAccent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18 }}>{initials(me.name)}</span>
-            <div>
-              <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 24, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)", display: "block", lineHeight: 1 }}>{me.name}</span>
-              <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>{me.email}</span>
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "var(--border-rule)", border: "1px solid var(--border-rule)", borderRadius: 6, overflow: "hidden" }}>
-            <div style={{ background: "var(--bow-white)", padding: "14px 16px" }}>
-              <span style={{ ...lockLabel, marginBottom: 4 }}>Sign-in method</span>
-              <span style={lockValue}>{me.signin}</span>
-            </div>
-            <div style={{ background: "var(--bow-white)", padding: "14px 16px" }}>
-              <span style={{ ...lockLabel, marginBottom: 4 }}>Notifications</span>
-              <span style={lockValue}>Session reminders · on</span>
-            </div>
+      <section className="ops-panel ops-panel--flat" aria-labelledby="settings-identity-title">
+        <div className="ops-section-head">
+          <div><h2 id="settings-identity-title" className="ops-section-title">Identity</h2></div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+          <span style={{ width: 52, height: 52, borderRadius: 999, background: setv.roleAccent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18 }}>{initials(me.name)}</span>
+          <div>
+            <span className="ops-record-name" style={{ display: "block" }}>{me.name}</span>
+            <span className="ops-record-meta" style={{ textTransform: "none", letterSpacing: 0, fontSize: 13.5 }}>{me.email}</span>
           </div>
         </div>
-
-        {/* role / org / cohort */}
-        <div style={cardStyle}>
-          <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 14 }}>Role &amp; program</span>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {locked.map((row) => (
-              <div key={row.label} style={lockRow}>
-                <div>
-                  <span style={lockLabel}>{row.label}</span>
-                  <span style={lockValue}>{row.value}</span>
-                </div>
-                <span style={lockTag}>🔒 Set by BOW</span>
-              </div>
-            ))}
+        <div className="ops-meta-grid">
+          <div className="ops-meta">
+            <span className="ops-label">Sign-in method</span>
+            <span className="ops-value">{me.signin}</span>
           </div>
-          <p style={{ margin: "14px 0 0", fontFamily: "var(--font-interface)", fontSize: 12.5, color: "var(--bow-slate)", lineHeight: 1.5 }}>
-            Your role, organization, and cohort are managed by BOW administration. Contact support if any of these are incorrect.
-          </p>
+          <div className="ops-meta">
+            <span className="ops-label">Notifications</span>
+            <span className="ops-value">Session reminders · on</span>
+          </div>
         </div>
+      </section>
 
-        {/* change password */}
-        <div style={cardStyle}>
-          <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 14 }}>Change password</span>
-          <form action={pwAction} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label style={pwLabel} htmlFor="pw-current">Current password</label>
-              <input id="pw-current" name="current" type="password" autoComplete="current-password" style={pwInput} />
-            </div>
-            <div>
-              <label style={pwLabel} htmlFor="pw-new">New password</label>
-              <input id="pw-new" name="next" type="password" autoComplete="new-password" style={pwInput} />
-            </div>
-            <div>
-              <label style={pwLabel} htmlFor="pw-confirm">Confirm new password</label>
-              <input id="pw-confirm" name="confirm" type="password" autoComplete="new-password" style={pwInput} />
-            </div>
-            <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-              <button type="submit" disabled={pwPending} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 20px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: pwPending ? "wait" : "pointer", opacity: pwPending ? 0.7 : 1 }}>{pwPending ? "Saving…" : "Update password"}</button>
-              {pwState.error && <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-negative)" }}>{pwState.error}</span>}
-              {pwState.ok && <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-positive)" }}>Password updated.</span>}
-            </div>
-          </form>
+      <section className="ops-panel ops-panel--flat" aria-labelledby="settings-role-title">
+        <div className="ops-section-head">
+          <div><h2 id="settings-role-title" className="ops-section-title">Role &amp; program</h2></div>
         </div>
+        <div className="ops-list">
+          {locked.map((row) => (
+            <div className="ops-list-row ops-list-row--compact" key={row.label}>
+              <span className="ops-label">{row.label}</span>
+              <span className="ops-value">{row.value}</span>
+              <span className="ops-record-meta">Set by BOW</span>
+            </div>
+          ))}
+        </div>
+        <p className="ops-section-note" style={{ marginTop: 14 }}>
+          Your role, organization, and cohort are managed by BOW administration. Contact support if any of these are incorrect.
+        </p>
+      </section>
 
-        {/* actions */}
+      <section className="ops-panel ops-panel--flat" aria-labelledby="settings-password-title">
+        <div className="ops-section-head">
+          <div><h2 id="settings-password-title" className="ops-section-title">Change password</h2></div>
+        </div>
+        <form action={pwAction} className="ops-form">
+          <div className="ops-fields">
+            <div className="ops-field ops-field--wide">
+              <label htmlFor="pw-current">Current password</label>
+              <input id="pw-current" name="current" type="password" autoComplete="current-password" />
+            </div>
+            <div className="ops-field">
+              <label htmlFor="pw-new">New password</label>
+              <input id="pw-new" name="next" type="password" autoComplete="new-password" />
+            </div>
+            <div className="ops-field">
+              <label htmlFor="pw-confirm">Confirm new password</label>
+              <input id="pw-confirm" name="confirm" type="password" autoComplete="new-password" />
+            </div>
+          </div>
+          <div className="ops-form-footer" style={{ justifyContent: "flex-start" }}>
+            <Button type="submit" variant="ink" size="sm" disabled={pwPending}>{pwPending ? "Saving…" : "Update password"}</Button>
+            {pwState.error && <span className="ops-error">{pwState.error}</span>}
+            {pwState.ok && <span className="ops-success">Password updated.</span>}
+          </div>
+        </form>
+      </section>
+
+      <section className="ops-panel ops-panel--flat" aria-label="Account actions">
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <button onClick={supportToast} style={{ ...actionBtn, border: "1px solid var(--border-rule)", background: "var(--bow-white)", color: "var(--bow-ink)" }}>Contact Support</button>
+          <Button variant="secondary" size="md" onClick={supportToast} style={{ justifyContent: "flex-start" }}>Contact Support</Button>
           {deletionRequested ? (
-            <div style={{ ...actionBtn, border: "1px solid var(--border-rule)", background: "var(--bow-paper)", color: "var(--bow-slate)", cursor: "default" }}>Account deletion requested — BOW is reviewing it</div>
+            <p className="ops-body">Account deletion requested — BOW is reviewing it.</p>
           ) : (
-            <button onClick={requestDeletion} style={{ ...actionBtn, border: "1px solid var(--border-rule)", background: "var(--bow-white)", color: "var(--bow-slate)" }}>Request Account Deletion</button>
+            <Button variant="secondary" size="md" onClick={requestDeletion} style={{ justifyContent: "flex-start" }}>Request Account Deletion</Button>
           )}
-          <button onClick={signOut} style={{ ...actionBtn, border: "1px solid var(--bow-negative)", background: "transparent", color: "var(--bow-negative)" }}>Sign Out</button>
+          <Button variant="secondary" size="md" onClick={signOut} style={{ justifyContent: "flex-start", borderColor: "var(--bow-negative)", color: "var(--bow-negative)" }}>Sign Out</Button>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

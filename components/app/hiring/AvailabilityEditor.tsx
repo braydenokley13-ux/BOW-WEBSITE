@@ -2,21 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CSSProperties } from "react";
 import { Button } from "@/components/ds";
 import { updateInstructorAvailability, type AvailabilitySlotInput } from "@/app/actions/instructors";
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-const inputStyle: CSSProperties = {
-  background: "var(--bow-paper)",
-  border: "1px solid var(--border-rule)",
-  color: "var(--bow-ink)",
-  padding: "8px 10px",
-  fontFamily: "var(--font-interface)",
-  fontSize: 13,
-  borderRadius: 4,
-};
 
 export interface AvailabilitySlot {
   dayOfWeek: number;
@@ -58,32 +47,37 @@ export default function AvailabilityEditor({ instructorId, initialSlots }: { ins
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {slots.length === 0 && (
-        <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>No availability set.</p>
-      )}
+    <div className="ops-form" style={{ gap: 18 }}>
+      {slots.length === 0 && <p className="ops-body">No availability set.</p>}
       {slots.map((s, i) => (
-        <div key={i} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <select aria-label={`Availability slot ${i + 1}: day`} style={inputStyle} value={s.dayOfWeek} onChange={(e) => update(i, { dayOfWeek: Number(e.target.value) })}>
-            {DAY_LABELS.map((d, idx) => (
-              <option key={d} value={idx}>
-                {d}
-              </option>
-            ))}
-          </select>
-          <input aria-label={`Availability slot ${i + 1}: start time`} type="time" style={inputStyle} value={s.startTime} onChange={(e) => update(i, { startTime: e.target.value })} />
-          <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>to</span>
-          <input aria-label={`Availability slot ${i + 1}: end time`} type="time" style={inputStyle} value={s.endTime} onChange={(e) => update(i, { endTime: e.target.value })} />
-          <input
-            aria-label={`Availability slot ${i + 1}: notes`}
-            style={{ ...inputStyle, flex: 1, minWidth: 120 }}
-            placeholder="Notes (optional)"
-            value={s.notes ?? ""}
-            onChange={(e) => update(i, { notes: e.target.value })}
-          />
-          <Button aria-label={`Remove availability slot ${i + 1}`} size="sm" variant="secondary" onClick={() => removeSlot(i)}>
-            Remove
-          </Button>
+        <div className="ops-fields" key={i}>
+          <div className="ops-field">
+            <label htmlFor={`availability-day-${i}`}>Day</label>
+            <select id={`availability-day-${i}`} value={s.dayOfWeek} onChange={(e) => update(i, { dayOfWeek: Number(e.target.value) })}>
+              {DAY_LABELS.map((d, idx) => (
+                <option key={d} value={idx}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="ops-field">
+            <label htmlFor={`availability-notes-${i}`}>Notes <span style={{ textTransform: "none", fontWeight: 400 }}>(optional)</span></label>
+            <input id={`availability-notes-${i}`} placeholder="Notes" value={s.notes ?? ""} onChange={(e) => update(i, { notes: e.target.value })} />
+          </div>
+          <div className="ops-field">
+            <label htmlFor={`availability-start-${i}`}>Start time</label>
+            <input id={`availability-start-${i}`} type="time" value={s.startTime} onChange={(e) => update(i, { startTime: e.target.value })} />
+          </div>
+          <div className="ops-field">
+            <label htmlFor={`availability-end-${i}`}>End time</label>
+            <input id={`availability-end-${i}`} type="time" value={s.endTime} onChange={(e) => update(i, { endTime: e.target.value })} />
+          </div>
+          <div className="ops-field ops-field--wide" style={{ alignItems: "flex-end" }}>
+            <Button aria-label={`Remove availability slot ${i + 1}`} size="sm" variant="secondary" onClick={() => removeSlot(i)}>
+              Remove Slot
+            </Button>
+          </div>
         </div>
       ))}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -94,8 +88,8 @@ export default function AvailabilityEditor({ instructorId, initialSlots }: { ins
           {busy ? "Saving…" : "Save Availability"}
         </Button>
       </div>
-      {saved && <p role="status" aria-live="polite" style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-positive)" }}>Saved.</p>}
-      {error && <p role="alert" style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-negative)" }}>{error}</p>}
+      {saved && <p className="ops-success" role="status" aria-live="polite">Saved.</p>}
+      {error && <p className="ops-error" role="alert">{error}</p>}
     </div>
   );
 }

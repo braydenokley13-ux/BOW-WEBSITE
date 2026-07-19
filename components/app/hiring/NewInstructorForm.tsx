@@ -2,30 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CSSProperties } from "react";
 import { Button } from "@/components/ds";
 import { createInstructorManually } from "@/app/actions/instructors";
-
-const inputStyle: CSSProperties = {
-  background: "var(--bow-paper)",
-  border: "1px solid var(--border-rule)",
-  color: "var(--bow-ink)",
-  padding: "12px 14px",
-  fontFamily: "var(--font-interface)",
-  fontSize: 15,
-  width: "100%",
-  borderRadius: 4,
-};
-
-const labelStyle: CSSProperties = {
-  fontFamily: "var(--font-data)",
-  fontSize: 11,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "var(--bow-slate)",
-  display: "block",
-  marginBottom: 6,
-};
 
 const SOURCES = [
   { value: "referral", label: "Referral" },
@@ -68,41 +46,45 @@ export default function NewInstructorForm() {
   };
 
   return (
-    <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 16 }}>
+    <form onSubmit={onSubmit} className="ops-form">
+      <div className="ops-form-section">
         <div>
-          <label style={labelStyle} htmlFor="ni-name">Name</label>
-          <input className="bow-field" id="ni-name" style={inputStyle} value={data.name} onChange={set("name")} />
+          <h2 className="ops-form-section__title">Applicant</h2>
+          <p className="ops-form-section__help">Basic contact details for the instructor pipeline.</p>
         </div>
-        <div>
-          <label style={labelStyle} htmlFor="ni-email">Email</label>
-          <input className="bow-field" id="ni-email" type="email" style={inputStyle} value={data.email} onChange={set("email")} />
+        <div className="ops-fields">
+          <div className="ops-field">
+            <label htmlFor="ni-name">Name</label>
+            <input id="ni-name" value={data.name} onChange={set("name")} />
+          </div>
+          <div className="ops-field">
+            <label htmlFor="ni-email">Email</label>
+            <input id="ni-email" type="email" value={data.email} onChange={set("email")} />
+          </div>
+          <div className="ops-field">
+            <label htmlFor="ni-phone">Phone</label>
+            <input id="ni-phone" value={data.phone} onChange={set("phone")} />
+          </div>
+          <div className="ops-field">
+            <label htmlFor="ni-source">Source</label>
+            <select id="ni-source" value={data.source} onChange={set("source")}>
+              {SOURCES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="ops-field ops-field--wide">
+            <label htmlFor="ni-notes">Notes</label>
+            <textarea id="ni-notes" rows={4} value={data.notes} onChange={set("notes")} />
+          </div>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 16 }}>
-        <div>
-          <label style={labelStyle} htmlFor="ni-phone">Phone</label>
-          <input className="bow-field" id="ni-phone" style={inputStyle} value={data.phone} onChange={set("phone")} />
-        </div>
-        <div>
-          <label style={labelStyle} htmlFor="ni-source">Source</label>
-          <select className="bow-field" id="ni-source" style={inputStyle} value={data.source} onChange={set("source")}>
-            {SOURCES.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div>
-        <label style={labelStyle} htmlFor="ni-notes">Notes</label>
-        <textarea className="bow-field" id="ni-notes" rows={4} style={{ ...inputStyle, resize: "vertical" }} value={data.notes} onChange={set("notes")} />
-      </div>
-      {status === "error" && error && (
-        <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12.5, color: "var(--bow-negative)" }}>{error}</p>
-      )}
-      <div>
+
+      {status === "error" && error && <p className="ops-error">{error}</p>}
+
+      <div className="ops-form-footer">
         <Button type="submit" variant="primary" size="md" disabled={status === "busy"}>
           {status === "busy" ? "Adding…" : "Add Applicant"}
         </Button>

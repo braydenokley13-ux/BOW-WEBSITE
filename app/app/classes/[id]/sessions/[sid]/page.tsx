@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { SectionHeader, Badge } from "@/components/ds";
+import { Badge } from "@/components/ds";
 import { getDb } from "@/lib/db";
 import { formatDateTimeInZone } from "@/lib/timezone";
 import { parseLessonSnapshot, resolveAttendanceStatus } from "@/lib/session-evidence";
@@ -73,13 +73,20 @@ export default async function StaffSessionDetailPage({ params }: { params: Promi
   const sessionTimeZone = session.timezone ?? cls?.schedule_timezone;
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker={cls?.title ?? "Session"} title={formatDateTimeInZone(session.session_date, sessionTimeZone)} level={1} />
-      {session.location && (
-        <p style={{ fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>{session.location}</p>
-      )}
-      {report?.flagged === 1 && <Badge status="negative">Flagged: {report.flag_reason || "See notes"}</Badge>}
-      <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 }}>
+    <main className="ops-page" style={{ maxWidth: 720 }}>
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">{cls?.title ?? "Session"}</span>
+          <h1 className="ops-title">{formatDateTimeInZone(session.session_date, sessionTimeZone)}</h1>
+          {session.location && <p className="ops-summary">{session.location}</p>}
+          {report?.flagged === 1 && (
+            <div className="ops-status-line">
+              <Badge status="negative">Flagged: {report.flag_reason || "See notes"}</Badge>
+            </div>
+          )}
+        </div>
+      </header>
+      <div className="ops-panel">
         <SessionAttendanceForm
           key={`${sid}:${report?.reported_at ?? "new"}`}
           sessionId={sid}
@@ -112,6 +119,6 @@ export default async function StaffSessionDetailPage({ params }: { params: Promi
       ) : (
         <p className="ops-body">{cls?.curriculum_title ?? "Class curriculum"} will be snapshotted when a verified legacy lesson is available at finalization.</p>
       )}
-    </div>
+    </main>
   );
 }

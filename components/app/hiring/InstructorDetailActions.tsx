@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CSSProperties } from "react";
 import { Button, Modal } from "@/components/ds";
 import UserSelect from "@/components/app/UserSelect";
 import AvailabilityEditor, { type AvailabilitySlot } from "@/components/app/hiring/AvailabilityEditor";
@@ -21,18 +20,6 @@ import {
 import { addActivityNote } from "@/app/actions/activity";
 import { createTask } from "@/app/actions/tasks";
 import { COMMON_TIME_ZONES, DEFAULT_TIME_ZONE } from "@/lib/timezone";
-
-const inputStyle: CSSProperties = {
-  background: "var(--bow-paper)",
-  border: "1px solid var(--border-rule)",
-  color: "var(--bow-ink)",
-  padding: "10px 12px",
-  fontFamily: "var(--font-interface)",
-  fontSize: 14,
-  width: "100%",
-  borderRadius: 4,
-  marginBottom: 12,
-};
 
 interface Props {
   instructorId: string;
@@ -128,24 +115,14 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
   };
 
   const actionError = (id?: string) => error ? (
-    <p id={id} role="alert" style={{ margin: "0 0 12px", fontFamily: "var(--font-data)", fontSize: 12.5, color: "var(--bow-negative)" }}>
+    <p id={id} role="alert" className="ops-error" style={{ marginBottom: 12 }}>
       {error}
     </p>
   ) : null;
 
   return (
-    <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 }}>
-      <span
-        style={{
-          fontFamily: "var(--font-data)",
-          fontSize: 10,
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-          color: "var(--bow-slate)",
-          display: "block",
-          marginBottom: 12,
-        }}
-      >
+    <div>
+      <span className="ops-label" style={{ display: "block", marginBottom: 12 }}>
         Actions
       </span>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -175,9 +152,7 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
           </>
         )}
         {stage === "founder_review" && !isAdmin && (
-          <span style={{ fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>
-            Awaiting a founder (admin) decision.
-          </span>
+          <span className="ops-body">Awaiting a founder (admin) decision.</span>
         )}
         {isStaff && stage === "training" && trainingStatus === "complete" && (
           <Button size="sm" variant="secondary" onClick={() => run(() => moveToPracticeEvaluation(instructorId))} disabled={busy}>
@@ -236,7 +211,7 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
         title="Applicant Accepted"
       >
         {actionError()}
-        <p style={{ margin: "0 0 14px", fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.5, color: "var(--bow-slate)" }}>
+        <p className="ops-body" style={{ marginBottom: 14 }}>
           The hiring decision, onboarding invitation, and founder Work resolution were saved together. {invitationDelivery === "queued" ? "Email delivery is queued, not yet guaranteed." : "Email delivery needs configuration."} Copy this one-time fallback now; BOW stores only its one-way digest.
         </p>
         <Button variant="primary" full disabled={!invitationToken} onClick={() => void copyInvitation()}>
@@ -246,13 +221,19 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
 
       <Modal open={modal === "interview"} onClose={() => { setError(null); setModal(null); }} title="Schedule Interview">
         {actionError("instructor-interview-error")}
-        <label htmlFor="instructor-interview-at" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Date &amp; time</label>
-        <input aria-describedby={`instructor-interview-help${error ? " instructor-interview-error" : ""}`} aria-invalid={Boolean(error)} className="bow-field" id="instructor-interview-at" type="datetime-local" style={inputStyle} value={interviewAt} onChange={(e) => setInterviewAt(e.target.value)} />
-        <label htmlFor="instructor-interview-timezone" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Interview timezone</label>
-        <select aria-describedby={`instructor-interview-help${error ? " instructor-interview-error" : ""}`} aria-invalid={Boolean(error)} className="bow-field" id="instructor-interview-timezone" style={inputStyle} value={interviewTimeZone} onChange={(event) => setInterviewTimeZone(event.target.value)}>
-          {COMMON_TIME_ZONES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-        <p id="instructor-interview-help" style={{ margin: "-4px 0 12px", fontFamily: "var(--font-interface)", fontSize: 12, lineHeight: 1.45, color: "var(--bow-slate)" }}>
+        <div className="ops-fields">
+          <div className="ops-field">
+            <label htmlFor="instructor-interview-at">Date &amp; time</label>
+            <input aria-describedby={`instructor-interview-help${error ? " instructor-interview-error" : ""}`} aria-invalid={Boolean(error)} className="bow-field" id="instructor-interview-at" type="datetime-local" value={interviewAt} onChange={(e) => setInterviewAt(e.target.value)} />
+          </div>
+          <div className="ops-field">
+            <label htmlFor="instructor-interview-timezone">Interview timezone</label>
+            <select aria-describedby={`instructor-interview-help${error ? " instructor-interview-error" : ""}`} aria-invalid={Boolean(error)} className="bow-field" id="instructor-interview-timezone" value={interviewTimeZone} onChange={(event) => setInterviewTimeZone(event.target.value)}>
+              {COMMON_TIME_ZONES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <p id="instructor-interview-help" className="ops-field__help" style={{ margin: "10px 0 16px" }}>
           The time above is interpreted in this timezone, including daylight-saving rules.
         </p>
         <Button
@@ -268,11 +249,13 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
       </Modal>
 
       <Modal open={modal === "inactive"} onClose={() => setModal(null)} title="Revoke Teaching Access" dismissible={!busy}>
-        <p style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>
+        <p className="ops-body" style={{ marginBottom: 14 }}>
           This signs the instructor out immediately and creates urgent coverage work for every active Class assignment.
         </p>
-        <label htmlFor="instructor-inactive-reason" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Operational reason</label>
-        <textarea className="bow-field" id="instructor-inactive-reason" rows={5} style={{ ...inputStyle, resize: "vertical" }} value={inactiveReason} onChange={(event) => setInactiveReason(event.target.value)} placeholder="Why is access being revoked, and what coverage context matters?" />
+        <div className="ops-field" style={{ marginBottom: 14 }}>
+          <label htmlFor="instructor-inactive-reason">Operational reason</label>
+          <textarea className="bow-field" id="instructor-inactive-reason" rows={5} value={inactiveReason} onChange={(event) => setInactiveReason(event.target.value)} placeholder="Why is access being revoked, and what coverage context matters?" />
+        </div>
         {actionError()}
         <Button variant="primary" full disabled={busy || inactiveReason.trim().length < 3} onClick={() => run(() => markInactive(instructorId, inactiveReason))}>
           {busy ? "Revoking…" : "Revoke Access + Create Coverage Work"}
@@ -281,8 +264,10 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
 
       <Modal open={modal === "notes"} onClose={() => setModal(null)} title="Interview Notes">
         {actionError()}
-        <label htmlFor="instructor-interview-notes" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Interview notes</label>
-        <textarea className="bow-field" id="instructor-interview-notes" rows={5} style={{ ...inputStyle, resize: "vertical" }} value={interviewNotesInput} onChange={(e) => setInterviewNotesInput(e.target.value)} />
+        <div className="ops-field" style={{ marginBottom: 14 }}>
+          <label htmlFor="instructor-interview-notes">Interview notes</label>
+          <textarea className="bow-field" id="instructor-interview-notes" rows={5} value={interviewNotesInput} onChange={(e) => setInterviewNotesInput(e.target.value)} />
+        </div>
         <Button variant="primary" full disabled={busy || !interviewNotesInput.trim()} onClick={() => run(() => recordInterviewNotes(instructorId, interviewNotesInput))}>
           {busy ? "Saving…" : "Save Notes"}
         </Button>
@@ -290,8 +275,10 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
 
       <Modal open={modal === "note"} onClose={() => setModal(null)} title="Add Note">
         {actionError()}
-        <label htmlFor="instructor-activity-note" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Activity note</label>
-        <textarea className="bow-field" id="instructor-activity-note" rows={4} style={{ ...inputStyle, resize: "vertical" }} value={noteInput} onChange={(e) => setNoteInput(e.target.value)} />
+        <div className="ops-field" style={{ marginBottom: 14 }}>
+          <label htmlFor="instructor-activity-note">Activity note</label>
+          <textarea className="bow-field" id="instructor-activity-note" rows={4} value={noteInput} onChange={(e) => setNoteInput(e.target.value)} />
+        </div>
         <Button variant="primary" full disabled={busy || !noteInput.trim()} onClick={() => run(() => addActivityNote("instructor", instructorId, noteInput))}>
           {busy ? "Saving…" : "Add Note"}
         </Button>
@@ -299,8 +286,10 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
 
       <Modal open={modal === "task"} onClose={() => setModal(null)} title="Create Task">
         {actionError()}
-        <label htmlFor="instructor-task-title" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Task title</label>
-        <input className="bow-field" id="instructor-task-title" style={inputStyle} placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
+        <div className="ops-field" style={{ marginBottom: 14 }}>
+          <label htmlFor="instructor-task-title">Task title</label>
+          <input className="bow-field" id="instructor-task-title" placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
+        </div>
         <Button
           variant="primary"
           full
@@ -313,41 +302,50 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
 
       <Modal open={modal === "eval"} onClose={() => setModal(null)} title="Record Practice Evaluation" maxWidth={560}>
         {actionError()}
-        <label htmlFor="instructor-eval-lesson" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Lesson used</label>
-        <input className="bow-field" id="instructor-eval-lesson" style={inputStyle} placeholder="Lesson used" value={lessonUsed} onChange={(e) => setLessonUsed(e.target.value)} />
-        {(
-          [
-            ["Curriculum delivery", ratingCurriculum, setRatingCurriculum],
-            ["Communication / engagement", ratingCommunication, setRatingCommunication],
-            ["Preparedness / reliability", ratingPreparedness, setRatingPreparedness],
-          ] as const
-        ).map(([label, value, setter]) => {
-          const fieldId = `instructor-eval-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
-          return (
-            <div key={label} style={{ marginBottom: 12 }}>
-              <label htmlFor={fieldId} style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>
-                {label} (1–5)
-              </label>
-              <select className="bow-field" id={fieldId} style={inputStyle} value={value} onChange={(e) => setter(Number(e.target.value))}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </div>
-          );
-        })}
-        <label htmlFor="instructor-eval-strengths" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Strengths</label>
-        <textarea className="bow-field" id="instructor-eval-strengths" rows={3} style={{ ...inputStyle, resize: "vertical" }} value={strengths} onChange={(e) => setStrengths(e.target.value)} placeholder="Strengths" />
-        <label htmlFor="instructor-eval-concerns" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Concerns</label>
-        <textarea className="bow-field" id="instructor-eval-concerns" rows={3} style={{ ...inputStyle, resize: "vertical" }} value={concerns} onChange={(e) => setConcerns(e.target.value)} placeholder="Concerns" />
-        <label htmlFor="instructor-eval-decision" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Decision</label>
-        <select className="bow-field" id="instructor-eval-decision" style={inputStyle} value={decision} onChange={(e) => setDecision(e.target.value as "pass" | "revise_retry" | "fail")}>
-          <option value="pass">Pass</option>
-          <option value="revise_retry">Revise / Retry</option>
-          <option value="fail">Fail</option>
-        </select>
+        <div className="ops-fields">
+          <div className="ops-field ops-field--wide">
+            <label htmlFor="instructor-eval-lesson">Lesson used</label>
+            <input className="bow-field" id="instructor-eval-lesson" placeholder="Lesson used" value={lessonUsed} onChange={(e) => setLessonUsed(e.target.value)} />
+          </div>
+          {(
+            [
+              ["Curriculum delivery", ratingCurriculum, setRatingCurriculum],
+              ["Communication / engagement", ratingCommunication, setRatingCommunication],
+              ["Preparedness / reliability", ratingPreparedness, setRatingPreparedness],
+            ] as const
+          ).map(([label, value, setter]) => {
+            const fieldId = `instructor-eval-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+            return (
+              <div className="ops-field" key={label}>
+                <label htmlFor={fieldId}>{label} (1–5)</label>
+                <select className="bow-field" id={fieldId} value={value} onChange={(e) => setter(Number(e.target.value))}>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+          <div className="ops-field">
+            <label htmlFor="instructor-eval-strengths">Strengths</label>
+            <textarea className="bow-field" id="instructor-eval-strengths" rows={3} value={strengths} onChange={(e) => setStrengths(e.target.value)} placeholder="Strengths" />
+          </div>
+          <div className="ops-field">
+            <label htmlFor="instructor-eval-concerns">Concerns</label>
+            <textarea className="bow-field" id="instructor-eval-concerns" rows={3} value={concerns} onChange={(e) => setConcerns(e.target.value)} placeholder="Concerns" />
+          </div>
+          <div className="ops-field ops-field--wide">
+            <label htmlFor="instructor-eval-decision">Decision</label>
+            <select className="bow-field" id="instructor-eval-decision" value={decision} onChange={(e) => setDecision(e.target.value as "pass" | "revise_retry" | "fail")}>
+              <option value="pass">Pass</option>
+              <option value="revise_retry">Revise / Retry</option>
+              <option value="fail">Fail</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ height: 16 }} />
         <Button
           variant="primary"
           full
@@ -374,9 +372,10 @@ export default function InstructorDetailActions({ instructorId, stage, trainingS
 
       <Modal open={modal === "owner"} onClose={() => setModal(null)} title="Assign Owner">
         {actionError()}
-        <label htmlFor="instructor-owner" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Accountable owner</label>
-        <UserSelect id="instructor-owner" users={staffUsers} value={ownerId} onChange={setOwnerId} />
-        <div style={{ height: 12 }} />
+        <div className="ops-field" style={{ marginBottom: 14 }}>
+          <label htmlFor="instructor-owner">Accountable owner</label>
+          <UserSelect id="instructor-owner" users={staffUsers} value={ownerId} onChange={setOwnerId} />
+        </div>
         <Button variant="primary" full disabled={busy} onClick={() => run(() => updateApplicantOwner(instructorId, ownerId))}>
           {busy ? "Saving…" : "Assign"}
         </Button>

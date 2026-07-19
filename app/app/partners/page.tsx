@@ -1,4 +1,4 @@
-import { Badge, Button, DataTable, SectionHeader } from "@/components/ds";
+import { Badge, Button, DataTable } from "@/components/ds";
 import { listOrganizations, listDemoRequests } from "@/lib/hiring";
 import DemoRequestActions from "@/components/app/partners/DemoRequestActions";
 
@@ -8,45 +8,62 @@ export default async function PartnersPage() {
   const pendingDemoRequests = demoRequests.filter((d) => !d.dispositioned);
 
   return (
-    <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="BOW HQ" title="Partners" level={1} />
-      <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)", maxWidth: 640 }}>
-        Partner organizations BOW runs classes with. {organizations.length} total.
-      </p>
+    <main className="ops-page" data-accent="blue">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">BOW HQ · Partners</span>
+          <h1 className="ops-title">Partners</h1>
+          <p className="ops-summary">
+            Partner organizations BOW runs classes with. {organizations.length} total.
+          </p>
+        </div>
+      </header>
 
-      <DataTable columns={["Name", "Type", "Location", "Status", ""]} isEmpty={organizations.length === 0} emptyLabel="No partner organizations yet.">
-        {organizations.map((o) => (
-          <tr key={o.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
-            <td style={{ padding: "11px 12px", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{o.name}</td>
-            <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{o.type}</td>
-            <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{o.location || "—"}</td>
-            <td style={{ padding: "11px 12px" }}>
-              <Badge status="neutral">{o.status}</Badge>
-            </td>
-            <td style={{ padding: "11px 12px", textAlign: "right" }}>
+      {organizations.length === 0 ? (
+        <section className="ops-empty">
+          <h2 className="ops-empty__title">No partner organizations yet.</h2>
+          <p className="ops-empty__body">Partner organizations will appear here once created.</p>
+        </section>
+      ) : (
+        <section className="ops-list" aria-label="Partner organizations">
+          {organizations.map((o) => (
+            <article className="ops-list-row" key={o.id}>
+              <div>
+                <a className="ops-record-name" href={`/app/partners/${o.id}`}>{o.name}</a>
+                <span className="ops-record-meta">{o.location || "Location not set"}</span>
+              </div>
+              <div>
+                <span className="ops-label">Type</span>
+                <span className="ops-value">{o.type}</span>
+              </div>
+              <div>
+                <span className="ops-label">Status</span>
+                <Badge status="neutral">{o.status}</Badge>
+              </div>
+              <div />
               <Button href={`/app/partners/${o.id}`} variant="secondary" size="sm">View</Button>
-            </td>
-          </tr>
-        ))}
-      </DataTable>
+            </article>
+          ))}
+        </section>
+      )}
 
       <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h3 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16, textTransform: "uppercase", letterSpacing: "0.02em", color: "var(--bow-ink)" }}>
-            Website demo requests
-          </h3>
+        <div className="ops-section-head">
+          <div>
+            <h2 className="ops-section-title">Website demo requests</h2>
+            <p className="ops-section-note">
+              &quot;Request a Demo&quot; submissions from partner landing pages. Create a follow-up task to disposition one.
+            </p>
+          </div>
           <Badge status={pendingDemoRequests.length > 0 ? "warning" : "neutral"}>{pendingDemoRequests.length} pending</Badge>
         </div>
-        <p style={{ fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)", maxWidth: 640, margin: 0 }}>
-          &quot;Request a Demo&quot; submissions from partner landing pages. Create a follow-up task to disposition one.
-        </p>
         <DataTable
           columns={["Org", "Requester", "Message", "Submitted", ""]}
           isEmpty={demoRequests.length === 0}
           emptyLabel="No demo requests yet."
         >
           {demoRequests.map((d) => (
-            <tr key={d.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
+            <tr key={d.id}>
               <td style={{ padding: "11px 12px", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{d.orgName ?? d.orgSlug}</td>
               <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>
                 {d.requesterName} · {d.requesterEmail}
@@ -64,6 +81,6 @@ export default async function PartnersPage() {
           ))}
         </DataTable>
       </section>
-    </div>
+    </main>
   );
 }

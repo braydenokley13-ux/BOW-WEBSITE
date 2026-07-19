@@ -2,31 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CSSProperties } from "react";
 import { Button } from "@/components/ds";
 import { createCurriculum, updateCurriculum } from "@/app/actions/curriculum";
-
-const inputStyle: CSSProperties = {
-  background: "var(--bow-paper)",
-  border: "1px solid var(--border-rule)",
-  color: "var(--bow-ink)",
-  padding: "10px 12px",
-  fontFamily: "var(--font-interface)",
-  fontSize: 14,
-  outline: "none",
-  width: "100%",
-  borderRadius: 4,
-};
-
-const labelStyle: CSSProperties = {
-  fontFamily: "var(--font-data)",
-  fontSize: 10,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "var(--bow-slate)",
-  display: "block",
-  marginBottom: 6,
-};
 
 interface Props {
   mode: "create" | "edit";
@@ -61,27 +38,40 @@ export default function CurriculumForm({ mode, curriculumId, initial }: Props) {
   };
 
   return (
-    <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 560 }}>
-      <div>
-        <label style={labelStyle} htmlFor="cur-title">Title</label>
-        <input id="cur-title" style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} />
-      </div>
-      <div>
-        <label style={labelStyle} htmlFor="cur-age">Age range</label>
-        <input id="cur-age" style={inputStyle} value={ageRange} onChange={(e) => setAgeRange(e.target.value)} placeholder="e.g. 8–12" />
-      </div>
-      <div>
-        <label style={labelStyle} htmlFor="cur-desc">Description</label>
-        <textarea id="cur-desc" rows={4} style={{ ...inputStyle, resize: "vertical" }} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
-      {mode === "edit" && (
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-interface)", fontSize: 13 }}>
-          <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} />
-          Published
-        </label>
-      )}
-      {error && <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-negative)" }}>{error}</p>}
-      <div>
+    <form onSubmit={onSubmit} className="ops-form">
+      <section className="ops-form-section">
+        <div>
+          <h2 className="ops-form-section__title">Curriculum details</h2>
+          <p className="ops-form-section__help">The title, age range, and description classes will reference.</p>
+        </div>
+        <div className="ops-fields">
+          <div className="ops-field ops-field--wide">
+            <label htmlFor="cur-title">Title</label>
+            <input id="cur-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="ops-field">
+            <label htmlFor="cur-age">Age range</label>
+            <input id="cur-age" value={ageRange} onChange={(e) => setAgeRange(e.target.value)} placeholder="e.g. 8–12" />
+          </div>
+          {mode === "edit" && (
+            <div className="ops-field">
+              <span className="ops-field__label">Published</span>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-interface)", fontSize: 14, minHeight: 43 }}>
+                <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} style={{ width: "auto" }} />
+                Published
+              </label>
+            </div>
+          )}
+          <div className="ops-field ops-field--wide">
+            <label htmlFor="cur-desc">Description</label>
+            <textarea id="cur-desc" rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+        </div>
+      </section>
+
+      {error && <p className="ops-error">{error}</p>}
+
+      <div className="ops-form-footer">
         <Button type="submit" variant="primary" size="md" disabled={busy}>
           {busy ? "Saving…" : mode === "create" ? "Create Curriculum" : "Save Changes"}
         </Button>

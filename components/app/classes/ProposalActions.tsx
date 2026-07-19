@@ -2,21 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CSSProperties } from "react";
 import { Button, Modal } from "@/components/ds";
 import { decideClassProposal, convertProposalToClass } from "@/app/actions/classes";
-
-const inputStyle: CSSProperties = {
-  background: "var(--bow-paper)",
-  border: "1px solid var(--border-rule)",
-  color: "var(--bow-ink)",
-  padding: "10px 12px",
-  fontFamily: "var(--font-interface)",
-  fontSize: 14,
-  width: "100%",
-  borderRadius: 4,
-  marginBottom: 12,
-};
 
 interface Props {
   proposalId: string;
@@ -82,31 +69,39 @@ export default function ProposalActions({ proposalId, status, convertedClassId, 
       )}
 
       <Modal open={modal === "decline"} onClose={() => setModal(null)} title="Decline Proposal" dismissible={!busy}>
-        {description && <p style={{ fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)", marginBottom: 12 }}>{description}</p>}
-        <label htmlFor={`proposal-decline-${proposalId}`} style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>Decision note</label>
-        <textarea id={`proposal-decline-${proposalId}`} rows={3} style={{ ...inputStyle, resize: "vertical" }} placeholder="Reason (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-        {error && <p role="alert" style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-negative)" }}>{error}</p>}
-        <Button variant="primary" full disabled={busy} onClick={() => run(() => decideClassProposal(proposalId, "declined", note))}>
-          {busy ? "Saving…" : "Decline"}
-        </Button>
+        {description && <p className="ops-body" style={{ marginBottom: 12 }}>{description}</p>}
+        <div className="ops-field">
+          <label htmlFor={`proposal-decline-${proposalId}`}>Decision note</label>
+          <textarea id={`proposal-decline-${proposalId}`} rows={3} placeholder="Reason (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+        </div>
+        {error && <p role="alert" className="ops-error">{error}</p>}
+        <div className="ops-form-footer">
+          <Button variant="primary" full disabled={busy} onClick={() => run(() => decideClassProposal(proposalId, "declined", note))}>
+            {busy ? "Saving…" : "Decline"}
+          </Button>
+        </div>
       </Modal>
 
       <Modal open={modal === "convert"} onClose={() => setModal(null)} title="Create Program from Proposal" dismissible={!busy}>
-        <label htmlFor={`proposal-curriculum-${proposalId}`} style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginBottom: 6 }}>
-          Curriculum (optional — a placeholder is created if left blank)
-        </label>
-        <select id={`proposal-curriculum-${proposalId}`} style={inputStyle} value={curriculumId} onChange={(e) => setCurriculumId(e.target.value)}>
-          <option value="">Create placeholder curriculum</option>
-          {curricula.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title}
-            </option>
-          ))}
-        </select>
-        {error && <p role="alert" style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-negative)" }}>{error}</p>}
-        <Button variant="primary" full disabled={busy} onClick={() => run(() => convertProposalToClass(proposalId, curriculumId || undefined))}>
-          {busy ? "Creating…" : "Create Program + Class"}
-        </Button>
+        <div className="ops-field">
+          <label htmlFor={`proposal-curriculum-${proposalId}`}>
+            Curriculum (optional — a placeholder is created if left blank)
+          </label>
+          <select id={`proposal-curriculum-${proposalId}`} value={curriculumId} onChange={(e) => setCurriculumId(e.target.value)}>
+            <option value="">Create placeholder curriculum</option>
+            {curricula.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+        </div>
+        {error && <p role="alert" className="ops-error">{error}</p>}
+        <div className="ops-form-footer">
+          <Button variant="primary" full disabled={busy} onClick={() => run(() => convertProposalToClass(proposalId, curriculumId || undefined))}>
+            {busy ? "Creating…" : "Create Program + Class"}
+          </Button>
+        </div>
       </Modal>
     </div>
   );
