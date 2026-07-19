@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireRole } from "@/lib/dal";
+import { requireTeachingUser } from "@/lib/dal";
 
 export const metadata: Metadata = {
   title: "Instructor · Self-Paced Roster",
@@ -8,7 +8,8 @@ export const metadata: Metadata = {
 };
 
 export default async function InstructorLayout({ children }: { children: React.ReactNode }) {
-  // Authoritative role check (the proxy only does an optimistic cookie check).
-  await requireRole("instructor", "admin");
+  // Authoritative role and current teaching-eligibility check (the proxy only
+  // does an optimistic cookie check).
+  await requireTeachingUser();
   return <>{children}</>;
 }

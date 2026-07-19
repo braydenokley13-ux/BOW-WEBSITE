@@ -1,57 +1,170 @@
 /* ============================================================
- * Declarative nav catalog — the single source of truth AuthHeader
- * renders from. Each item lists the roles that see it; order in this
- * array is the render order.
+ * Authenticated application navigation.
  *
- * Existing student/instructor/admin entries are copied byte-identical
- * from the old per-role NAV_BY_ROLE map in AuthHeader.tsx, so those
- * roles see exactly what they saw before. The BOW HQ entries (Home,
- * Instructors, Training, Classes, Students, Partners, Tasks,
- * Curriculum) are new, shared by admin + growth.
+ * The catalog describes information architecture, role visibility, and route
+ * matching in one browser-safe module. AuthHeader owns only interaction and
+ * presentation. A route can match several parent paths, so activeNavId always
+ * chooses the most-specific visible leaf and prevents multiple "current"
+ * links (for example Home + Programs, or Admin + Inquiries).
  * ============================================================ */
 
 import type { Role } from "@/lib/account";
 
-export interface NavItem {
+export type NavMatch = "exact" | "segment";
+
+export interface NavLink {
+  kind: "link";
+  id: string;
   label: string;
   href: string;
   roles: Role[];
+  match?: NavMatch;
+  aliases?: string[];
 }
 
-export const NAV_CATALOG: NavItem[] = [
-  // ---- student (unchanged) ----
-  { label: "Home", href: "/app/student", roles: ["student"] },
-  { label: "My Track", href: "/app/student/track", roles: ["student"] },
-  { label: "Account", href: "/app/settings", roles: ["student"] },
+export interface NavGroup {
+  kind: "group";
+  id: string;
+  label: string;
+  roles: Role[];
+  items: NavLink[];
+}
 
-  // ---- instructor (unchanged, plus BOW HQ self-service) ----
-  { label: "Today", href: "/app/instructor", roles: ["instructor"] },
-  { label: "Cohorts", href: "/app/instructor/cohort", roles: ["instructor"] },
-  { label: "My Onboarding/Training", href: "/app/teach", roles: ["instructor"] },
-  { label: "My Classes", href: "/app/teach/classes", roles: ["instructor"] },
-  { label: "Proposals", href: "/app/teach/proposals", roles: ["instructor"] },
-  { label: "Account", href: "/app/settings", roles: ["instructor"] },
+export type NavEntry = NavLink | NavGroup;
 
-  // ---- admin (unchanged) ----
-  { label: "Overview", href: "/app/admin", roles: ["admin"] },
-  { label: "Inquiries", href: "/app/admin/inquiries", roles: ["admin"] },
-  { label: "Organizations", href: "/app/admin/organizations", roles: ["admin"] },
-  { label: "Cohorts", href: "/app/admin/cohorts", roles: ["admin"] },
-  { label: "People", href: "/app/admin/people", roles: ["admin"] },
-  { label: "Invitations", href: "/app/admin/invitations", roles: ["admin"] },
+const STAFF: Role[] = ["admin", "growth"];
 
-  // ---- BOW HQ (new, admin + growth) ----
-  { label: "Home", href: "/app", roles: ["admin", "growth"] },
-  { label: "Instructors", href: "/app/instructors", roles: ["admin", "growth"] },
-  { label: "Training", href: "/app/training", roles: ["admin", "growth"] },
-  { label: "Classes", href: "/app/classes", roles: ["admin", "growth"] },
-  { label: "Students", href: "/app/students", roles: ["admin", "growth"] },
-  { label: "Partners", href: "/app/partners", roles: ["admin", "growth"] },
-  { label: "Tasks", href: "/app/tasks", roles: ["admin", "growth"] },
-  { label: "Curriculum", href: "/app/curriculum", roles: ["admin", "growth"] },
+const link = (
+  id: string,
+  label: string,
+  href: string,
+  roles: Role[],
+  options: Pick<NavLink, "match" | "aliases"> = {},
+): NavLink => ({ kind: "link", id, label, href, roles, ...options });
+
+export const NAV_CATALOG: NavEntry[] = [
+  // Student workspace.
+  link("student-home", "Home", "/app/student", ["student"], { match: "exact" }),
+  link("student-track", "My Track", "/app/student/track", ["student"], {
+    aliases: ["/app/student/lesson"],
+  }),
+
+  // Instructor workspace. Today and Training are exact so their deeper sibling
+  // routes can own the active state.
+  link("instructor-today", "Today", "/app/instructor", ["instructor"], { match: "exact" }),
+  link("instructor-classes", "My Classes", "/app/teach/classes", ["instructor"], {
+    aliases: ["/app/instructor/session"],
+  }),
+  link("instructor-training", "Training", "/app/teach", ["instructor"], { match: "exact" }),
+  link("instructor-proposals", "Proposals", "/app/teach/proposals", ["instructor"]),
+  link("instructor-cohorts", "Cohorts", "/app/instructor/cohort", ["instructor"]),
+
+  // BOW HQ. Core workflows remain directly visible; related systems are
+  // grouped so the header can scale without becoming a wall of links.
+  link("staff-home", "Home", "/app", STAFF, { match: "exact" }),
+  link("demand-inbox", "Demand", "/app/inquiries", STAFF, { aliases: ["/app/admin/inquiries"] }),
+  link("growth", "Growth", "/app/growth", STAFF),
+  link("programs", "Programs", "/app/programs", STAFF),
+  {
+    kind: "group",
+    id: "delivery",
+    label: "Delivery",
+    roles: STAFF,
+    items: [
+      link("classes", "Classes", "/app/classes", STAFF),
+      link("curriculum", "Curriculum", "/app/curriculum", STAFF),
+    ],
+  },
+  {
+    kind: "group",
+    id: "people",
+    label: "People",
+    roles: STAFF,
+    items: [
+      link("instructors", "Instructors", "/app/instructors", STAFF),
+      link("students", "Students", "/app/students", STAFF),
+      link("training", "Training", "/app/training", STAFF),
+    ],
+  },
+  {
+    kind: "group",
+    id: "network",
+    label: "Network",
+    roles: STAFF,
+    items: [
+      link("partners", "Partners", "/app/partners", STAFF),
+      link("regions", "Regions", "/app/regions", STAFF),
+      link("locations", "Locations", "/app/locations", STAFF),
+    ],
+  },
+  link("work", "Work", "/app/tasks", STAFF),
+
+  // Platform administration remains available without competing with the
+  // canonical BOW HQ workflows. Growth staff never see these links.
+  {
+    kind: "group",
+    id: "platform-admin",
+    label: "Admin",
+    roles: ["admin"],
+    items: [
+      link("admin-overview", "Platform Overview", "/app/admin", ["admin"], { match: "exact" }),
+      link("admin-invitations", "Invitations", "/app/admin/invitations", ["admin"]),
+      link("admin-accounts", "Account Directory", "/app/admin/people", ["admin"]),
+      link("admin-cohorts", "LMS Cohorts", "/app/admin/cohorts", ["admin"]),
+      link("admin-organizations", "Organization Admin", "/app/admin/organizations", ["admin"]),
+    ],
+  },
 ];
 
-/** Nav items visible to a given role, in catalog order. */
-export function navForRole(role: Role): NavItem[] {
-  return NAV_CATALOG.filter((item) => item.roles.includes(role));
+export function navForRole(role: Role, options: { instructorCanDeliver?: boolean } = {}): NavEntry[] {
+  const hiddenInstructorDeliveryIds = options.instructorCanDeliver === false
+    ? new Set(["instructor-today", "instructor-classes", "instructor-proposals", "instructor-cohorts"])
+    : null;
+  return NAV_CATALOG
+    .filter((entry) => entry.roles.includes(role) && !(entry.kind === "link" && hiddenInstructorDeliveryIds?.has(entry.id)))
+    .map((entry) =>
+    entry.kind === "group"
+      ? { ...entry, items: entry.items.filter((item) => item.roles.includes(role)) }
+      : entry,
+  );
+}
+
+function normalizePath(pathname: string): string {
+  if (!pathname) return "/";
+  const withoutQuery = pathname.split(/[?#]/, 1)[0] || "/";
+  return withoutQuery.length > 1 ? withoutQuery.replace(/\/+$/, "") : withoutQuery;
+}
+
+function pathMatches(pathname: string, route: string, match: NavMatch): boolean {
+  const current = normalizePath(pathname);
+  const target = normalizePath(route);
+  return match === "exact" ? current === target : current === target || current.startsWith(`${target}/`);
+}
+
+function leaves(entries: NavEntry[]): NavLink[] {
+  return entries.flatMap((entry) => (entry.kind === "group" ? entry.items : [entry]));
+}
+
+/** Return the one most-specific visible leaf that owns the current route. */
+export function activeNavId(pathname: string, entries: NavEntry[]): string | null {
+  let winner: { id: string; score: number } | null = null;
+
+  for (const item of leaves(entries)) {
+    for (const route of [item.href, ...(item.aliases ?? [])]) {
+      const match = item.match ?? "segment";
+      if (!pathMatches(pathname, route, match)) continue;
+      const score = normalizePath(route).length + (match === "exact" ? 1000 : 0);
+      if (!winner || score > winner.score) winner = { id: item.id, score };
+    }
+  }
+
+  return winner?.id ?? null;
+}
+
+export function groupContainsActive(group: NavGroup, activeId: string | null): boolean {
+  return Boolean(activeId && group.items.some((item) => item.id === activeId));
+}
+
+export function routeIsActive(pathname: string, href: string): boolean {
+  return pathMatches(pathname, href, "segment");
 }

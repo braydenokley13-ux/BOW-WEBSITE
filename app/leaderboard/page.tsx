@@ -34,6 +34,7 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
   const sp = await searchParams;
   const tab: Tab = sp.tab === "xp" ? "xp" : sp.tab === "score" ? "score" : "streak";
   const meId = me.role === "student" ? me.id : null;
+  const orgScope = me.role === "admin" ? null : me.orgId;
 
   // BOW Score tab inputs (only used when that tab is active).
   const range: LeaderboardRange = sp.range === "month" || sp.range === "week" ? sp.range : "all";
@@ -82,9 +83,9 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
         {tab === "streak" && (
           <RetentionBoard
             type="streak"
-            rows={getStreakLeaderboard()}
+            rows={getStreakLeaderboard(orgScope)}
             currentUserId={meId}
-            myRow={outsideTop(meId, "streak")}
+            myRow={outsideTop(meId, "streak", orgScope)}
             note="Resets Monday"
           />
         )}
@@ -92,15 +93,15 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
         {tab === "xp" && (
           <RetentionBoard
             type="xp"
-            rows={getXPLeaderboard()}
+            rows={getXPLeaderboard(orgScope)}
             currentUserId={meId}
-            myRow={outsideTop(meId, "xp")}
+            myRow={outsideTop(meId, "xp", orgScope)}
             note="All-time"
           />
         )}
 
         {tab === "score" && (
-          <ScoreTab range={range} cohortId={cohortId} meId={meId} />
+          <ScoreTab range={range} cohortId={cohortId} meId={meId} orgId={orgScope} />
         )}
       </div>
     </div>
@@ -108,16 +109,16 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
 }
 
 /** The viewer's own row, but only when they rank outside the visible top 25. */
-function outsideTop(meId: string | null, type: LeaderboardType) {
+function outsideTop(meId: string | null, type: LeaderboardType, orgId: string | null) {
   if (!meId) return null;
-  const rank = getStudentRank(meId, type);
-  return rank > 25 ? getStudentLeaderboardRow(meId, type) : null;
+  const rank = getStudentRank(meId, type, orgId);
+  return rank > 25 ? getStudentLeaderboardRow(meId, type, orgId) : null;
 }
 
 /** The original BOW Score board (cohort + time-window filters), preserved as a tab. */
-function ScoreTab({ range, cohortId, meId }: { range: LeaderboardRange; cohortId: string; meId: string | null }) {
-  const board = getLeaderboard({ sinceTs: rangeSince(range), cohortId: cohortId || null });
-  const cohorts = getLeaderboardCohorts();
+function ScoreTab({ range, cohortId, meId, orgId }: { range: LeaderboardRange; cohortId: string; meId: string | null; orgId: string | null }) {
+  const board = getLeaderboard({ sinceTs: rangeSince(range), cohortId: cohortId || null, orgId });
+  const cohorts = getLeaderboardCohorts(orgId);
   const top = board.slice(0, 25);
   const myRow = meId ? board.find((r) => r.studentId === meId) ?? null : null;
   const myInTop = !!myRow && (myRow.position ?? 0) <= 25;

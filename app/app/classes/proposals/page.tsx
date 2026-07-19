@@ -25,7 +25,7 @@ export default function ClassProposalsPage() {
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="BOW HQ" title="Classes" />
+      <SectionHeader kicker="BOW HQ" title="Classes" level={1} />
       <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)", maxWidth: 640 }}>
         Instructor-submitted class proposals awaiting review, decision, or conversion into a real class.
       </p>
@@ -56,6 +56,11 @@ export default function ClassProposalsPage() {
                 proposalId={p.id}
                 status={p.status}
                 convertedClassId={p.convertedClassId}
+                convertedProgramId={
+                  p.convertedClassId
+                    ? ((db.prepare("SELECT program_id FROM classes WHERE id = ?").get(p.convertedClassId) as { program_id: string | null } | undefined)?.program_id ?? null)
+                    : null
+                }
                 description={p.description}
                 curricula={curricula.map((c) => ({ id: c.id, title: c.title }))}
               />

@@ -2,12 +2,13 @@ import { Badge, Button, SectionHeader, Tabs } from "@/components/ds";
 import { getDb, rowToClass } from "@/lib/db";
 import { classStatusFlags, listClassProposals, type Class, type ClassStatus } from "@/lib/hiring";
 
-const STATUS_ORDER: ClassStatus[] = ["planning", "staffing", "ready_to_launch", "active", "completed", "cancelled"];
+const STATUS_ORDER: ClassStatus[] = ["planning", "staffing", "ready_to_launch", "active", "paused", "completed", "cancelled"];
 const STATUS_LABEL: Record<ClassStatus, string> = {
   planning: "Planning",
   staffing: "Staffing",
   ready_to_launch: "Ready to Launch",
   active: "Active",
+  paused: "Paused",
   completed: "Completed",
   cancelled: "Cancelled",
 };
@@ -16,6 +17,7 @@ const STATUS_BADGE: Record<ClassStatus, "positive" | "warning" | "negative" | "i
   staffing: "warning",
   ready_to_launch: "info",
   active: "positive",
+  paused: "warning",
   completed: "locked",
   cancelled: "negative",
 };
@@ -34,11 +36,16 @@ export default function ClassesPage() {
 
   const flagsFor = (cls: Class) => {
     const enrollmentCount = (
-      db.prepare("SELECT COUNT(*) AS n FROM class_enrollments WHERE class_id = ? AND status = 'enrolled'").get(cls.id) as { n: number }
+      db.prepare(
+        `SELECT COUNT(*) AS n
+           FROM class_enrollments ce
+           JOIN students s ON s.id = ce.student_id
+          WHERE ce.class_id = ? AND ce.status = 'enrolled' AND s.enrollment_status = 'active'`,
+      ).get(cls.id) as { n: number }
     ).n;
     const hasEligibleLead = !!(
       cls.leadInstructorId &&
-      db.prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible'").get(cls.leadInstructorId)
+      db.prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible' AND stage IN ('eligible','active')").get(cls.leadInstructorId)
     );
     return classStatusFlags(cls, hasEligibleLead, enrollmentCount);
   };
@@ -47,7 +54,7 @@ export default function ClassesPage() {
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="BOW HQ" title="Classes" action={{ label: "New Class", href: "/app/classes/new" }} />
+      <SectionHeader kicker="BOW HQ" title="Classes" action={{ label: "New Class", href: "/app/classes/new" }} level={1} />
       <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)", maxWidth: 640 }}>
         Class scheduling, staffing, and rosters. {classes.length} total.
       </p>

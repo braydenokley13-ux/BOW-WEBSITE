@@ -86,7 +86,7 @@ export default function AdminOverviewPage() {
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 24 }}>
           <div>
             <span style={colHead}>Needs attention</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -95,10 +95,16 @@ export default function AdminOverviewPage() {
                   <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>Everything’s in order. Nothing needs your attention.</p>
                 </div>
               )}
-              {topNeeds.map((n, i) => (
-                <div key={i} style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderLeft: `3px solid ${toneColor(n.tone)}`, borderRadius: 5, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              {topNeeds.map((n) => (
+                <div key={`${n.action}-${n.text}`} style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderLeft: `3px solid ${toneColor(n.tone)}`, borderRadius: 5, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)", flex: 1, minWidth: 160 }}>{n.text}</span>
-                  <span onClick={n.onGo} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--bow-blue)", cursor: "pointer", whiteSpace: "nowrap" }}>{n.action} →</span>
+                  <button
+                    type="button"
+                    onClick={n.onGo}
+                    style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--bow-blue)", cursor: "pointer", whiteSpace: "nowrap", background: "transparent", border: 0, padding: "6px 0 6px 10px" }}
+                  >
+                    {n.action} →
+                  </button>
                 </div>
               ))}
             </div>
@@ -120,6 +126,7 @@ export default function AdminOverviewPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {quickActions.map((q) => (
                 <button
+                  type="button"
                   key={q.label}
                   onClick={q.onGo}
                   style={{ textAlign: "left", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", padding: "15px 18px", border: "1px solid var(--border-rule)", background: "var(--bow-white)", color: "var(--bow-ink)", borderRadius: 5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}

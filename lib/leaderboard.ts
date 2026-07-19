@@ -47,7 +47,7 @@ interface BaseRow {
 }
 
 /** Eligible students, ordered for the requested board. */
-function eligibleOrdered(type: LeaderboardType): BaseRow[] {
+function eligibleOrdered(type: LeaderboardType, orgId: string | null = null): BaseRow[] {
   const rows = getDb()
     .prepare(
       `SELECT u.id, u.name, u.first,
@@ -57,10 +57,12 @@ function eligibleOrdered(type: LeaderboardType): BaseRow[] {
               CASE WHEN EXISTS (SELECT 1 FROM certificates c WHERE c.student_id = u.id AND c.track = '101')
                    THEN '201' ELSE '101' END AS track
        FROM users u
-       WHERE u.role = 'student' AND u.status != 'invited'
+       JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
+       WHERE u.role = 'student' AND u.status = 'active'
+         AND (? IS NULL OR u.org_id = ?)
          AND EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = u.id AND e.enroll = 'active')`,
     )
-    .all() as any[];
+    .all(orgId, orgId) as any[];
 
   const mapped: BaseRow[] = rows.map((r) => ({
     id: r.id,
@@ -97,28 +99,28 @@ function toRow(r: BaseRow, position: number, withBadges: boolean): LeaderboardRo
 }
 
 /** Top 25 students by current streak (ties broken by longest streak). */
-export function getStreakLeaderboard(): LeaderboardRow[] {
-  return eligibleOrdered("streak")
+export function getStreakLeaderboard(orgId: string | null = null): LeaderboardRow[] {
+  return eligibleOrdered("streak", orgId)
     .slice(0, 25)
     .map((r, i) => toRow(r, i + 1, false));
 }
 
 /** Top 25 students by all-time XP, with badge count + most recent badge. */
-export function getXPLeaderboard(): LeaderboardRow[] {
-  return eligibleOrdered("xp")
+export function getXPLeaderboard(orgId: string | null = null): LeaderboardRow[] {
+  return eligibleOrdered("xp", orgId)
     .slice(0, 25)
     .map((r, i) => toRow(r, i + 1, true));
 }
 
 /** A student's 1-based rank on the given board (0 if not eligible). */
-export function getStudentRank(studentId: string, type: LeaderboardType): number {
-  const idx = eligibleOrdered(type).findIndex((r) => r.id === studentId);
+export function getStudentRank(studentId: string, type: LeaderboardType, orgId: string | null = null): number {
+  const idx = eligibleOrdered(type, orgId).findIndex((r) => r.id === studentId);
   return idx >= 0 ? idx + 1 : 0;
 }
 
 /** A student's full row on the given board (for the "Your Rank" card), or null. */
-export function getStudentLeaderboardRow(studentId: string, type: LeaderboardType): LeaderboardRow | null {
-  const ordered = eligibleOrdered(type);
+export function getStudentLeaderboardRow(studentId: string, type: LeaderboardType, orgId: string | null = null): LeaderboardRow | null {
+  const ordered = eligibleOrdered(type, orgId);
   const idx = ordered.findIndex((r) => r.id === studentId);
   if (idx < 0) return null;
   return toRow(ordered[idx], idx + 1, type === "xp");

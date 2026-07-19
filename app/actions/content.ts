@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { requireRole } from "@/lib/dal";
 import { pointsForDifficulty } from "@/lib/daily-question";
+import { consumeRateLimit } from "@/lib/rate-limit";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -270,12 +271,22 @@ export interface NewsSubmissionInput {
 
 export async function submitNewsStory(input: NewsSubmissionInput): Promise<{ ok: boolean }> {
   const me = await requireRole("student");
-  if (!input.headline.trim()) return { ok: false };
+  const headline = input.headline.trim();
+  const summary = input.summary?.trim() || "";
+  const sourceUrl = input.sourceUrl?.trim() || "";
+  if (!headline || headline.length > 200 || summary.length > 2000 || sourceUrl.length > 2000) return { ok: false };
+  if (sourceUrl && !/^https?:\/\/[^\s]+$/i.test(sourceUrl)) return { ok: false };
+  const limit = consumeRateLimit("news-submission-user", me.id, {
+    limit: 20,
+    windowMs: 24 * 60 * 60 * 1000,
+    blockMs: 24 * 60 * 60 * 1000,
+  });
+  if (!limit.allowed) return { ok: false };
   getDb()
     .prepare(
       "INSERT INTO news_submissions (id, student_id, headline, summary, source_url, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
     )
-    .run(`ns-${randomUUID().slice(0, 8)}`, me.id, input.headline.trim(), input.summary?.trim() || "", input.sourceUrl?.trim() || "", Date.now());
+    .run(`ns-${randomUUID().slice(0, 8)}`, me.id, headline, summary, sourceUrl, Date.now());
   revalidatePath("/news");
   return { ok: true };
 }

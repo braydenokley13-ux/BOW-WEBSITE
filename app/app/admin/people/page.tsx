@@ -39,7 +39,7 @@ const th: CSSProperties = {
 };
 
 export default function AdminPeoplePage() {
-  const { data, getOrg, getCohort, cohortsForInstructor, userStatusOf, suspendUser, restoreUser, dismissDeletionRequest, askConfirm } = useAppState();
+  const { data, me, getOrg, getCohort, cohortsForInstructor, userStatusOf, suspendUser, restoreUser, dismissDeletionRequest, fulfillDeletionRequest, askConfirm } = useAppState();
   const [filter, setFilter] = useState<Filter>("students");
 
   const deletionSet = new Set(data.deletionRequests);
@@ -94,6 +94,7 @@ export default function AdminPeoplePage() {
                 const isSuspended = status === "suspended";
                 const isInvited = status === "invited";
                 const wantsDeletion = deletionSet.has(u.id);
+                const deletionFulfilled = u.email.endsWith("@deleted.invalid");
                 return (
                   <tr key={u.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
                     <td style={{ padding: "13px 16px" }}>
@@ -106,12 +107,28 @@ export default function AdminPeoplePage() {
                     <td style={{ padding: "13px 8px" }}><Badge status={statusBadge[status]}>{statusLabel[status]}</Badge></td>
                     <td style={{ padding: "13px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
                       {wantsDeletion && (
-                        <button
-                          onClick={() => dismissDeletionRequest(u.id)}
-                          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 13px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer", marginRight: 6 }}
-                        >
-                          Dismiss
-                        </button>
+                        <>
+                          <button
+                            onClick={() => dismissDeletionRequest(u.id)}
+                            style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 13px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer", marginRight: 6 }}
+                          >
+                            Dismiss
+                          </button>
+                          <button
+                            disabled={u.id === me.id}
+                            title={u.id === me.id ? "Another administrator must fulfill your deletion request." : undefined}
+                            onClick={() => askConfirm({
+                              title: `Permanently anonymize ${u.name}?`,
+                              body: "This fulfills the deletion request and cannot be undone. Sign-in credentials, sessions, personal account identity, canonical contact details, pending invitations, profile sharing, and current enrollments will be removed or deactivated. BOW will keep stable anonymized IDs plus historical attendance, completed learning, certificates, rosters, session reports, and audit records so delivery evidence and referential integrity remain intact.",
+                              confirmLabel: "Fulfill Deletion",
+                              tone: "negative",
+                              onConfirm: () => fulfillDeletionRequest(u.id),
+                            })}
+                            style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 13px", border: "1px solid var(--bow-negative)", background: "var(--bow-negative)", color: "#fff", borderRadius: 4, cursor: u.id === me.id ? "not-allowed" : "pointer", opacity: u.id === me.id ? 0.45 : 1, marginRight: 6 }}
+                          >
+                            Fulfill Deletion
+                          </button>
+                        </>
                       )}
                       {isActive && (
                         <button
@@ -121,13 +138,18 @@ export default function AdminPeoplePage() {
                           Suspend
                         </button>
                       )}
-                      {isSuspended && (
+                      {isSuspended && !deletionFulfilled && (
                         <button
                           onClick={() => askConfirm({ title: `Restore access for ${u.name}?`, body: "They will regain access right away.", confirmLabel: "Restore Access", tone: "info", onConfirm: () => restoreUser(u.id) })}
                           style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 13px", border: "1px solid var(--bow-positive)", background: "transparent", color: "var(--bow-positive)", borderRadius: 4, cursor: "pointer" }}
                         >
                           Restore
                         </button>
+                      )}
+                      {deletionFulfilled && (
+                        <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
+                          Deletion fulfilled
+                        </span>
                       )}
                       {isInvited && !wantsDeletion && <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>Awaiting acceptance</span>}
                     </td>

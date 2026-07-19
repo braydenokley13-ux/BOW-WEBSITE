@@ -63,10 +63,6 @@ export default function FeedSignup() {
                 style={inputStyle}
               />
             </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "#9a9da6" }}>Email</span>
-              <input name="email" type="email" required placeholder="you@email.com" style={inputStyle} />
-            </label>
             {state.error && (
               <p aria-live="polite" style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-negative)" }}>
                 {state.error}
@@ -80,7 +76,7 @@ export default function FeedSignup() {
               {pending ? "Opening…" : "Enter the Feed"}
             </button>
             <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 12, lineHeight: 1.5, color: "#6d7078" }}>
-              We only store your name and email to save your progress. No password, no spam.
+              No email or account required. Progress stays on this device for 30 days; clearing cookies starts a fresh preview.
             </p>
           </form>
         </div>
@@ -97,5 +93,4 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 4,
   fontFamily: "var(--font-interface)",
   fontSize: 15,
-  outline: "none",
 };

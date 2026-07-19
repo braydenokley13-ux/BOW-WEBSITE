@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ds";
@@ -47,60 +47,148 @@ export default function ArticleEditor({
   const [showMeta, setShowMeta] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "warning" | "error">("success");
   const [dirty, setDirty] = useState(false);
 
   const blocks = useMemo(() => parseMarkdown(body), [body]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warning = "You have unsaved article edits. Leave this page and discard them?";
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const guardLinkNavigation = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!(target instanceof HTMLAnchorElement) || target.target === "_blank" || target.hasAttribute("download")) return;
+      const destination = new URL(target.href, window.location.href);
+      if (destination.href === window.location.href || (destination.pathname === window.location.pathname && destination.search === window.location.search && destination.hash)) return;
+      if (!window.confirm(warning)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("click", guardLinkNavigation, true);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      document.removeEventListener("click", guardLinkNavigation, true);
+    };
+  }, [dirty]);
 
   const input = (): ArticleInput => ({ title, dek, body, author, category, tags, coverImage, metaTitle, metaDescription });
 
   const save = () =>
     startTransition(async () => {
-      const res = await saveArticle(article?.id ?? null, input());
-      if (!res.ok) {
-        setMessage(res.error ?? "Save failed.");
-        return;
+      try {
+        const res = await saveArticle(article?.id ?? null, input());
+        if (!res.ok) {
+          setMessageTone("error");
+          setMessage(res.error ?? "Save failed.");
+          return;
+        }
+        setDirty(false);
+        setMessageTone(res.warning ? "warning" : "success");
+        setMessage(res.warning ? `Saved locally. ${res.warning}` : "Saved. Revision recorded.");
+        if (!article && res.id) {
+          router.replace(`/analytics/admin/editor/${res.id}`);
+        }
+        router.refresh();
+      } catch {
+        setMessageTone("error");
+        setMessage("The article could not be saved. Refresh and try again.");
       }
-      setDirty(false);
-      setMessage("Saved. Revision recorded.");
-      if (!article && res.id) {
-        router.replace(`/analytics/admin/editor/${res.id}`);
-      }
-      router.refresh();
     });
 
   const togglePublish = () => {
     if (!article) return;
     startTransition(async () => {
-      // Publishing ships the CURRENT fields — save first, then flip.
-      const res = await saveArticle(article.id, input());
-      if (!res.ok) {
-        setMessage(res.error ?? "Save failed.");
-        return;
+      try {
+        const publishing = article.status !== "published";
+
+        // The safe operation order is intentionally different in each
+        // direction. Publishing saves the exact fields that will become
+        // public first. Unpublishing removes the public artifact first, so a
+        // Blob outage can never leave newly edited draft text exposed.
+        if (!publishing) {
+          const statusResult = await setArticleStatus(article.id, false);
+          if (!statusResult.ok) {
+            setMessageTone("error");
+            setMessage(`${statusResult.error ?? "The article could not be unpublished."}${statusResult.warning ? ` ${statusResult.warning}` : ""}`);
+            router.refresh();
+            return;
+          }
+
+          const saveResult = await saveArticle(article.id, input());
+          if (!saveResult.ok) {
+            setMessageTone("warning");
+            setMessage(`Unpublished safely, but the current edits were not saved. ${saveResult.error ?? "Fix the draft and save again."}`);
+            router.refresh();
+            return;
+          }
+          setDirty(false);
+          const warnings = [statusResult.warning, saveResult.warning].filter(Boolean).join(" ");
+          setMessageTone(warnings ? "warning" : "success");
+          setMessage(warnings ? `Unpublished locally. ${warnings}` : "Unpublished — back to draft.");
+          router.refresh();
+          return;
+        }
+
+        const saveResult = await saveArticle(article.id, input());
+        if (!saveResult.ok) {
+          setMessageTone("error");
+          setMessage(saveResult.error ?? "Save failed.");
+          return;
+        }
+        setDirty(false);
+        const statusResult = await setArticleStatus(article.id, true);
+        if (!statusResult.ok) {
+          setMessageTone("error");
+          setMessage(`${statusResult.error ?? "Publication status could not be changed."}${statusResult.warning ? ` ${statusResult.warning}` : ""}`);
+          router.refresh();
+          return;
+        }
+        const warnings = [saveResult.warning, statusResult.warning].filter(Boolean).join(" ");
+        setMessageTone(warnings ? "warning" : "success");
+        setMessage(
+          warnings
+            ? `Published locally. ${warnings}`
+            : "Published.",
+        );
+        router.refresh();
+      } catch {
+        setMessageTone("error");
+        setMessage("The publication change could not be completed. Refresh and verify the current status.");
       }
-      await setArticleStatus(article.id, article.status !== "published");
-      setDirty(false);
-      setMessage(article.status === "published" ? "Unpublished — back to draft." : "Published.");
-      router.refresh();
     });
   };
 
   const restore = (rev: ArticleRevision) => {
     if (!article) return;
     startTransition(async () => {
-      const res = await restoreRevision(article.id, rev.id);
-      if (!res.ok) {
-        setMessage("Restore failed.");
-        return;
+      try {
+        const res = await restoreRevision(article.id, rev.id);
+        if (!res.ok) {
+          setMessageTone("error");
+          setMessage(res.error ?? "Restore failed.");
+          return;
+        }
+        // Mirror the server's new state locally — the fields ARE the revision.
+        setTitle(rev.title);
+        setDek(rev.dek);
+        setBody(rev.body);
+        setCategory(rev.category);
+        setTags(rev.tags.split(",").filter(Boolean).join(", "));
+        setDirty(false);
+        setMessageTone(res.warning ? "warning" : "success");
+        setMessage(res.warning ? `Revision restored locally. ${res.warning}` : "Revision restored (the previous state was snapshotted too).");
+        router.refresh();
+      } catch {
+        setMessageTone("error");
+        setMessage("The revision could not be restored. Refresh and try again.");
       }
-      // Mirror the server's new state locally — the fields ARE the revision.
-      setTitle(rev.title);
-      setDek(rev.dek);
-      setBody(rev.body);
-      setCategory(rev.category);
-      setTags(rev.tags.split(",").filter(Boolean).join(", "));
-      setDirty(false);
-      setMessage("Revision restored (the previous state was snapshotted too).");
-      router.refresh();
     });
   };
 
@@ -195,7 +283,22 @@ export default function ArticleEditor({
             /analytics/articles/{article.slug}
           </Link>
         )}
-        <span aria-live="polite" style={{ fontFamily: "var(--font-data)", fontSize: 12, color: dirty ? "var(--bow-orange)" : "var(--bow-slate)", marginLeft: "auto" }}>
+        <span
+          role={messageTone === "error" ? "alert" : "status"}
+          aria-live={messageTone === "error" ? "assertive" : "polite"}
+          style={{
+            fontFamily: "var(--font-data)",
+            fontSize: 12,
+            color: dirty
+              ? "var(--bow-orange)"
+              : messageTone === "error"
+                ? "var(--bow-negative)"
+                : messageTone === "warning"
+                  ? "var(--bow-warning-text)"
+                  : "var(--bow-positive)",
+            marginLeft: "auto",
+          }}
+        >
           {pending ? "Working…" : dirty ? "Unsaved changes" : (message ?? "")}
         </span>
         {article && (
@@ -368,6 +471,7 @@ export default function ArticleEditor({
         {showEditor && (
           <textarea
             ref={bodyRef}
+            aria-label="Article body in Markdown"
             value={body}
             onChange={(e) => set(setBody)(e.target.value)}
             placeholder={"Write in markdown…\n\n## A section\n\nDrop a live embed anywhere:\n\n<PlayerCard player=\"" + exampleSlug + "\" />"}

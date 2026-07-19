@@ -39,7 +39,7 @@ export default function SignInForm() {
         style={{
           flex: 1,
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))",
           alignItems: "stretch",
         }}
       >
@@ -158,6 +158,7 @@ export default function SignInForm() {
               autoComplete="email"
               required
               placeholder="you@school.edu"
+              className="bow-field"
               style={{ ...inputStyle, marginBottom: 18 }}
             />
 
@@ -173,19 +174,22 @@ export default function SignInForm() {
               autoComplete="current-password"
               required
               placeholder="••••••••"
+              className="bow-field"
               style={{ ...inputStyle, marginBottom: 8 }}
             />
-            <span
+            <Link
+              href="/forgot-password"
               style={{
                 fontFamily: "var(--font-interface)",
                 fontSize: 12.5,
                 color: "#9a9da6",
                 display: "inline-block",
                 marginBottom: 22,
+                textUnderlineOffset: 3,
               }}
             >
-              Forgot password? We’ll send a reset link.
-            </span>
+              Forgot your password?
+            </Link>
 
             <button
               type="submit"

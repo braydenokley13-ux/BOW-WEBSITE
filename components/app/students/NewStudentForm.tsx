@@ -79,15 +79,15 @@ export default function NewStudentForm() {
         </div>
         <div>
           <label style={labelStyle} htmlFor="ns-email">Student email</label>
-          <input id="ns-email" style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input id="ns-email" type="email" autoComplete="email" style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
       </div>
       <div style={{ borderTop: "1px solid var(--border-rule)", paddingTop: 14 }}>
         <span style={{ ...labelStyle, marginBottom: 10 }}>Guardian</span>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))", gap: 14 }}>
-          <input placeholder="Name" style={inputStyle} value={guardianName} onChange={(e) => setGuardianName(e.target.value)} />
-          <input placeholder="Email" style={inputStyle} value={guardianEmail} onChange={(e) => setGuardianEmail(e.target.value)} />
-          <input placeholder="Phone" style={inputStyle} value={guardianPhone} onChange={(e) => setGuardianPhone(e.target.value)} />
+          <input aria-label="Guardian name" autoComplete="name" placeholder="Name" style={inputStyle} value={guardianName} onChange={(e) => setGuardianName(e.target.value)} />
+          <input aria-label="Guardian email" type="email" autoComplete="email" placeholder="Email" style={inputStyle} value={guardianEmail} onChange={(e) => setGuardianEmail(e.target.value)} />
+          <input aria-label="Guardian phone" type="tel" autoComplete="tel" placeholder="Phone" style={inputStyle} value={guardianPhone} onChange={(e) => setGuardianPhone(e.target.value)} />
         </div>
       </div>
       <div>

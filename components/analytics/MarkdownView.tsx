@@ -52,6 +52,22 @@ const BODY_FONT: React.CSSProperties = {
   color: "var(--bow-ink)",
 };
 
+function safeLinkHref(value: string): string | null {
+  const href = value.trim();
+  if (!href) return null;
+  if (href.startsWith("#") || href.startsWith("?") || (href.startsWith("/") && !href.startsWith("//"))) return href;
+  if (/^https?:\/\/[^\s]+$/i.test(href)) return href;
+  if (/^mailto:[^\s@]+@[^\s@]+$/i.test(href)) return href;
+  if (/^tel:[+\d][\d().\s-]*$/i.test(href)) return href;
+  return null;
+}
+
+function safeImageSrc(value: string): string | null {
+  const src = value.trim();
+  if ((src.startsWith("/") && !src.startsWith("//")) || /^https?:\/\/[^\s]+$/i.test(src)) return src;
+  return null;
+}
+
 function renderInline(nodes: InlineNode[], keyPrefix = ""): React.ReactNode[] {
   return nodes.map((n, i) => {
     const key = `${keyPrefix}${i}`;
@@ -69,21 +85,31 @@ function renderInline(nodes: InlineNode[], keyPrefix = ""): React.ReactNode[] {
           </code>
         );
       case "link": {
-        const external = /^https?:\/\//.test(n.href);
+        const href = safeLinkHref(n.href);
+        if (!href) return <span key={key}>{renderInline(n.children, `${key}-`)}</span>;
+        const external = /^https?:\/\//i.test(href);
+        const nonNavigationProtocol = /^(mailto|tel):/i.test(href);
         const style: React.CSSProperties = { color: "var(--bow-blue)", textDecorationThickness: 1, textUnderlineOffset: 3 };
         return external ? (
-          <a key={key} href={n.href} target="_blank" rel="noopener noreferrer" style={style}>
+          <a key={key} href={href} target="_blank" rel="noopener noreferrer" style={style}>
+            {renderInline(n.children, `${key}-`)}
+          </a>
+        ) : nonNavigationProtocol ? (
+          <a key={key} href={href} style={style}>
             {renderInline(n.children, `${key}-`)}
           </a>
         ) : (
-          <Link key={key} href={n.href} style={style}>
+          <Link key={key} href={href} style={style}>
             {renderInline(n.children, `${key}-`)}
           </Link>
         );
       }
-      case "image":
+      case "image": {
+        const src = safeImageSrc(n.src);
+        if (!src) return n.alt ? <span key={key}>{n.alt}</span> : null;
         // eslint-disable-next-line @next/next/no-img-element
-        return <img key={key} src={n.src} alt={n.alt} style={{ maxWidth: "100%", height: "auto", display: "inline-block", verticalAlign: "middle" }} />;
+        return <img key={key} src={src} alt={n.alt} style={{ maxWidth: "100%", height: "auto", display: "inline-block", verticalAlign: "middle" }} />;
+      }
     }
   });
 }
@@ -212,11 +238,13 @@ export default function MarkdownView({ blocks, players, playerHistories = {}, al
             );
           case "hr":
             return <hr key={i} style={{ margin: "32px 0", border: "none", borderTop: "1px solid var(--border-rule)" }} />;
-          case "image":
+          case "image": {
+            const src = safeImageSrc(b.src);
+            if (!src) return b.alt ? <p key={i} style={BODY_FONT}>{b.alt}</p> : null;
             return (
               <figure key={i} style={{ margin: "26px 0" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={b.src} alt={b.alt} style={{ maxWidth: "100%", height: "auto", display: "block", border: "1px solid var(--border-rule)" }} />
+                <img src={src} alt={b.alt} style={{ maxWidth: "100%", height: "auto", display: "block", border: "1px solid var(--border-rule)" }} />
                 {b.alt && (
                   <figcaption style={{ marginTop: 8, fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "var(--bow-slate)" }}>
                     {b.alt}
@@ -224,6 +252,7 @@ export default function MarkdownView({ blocks, players, playerHistories = {}, al
                 )}
               </figure>
             );
+          }
           case "embed":
             return <EmbedBlock key={i} block={b} players={players} playerHistories={playerHistories} allPlayers={allPlayers} />;
         }

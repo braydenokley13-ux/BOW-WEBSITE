@@ -21,7 +21,7 @@ export default async function CurriculumDetailPage({ params }: { params: Promise
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="Curriculum" title={curriculum.title} />
+      <SectionHeader kicker="Curriculum" title={curriculum.title} level={1} />
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <Badge status={curriculum.published ? "positive" : "neutral"}>{curriculum.published ? "Published" : "Draft"}</Badge>
         {curriculum.ageRange && <Badge status="info">{curriculum.ageRange}</Badge>}

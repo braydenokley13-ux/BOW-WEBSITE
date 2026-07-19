@@ -1,4 +1,4 @@
-import { getCurrentFeedUser, ensureCertificateId } from "@/lib/feed";
+import { getCurrentFeedUser } from "@/lib/feed";
 
 /** Escape user-supplied text before interpolating it into the certificate HTML. */
 function escapeHtml(s: string): string {
@@ -23,16 +23,21 @@ export async function GET(request: Request): Promise<Response> {
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
-  if (!me.simCompleted) {
+  if (!me.simCompleted || !me.certificateId || !me.certificateCompletedAt) {
     return new Response("Finish the Track 101 preview simulation to earn your certificate.", {
       status: 403,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
 
-  const certId = me.certificateId ?? ensureCertificateId(me.id);
+  const certId = escapeHtml(me.certificateId);
   const name = escapeHtml(me.displayName);
-  const date = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const date = new Date(me.certificateCompletedAt).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
   const download = new URL(request.url).searchParams.get("download") === "1";
 
   const html = `<!doctype html>
@@ -59,6 +64,7 @@ export async function GET(request: Request): Promise<Response> {
     .track { font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: clamp(22px,4vw,34px); text-transform: uppercase; letter-spacing: -0.01em; color: var(--blue-soft); margin: 8px 0 0; }
     .rule { height: 4px; width: 90px; background: var(--blue); margin: 26px 0; }
     .meta { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 18px; margin-top: 32px; font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: 0.04em; color: var(--muted); }
+    .notice { font-family: "IBM Plex Mono", monospace; font-size: 10px; line-height: 1.5; color: var(--muted); margin: 18px 0 0; }
     .print { position: fixed; top: 18px; right: 18px; font-family: "Barlow Condensed", sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; padding: 10px 16px; background: var(--blue); color: #fff; border: none; border-radius: 4px; cursor: pointer; }
     @media print { body { background: #fff; color: #0a0a0b; } .cert { border-color: #d8d5ce; background: #fff; } .cert::before { border-color: #d8d5ce; } .name, .for, .track { color: #0a0a0b; } .track { color: var(--blue); } .print { display: none; } .meta { color: #6d7078; border-color: #d8d5ce; } }
   </style>
@@ -76,6 +82,7 @@ export async function GET(request: Request): Promise<Response> {
       <span>Completed · ${date}</span>
       <span>Completion ID · ${certId}</span>
     </div>
+    <p class="notice">Preview completion record · display name is self-reported and identity is not verified.</p>
   </div>
 </body>
 </html>`;

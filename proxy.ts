@@ -14,8 +14,9 @@ export function proxy(request: NextRequest) {
   const hasSession = request.cookies.has(SESSION_COOKIE);
 
   // Guard the authenticated app and the self-paced student/instructor surfaces.
-  // NOTE: the PUBLIC profile (/profile/[id]) is intentionally NOT guarded — only
-  // the private /profile (exact) is.
+  // Public credential slugs remain unguarded, but the data layer only resolves
+  // an active, guardian-approved, revocable consent record. The private exact
+  // /profile route still requires a session.
   const guarded =
     pathname === "/app" ||
     pathname.startsWith("/app/") ||
@@ -37,17 +38,13 @@ export function proxy(request: NextRequest) {
     pathname.startsWith("/admin/") ||
     pathname === "/analytics/admin" ||
     pathname.startsWith("/analytics/admin/");
-  if (guarded) {
+  const passwordChange = pathname === "/change-password";
+  if (guarded || passwordChange) {
     if (!hasSession) {
       const url = new URL("/sign-in", request.url);
       url.searchParams.set("next", pathname);
       return NextResponse.redirect(url);
     }
-  }
-
-  // Signed-in users have no reason to see the sign-in screen.
-  if (pathname === "/sign-in" && hasSession) {
-    return NextResponse.redirect(new URL("/app", request.url));
   }
 
   return NextResponse.next();
@@ -74,6 +71,7 @@ export const config = {
     "/admin/:path*",
     "/analytics/admin",
     "/analytics/admin/:path*",
+    "/change-password",
     "/sign-in",
   ],
 };

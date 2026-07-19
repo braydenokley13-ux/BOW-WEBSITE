@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Simulation from "@/components/site/Simulation";
 import {
   submitFeedDecision,
+  recordFeedSimulationDecision,
   completeFeedSimulation,
   signOutFeed,
   type FeedDecisionResult,
@@ -19,11 +20,17 @@ interface FeedTerminalProps {
 export default function FeedTerminal({ user, stories, answeredIds }: FeedTerminalProps) {
   const [answered, setAnswered] = useState<Set<string>>(new Set(answeredIds));
   const [response, setResponse] = useState("");
+  const [committedResponse, setCommittedResponse] = useState("");
+  const [committedStoryId, setCommittedStoryId] = useState<string | null>(null);
   const [reveal, setReveal] = useState<FeedDecisionResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [storyError, setStoryError] = useState<string | null>(null);
   const [simDone, setSimDone] = useState(user.simCompleted);
   const [certId, setCertId] = useState<string | null>(user.certificateId);
+  const [certCompletedAt, setCertCompletedAt] = useState<number | null>(user.certificateCompletedAt);
   const [issuing, setIssuing] = useState(false);
+  const [issuanceError, setIssuanceError] = useState<string | null>(null);
+  const submissionPendingRef = useRef(false);
 
   const ordered = useMemo(() => [...stories].sort((a, b) => a.ordinal - b.ordinal), [stories]);
   const decisionsCount = answered.size;
@@ -33,29 +40,58 @@ export default function FeedTerminal({ user, stories, answeredIds }: FeedTermina
     simDone && certId ? "certificate" : decisionsCount >= FEED_DECISIONS_TO_UNLOCK ? "sim" : "story";
 
   const onSubmit = async () => {
-    if (!nextStory || !response.trim() || submitting) return;
+    if (!nextStory || !response.trim() || submissionPendingRef.current) return;
+    const storyId = nextStory.id;
+    const submittedResponse = response.trim();
+    submissionPendingRef.current = true;
     setSubmitting(true);
-    const result = await submitFeedDecision(nextStory.id, response);
-    setSubmitting(false);
-    if (result.ok) setReveal(result);
+    setStoryError(null);
+    try {
+      const result = await submitFeedDecision(storyId, submittedResponse);
+      if (result.ok) {
+        // Render the exact answer that was sent. The editable field can no
+        // longer race the response that the server accepted.
+        setCommittedStoryId(storyId);
+        setCommittedResponse(submittedResponse);
+        setReveal(result);
+      } else {
+        setStoryError("We could not save that decision. Check your connection and try again.");
+      }
+    } catch {
+      setStoryError("Saving was interrupted. Your response is still here—try again.");
+    } finally {
+      submissionPendingRef.current = false;
+      setSubmitting(false);
+    }
   };
 
   const onNext = () => {
-    if (!nextStory) return;
-    setAnswered((prev) => new Set(prev).add(nextStory.id));
+    if (!reveal || !committedStoryId) return;
+    setAnswered((prev) => new Set(prev).add(committedStoryId));
     setResponse("");
+    setCommittedResponse("");
+    setCommittedStoryId(null);
     setReveal(null);
   };
 
   const onSimComplete = async () => {
     if (simDone || issuing) return;
     setIssuing(true);
-    const result = await completeFeedSimulation();
-    if (result.ok && result.certificateId) {
-      setCertId(result.certificateId);
-      setSimDone(true);
+    setIssuanceError(null);
+    try {
+      const result = await completeFeedSimulation();
+      if (result.ok && result.certificateId) {
+        setCertId(result.certificateId);
+        setCertCompletedAt(result.completedAt ?? null);
+        setSimDone(true);
+        return;
+      }
+      setIssuanceError("We could not verify every completion step. Retry issuance, or replay any round that did not save.");
+    } catch {
+      setIssuanceError("Certificate verification was interrupted. Check your connection and retry issuance.");
+    } finally {
+      setIssuing(false);
     }
-    setIssuing(false);
   };
 
   return (
@@ -68,10 +104,15 @@ export default function FeedTerminal({ user, stories, answeredIds }: FeedTermina
             story={nextStory}
             index={decisionsCount + 1}
             total={FEED_DECISIONS_TO_UNLOCK}
-            response={response}
-            onResponse={setResponse}
+            response={reveal ? committedResponse : response}
+            onResponse={(value) => {
+              if (submissionPendingRef.current) return;
+              setResponse(value);
+              if (storyError) setStoryError(null);
+            }}
             reveal={reveal}
             submitting={submitting}
+            submitError={storyError}
             onSubmit={onSubmit}
             onNext={onNext}
             isLast={decisionsCount + 1 >= FEED_DECISIONS_TO_UNLOCK}
@@ -92,12 +133,29 @@ export default function FeedTerminal({ user, stories, answeredIds }: FeedTermina
               </p>
             </div>
             <Simulation
+              onDecision={recordFeedSimulationDecision}
               onComplete={onSimComplete}
               completedFooter={
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-positive)" }}>
-                    {issuing ? "Issuing your certificate…" : "Certificate ready — loading it up…"}
-                  </span>
+                  {issuanceError ? (
+                    <>
+                      <span role="alert" style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, color: "var(--bow-warning-text)" }}>
+                        {issuanceError}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={issuing}
+                        onClick={() => void onSimComplete()}
+                        style={{ alignSelf: "flex-start", border: "1px solid var(--bow-dark-border)", background: "transparent", color: "#fff", padding: "9px 13px", fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", cursor: issuing ? "wait" : "pointer" }}
+                      >
+                        Retry certificate issuance
+                      </button>
+                    </>
+                  ) : (
+                    <span role="status" style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-positive)" }}>
+                      {issuing ? "Verifying your completion…" : "Preparing completion verification…"}
+                    </span>
+                  )}
                 </div>
               }
             />
@@ -105,7 +163,7 @@ export default function FeedTerminal({ user, stories, answeredIds }: FeedTermina
         )}
 
         {phase === "certificate" && certId && (
-          <Certificate name={user.displayName} certId={certId} />
+          <Certificate name={user.displayName} certId={certId} completedAt={certCompletedAt} />
         )}
 
         {phase !== "sim" && (
@@ -149,6 +207,7 @@ function StoryCard({
   onResponse,
   reveal,
   submitting,
+  submitError,
   onSubmit,
   onNext,
   isLast,
@@ -160,10 +219,17 @@ function StoryCard({
   onResponse: (v: string) => void;
   reveal: FeedDecisionResult | null;
   submitting: boolean;
+  submitError: string | null;
   onSubmit: () => void;
   onNext: () => void;
   isLast: boolean;
 }) {
+  const resultRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (reveal) resultRef.current?.focus();
+  }, [reveal]);
+
   return (
     <article style={{ border: "1px solid var(--bow-dark-border)", background: "var(--bow-dark-surface)" }}>
       {/* card header */}
@@ -193,14 +259,31 @@ function StoryCard({
                 {story.prompt}
               </p>
             </div>
+            <label
+              htmlFor="feed-decision-response"
+              style={{ display: "block", marginTop: 16, fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "#9a9da6" }}
+            >
+              Your response
+            </label>
             <textarea
+              id="feed-decision-response"
               value={response}
               onChange={(e) => onResponse(e.target.value)}
+              readOnly={submitting}
+              aria-busy={submitting}
+              aria-invalid={submitError ? true : undefined}
+              aria-describedby={submitError ? "feed-decision-error" : undefined}
               rows={5}
               placeholder="Make your call. Two or three sentences — what do you do, and why?"
-              style={{ width: "100%", marginTop: 16, background: "var(--bow-ink)", border: "1px solid var(--bow-dark-border)", color: "#fff", padding: "14px 16px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.55, resize: "vertical", outline: "none" }}
+              style={{ width: "100%", marginTop: 8, background: "var(--bow-ink)", border: "1px solid var(--bow-dark-border)", color: "#fff", padding: "14px 16px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.55, resize: "vertical" }}
             />
+            {submitError && (
+              <p id="feed-decision-error" role="alert" style={{ margin: "8px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, color: "var(--bow-warning-text)" }}>
+                {submitError}
+              </p>
+            )}
             <button
+              type="button"
               onClick={onSubmit}
               disabled={!response.trim() || submitting}
               style={{ marginTop: 16, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "15px 28px", border: "none", background: !response.trim() || submitting ? "var(--bow-inactive)" : "var(--bow-orange)", color: "#fff", borderRadius: 4, cursor: !response.trim() || submitting ? "not-allowed" : "pointer" }}
@@ -209,7 +292,15 @@ function StoryCard({
             </button>
           </>
         ) : (
-          <div style={{ marginTop: 26 }}>
+          <div
+            ref={resultRef}
+            role="region"
+            aria-label="Decision result"
+            aria-live="polite"
+            aria-atomic="true"
+            tabIndex={-1}
+            style={{ marginTop: 26 }}
+          >
             {/* your call, locked */}
             <div style={{ background: "var(--bow-ink)", border: "1px solid var(--bow-dark-border)", borderRadius: 4, padding: "14px 16px" }}>
               <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#6d7078" }}>Your call</span>
@@ -232,6 +323,7 @@ function StoryCard({
             </div>
 
             <button
+              type="button"
               onClick={onNext}
               style={{ marginTop: 20, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "15px 28px", border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: "pointer" }}
             >
@@ -245,12 +337,25 @@ function StoryCard({
 }
 
 /* ---------------- certificate ---------------- */
-function Certificate({ name, certId }: { name: string; certId: string }) {
-  const date = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+function Certificate({ name, certId, completedAt }: { name: string; certId: string; completedAt: number | null }) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const date = completedAt
+    ? new Date(completedAt).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+    })
+    : "Completion date unavailable";
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
+
   return (
     <div style={{ paddingTop: "clamp(24px,4vw,40px)" }}>
       <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-positive)" }}>Track 101 Preview · Complete</span>
-      <h1 style={{ margin: "12px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(34px,6vw,68px)", lineHeight: 0.88, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
+      <h1 ref={headingRef} tabIndex={-1} style={{ margin: "12px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(34px,6vw,68px)", lineHeight: 0.88, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
         Nicely run, {name.split(" ")[0]}.
       </h1>
       <p style={{ margin: "16px 0 0", fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "#b9bcc4", maxWidth: 520 }}>
@@ -268,6 +373,9 @@ function Certificate({ name, certId }: { name: string; certId: string }) {
           <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "#6d7078" }}>{date}</span>
           <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "#6d7078" }}>ID · {certId.slice(0, 8).toUpperCase()}</span>
         </div>
+        <p style={{ margin: "14px 0 0", fontFamily: "var(--font-data)", fontSize: 10, lineHeight: 1.5, color: "#6d7078" }}>
+          Preview completion record · display name is self-reported and identity is not verified.
+        </p>
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 24 }}>

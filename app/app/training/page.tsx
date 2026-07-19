@@ -1,12 +1,28 @@
 import Link from "next/link";
-import { Badge, Button, SectionHeader } from "@/components/ds";
+import { Badge, SectionHeader } from "@/components/ds";
 import { listTrainingModules, listTrainingSessions, listInstructors, type TrainingStatus } from "@/lib/hiring";
 import TrainingModuleActions from "@/components/app/training/TrainingModuleActions";
 import NewTrainingModal from "@/components/app/training/NewTrainingModal";
+import { formatDateTimeInZone } from "@/lib/timezone";
 
 const cardStyle = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 20 } as const;
 const labelStyle = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--bow-slate)" };
 const valueStyle = { fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-ink)" };
+const viewStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "8px 16px",
+  border: "1px solid var(--border-strong)",
+  borderRadius: "var(--radius-control)",
+  color: "var(--text-primary)",
+  fontFamily: "var(--font-display)",
+  fontSize: 13,
+  fontWeight: 700,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase" as const,
+  whiteSpace: "nowrap" as const,
+};
 
 const TRAINING_BUCKET_LABEL: Record<TrainingStatus, string> = {
   not_started: "Not started",
@@ -42,7 +58,7 @@ export default function TrainingPage() {
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 32 }}>
-      <SectionHeader kicker="BOW HQ" title="Training" />
+      <SectionHeader kicker="BOW HQ" title="Training" level={1} />
 
       <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -63,7 +79,7 @@ export default function TrainingPage() {
                 </div>
                 <span style={{ ...labelStyle }}>{m.contentType}</span>
               </div>
-              <TrainingModuleActions module={m} />
+              <TrainingModuleActions key={`${m.id}:${m.updatedAt}`} module={m} />
             </div>
           ))}
         </div>
@@ -81,16 +97,14 @@ export default function TrainingPage() {
           <span style={labelStyle}>Upcoming</span>
           {upcoming.length === 0 && <p style={valueStyle}>No upcoming sessions.</p>}
           {upcoming.map((s) => (
-            <Link key={s.id} href={`/app/training/sessions/${s.id}`} style={{ textDecoration: "none" }}>
+            <Link className="bow-button" key={s.id} href={`/app/training/sessions/${s.id}`} aria-label={`View training session ${s.title}`} style={{ display: "block", textDecoration: "none" }}>
               <div style={{ ...cardStyle, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                 <div>
                   <span style={{ ...valueStyle, fontWeight: 600 }}>{s.title}</span>{" "}
                   {s.required && <Badge status="negative">Required</Badge>}
-                  <p style={{ ...labelStyle, margin: "4px 0 0" }}>{new Date(s.scheduledAt).toLocaleString()}</p>
+                  <p style={{ ...labelStyle, margin: "4px 0 0" }}>{formatDateTimeInZone(s.scheduledAt, s.timeZone)}</p>
                 </div>
-                <Button size="sm" variant="secondary">
-                  View
-                </Button>
+                <span aria-hidden="true" style={viewStyle}>View</span>
               </div>
             </Link>
           ))}
@@ -100,15 +114,13 @@ export default function TrainingPage() {
           <span style={labelStyle}>Past</span>
           {past.length === 0 && <p style={valueStyle}>No past sessions.</p>}
           {past.map((s) => (
-            <Link key={s.id} href={`/app/training/sessions/${s.id}`} style={{ textDecoration: "none" }}>
+            <Link className="bow-button" key={s.id} href={`/app/training/sessions/${s.id}`} aria-label={`View training session ${s.title}`} style={{ display: "block", textDecoration: "none" }}>
               <div style={{ ...cardStyle, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                 <div>
                   <span style={{ ...valueStyle, fontWeight: 600 }}>{s.title}</span>
-                  <p style={{ ...labelStyle, margin: "4px 0 0" }}>{new Date(s.scheduledAt).toLocaleString()}</p>
+                  <p style={{ ...labelStyle, margin: "4px 0 0" }}>{formatDateTimeInZone(s.scheduledAt, s.timeZone)}</p>
                 </div>
-                <Button size="sm" variant="secondary">
-                  View
-                </Button>
+                <span aria-hidden="true" style={viewStyle}>View</span>
               </div>
             </Link>
           ))}

@@ -8,8 +8,15 @@
  * Server-only. Do not import from a client component.
  * ============================================================ */
 
+import { createHash } from "node:crypto";
 import { getDb } from "@/lib/db";
-import { blobGetJson, blobList, blobMirrorEnabled } from "@/lib/blob-mirror";
+import {
+  blobDelete,
+  blobGetJson,
+  blobListDetailed,
+  blobMirrorEnabled,
+  type BlobStoreOptions,
+} from "@/lib/blob-mirror";
 import { parseTags, type Article, type ArticleRevision } from "@/lib/articles-shared";
 
 // Re-exported so server-side callers keep a single import surface.
@@ -49,6 +56,103 @@ export function rowToArticle(r: any): Article {
     createdAt: Number(r.created_at) || 0,
     updatedAt: Number(r.updated_at) || 0,
   };
+}
+
+/* ---------------- privacy-separated durable mirrors ---------------- */
+
+/**
+ * Public Blob is an anonymous publication cache only. It must never contain
+ * a draft, a submitted paper, an account id, or an author/byline identity.
+ * Full-fidelity article durability belongs in a separately provisioned
+ * PRIVATE Blob store.
+ */
+export const PUBLIC_ARTICLE_MIRROR_PREFIX = "articles/public-v1/";
+export const PRIVATE_ARTICLE_MIRROR_PREFIX = "articles/private-v1/";
+
+export interface PublicArticleMirrorV1 {
+  version: 1;
+  visibility: "public";
+  status: "published";
+  article: {
+    id: string;
+    slug: string;
+    title: string;
+    dek: string;
+    body: string;
+    kind: "article" | "paper";
+    category: string;
+    tags: string[];
+    coverImage: string;
+    featured: boolean;
+    viewCount: number;
+    metaTitle: string;
+    metaDescription: string;
+    publishedAt: number;
+    updatedAt: number;
+  };
+}
+
+export interface PrivateArticleMirrorV1 {
+  version: 1;
+  visibility: "private";
+  article: Article;
+}
+
+/** The second store must be provisioned as Private in Vercel. */
+export function privateArticleBlobOptions(): BlobStoreOptions {
+  return {
+    access: "private",
+    token: process.env.ARTICLE_PRIVATE_BLOB_READ_WRITE_TOKEN ?? null,
+  };
+}
+
+/**
+ * A stable one-way folder keeps the public URL from advertising the local
+ * database id. This is defense in depth; the payload itself is public-safe.
+ */
+export function publicArticleMirrorFolder(articleId: string): string {
+  const opaqueId = createHash("sha256").update(`bow-public-article-v1\0${articleId}`).digest("hex");
+  return `${PUBLIC_ARTICLE_MIRROR_PREFIX}${opaqueId}/`;
+}
+
+export function privateArticleMirrorPath(articleId: string): string {
+  return `${PRIVATE_ARTICLE_MIRROR_PREFIX}${encodeURIComponent(articleId)}.json`;
+}
+
+export function articleToPrivateMirror(article: Article): PrivateArticleMirrorV1 {
+  return { version: 1, visibility: "private", article };
+}
+
+export function articleToPublicMirror(article: Article): PublicArticleMirrorV1 | null {
+  if (article.status !== "published" || article.publishedAt == null) return null;
+  return {
+    version: 1,
+    visibility: "public",
+    status: "published",
+    article: {
+      id: article.id,
+      slug: article.slug,
+      title: article.title,
+      dek: article.dek,
+      body: article.body,
+      kind: article.kind,
+      category: article.category,
+      tags: article.tags,
+      coverImage: article.coverImage,
+      featured: article.featured,
+      viewCount: article.viewCount,
+      metaTitle: article.metaTitle,
+      metaDescription: article.metaDescription,
+      publishedAt: article.publishedAt,
+      updatedAt: article.updatedAt,
+    },
+  };
+}
+
+/** Immutable, opaque public artifacts avoid stale CDN overwrites. */
+export function publicArticleMirrorPath(article: Article, payload: PublicArticleMirrorV1): string {
+  const contentHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 20);
+  return `${publicArticleMirrorFolder(article.id)}${article.updatedAt}-${contentHash}.json`;
 }
 
 function rowToRevision(r: any): ArticleRevision {
@@ -166,45 +270,203 @@ export function countOpenSubmissions(userId: string): number {
 
 /* ---------------- the durable mirror ---------------- */
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isArticle(value: unknown): value is Article {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" && value.id.length > 0 &&
+    typeof value.slug === "string" && value.slug.length > 0 &&
+    typeof value.title === "string" && value.title.length > 0 &&
+    typeof value.dek === "string" &&
+    typeof value.body === "string" &&
+    (value.status === "draft" || value.status === "submitted" || value.status === "published") &&
+    (value.kind === "article" || value.kind === "paper") &&
+    typeof value.author === "string" &&
+    (value.authorUserId === null || typeof value.authorUserId === "string") &&
+    typeof value.category === "string" &&
+    Array.isArray(value.tags) && value.tags.every((tag) => typeof tag === "string") &&
+    typeof value.coverImage === "string" &&
+    typeof value.featured === "boolean" &&
+    isFiniteNumber(value.viewCount) &&
+    typeof value.metaTitle === "string" &&
+    typeof value.metaDescription === "string" &&
+    (value.publishedAt === null || isFiniteNumber(value.publishedAt)) &&
+    isFiniteNumber(value.createdAt) &&
+    isFiniteNumber(value.updatedAt)
+  );
+}
+
+function containsIdentityField(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(containsIdentityField);
+  if (!isRecord(value)) return false;
+  for (const [key, child] of Object.entries(value)) {
+    const normalized = key.replaceAll("_", "").toLowerCase();
+    if (normalized === "author" || normalized === "authoruserid" || normalized === "userid") return true;
+    if (containsIdentityField(child)) return true;
+  }
+  return false;
+}
+
+function isPrivateArticleMirror(value: unknown): value is PrivateArticleMirrorV1 {
+  return isRecord(value) && value.version === 1 && value.visibility === "private" && isArticle(value.article);
+}
+
+function isPublicArticleMirror(value: unknown): value is PublicArticleMirrorV1 {
+  if (!isRecord(value) || value.version !== 1 || value.visibility !== "public" || value.status !== "published") return false;
+  if (!isRecord(value.article) || containsIdentityField(value)) return false;
+  const a = value.article;
+  return (
+    typeof a.id === "string" && a.id.length > 0 &&
+    typeof a.slug === "string" && a.slug.length > 0 &&
+    typeof a.title === "string" && a.title.length > 0 &&
+    typeof a.dek === "string" &&
+    typeof a.body === "string" &&
+    (a.kind === "article" || a.kind === "paper") &&
+    typeof a.category === "string" &&
+    Array.isArray(a.tags) && a.tags.every((tag) => typeof tag === "string") &&
+    typeof a.coverImage === "string" &&
+    typeof a.featured === "boolean" &&
+    isFiniteNumber(a.viewCount) &&
+    typeof a.metaTitle === "string" &&
+    typeof a.metaDescription === "string" &&
+    isFiniteNumber(a.publishedAt) &&
+    isFiniteNumber(a.updatedAt)
+  );
+}
+
+function localUpdatedAt(db: any, articleId: string): number | null {
+  const row = db.prepare("SELECT updated_at FROM articles WHERE id = ?").get(articleId) as { updated_at?: number } | undefined;
+  return row ? Number(row.updated_at) || 0 : null;
+}
+
+function upsertPrivateArticle(db: any, article: Article): void {
+  const local = localUpdatedAt(db, article.id);
+  if (local !== null && local >= article.updatedAt) return;
+  db.prepare(
+    `INSERT INTO articles (id, slug, title, dek, body, status, kind, author, author_user_id, category, tags, cover_image, featured, view_count, meta_title, meta_description, published_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       slug=excluded.slug, title=excluded.title, dek=excluded.dek, body=excluded.body,
+       status=excluded.status, kind=excluded.kind, author=excluded.author,
+       author_user_id=excluded.author_user_id, category=excluded.category, tags=excluded.tags,
+       cover_image=excluded.cover_image, featured=excluded.featured, view_count=excluded.view_count,
+       meta_title=excluded.meta_title, meta_description=excluded.meta_description,
+       published_at=excluded.published_at, created_at=excluded.created_at, updated_at=excluded.updated_at`,
+  ).run(
+    article.id, article.slug, article.title, article.dek, article.body, article.status,
+    article.kind, article.author, article.authorUserId, article.category, article.tags.join(","),
+    article.coverImage, article.featured ? 1 : 0, article.viewCount, article.metaTitle,
+    article.metaDescription, article.publishedAt, article.createdAt, article.updatedAt,
+  );
+}
+
+function upsertPublicArticle(db: any, mirror: PublicArticleMirrorV1): void {
+  const a = mirror.article;
+  const local = localUpdatedAt(db, a.id);
+  if (local !== null && local >= a.updatedAt) return;
+  db.prepare(
+    `INSERT INTO articles (id, slug, title, dek, body, status, kind, author, author_user_id, category, tags, cover_image, featured, view_count, meta_title, meta_description, published_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'published', ?, 'BOW Front Office', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       slug=excluded.slug, title=excluded.title, dek=excluded.dek, body=excluded.body,
+       status='published', kind=excluded.kind, category=excluded.category, tags=excluded.tags,
+       cover_image=excluded.cover_image, featured=excluded.featured, view_count=excluded.view_count,
+       meta_title=excluded.meta_title, meta_description=excluded.meta_description,
+       published_at=excluded.published_at, updated_at=excluded.updated_at`,
+  ).run(
+    a.id, a.slug, a.title, a.dek, a.body, a.kind, a.category, a.tags.join(","),
+    a.coverImage, a.featured ? 1 : 0, a.viewCount, a.metaTitle, a.metaDescription,
+    a.publishedAt, a.publishedAt, a.updatedAt,
+  );
+}
+
+async function purgeLegacyPublicArticleMirrors(): Promise<void> {
+  const listing = await blobListDetailed("articles/");
+  if (!listing.ok) {
+    console.error("[articles] legacy public mirror cleanup could not list artifacts", {
+      status: listing.status,
+      error: listing.error,
+    });
+    return;
+  }
+  // The old implementation wrote full article rows at articles/<id>.json.
+  const legacy = listing.entries.filter((entry) => /^articles\/[^/]+\.json$/.test(entry.pathname));
+  if (legacy.length === 0) return;
+  const deleted = await blobDelete(legacy.map((entry) => entry.url));
+  if (!deleted.ok) {
+    console.error("[articles] legacy public mirror cleanup failed", {
+      count: legacy.length,
+      status: deleted.status,
+      error: deleted.error,
+    });
+  } else {
+    console.info(`[articles] removed ${legacy.length} legacy public article mirror(s)`);
+  }
+}
+
 /**
- * Reader-authored work cannot live on Vercel's ephemeral SQLite alone
- * (research/07's finding): every mutation in app/actions/articles.ts
- * mirrors the row to Blob, and this rehydrate — run once per process,
- * awaited by the article-facing pages — pulls anything the filesystem
- * reset ate back into the table before the first read.
+ * Rehydrate full-fidelity state from the private store first, then fill any
+ * newer/missing published content from the anonymous public cache. Legacy
+ * public full-row artifacts are deleted and never trusted for recovery.
  */
 let rehydrated = false;
 export async function rehydrateArticlesFromMirror(): Promise<void> {
-  if (rehydrated || !blobMirrorEnabled()) {
+  const privateOptions = privateArticleBlobOptions();
+  const publicEnabled = blobMirrorEnabled();
+  const privateEnabled = blobMirrorEnabled(privateOptions);
+  if (rehydrated || (!publicEnabled && !privateEnabled)) {
     rehydrated = true;
     return;
   }
-  rehydrated = true; // set first: a failed rehydrate shouldn't retry per-request and hammer the mirror
+  rehydrated = true; // avoid retrying remote stores once per request after an outage
+
+  const db = articlesDb();
   try {
-    const entries = await blobList("articles/");
-    if (entries.length === 0) return;
-    const db = articlesDb();
-    const localStamp = db.prepare("SELECT id, updated_at FROM articles");
-    const upsert = db.prepare(
-      `INSERT OR REPLACE INTO articles (id, slug, title, dek, body, status, kind, author, author_user_id, category, tags, cover_image, featured, view_count, meta_title, meta_description, published_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    const local = new Map<string, number>();
-    for (const r of localStamp.all() as any[]) local.set(r.id, Number(r.updated_at) || 0);
-    for (const entry of entries) {
-      const a = await blobGetJson<Article>(entry.url);
-      if (!a?.id || !a.slug || !a.title) continue;
-      const localUpdated = local.get(a.id);
-      if (localUpdated !== undefined && localUpdated >= a.updatedAt) continue;
-      upsert.run(
-        a.id, a.slug, a.title, a.dek ?? "", a.body ?? "",
-        a.status === "published" ? "published" : a.status === "submitted" ? "submitted" : "draft",
-        a.kind === "paper" ? "paper" : "article",
-        a.author ?? "", a.authorUserId ?? null, a.category ?? "", (a.tags ?? []).join(","),
-        a.coverImage ?? "", a.featured ? 1 : 0, Number(a.viewCount) || 0,
-        a.metaTitle ?? "", a.metaDescription ?? "", a.publishedAt ?? null,
-        Number(a.createdAt) || Date.now(), Number(a.updatedAt) || Date.now(),
-      );
+    if (publicEnabled) await purgeLegacyPublicArticleMirrors();
+
+    if (privateEnabled) {
+      const privateListing = await blobListDetailed(PRIVATE_ARTICLE_MIRROR_PREFIX, privateOptions);
+      if (!privateListing.ok) {
+        console.error("[articles] private mirror rehydrate listing failed", {
+          status: privateListing.status,
+          error: privateListing.error,
+        });
+      } else {
+        for (const entry of privateListing.entries) {
+          const payload = await blobGetJson<unknown>(entry.url, privateOptions);
+          if (!isPrivateArticleMirror(payload)) {
+            console.warn(`[articles] ignored invalid private mirror payload at ${entry.pathname}`);
+            continue;
+          }
+          upsertPrivateArticle(db, payload.article);
+        }
+      }
+    }
+
+    if (publicEnabled) {
+      const publicListing = await blobListDetailed(PUBLIC_ARTICLE_MIRROR_PREFIX);
+      if (!publicListing.ok) {
+        console.error("[articles] public mirror rehydrate listing failed", {
+          status: publicListing.status,
+          error: publicListing.error,
+        });
+      } else {
+        for (const entry of publicListing.entries) {
+          const payload = await blobGetJson<unknown>(entry.url);
+          if (!isPublicArticleMirror(payload)) {
+            console.warn(`[articles] ignored invalid public mirror payload at ${entry.pathname}`);
+            continue;
+          }
+          upsertPublicArticle(db, payload);
+        }
+      }
     }
   } catch (err) {
     console.warn("[articles] mirror rehydrate failed:", err);

@@ -10,13 +10,12 @@ export const runtime = "nodejs";
 
 /** A dynamic 1200×630 OG card for LinkedIn / iMessage previews of a public profile. */
 export default async function Image({ params }: { params: Promise<{ studentId: string }> }) {
-  const { studentId } = await params;
-  const profile = getPublicProfile(studentId);
+  const { studentId: publicSlug } = await params;
+  const profile = getPublicProfile(publicSlug);
 
   const name = profile?.name ?? "BOW Sports Capital";
   const rank = profile?.rank.name ?? "The front office for the next generation";
   const modules = profile ? `${profile.modulesCompleted}/${profile.totalModules} modules` : "Sports economics, made for students";
-  const score = profile ? `BOW Score ${profile.bowScore}` : "";
   const certified = profile?.certificateEarned ? "Certified" : "";
 
   return new ImageResponse(
@@ -51,7 +50,6 @@ export default async function Image({ params }: { params: Promise<{ studentId: s
 
         <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
           <div style={{ display: "flex", color: "#C9A84C", fontSize: 30, fontWeight: 700 }}>{modules}</div>
-          {score ? <div style={{ display: "flex", color: "#6f8bff", fontSize: 30, fontWeight: 700 }}>{score}</div> : null}
           {certified ? <div style={{ display: "flex", color: "#5fcf99", fontSize: 30, fontWeight: 700 }}>{certified}</div> : null}
         </div>
       </div>

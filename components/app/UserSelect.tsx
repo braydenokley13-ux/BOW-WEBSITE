@@ -9,7 +9,6 @@ const selectStyle: CSSProperties = {
   padding: "10px 12px",
   fontFamily: "var(--font-interface)",
   fontSize: 14,
-  outline: "none",
   width: "100%",
   borderRadius: 4,
 };
@@ -20,6 +19,8 @@ interface UserSelectProps {
   onChange: (id: string) => void;
   allowUnassigned?: boolean;
   style?: CSSProperties;
+  id?: string;
+  "aria-label"?: string;
 }
 
 /**
@@ -27,9 +28,9 @@ interface UserSelectProps {
  * inputs. The caller fetches the user list server-side (lib/hiring
  * listStaffUsers) and passes it down as props.
  */
-export default function UserSelect({ users, value, onChange, allowUnassigned = true, style }: UserSelectProps) {
+export default function UserSelect({ users, value, onChange, allowUnassigned = true, style, id, "aria-label": ariaLabel }: UserSelectProps) {
   return (
-    <select style={{ ...selectStyle, ...style }} value={value} onChange={(e) => onChange(e.target.value)}>
+    <select className="bow-field" id={id} aria-label={ariaLabel} style={{ ...selectStyle, ...style }} value={value} onChange={(e) => onChange(e.target.value)}>
       {allowUnassigned && <option value="">Unassigned</option>}
       {users.map((u) => (
         <option key={u.id} value={u.id}>

@@ -9,15 +9,17 @@
   --bow-white: #ffffff;        /* High-contrast surfaces */
   --bow-blue: #3157ff;         /* Franchise Blue — main accent, links, active */
   --bow-orange: #ff5a36;       /* Signal Orange — decisions, editorial emphasis */
+  --bow-orange-solid: #c43d21; /* Accessible orange fill for white button labels (5.2:1) */
 
   /* ---- Neutral (raw) ---- */
-  --bow-slate: #6d7078;        /* Metadata, secondary text */
+  --bow-slate: #6a6d75;        /* Metadata on paper/white (4.55:1 minimum) */
   --bow-border: #d8d5ce;       /* Borders, section dividers (on paper/white) */
   --bow-dark-surface: #151518; /* Charcoal panels in front-office mode */
   --bow-dark-border: #2a2a2f;  /* Hairline rules on dark */
 
   /* ---- Functional / semantic (raw) ---- */
   --bow-positive: #158a55;     /* Positive result */
+  --bow-positive-solid: #0f7a49; /* Accessible green fill for white labels (5.38:1) */
   --bow-warning:  #e99a18;     /* Warning / tradeoff */
   --bow-negative: #d63b3b;     /* Negative consequence */
   --bow-info:     #3157ff;     /* Information (== Franchise Blue) */

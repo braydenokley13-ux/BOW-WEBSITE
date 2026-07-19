@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { Badge, SectionHeader } from "@/components/ds";
-import { requireInstructorSelf } from "@/lib/dal";
+import { requireActiveInstructorSelf } from "@/lib/dal";
 import { listClassesForInstructor } from "@/lib/hiring";
 
 export default async function TeachClassesPage() {
-  const { instructor } = await requireInstructorSelf();
+  const { instructor } = await requireActiveInstructorSelf();
   const classes = listClassesForInstructor(instructor.id);
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="My BOW" title="My Classes" />
+      <SectionHeader kicker="My BOW" title="My Classes" level={1} />
       {classes.length === 0 && (
         <div style={{ background: "var(--bow-white)", border: "1px dashed var(--border-rule)", borderRadius: 6, padding: 32, textAlign: "center" }}>
           <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>

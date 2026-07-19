@@ -230,7 +230,7 @@ function StepOutcomes({ data }: { data: DemoData }) {
       <span style={eyebrow}>Step 4 · Student Outcomes</span>
       <h2 style={h2}>Engagement you can measure.</h2>
       <p style={lead}>
-        Every student who completes a track earns a downloadable certificate and a shareable public profile — credibility they can put on a college application.
+        Every student who completes a track earns a downloadable certificate. Guardian-approved students can also receive a revocable, privacy-limited credential link for applications.
       </p>
       <div style={{ background: "var(--bow-ink)", borderRadius: 8, padding: "18px 20px", marginTop: 20 }}>
         <div style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: GOLD, marginBottom: 12 }}>Sample Leaderboard</div>

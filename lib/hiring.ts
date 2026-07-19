@@ -6,7 +6,7 @@
  * Server-only (imports lib/db).
  * ============================================================ */
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   getDb,
   rowToPerson,
@@ -18,6 +18,7 @@ import {
   rowToStudent,
   rowToTask,
 } from "@/lib/db";
+import { hashOpaqueToken } from "@/lib/security-tokens";
 
 /* ---------------- types ---------------- */
 
@@ -49,6 +50,8 @@ export interface Instructor {
   /** JSON blob of application answers. */
   answers: string;
   interviewAt: number | null;
+  /** IANA zone used to resolve interviewAt; null only for legacy rows. */
+  interviewTimeZone: string | null;
   interviewNotes: string | null;
   founderDecision: string | null;
   decidedBy: string | null;
@@ -95,6 +98,8 @@ export interface TrainingSession {
   id: string;
   title: string;
   scheduledAt: number;
+  /** IANA zone used to resolve scheduledAt; null only for legacy rows. */
+  timeZone: string | null;
   location: string | null;
   meetingLink: string | null;
   facilitatorUserId: string | null;
@@ -147,7 +152,7 @@ export interface Curriculum {
   updatedAt: number;
 }
 
-export type ClassStatus = "planning" | "staffing" | "ready_to_launch" | "active" | "completed" | "cancelled";
+export type ClassStatus = "planning" | "staffing" | "ready_to_launch" | "active" | "paused" | "completed" | "cancelled";
 
 export interface Class {
   id: string;
@@ -159,9 +164,16 @@ export interface Class {
   startDate: string | null;
   endDate: string | null;
   recurrence: string | null;
+  scheduleDay: number | null;
+  scheduleStartTime: string | null;
+  scheduleEndTime: string | null;
+  scheduleTimezone: string | null;
   ageRange: string | null;
   capacity: number | null;
+  minimumEnrollment: number;
   leadInstructorId: string | null;
+  programId: string | null;
+  locationId: string | null;
   status: ClassStatus;
   internalNotes: string | null;
   createdAt: number;
@@ -180,6 +192,7 @@ export interface ClassSession {
   id: string;
   classId: string;
   sessionDate: number;
+  timeZone: string | null;
   location: string | null;
   createdAt: number;
 }
@@ -217,6 +230,8 @@ export interface ClassEnrollment {
   studentId: string;
   status: "enrolled" | "waitlisted" | "withdrawn";
   enrolledAt: number;
+  confirmedAt: number | null;
+  confirmationSource: string | null;
 }
 
 export interface AttendanceRecord {
@@ -248,8 +263,11 @@ export interface ClassProposal {
 export interface Task {
   id: string;
   title: string;
+  kind: string;
   ownerUserId: string | null;
   dueAt: number | null;
+  /** Canonical YYYY-MM-DD calendar deadline when entered as a date. */
+  dueOn: string | null;
   status: "open" | "done";
   entityType: string | null;
   entityId: string | null;
@@ -296,19 +314,27 @@ export function deriveTrainingStatus(
   requiredTrainingModuleIds: string[],
   completedModuleIds: Set<string>,
   missedRequiredSession: boolean,
+  pendingRequiredSession: boolean = false,
 ): TrainingStatus {
   const total = requiredTrainingModuleIds.length;
   const doneCount = requiredTrainingModuleIds.filter((id) => completedModuleIds.has(id)).length;
   const modulesComplete = total === 0 || doneCount === total;
-  if (missedRequiredSession && !modulesComplete) return "behind";
   if (missedRequiredSession) return "behind";
+  if (pendingRequiredSession) return "in_progress";
+  if (total === 0) return "complete";
   if (doneCount === 0) return "not_started";
   return modulesComplete ? "complete" : "in_progress";
 }
 
-/** eligible = training complete AND latest practice evaluation decision === "pass". */
-export function deriveEligibility(trainingStatus: TrainingStatus, latestEvalDecision: PracticeEvalDecision | null): EligibilityStatus {
-  return trainingStatus === "complete" && latestEvalDecision === "pass" ? "eligible" : "not_eligible";
+/** eligible = onboarding + training complete AND latest practice evaluation passes. */
+export function deriveEligibility(
+  onboardingStatus: OnboardingStatus,
+  trainingStatus: TrainingStatus,
+  latestEvalDecision: PracticeEvalDecision | null,
+): EligibilityStatus {
+  return onboardingStatus === "complete" && trainingStatus === "complete" && latestEvalDecision === "pass"
+    ? "eligible"
+    : "not_eligible";
 }
 
 /** Flags a class needs staffing/launch attention. */
@@ -342,27 +368,77 @@ export function recomputeInstructorStatuses(instructorId: string): void {
   );
 
   const now = Date.now();
-  const missedRequiredSession = !!db
+  const requiredSessionState = db
     .prepare(
-      `SELECT 1 FROM training_session_registrations reg
+      `SELECT
+         COALESCE(MAX(CASE WHEN s.scheduled_at <= ? AND (a.attended IS NULL OR a.attended = 0) THEN 1 ELSE 0 END), 0) AS missed,
+         COALESCE(MAX(CASE WHEN s.scheduled_at > ? AND (a.attended IS NULL OR a.attended = 0) THEN 1 ELSE 0 END), 0) AS pending
+       FROM training_session_registrations reg
        JOIN training_sessions s ON s.id = reg.session_id
        LEFT JOIN training_session_attendance a ON a.session_id = reg.session_id AND a.instructor_id = reg.instructor_id
-       WHERE reg.instructor_id = ? AND s.required = 1 AND s.scheduled_at < ? AND (a.attended IS NULL OR a.attended = 0)
-       LIMIT 1`,
+       WHERE reg.instructor_id = ? AND s.required = 1`,
     )
-    .get(instructorId, now);
+    .get(now, now, instructorId) as { missed: number; pending: number };
 
   const onboardingStatus = deriveOnboardingStatus(requiredOnboarding, completed);
-  const trainingStatus = deriveTrainingStatus(requiredTraining, completed, missedRequiredSession);
+  const trainingStatus = deriveTrainingStatus(
+    requiredTraining,
+    completed,
+    requiredSessionState.missed === 1,
+    requiredSessionState.pending === 1,
+  );
 
   const latestEval = db
     .prepare("SELECT decision FROM practice_evaluations WHERE instructor_id = ? ORDER BY evaluated_at DESC LIMIT 1")
     .get(instructorId) as { decision: PracticeEvalDecision } | undefined;
-  const eligibilityStatus = deriveEligibility(trainingStatus, latestEval?.decision ?? null);
+  const eligibilityStatus = deriveEligibility(onboardingStatus, trainingStatus, latestEval?.decision ?? null);
 
   db.prepare(
     "UPDATE instructors SET onboarding_status = ?, training_status = ?, eligibility_status = ?, updated_at = ? WHERE id = ?",
   ).run(onboardingStatus, trainingStatus, eligibilityStatus, now, instructorId);
+}
+
+/**
+ * Time passing is itself a training lifecycle event: an unmet required live
+ * session changes from pending to missed when it starts. Refresh only dossiers
+ * whose persisted state can have crossed that boundary, so authorization and
+ * leadership reads never trust eligibility that is stale merely because no one
+ * has performed another write yet.
+ */
+function refreshNewlyMissedRequiredTrainingStatuses(instructorId?: string, now: number = Date.now()): number {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT i.id
+         FROM instructors i
+         JOIN training_session_registrations reg ON reg.instructor_id = i.id
+         JOIN training_sessions s ON s.id = reg.session_id
+         LEFT JOIN training_session_attendance a
+           ON a.session_id = reg.session_id AND a.instructor_id = reg.instructor_id
+        WHERE i.stage NOT IN ('rejected','inactive')
+          AND i.training_status <> 'behind'
+          AND s.required = 1
+          AND s.scheduled_at <= ?
+          AND (a.attended IS NULL OR a.attended = 0)
+          AND (? IS NULL OR i.id = ?)
+        ORDER BY i.id`,
+    )
+    .all(now, instructorId ?? null, instructorId ?? null) as { id: string }[];
+  for (const instructor of rows) recomputeInstructorStatuses(instructor.id);
+  return rows.length;
+}
+
+/**
+ * Re-derive every instructor after the definition of required training changes.
+ * Callers hold the writer transaction so no eligibility decision can observe a
+ * half-updated population.
+ */
+export function recomputeAllInstructorStatuses(): number {
+  const instructorIds = getDb()
+    .prepare("SELECT id FROM instructors WHERE stage NOT IN ('rejected','inactive') ORDER BY id")
+    .all() as { id: string }[];
+  for (const instructor of instructorIds) recomputeInstructorStatuses(instructor.id);
+  return instructorIds.length;
 }
 
 /* ---------------- read functions ---------------- */
@@ -370,6 +446,7 @@ export function recomputeInstructorStatuses(instructorId: string): void {
 
 export function listInstructors(): (Instructor & { person: Person | null })[] {
   const db = getDb();
+  refreshNewlyMissedRequiredTrainingStatuses();
   const instructors = (db.prepare("SELECT * FROM instructors ORDER BY updated_at DESC").all() as any[]).map(rowToInstructor);
   return instructors.map((i) => {
     const p = db.prepare("SELECT * FROM people WHERE id = ?").get(i.personId) as any;
@@ -379,6 +456,7 @@ export function listInstructors(): (Instructor & { person: Person | null })[] {
 
 export function getInstructorDetail(id: string) {
   const db = getDb();
+  refreshNewlyMissedRequiredTrainingStatuses(id);
   const row = db.prepare("SELECT * FROM instructors WHERE id = ?").get(id) as any;
   if (!row) return null;
   const instructor = rowToInstructor(row);
@@ -405,9 +483,22 @@ export function getInstructorDetail(id: string) {
 
 export function getInstructorByUserId(userId: string): Instructor | null {
   const db = getDb();
-  const row = db
-    .prepare("SELECT i.* FROM instructors i JOIN people p ON p.id = i.person_id WHERE p.user_id = ? LIMIT 1")
-    .get(userId) as any;
+  const statement = db.prepare(
+      `SELECT i.*
+         FROM instructors i
+         JOIN people p ON p.id = i.person_id
+        WHERE p.user_id = ?
+        ORDER BY
+          CASE WHEN i.stage NOT IN ('rejected','inactive') THEN 0 ELSE 1 END,
+          CASE WHEN i.stage = 'active' THEN 1 ELSE 0 END,
+          i.created_at DESC,
+          i.id DESC
+        LIMIT 1`,
+    );
+  let row = statement.get(userId) as any;
+  if (row && refreshNewlyMissedRequiredTrainingStatuses(String(row.id)) > 0) {
+    row = statement.get(userId) as any;
+  }
   return row ? rowToInstructor(row) : null;
 }
 
@@ -432,13 +523,28 @@ export function getClassDetail(id: string) {
   if (!row) return null;
   const cls = rowToClass(row);
   const instructors = db
-    .prepare("SELECT ci.*, i.stage FROM class_instructors ci JOIN instructors i ON i.id = ci.instructor_id WHERE ci.class_id = ?")
+    .prepare("SELECT ci.*, i.stage FROM class_instructors ci JOIN instructors i ON i.id = ci.instructor_id WHERE ci.class_id = ? AND ci.removed_at IS NULL")
     .all(id) as any[];
   const sessions = (db.prepare("SELECT * FROM class_sessions WHERE class_id = ? ORDER BY session_date").all(id) as any[]).map(
-    (r): ClassSession => ({ id: r.id, classId: r.class_id, sessionDate: r.session_date, location: r.location ?? null, createdAt: r.created_at }),
+    (r): ClassSession => ({
+      id: r.id,
+      classId: r.class_id,
+      sessionDate: r.session_date,
+      timeZone: r.timezone ?? null,
+      location: r.location ?? null,
+      createdAt: r.created_at,
+    }),
   );
   const enrollments = (db.prepare("SELECT * FROM class_enrollments WHERE class_id = ?").all(id) as any[]).map(
-    (r): ClassEnrollment => ({ id: r.id, classId: r.class_id, studentId: r.student_id, status: r.status, enrolledAt: r.enrolled_at }),
+    (r): ClassEnrollment => ({
+      id: r.id,
+      classId: r.class_id,
+      studentId: r.student_id,
+      status: r.status,
+      enrolledAt: r.enrolled_at,
+      confirmedAt: r.confirmed_at ?? null,
+      confirmationSource: r.confirmation_source ?? null,
+    }),
   );
   return { class: cls, instructors, sessions, enrollments };
 }
@@ -457,7 +563,15 @@ export function getStudentDetail(id: string) {
     ? (db.prepare("SELECT * FROM people WHERE id = ?").get(student.guardianPersonId) as any)
     : null;
   const enrollments = (db.prepare("SELECT * FROM class_enrollments WHERE student_id = ?").all(id) as any[]).map(
-    (r): ClassEnrollment => ({ id: r.id, classId: r.class_id, studentId: r.student_id, status: r.status, enrolledAt: r.enrolled_at }),
+    (r): ClassEnrollment => ({
+      id: r.id,
+      classId: r.class_id,
+      studentId: r.student_id,
+      status: r.status,
+      enrolledAt: r.enrolled_at,
+      confirmedAt: r.confirmed_at ?? null,
+      confirmationSource: r.confirmation_source ?? null,
+    }),
   );
   return { student, guardian: guardian ? rowToPerson(guardian) : null, enrollments };
 }
@@ -489,9 +603,19 @@ export function listTasks(): Task[] {
 /** Instructors eligible to lead/assist a class (stage eligible or active). */
 export function listEligibleInstructors(): (Instructor & { person: Person | null })[] {
   const db = getDb();
-  const rows = (db.prepare("SELECT * FROM instructors WHERE stage IN ('eligible','active') ORDER BY updated_at DESC").all() as any[]).map(
-    rowToInstructor,
-  );
+  refreshNewlyMissedRequiredTrainingStatuses();
+  const rows = (
+    db
+      .prepare(
+        `SELECT * FROM instructors
+          WHERE stage IN ('eligible','active')
+            AND eligibility_status = 'eligible'
+            AND onboarding_status = 'complete'
+            AND training_status = 'complete'
+          ORDER BY updated_at DESC`,
+      )
+      .all() as any[]
+  ).map(rowToInstructor);
   return rows.map((i) => {
     const p = db.prepare("SELECT * FROM people WHERE id = ?").get(i.personId) as any;
     return { ...i, person: p ? rowToPerson(p) : null };
@@ -583,7 +707,7 @@ export function listClassesForInstructor(instructorId: string): Class[] {
   return (
     db
       .prepare(
-        "SELECT c.* FROM classes c JOIN class_instructors ci ON ci.class_id = c.id WHERE ci.instructor_id = ? ORDER BY c.updated_at DESC",
+        "SELECT c.* FROM classes c JOIN class_instructors ci ON ci.class_id = c.id WHERE ci.instructor_id = ? AND ci.removed_at IS NULL ORDER BY c.updated_at DESC",
       )
       .all(instructorId) as any[]
   ).map(rowToClass);
@@ -593,6 +717,7 @@ export function listClassesForInstructor(instructorId: string): Class[] {
 export function getLeadershipHomeData() {
   const db = getDb();
   const now = Date.now();
+  refreshNewlyMissedRequiredTrainingStatuses(undefined, now);
   const staleCutoff = now - STALE_DAYS * DAY_MS;
 
   const newApplications = (db.prepare("SELECT * FROM instructors WHERE stage = 'applied' ORDER BY created_at DESC").all() as any[]).map(rowToInstructor);
@@ -622,7 +747,7 @@ export function getLeadershipHomeData() {
         `SELECT c.* FROM classes c
          WHERE c.status NOT IN ('completed','cancelled')
            AND (c.lead_instructor_id IS NULL
-             OR NOT EXISTS (SELECT 1 FROM instructors i WHERE i.id = c.lead_instructor_id AND i.eligibility_status = 'eligible'))
+             OR NOT EXISTS (SELECT 1 FROM instructors i WHERE i.id = c.lead_instructor_id AND i.eligibility_status = 'eligible' AND i.stage IN ('eligible','active')))
          ORDER BY c.updated_at`,
       )
       .all() as any[]
@@ -631,12 +756,17 @@ export function getLeadershipHomeData() {
   const activeClasses = (db.prepare("SELECT * FROM classes WHERE status NOT IN ('completed','cancelled')").all() as any[]).map(rowToClass);
   const classesLaunchingSoonIncomplete: Class[] = activeClasses.filter((cls) => {
     const enrollmentCount = (
-      db.prepare("SELECT COUNT(*) AS n FROM class_enrollments WHERE class_id = ? AND status = 'enrolled'").get(cls.id) as { n: number }
+      db.prepare(
+        `SELECT COUNT(*) AS n
+           FROM class_enrollments ce
+           JOIN students s ON s.id = ce.student_id
+          WHERE ce.class_id = ? AND ce.status = 'enrolled' AND s.enrollment_status = 'active'`,
+      ).get(cls.id) as { n: number }
     ).n;
     const hasEligibleLead = !!(
       cls.leadInstructorId &&
       (db
-        .prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible'")
+        .prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible' AND stage IN ('eligible','active')")
         .get(cls.leadInstructorId) as { 1: number } | undefined)
     );
     return classStatusFlags(cls, hasEligibleLead, enrollmentCount).launchingSoonIncomplete;
@@ -749,7 +879,12 @@ export function getPersonByEmail(email: string): Person | null {
 export function getActiveInstructorForPerson(personId: string): Instructor | null {
   const db = getDb();
   const row = db
-    .prepare("SELECT * FROM instructors WHERE person_id = ? AND stage NOT IN ('rejected','inactive') ORDER BY created_at DESC LIMIT 1")
+    .prepare(
+      `SELECT * FROM instructors
+        WHERE person_id = ? AND stage NOT IN ('rejected','inactive')
+        ORDER BY CASE WHEN stage = 'active' THEN 1 ELSE 0 END, created_at DESC, id DESC
+        LIMIT 1`,
+    )
     .get(personId) as any;
   return row ? rowToInstructor(row) : null;
 }
@@ -757,13 +892,13 @@ export function getActiveInstructorForPerson(personId: string): Instructor | nul
 /** Staff (admin | growth) user ids — used to fan out pipeline notifications. */
 export function listStaffUserIds(): string[] {
   const db = getDb();
-  return (db.prepare("SELECT id FROM users WHERE role IN ('admin','growth')").all() as { id: string }[]).map((r) => r.id);
+  return (db.prepare("SELECT id FROM users WHERE role IN ('admin','growth') AND status = 'active'").all() as { id: string }[]).map((r) => r.id);
 }
 
 /** Staff (admin | growth) users by name — feeds UserSelect pickers. */
 export function listStaffUsers(): { id: string; name: string }[] {
   const db = getDb();
-  return db.prepare("SELECT id, name FROM users WHERE role IN ('admin','growth') ORDER BY name").all() as { id: string; name: string }[];
+  return db.prepare("SELECT id, name FROM users WHERE role IN ('admin','growth') AND status = 'active' ORDER BY name").all() as { id: string; name: string }[];
 }
 
 /** Resolves a set of user ids to display names (any role, not just staff). Unknown ids pass through unchanged. */
@@ -795,7 +930,9 @@ export interface InvitationRecord {
   cohortId: string | null;
   created: string;
   expires: string;
+  expiresAt: number;
   status: "pending";
+  token: string;
 }
 
 /**
@@ -808,17 +945,96 @@ export interface InvitationRecord {
  */
 export function createInvitationInternal(input: NewInvitationInput): InvitationRecord {
   const db = getDb();
-  const id = `inv-${randomUUID().slice(0, 8)}`;
+  const id = `inv-${randomUUID()}`;
   const today = new Date();
   const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const created = fmt(today);
-  const expires = fmt(new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000));
+  const expiresAt = today.getTime() + 14 * 24 * 60 * 60 * 1000;
+  const expires = fmt(new Date(expiresAt));
   const email = input.email.trim().toLowerCase();
+  const token = randomBytes(32).toString("base64url");
 
-  db.prepare(
-    "INSERT INTO invitations (id, email, role, org_id, cohort_id, created, expires, status, token) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
-  ).run(id, email, input.role, input.orgId, input.cohortId, created, expires, id);
+  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Enter a valid email address.");
+  if (input.role !== "student" && input.role !== "instructor") throw new Error("Choose a valid invitation role.");
+  const nestedTransaction = db.isTransaction;
+  db.exec(nestedTransaction ? "SAVEPOINT create_invitation" : "BEGIN IMMEDIATE");
+  try {
+    // These authorization reads intentionally happen after the writer lock.
+    // Otherwise a partner pause could revoke access between the read and the
+    // invitation insert, leaving a brand-new credential for an inactive org.
+    const existingUser = db
+      .prepare("SELECT role, org_id, status, password_hash FROM users WHERE lower(email) = lower(?)")
+      .get(email) as { role: string; org_id: string; status: string; password_hash: string | null } | undefined;
+    const claimablePlaceholder =
+      existingUser?.status === "invited" &&
+      existingUser.password_hash == null &&
+      existingUser.role === input.role &&
+      existingUser.org_id === input.orgId;
+    if (existingUser && !claimablePlaceholder) {
+      throw new Error("That email already has an account. Use sign in or account recovery instead of an invitation.");
+    }
+    if (!db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status = 'active'").get(input.orgId)) {
+      throw new Error("The invitation organization is no longer active.");
+    }
+    if (input.role === "student") {
+      if (!input.cohortId) throw new Error("Student invitations require a cohort.");
+      const cohort = db.prepare("SELECT org_id, status FROM cohorts WHERE id = ?").get(input.cohortId) as
+        | { org_id: string; status: string }
+        | undefined;
+      if (!cohort || cohort.org_id !== input.orgId || !["active", "enrolling"].includes(cohort.status)) {
+        throw new Error("The invited cohort is no longer available for enrollment.");
+      }
+    } else {
+      const approvedProfiles = db.prepare(
+        `SELECT i.id
+           FROM people p
+           JOIN instructors i ON i.person_id = p.id
+          WHERE lower(trim(p.email)) = ?
+            AND i.stage IN ('accepted','onboarding','training','practice_evaluation','eligible','active')
+          ORDER BY i.created_at DESC, i.id DESC`,
+      ).all(email) as { id: string }[];
+      if (input.orgId !== "org-bow" || approvedProfiles.length !== 1) {
+        throw new Error("Instructor invitations must come from one approved BOW hiring record.");
+      }
+    }
 
-  return { id, email, role: input.role, orgId: input.orgId, cohortId: input.cohortId, created, expires, status: "pending" };
+    db.prepare("UPDATE invitations SET status = 'revoked' WHERE lower(email) = lower(?) AND status = 'pending'").run(email);
+    db.prepare(
+      "INSERT INTO invitations (id, email, role, org_id, cohort_id, created, expires, expires_at, status, token, token_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+    ).run(
+      id,
+      email,
+      input.role,
+      input.orgId,
+      input.cohortId,
+      created,
+      expires,
+      expiresAt,
+      `retired:${randomUUID()}`,
+      hashOpaqueToken(token),
+    );
+    db.exec(nestedTransaction ? "RELEASE SAVEPOINT create_invitation" : "COMMIT");
+  } catch (error) {
+    if (nestedTransaction) {
+      db.exec("ROLLBACK TO SAVEPOINT create_invitation");
+      db.exec("RELEASE SAVEPOINT create_invitation");
+    } else if (db.isTransaction) {
+      db.exec("ROLLBACK");
+    }
+    throw error;
+  }
+
+  return {
+    id,
+    email,
+    role: input.role,
+    orgId: input.orgId,
+    cohortId: input.cohortId,
+    created,
+    expires,
+    expiresAt,
+    status: "pending",
+    token,
+  };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

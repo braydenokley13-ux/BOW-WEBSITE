@@ -1,23 +1,25 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getPublicProfile } from "@/lib/profile";
-import { getPublishedPapersByAuthor, rehydrateArticlesFromMirror } from "@/lib/articles";
+import { getPublicProfile, getPublicProfileRecord } from "@/lib/profile";
 import PublicProfileView from "@/components/profile/PublicProfileView";
 
 type Props = { params: Promise<{ studentId: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { studentId } = await params;
-  const profile = getPublicProfile(studentId);
+  const { studentId: publicSlug } = await params;
+  const profile = getPublicProfile(publicSlug);
   if (!profile) {
     return { title: "Profile not found · BOW Sports Capital", robots: { index: false, follow: false } };
   }
   const title = `${profile.name} — ${profile.rank.name} · BOW Sports Capital`;
-  const description = `${profile.name} reached ${profile.rank.name} on BOW Sports Capital — ${profile.modulesCompleted}/${profile.totalModules} Track 101 modules${profile.certificateEarned ? ", certified" : ""}. BOW Score ${profile.bowScore}.`;
+  const description = `${profile.name} reached ${profile.rank.name} on BOW Sports Capital — ${profile.modulesCompleted}/${profile.totalModules} Track 101 modules${profile.certificateEarned ? ", certified" : ""}.`;
 
   return {
     title,
     description,
+    // Student credentials are share-by-link only in v1. Even with guardian
+    // approval, search-engine discovery remains off by default.
+    robots: { index: false, follow: false },
     openGraph: {
       title,
       description,
@@ -33,17 +35,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function PublicProfilePage({ params }: Props) {
-  const { studentId } = await params;
-  const profile = getPublicProfile(studentId);
-  if (!profile) notFound();
-  // Published research belongs on the credential — it's the strongest
-  // line on it. Rehydrate first so papers survive a cold start.
-  await rehydrateArticlesFromMirror();
-  const papers = getPublishedPapersByAuthor(studentId).map((a) => ({
-    slug: a.slug,
-    title: a.title,
-    abstract: a.dek,
-    publishedAt: a.publishedAt,
-  }));
-  return <PublicProfileView profile={profile} papers={papers} />;
+  const { studentId: publicSlug } = await params;
+  const record = getPublicProfileRecord(publicSlug);
+  if (!record) notFound();
+  // Research publication/byline consent is separate from guardian credential
+  // sharing consent. Do not attach papers to a minor's public credential until
+  // that independent workflow exists.
+  return <PublicProfileView profile={record.profile} />;
 }

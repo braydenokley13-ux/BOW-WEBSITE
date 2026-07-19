@@ -33,7 +33,7 @@ interface ConfirmConfig {
   body: string;
   confirmLabel: string;
   tone: "negative" | "info" | "warning";
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
 }
 
 export type RosterEntry = Enrollment & { user: User };
@@ -69,7 +69,7 @@ interface AppStateValue {
   lessonProgressFor: (uid: string, lessonId: string) => LessonProgressDetail | null;
   notesForCohort: (cohortId: string) => SessionNote[];
 
-  // effective status — database snapshot with optimistic overrides layered on top
+  // effective status — database snapshot with server-confirmed overrides
   userStatusOf: (u: User) => UserStatus;
   invStatusOf: (iv: Invitation) => InvitationStatus;
   inqStatusOf: (iq: Inquiry) => InquiryStatus;
@@ -77,7 +77,7 @@ interface AppStateValue {
   attendanceOf: (cohortId: string, userId: string, fallback: AttendanceState) => AttendanceState;
 
   // ---- mutations ----
-  // status toggles: optimistic + persisted
+  // status mutations: persisted first, then reflected locally
   suspendUser: (id: string) => void;
   restoreUser: (id: string) => void;
   setInvStatus: (id: string, status: InvitationStatus) => void;
@@ -95,6 +95,7 @@ interface AppStateValue {
   addSessionNote: (cohortId: string, scope: string, text: string) => void;
   requestAccountDeletion: () => void;
   dismissDeletionRequest: (userId: string) => void;
+  fulfillDeletionRequest: (userId: string) => void;
   // student progress
   startLesson: (lessonId: string) => void;
   setSimulationDone: (lessonId: string, done: boolean) => void;
@@ -136,10 +137,11 @@ export function AppStateProvider({
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
 
-  // Optimistic overlays for high-frequency status toggles so the UI responds
-  // instantly; the same change is also written to the database.
+  // Server-confirmed overlays keep the current screen responsive after a
+  // successful mutation without claiming a change that the database rejected.
   const [userStatusOverride, setUserStatusOverride] = useState<Record<string, UserStatus>>({});
   const [invStatusOverride, setInvStatusOverride] = useState<Record<string, InvitationStatus>>({});
+  const [invitationTokenOverride, setInvitationTokenOverride] = useState<Record<string, string>>({});
   const [inqStatusOverride, setInqStatusOverride] = useState<Record<string, InquiryStatus>>({});
   const [cohortLessonOverride, setCohortLessonOverride] = useState<Record<string, string>>({});
   const [attendance, setAttendanceMap] = useState<Record<string, Record<string, AttendanceState>>>({});
@@ -147,6 +149,11 @@ export function AppStateProvider({
   const [toast, setToast] = useState<Toast | null>(null);
   const [confirm, setConfirm] = useState<ConfirmConfig | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
+  // This ref changes synchronously, unlike React state. It makes the confirm
+  // button consume one pending request exactly once, even if it is double-clicked
+  // before React has rendered the closed modal.
+  const confirmRef = useRef<ConfirmConfig | null>(null);
+  const confirmClickLockRef = useRef(false);
 
   // Index the snapshot for O(1) effective-status lookups.
   const dbUserStatus = useMemo(() => {
@@ -180,16 +187,38 @@ export function AppStateProvider({
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   }, []);
 
-  const askConfirm = useCallback((cfg: ConfirmConfig) => setConfirm(cfg), []);
-  const confirmNo = useCallback(() => setConfirm(null), []);
-  const confirmYes = useCallback(() => {
-    setConfirm((c) => {
-      c?.onConfirm();
-      return null;
-    });
+  const askConfirm = useCallback((cfg: ConfirmConfig) => {
+    confirmRef.current = cfg;
+    setConfirm(cfg);
   }, []);
+  const confirmNo = useCallback(() => {
+    if (!confirm || confirmRef.current !== confirm) return;
+    confirmRef.current = null;
+    setConfirm(null);
+  }, [confirm]);
+  const confirmYes = useCallback(() => {
+    if (confirmClickLockRef.current) return;
+    const pending = confirmRef.current;
+    if (!pending || pending !== confirm) return;
 
-  const failToast = useCallback((msg: string) => () => showToast(msg, "negative"), [showToast]);
+    // Consume and close first. The callback is deliberately outside the state
+    // updater so React can replay state calculations without replaying effects.
+    confirmClickLockRef.current = true;
+    confirmRef.current = null;
+    setConfirm(null);
+    try {
+      const outcome = pending.onConfirm();
+      if (outcome) {
+        void outcome.catch(() => showToast("That action could not be completed", "negative"));
+      }
+    } catch {
+      showToast("That action could not be started", "negative");
+    } finally {
+      window.setTimeout(() => {
+        confirmClickLockRef.current = false;
+      }, 400);
+    }
+  }, [confirm, showToast]);
 
   // Run a structural mutation: persist, then re-pull the server snapshot.
   const run = useCallback(
@@ -202,50 +231,90 @@ export function AppStateProvider({
     [router, showToast],
   );
 
-  /* ---- optimistic status toggles ---- */
+  /* ---- confirmed status mutations ---- */
   const suspendUser = useCallback((id: string) => {
-    setUserStatusOverride((m) => ({ ...m, [id]: "suspended" }));
-    showToast("Access suspended", "negative");
-    lms.suspendUser(id).catch(failToast("Couldn't suspend — try again"));
-  }, [showToast, failToast]);
+    void lms.suspendUser(id)
+      .then(() => {
+        setUserStatusOverride((m) => ({ ...m, [id]: "suspended" }));
+        showToast("Access suspended", "negative");
+        router.refresh();
+      })
+      .catch(() => showToast("Couldn't suspend — try again", "negative"));
+  }, [router, showToast]);
 
   const restoreUser = useCallback((id: string) => {
-    setUserStatusOverride((m) => ({ ...m, [id]: "active" }));
-    showToast("Access restored");
-    lms.restoreUser(id).catch(failToast("Couldn't restore — try again"));
-  }, [showToast, failToast]);
+    void lms.restoreUser(id)
+      .then(() => {
+        setUserStatusOverride((m) => ({ ...m, [id]: "active" }));
+        showToast("Access restored");
+        router.refresh();
+      })
+      .catch(() => showToast("Couldn't restore — try again", "negative"));
+  }, [router, showToast]);
 
   const setInvStatus = useCallback((id: string, status: InvitationStatus) => {
     setInvStatusOverride((m) => ({ ...m, [id]: status }));
-    showToast("Invitation " + status, status === "revoked" ? "negative" : "positive");
-    lms.setInvitationStatus(id, status).catch(failToast("Couldn't update invitation"));
-  }, [showToast, failToast]);
+    lms.setInvitationStatus(id, status)
+      .then((result) => {
+        if (result.token) setInvitationTokenOverride((m) => ({ ...m, [id]: result.token! }));
+        else if (status === "revoked") {
+          setInvitationTokenOverride((m) => {
+            const next = { ...m };
+            delete next[id];
+            return next;
+          });
+        }
+        showToast(status === "pending" ? "Fresh invitation link ready to copy" : "Invitation revoked", status === "revoked" ? "negative" : "positive");
+        router.refresh();
+      })
+      .catch(() => {
+        setInvStatusOverride((m) => ({ ...m, [id]: dbInvStatus[id] ?? "revoked" }));
+        showToast("Couldn't update invitation", "negative");
+      });
+  }, [showToast, router, dbInvStatus]);
 
   const setInqStatus = useCallback((id: string, status: InquiryStatus) => {
-    setInqStatusOverride((m) => ({ ...m, [id]: status }));
-    showToast("Inquiry marked " + status);
-    lms.setInquiryStatus(id, status).catch(failToast("Couldn't update inquiry"));
-  }, [showToast, failToast]);
+    void lms.setInquiryStatus(id, status)
+      .then(() => {
+        setInqStatusOverride((m) => ({ ...m, [id]: status }));
+        showToast("Inquiry marked " + status);
+        router.refresh();
+      })
+      .catch(() => showToast("Couldn't update inquiry", "negative"));
+  }, [router, showToast]);
 
   const setAttendance = useCallback((cohortId: string, uid: string, state: AttendanceState) => {
-    setAttendanceMap((m) => ({ ...m, [cohortId]: { ...(m[cohortId] ?? {}), [uid]: state } }));
-    lms.setAttendance(cohortId, uid, state).catch(failToast("Couldn't save attendance"));
-  }, [failToast]);
+    void lms.setAttendance(cohortId, uid, state)
+      .then(() => {
+        setAttendanceMap((m) => ({ ...m, [cohortId]: { ...(m[cohortId] ?? {}), [uid]: state } }));
+      })
+      .catch(() => showToast("Couldn't save attendance", "negative"));
+  }, [showToast]);
 
   const advanceCohortLesson = useCallback((cohortId: string, nextLessonId: string | null) => {
     if (!nextLessonId) {
       showToast("This is the final lesson", "warning");
       return;
     }
-    setCohortLessonOverride((m) => ({ ...m, [cohortId]: nextLessonId }));
-    showToast("Cohort advanced to the next lesson");
-    lms.advanceCohortLesson(cohortId, nextLessonId).catch(failToast("Couldn't advance cohort"));
-  }, [showToast, failToast]);
+    void lms.advanceCohortLesson(cohortId, nextLessonId)
+      .then(() => {
+        setCohortLessonOverride((m) => ({ ...m, [cohortId]: nextLessonId }));
+        showToast("Cohort advanced to the next lesson");
+        router.refresh();
+      })
+      .catch(() => showToast("Couldn't advance cohort", "negative"));
+  }, [router, showToast]);
 
   /* ---- structural mutations (persist + refresh) ---- */
   const createInvitation = useCallback((input: lms.NewInvitationInput) => {
-    run(lms.createInvitation(input), "Invitation created", "Couldn't create invitation");
-  }, [run]);
+    lms.createInvitation(input)
+      .then((created) => {
+        if (created.token) setInvitationTokenOverride((m) => ({ ...m, [created.id]: created.token! }));
+        showToast("Invitation created — copy the link now");
+        router.refresh();
+      })
+      .catch(() => showToast("Couldn't create invitation", "negative"));
+  }, [router, showToast]);
 
   const createCohort = useCallback((input: lms.NewCohortInput) => {
     run(lms.createCohort(input), "Cohort created as a draft", "Couldn't create cohort");
@@ -281,6 +350,14 @@ export function AppStateProvider({
 
   const dismissDeletionRequest = useCallback((userId: string) => {
     run(lms.dismissDeletionRequest(userId), "Deletion request dismissed", "Couldn't dismiss request");
+  }, [run]);
+
+  const fulfillDeletionRequest = useCallback((userId: string) => {
+    run(
+      lms.fulfillDeletionRequest(userId),
+      "Deletion request fulfilled — account identity anonymized",
+      "Couldn't fulfill deletion request",
+    );
   }, [run]);
 
   /* ---- student progress ---- */
@@ -384,7 +461,10 @@ export function AppStateProvider({
       me,
       signOut,
       data,
-      invitations: data.invitations,
+      invitations: data.invitations.map((invitation) => ({
+        ...invitation,
+        token: invitationTokenOverride[invitation.id],
+      })),
       inquiries: data.inquiries,
       selectedCohortId,
       setSelectedCohortId,
@@ -405,7 +485,10 @@ export function AppStateProvider({
       lessonProgressFor,
       notesForCohort,
       userStatusOf: (u) => userStatusOverride[u.id] ?? dbUserStatus[u.id] ?? u.status,
-      invStatusOf: (iv) => invStatusOverride[iv.id] ?? dbInvStatus[iv.id] ?? iv.status,
+      invStatusOf: (iv) => {
+        const status = invStatusOverride[iv.id] ?? dbInvStatus[iv.id] ?? iv.status;
+        return status === "pending" && iv.expiresAt != null && iv.expiresAt <= Date.now() ? "expired" : status;
+      },
       inqStatusOf: (iq) => inqStatusOverride[iq.id] ?? dbInqStatus[iq.id] ?? iq.status,
       cohortCurrentLessonId: (c) =>
         cohortLessonOverride[c.id] ?? dbCohortLesson[c.id] ?? c.currentLessonId,
@@ -427,6 +510,7 @@ export function AppStateProvider({
       addSessionNote,
       requestAccountDeletion,
       dismissDeletionRequest,
+      fulfillDeletionRequest,
       startLesson,
       setSimulationDone,
       saveReflection,
@@ -444,12 +528,12 @@ export function AppStateProvider({
     }),
     [
       role, me, signOut, data, selectedCohortId, selectedStudentId, selectedOrganizationId,
-      selectedInquiryId, selectedLessonId, userStatusOverride, invStatusOverride, inqStatusOverride,
+      selectedInquiryId, selectedLessonId, userStatusOverride, invStatusOverride, invitationTokenOverride, inqStatusOverride,
       cohortLessonOverride, attendance, dbUserStatus, dbInvStatus, dbInqStatus, dbCohortLesson,
       toast, confirm, showToast, askConfirm, confirmYes, confirmNo, suspendUser, restoreUser,
       setInvStatus, setInqStatus, setAttendance, advanceCohortLesson, createInvitation, createCohort,
       createOrganization, assignInstructor, assignStudent, removeStudent, transferStudent, addSessionNote,
-      requestAccountDeletion, dismissDeletionRequest, startLesson, setSimulationDone, saveReflection,
+      requestAccountDeletion, dismissDeletionRequest, fulfillDeletionRequest, startLesson, setSimulationDone, saveReflection,
       setChallengeDone, completeLesson, recordPodcastProgress, checkAndUnlockNextLesson, saveReflectionAndCheck,
       getUser, getOrg, getCohort, cohortRoster, cohortsForInstructor,
       activeEnrollmentFor, lessonProgressFor, notesForCohort,

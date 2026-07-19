@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge, Button, SectionHeader } from "@/components/ds";
 import { listInstructors, type InstructorStage } from "@/lib/hiring";
+import { getDb } from "@/lib/db";
 
 const STAGE_ORDER: InstructorStage[] = [
   "applied",
@@ -55,6 +56,10 @@ function daysInStage(updatedAt: number): number {
 
 export default function InstructorsPage() {
   const instructors = listInstructors();
+  const ownerNames = new Map(
+    (getDb().prepare("SELECT id, name FROM users").all() as { id: string; name: string }[])
+      .map((owner) => [owner.id, owner.name] as const),
+  );
   const byStage = new Map<InstructorStage, typeof instructors>();
   for (const stage of STAGE_ORDER) byStage.set(stage, []);
   for (const i of instructors) {
@@ -64,7 +69,7 @@ export default function InstructorsPage() {
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="BOW HQ" title="Instructors" action={{ label: "New Applicant", href: "/app/instructors/new" }} />
+      <SectionHeader kicker="BOW HQ" title="Instructors" action={{ label: "New Applicant", href: "/app/instructors/new" }} level={1} />
       <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)", maxWidth: 640, margin: 0 }}>
         The instructor pipeline, grouped by stage — applied through active. {instructors.length} total.
       </p>
@@ -124,7 +129,7 @@ export default function InstructorsPage() {
                         {i.source ?? "—"}
                       </td>
                       <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>
-                        {i.ownerUserId ?? "Unassigned"}
+                        {i.ownerUserId ? ownerNames.get(i.ownerUserId) ?? "Owner unavailable" : "Unassigned"}
                       </td>
                       <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>
                         {daysInStage(i.updatedAt)}d

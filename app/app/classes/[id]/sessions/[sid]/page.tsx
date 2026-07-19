@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { SectionHeader, Badge } from "@/components/ds";
 import { getDb } from "@/lib/db";
+import { formatDateTimeInZone } from "@/lib/timezone";
+import { parseLessonSnapshot, resolveAttendanceStatus } from "@/lib/session-evidence";
 import SessionAttendanceForm from "@/components/app/teach/SessionAttendanceForm";
+import LessonGuide from "@/components/app/LessonGuide";
 
 /**
  * Staff-guarded view of a class session (attendance grid + session
@@ -10,41 +13,105 @@ import SessionAttendanceForm from "@/components/app/teach/SessionAttendanceForm"
  * so this reuses the exact same client form as the instructor-facing
  * /app/teach/classes/[id]/sessions/[sid] route.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export default async function StaffSessionDetailPage({ params }: { params: Promise<{ id: string; sid: string }> }) {
   const { id, sid } = await params;
 
   const db = getDb();
-  const session = db.prepare("SELECT * FROM class_sessions WHERE id = ? AND class_id = ?").get(sid, id) as any;
+  const session = db.prepare(
+    "SELECT session_date, timezone, location FROM class_sessions WHERE id = ? AND class_id = ?",
+  ).get(sid, id) as { session_date: number; timezone: string | null; location: string | null } | undefined;
   if (!session) notFound();
 
-  const cls = db.prepare("SELECT title FROM classes WHERE id = ?").get(id) as { title: string } | undefined;
+  const cls = db.prepare(
+    `SELECT c.title, c.schedule_timezone, curriculum.title AS curriculum_title
+       FROM classes c
+       LEFT JOIN curricula curriculum ON curriculum.id = c.curriculum_id
+      WHERE c.id = ?`,
+  ).get(id) as
+    | { title: string; schedule_timezone: string | null; curriculum_title: string | null }
+    | undefined;
 
-  const enrolled = db
-    .prepare("SELECT student_id FROM class_enrollments WHERE class_id = ? AND status = 'enrolled'")
-    .all(id) as { student_id: string }[];
+  const roster = db
+    .prepare(
+      `SELECT csr.student_id, s.name
+       FROM class_session_roster csr
+       LEFT JOIN students s ON s.id = csr.student_id
+       WHERE csr.session_id = ?
+       ORDER BY s.name, csr.student_id`,
+    )
+    .all(sid) as { student_id: string; name: string | null }[];
   const attendanceRows = db
-    .prepare("SELECT student_id, present FROM attendance_records WHERE session_id = ?")
-    .all(sid) as { student_id: string; present: number }[];
-  const attendanceMap = new Map(attendanceRows.map((r) => [r.student_id, r.present === 1]));
+    .prepare("SELECT student_id, present, status, note, recorded_at FROM attendance_records WHERE session_id = ?")
+    .all(sid) as { student_id: string; present: number; status: string | null; note: string | null; recorded_at: number }[];
+  const attendanceMap = new Map(attendanceRows.map((row) => [row.student_id, row]));
 
-  const students = enrolled.map((e) => {
-    const s = db.prepare("SELECT * FROM students WHERE id = ?").get(e.student_id) as any;
-    return { id: e.student_id, name: s?.name ?? e.student_id, present: attendanceMap.has(e.student_id) ? attendanceMap.get(e.student_id)! : null };
-  });
+  const students = roster.map((student) => ({
+    id: student.student_id,
+    name: student.name ?? student.student_id,
+    status: attendanceMap.has(student.student_id)
+      ? resolveAttendanceStatus(attendanceMap.get(student.student_id)?.status, attendanceMap.get(student.student_id)?.present)
+      : null,
+    note: attendanceMap.get(student.student_id)?.note ?? "",
+    recordedAt: attendanceMap.get(student.student_id)?.recorded_at ?? null,
+  }));
 
-  const report = db.prepare("SELECT * FROM class_session_reports WHERE session_id = ?").get(sid) as any;
+  const report = db.prepare(
+    `SELECT notes, flagged, flag_reason, completed, reported_at, lesson_id, lesson_snapshot
+       FROM class_session_reports WHERE session_id = ?`,
+  ).get(sid) as {
+    notes: string | null;
+    flagged: number;
+    flag_reason: string | null;
+    completed: number;
+    reported_at: number;
+    lesson_id: string | null;
+    lesson_snapshot: string | null;
+  } | undefined;
+  const storedLesson = report?.completed === 1
+    ? parseLessonSnapshot(report.lesson_snapshot, report.lesson_id)
+    : null;
+  const sessionTimeZone = session.timezone ?? cls?.schedule_timezone;
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker={cls?.title ?? "Session"} title={new Date(session.session_date).toLocaleString()} />
+      <SectionHeader kicker={cls?.title ?? "Session"} title={formatDateTimeInZone(session.session_date, sessionTimeZone)} level={1} />
       {session.location && (
         <p style={{ fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>{session.location}</p>
       )}
       {report?.flagged === 1 && <Badge status="negative">Flagged: {report.flag_reason || "See notes"}</Badge>}
       <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 }}>
-        <SessionAttendanceForm sessionId={sid} students={students} reportNotes={report?.notes ?? ""} />
+        <SessionAttendanceForm
+          key={`${sid}:${report?.reported_at ?? "new"}`}
+          sessionId={sid}
+          sessionStartsAt={Number(session.session_date)}
+          students={students}
+          reportNotes={report?.notes ?? ""}
+          reportFlagged={report?.flagged === 1}
+          reportFlagReason={report?.flag_reason ?? ""}
+          reportCompleted={report?.completed === 1}
+          reportReportedAt={report?.reported_at ?? null}
+        />
       </div>
+      {storedLesson ? (
+        <>
+          <div className="ops-alert" data-tone="info">
+            <span className="ops-alert__title">Finalized curriculum evidence</span>
+            <p className="ops-body" style={{ marginTop: 4 }}>
+              {storedLesson.title} was snapshotted when this report was finalized; later curriculum edits cannot rewrite this delivery record.
+            </p>
+          </div>
+          <LessonGuide lesson={storedLesson} />
+        </>
+      ) : report?.completed === 1 ? (
+        <div className="ops-alert" data-tone="info">
+          <span className="ops-alert__title">Legacy finalized record</span>
+          <p className="ops-body" style={{ marginTop: 4 }}>
+            This session predates immutable lesson snapshots. Its attendance and report remain authoritative, but no historical lesson version was captured.
+          </p>
+        </div>
+      ) : (
+        <p className="ops-body">{cls?.curriculum_title ?? "Class curriculum"} will be snapshotted when a verified legacy lesson is available at finalization.</p>
+      )}
     </div>
   );
 }

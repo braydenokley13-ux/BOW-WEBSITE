@@ -12,7 +12,7 @@
 
 import { revalidatePath } from "next/cache";
 
-export type EntityType = "instructor" | "class" | "student" | "organization" | "task" | "program" | "location";
+export type EntityType = "instructor" | "class" | "student" | "organization" | "task" | "program" | "location" | "region" | "inquiry";
 
 /** Detail-page href for a given entity type + id. */
 export function entityHref(entityType: string | null | undefined, id: string | null | undefined): string | null {
@@ -28,12 +28,14 @@ export function entityHref(entityType: string | null | undefined, id: string | n
       return `/app/partners/${id}`;
     case "task":
       return `/app/tasks`;
-    // Not built yet (E3/E6) — fall back to a sensible list page rather
-    // than a 404.
     case "program":
-      return `/app/programs`;
+      return `/app/programs/${id}`;
     case "location":
-      return `/app/locations`;
+      return `/app/locations/${id}`;
+    case "region":
+      return `/app/regions/${id}`;
+    case "inquiry":
+      return `/app/inquiries#inquiry-${id}`;
     default:
       return null;
   }
@@ -49,11 +51,16 @@ export function sessionHref(classId: string, sessionId: string): string {
 export const SECTION_PATHS = {
   home: "/app",
   instructors: "/app/instructors",
+  people: "/app/people",
+  programs: "/app/programs",
+  locations: "/app/locations",
+  regions: "/app/regions",
   classes: "/app/classes",
   classProposals: "/app/classes/proposals",
   students: "/app/students",
   partners: "/app/partners",
   tasks: "/app/tasks",
+  inquiries: "/app/inquiries",
   teach: "/app/teach",
 } as const;
 
@@ -65,7 +72,9 @@ export const SECTION_PATHS = {
  */
 export function revalidateEntity(entityType: EntityType, id?: string): void {
   const href = id ? entityHref(entityType, id) : null;
-  if (href) revalidatePath(href);
+  // Entity hrefs may include an in-page anchor for list-backed records such
+  // as inquiries. Cache invalidation targets the route, not the fragment.
+  if (href) revalidatePath(href.split("#", 1)[0]);
   switch (entityType) {
     case "instructor":
       revalidatePath(SECTION_PATHS.instructors);
@@ -81,6 +90,26 @@ export function revalidateEntity(entityType: EntityType, id?: string): void {
       break;
     case "organization":
       revalidatePath(SECTION_PATHS.partners);
+      break;
+    case "program":
+      revalidatePath(SECTION_PATHS.programs);
+      revalidatePath(SECTION_PATHS.classes);
+      revalidatePath(SECTION_PATHS.locations);
+      revalidatePath(SECTION_PATHS.partners);
+      break;
+    case "location":
+      revalidatePath(SECTION_PATHS.locations);
+      revalidatePath(SECTION_PATHS.programs);
+      break;
+    case "region":
+      revalidatePath(SECTION_PATHS.regions);
+      revalidatePath(SECTION_PATHS.locations);
+      break;
+    case "task":
+      revalidatePath(SECTION_PATHS.tasks);
+      break;
+    case "inquiry":
+      revalidatePath(SECTION_PATHS.inquiries);
       break;
     default:
       break;

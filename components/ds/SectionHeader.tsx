@@ -15,6 +15,8 @@ interface SectionHeaderProps {
   align?: "left" | "center" | "right";
   style?: CSSProperties;
   className?: string;
+  /** Page titles use level 1; nested section titles default to level 2. */
+  level?: 1 | 2;
 }
 
 /** SectionHeader — a franchise/section title built from type, spacing and a rule. */
@@ -26,7 +28,9 @@ export default function SectionHeader({
   align = "left",
   style,
   className,
+  level = 2,
 }: SectionHeaderProps) {
+  const Heading = level === 1 ? "h1" : "h2";
   return (
     <header className={className} style={{ display: "flex", flexDirection: "column", gap: 10, ...style }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
@@ -44,7 +48,7 @@ export default function SectionHeader({
               {kicker}
             </span>
           )}
-          <h2
+          <Heading
             style={{
               margin: 0,
               fontFamily: "var(--font-display)",
@@ -56,7 +60,7 @@ export default function SectionHeader({
             }}
           >
             {title}
-          </h2>
+          </Heading>
         </div>
         {action && (
           <Link

@@ -12,7 +12,7 @@ export default function StudentsPage() {
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="BOW HQ" title="Students" action={{ label: "New Student", href: "/app/students/new" }} />
+      <SectionHeader kicker="BOW HQ" title="Students" action={{ label: "New Student", href: "/app/students/new" }} level={1} />
       <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)", maxWidth: 640 }}>
         Student and guardian records across every class. {students.length} total.
       </p>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireUser } from "@/lib/dal";
+import { requireDiscussionMember } from "@/lib/dal";
 
 export const metadata: Metadata = {
   title: "Discussion",
@@ -8,7 +8,6 @@ export const metadata: Metadata = {
 };
 
 export default async function DiscussionLayout({ children }: { children: React.ReactNode }) {
-  // Any signed-in user (student, instructor, admin) can view the discussion board.
-  await requireUser();
+  await requireDiscussionMember();
   return <>{children}</>;
 }

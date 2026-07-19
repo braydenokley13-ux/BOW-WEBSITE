@@ -11,7 +11,8 @@ export default async function TeachLayout({ children }: { children: React.ReactN
   // requireInstructorSelf resolves people.user_id -> instructors row and
   // redirects to /app for anyone without one — including existing LMS-only
   // instructor seeds (e.g. u-coach) who have no BOW HQ instructor record.
-  // This is the security boundary for /app/teach, not just a UX nicety.
+  // The root workspace must remain available during onboarding and training;
+  // delivery pages apply the stricter active/eligible guard themselves.
   await requireInstructorSelf();
   return <>{children}</>;
 }

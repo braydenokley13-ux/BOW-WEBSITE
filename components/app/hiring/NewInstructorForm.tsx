@@ -13,7 +13,6 @@ const inputStyle: CSSProperties = {
   padding: "12px 14px",
   fontFamily: "var(--font-interface)",
   fontSize: 15,
-  outline: "none",
   width: "100%",
   borderRadius: 4,
 };
@@ -73,21 +72,21 @@ export default function NewInstructorForm() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 16 }}>
         <div>
           <label style={labelStyle} htmlFor="ni-name">Name</label>
-          <input id="ni-name" style={inputStyle} value={data.name} onChange={set("name")} />
+          <input className="bow-field" id="ni-name" style={inputStyle} value={data.name} onChange={set("name")} />
         </div>
         <div>
           <label style={labelStyle} htmlFor="ni-email">Email</label>
-          <input id="ni-email" type="email" style={inputStyle} value={data.email} onChange={set("email")} />
+          <input className="bow-field" id="ni-email" type="email" style={inputStyle} value={data.email} onChange={set("email")} />
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 16 }}>
         <div>
           <label style={labelStyle} htmlFor="ni-phone">Phone</label>
-          <input id="ni-phone" style={inputStyle} value={data.phone} onChange={set("phone")} />
+          <input className="bow-field" id="ni-phone" style={inputStyle} value={data.phone} onChange={set("phone")} />
         </div>
         <div>
           <label style={labelStyle} htmlFor="ni-source">Source</label>
-          <select id="ni-source" style={inputStyle} value={data.source} onChange={set("source")}>
+          <select className="bow-field" id="ni-source" style={inputStyle} value={data.source} onChange={set("source")}>
             {SOURCES.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
@@ -98,7 +97,7 @@ export default function NewInstructorForm() {
       </div>
       <div>
         <label style={labelStyle} htmlFor="ni-notes">Notes</label>
-        <textarea id="ni-notes" rows={4} style={{ ...inputStyle, resize: "vertical" }} value={data.notes} onChange={set("notes")} />
+        <textarea className="bow-field" id="ni-notes" rows={4} style={{ ...inputStyle, resize: "vertical" }} value={data.notes} onChange={set("notes")} />
       </div>
       {status === "error" && error && (
         <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12.5, color: "var(--bow-negative)" }}>{error}</p>

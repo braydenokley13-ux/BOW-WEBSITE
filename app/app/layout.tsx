@@ -3,6 +3,7 @@ import { AppStateProvider } from "@/components/app/AppState";
 import AppShell from "@/components/app/AppShell";
 import { requireUser, loadAppData } from "@/lib/dal";
 import { scopeAppDataForUser, EMPTY_APP_DATA } from "@/lib/account";
+import { getInstructorByUserId } from "@/lib/hiring";
 
 export const metadata: Metadata = {
   title: "Front Office",
@@ -16,11 +17,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const me = await requireUser();
   // growth-role users work entirely in the new BOW HQ data layer — never
   // load or ship the LMS snapshot to them.
-  const scoped = me.role === "growth" ? EMPTY_APP_DATA : scopeAppDataForUser(await loadAppData(), me);
+  const instructor = me.role === "instructor" ? getInstructorByUserId(me.id) : null;
+  const instructorCanReceiveDeliveryData = !instructor
+    || (instructor.stage === "active" && instructor.eligibilityStatus === "eligible");
+  const scoped = me.role === "growth" || (me.role === "instructor" && !instructorCanReceiveDeliveryData)
+    ? EMPTY_APP_DATA
+    : scopeAppDataForUser(await loadAppData(), me);
 
   return (
     <AppStateProvider me={me} data={scoped}>
-      <AppShell>{children}</AppShell>
+      <AppShell instructorCanDeliver={instructorCanReceiveDeliveryData}>{children}</AppShell>
     </AppStateProvider>
   );
 }

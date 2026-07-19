@@ -15,7 +15,6 @@ const inputStyle: CSSProperties = {
   padding: "8px 10px",
   fontFamily: "var(--font-interface)",
   fontSize: 13,
-  outline: "none",
   borderRadius: 4,
 };
 
@@ -65,28 +64,29 @@ export default function AvailabilityEditor({ instructorId, initialSlots }: { ins
       )}
       {slots.map((s, i) => (
         <div key={i} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <select style={inputStyle} value={s.dayOfWeek} onChange={(e) => update(i, { dayOfWeek: Number(e.target.value) })}>
+          <select aria-label={`Availability slot ${i + 1}: day`} style={inputStyle} value={s.dayOfWeek} onChange={(e) => update(i, { dayOfWeek: Number(e.target.value) })}>
             {DAY_LABELS.map((d, idx) => (
               <option key={d} value={idx}>
                 {d}
               </option>
             ))}
           </select>
-          <input type="time" style={inputStyle} value={s.startTime} onChange={(e) => update(i, { startTime: e.target.value })} />
+          <input aria-label={`Availability slot ${i + 1}: start time`} type="time" style={inputStyle} value={s.startTime} onChange={(e) => update(i, { startTime: e.target.value })} />
           <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>to</span>
-          <input type="time" style={inputStyle} value={s.endTime} onChange={(e) => update(i, { endTime: e.target.value })} />
+          <input aria-label={`Availability slot ${i + 1}: end time`} type="time" style={inputStyle} value={s.endTime} onChange={(e) => update(i, { endTime: e.target.value })} />
           <input
+            aria-label={`Availability slot ${i + 1}: notes`}
             style={{ ...inputStyle, flex: 1, minWidth: 120 }}
             placeholder="Notes (optional)"
             value={s.notes ?? ""}
             onChange={(e) => update(i, { notes: e.target.value })}
           />
-          <Button size="sm" variant="secondary" onClick={() => removeSlot(i)}>
+          <Button aria-label={`Remove availability slot ${i + 1}`} size="sm" variant="secondary" onClick={() => removeSlot(i)}>
             Remove
           </Button>
         </div>
       ))}
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         <Button size="sm" variant="secondary" onClick={addSlot}>
           Add Slot
         </Button>
@@ -94,8 +94,8 @@ export default function AvailabilityEditor({ instructorId, initialSlots }: { ins
           {busy ? "Saving…" : "Save Availability"}
         </Button>
       </div>
-      {saved && <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-positive)" }}>Saved.</p>}
-      {error && <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-negative)" }}>{error}</p>}
+      {saved && <p role="status" aria-live="polite" style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-positive)" }}>Saved.</p>}
+      {error && <p role="alert" style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-negative)" }}>{error}</p>}
     </div>
   );
 }

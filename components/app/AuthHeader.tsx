@@ -2,104 +2,204 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState } from "./AppState";
 import { roleLabel as roleLabelFor, roleAccent as roleAccentFor, initials, SELF_PACED_COHORT_ID } from "@/lib/account";
-import { navForRole } from "@/lib/navigation/catalog";
+import {
+  activeNavId,
+  groupContainsActive,
+  navForRole,
+  routeIsActive,
+  type NavLink,
+} from "@/lib/navigation/catalog";
 
-function isActive(pathname: string, href: string) {
-  if (href === "/app/instructor/cohort") return pathname.startsWith("/app/instructor/cohort") || pathname.startsWith("/app/instructor/session");
-  return pathname === href || pathname.startsWith(href + "/");
+export default function AuthHeader({ instructorCanDeliver = true }: { instructorCanDeliver?: boolean }) {
+  const pathname = usePathname();
+  return <AuthHeaderForPath key={pathname} pathname={pathname} instructorCanDeliver={instructorCanDeliver} />;
 }
 
-export default function AuthHeader() {
+function AuthHeaderForPath({
+  pathname,
+  instructorCanDeliver,
+}: {
+  pathname: string;
+  instructorCanDeliver: boolean;
+}) {
   const { role, me, data, signOut } = useAppState();
-  const pathname = usePathname();
+  const headerRef = useRef<HTMLElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
-  // BOW runs two products side by side: this cohort-taught LMS shell (/app/*)
-  // and a separate self-paced product (/dashboard, /instructor). A user
-  // enrolled/assigned in both shouldn't be stranded on one side with no way
-  // to reach the other — surface a link when it applies.
+  // BOW runs the cohort-taught workspace and a separate self-paced product.
+  // The bridge is a utility link because it changes product context rather
+  // than representing another section of the current workspace.
   const alsoSelfPaced =
     role === "student"
-      ? data.enrollments.some((e) => e.cohortId === SELF_PACED_COHORT_ID && e.enroll === "active")
+      ? data.enrollments.some((enrollment) => enrollment.cohortId === SELF_PACED_COHORT_ID && enrollment.enroll === "active")
       : role === "instructor"
-        ? data.cohorts.some((c) => c.id === SELF_PACED_COHORT_ID)
+        ? data.cohorts.some((cohort) => cohort.id === SELF_PACED_COHORT_ID)
         : false;
-  const baseNav = navForRole(role);
-  const nav = alsoSelfPaced
-    ? [...baseNav, { label: "Self-Paced Track", href: role === "student" ? "/dashboard" : "/instructor" }]
-    : baseNav;
+  const selfPacedHref = role === "student" ? "/dashboard" : "/instructor";
+  const navigation = navForRole(role, { instructorCanDeliver });
+  const activeId = activeNavId(pathname, navigation);
   const accent = roleAccentFor(role);
 
-  // Sign out clears the session server-side and redirects to the public site.
-  const goPublic = () => signOut();
+  useEffect(() => {
+    const closeOnPointerOutside = (event: PointerEvent) => {
+      if (headerRef.current && !headerRef.current.contains(event.target as Node)) setOpenGroup(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenGroup(null);
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnPointerOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointerOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  const desktopLink = (item: NavLink) => {
+    const active = item.id === activeId;
+    return (
+      <Link
+        key={item.id}
+        href={item.href}
+        className="bow-app-nav__link"
+        data-active={active ? "true" : undefined}
+        aria-current={active ? "page" : undefined}
+        onClick={() => setOpenGroup(null)}
+      >
+        {item.label}
+      </Link>
+    );
+  };
 
   return (
-    <header style={{ background: "var(--bow-white)", color: "var(--bow-ink)", borderBottom: "1px solid var(--border-rule)", position: "sticky", top: 0, zIndex: 100 }}>
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "0 clamp(16px,4vw,32px)", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 0 }}>
-          <Link href="/app" aria-label="BOW home" style={{ display: "flex", flexDirection: "column", lineHeight: 0.78, flexShrink: 0 }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 22, letterSpacing: "-0.02em", textTransform: "uppercase" }}>BOW</span>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 8, letterSpacing: "0.3em", color: "var(--bow-slate)", textTransform: "uppercase", marginTop: 2 }}>Sports Capital</span>
+    <header ref={headerRef} className="bow-app-header">
+      <div className="bow-app-header__bar">
+        <div className="bow-app-header__brand">
+          <Link href="/app" aria-label="BOW home" className="bow-app-header__logo">
+            <span className="bow-app-header__logo-mark">BOW</span>
+            <span className="bow-app-header__logo-name">Sports Capital</span>
           </Link>
-          <span style={{ width: 1, height: 26, background: "var(--border-rule)", flexShrink: 0 }} />
-          <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: accent, whiteSpace: "nowrap" }}>
+          <span className="bow-app-header__rule" aria-hidden="true" />
+          <span className="bow-app-header__role" style={{ color: accent }}>
             {roleLabelFor(role)}
           </span>
         </div>
 
-        <nav className="bow-nav-desktop" style={{ gap: "clamp(10px,1.4vw,26px)", flex: 1, justifyContent: "center" }}>
-          {nav.map((n) => {
-            const active = isActive(pathname, n.href);
+        <nav className="bow-nav-desktop bow-app-nav" aria-label="Primary navigation">
+          {navigation.map((entry) => {
+            if (entry.kind === "link") return desktopLink(entry);
+            const expanded = openGroup === entry.id;
+            const active = groupContainsActive(entry, activeId);
+            const panelId = `bow-nav-${entry.id}`;
             return (
-              <Link key={n.href} href={n.href} style={{ fontFamily: "var(--font-display)", fontWeight: active ? 700 : 600, fontSize: 13, letterSpacing: "0.04em", textTransform: "uppercase", color: active ? "var(--bow-ink)" : "var(--bow-slate)", paddingBottom: 4, borderBottom: `2px solid ${active ? "var(--bow-ink)" : "transparent"}`, whiteSpace: "nowrap" }}>
-                {n.label}
-              </Link>
+              <div className="bow-app-nav__group" key={entry.id}>
+                <button
+                  type="button"
+                  className="bow-app-nav__trigger"
+                  data-active={active ? "true" : undefined}
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  onClick={() => setOpenGroup((current) => current === entry.id ? null : entry.id)}
+                >
+                  {entry.label}<span aria-hidden="true">⌄</span>
+                </button>
+                <div id={panelId} className="bow-app-nav__panel" hidden={!expanded}>
+                  <span className="bow-app-nav__panel-label">{entry.label}</span>
+                  {entry.items.map(desktopLink)}
+                </div>
+              </div>
             );
           })}
         </nav>
 
-        <div className="bow-nav-desktop" style={{ alignItems: "center", gap: 14, flexShrink: 0 }}>
-          <button onClick={goPublic} style={{ fontFamily: "var(--font-interface)", fontSize: 12.5, color: "var(--bow-slate)", whiteSpace: "nowrap", background: "transparent", border: "none", cursor: "pointer" }}>
+        <div className="bow-nav-desktop bow-app-header__utilities">
+          {alsoSelfPaced && <Link href={selfPacedHref} className="bow-app-header__utility-link">Self-paced</Link>}
+          <Link href="/" target="_blank" rel="noopener noreferrer" className="bow-app-header__utility-link">
             Public site
-          </button>
-          <Link href="/app/settings" aria-label="Account" style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 10px 5px 6px", border: "1px solid var(--border-rule)", borderRadius: 999, color: "var(--bow-ink)" }}>
-            <span style={{ width: 28, height: 28, borderRadius: 999, background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12 }}>
-              {me ? initials(me.name) : "G"}
-            </span>
-            <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap" }}>{me ? me.first : "Guest"}</span>
+          </Link>
+          <button type="button" onClick={signOut} className="bow-app-header__utility-button">Sign out</button>
+          <Link
+            href="/app/settings"
+            aria-label="Account"
+            aria-current={routeIsActive(pathname, "/app/settings") ? "page" : undefined}
+            className="bow-app-header__account"
+            data-active={routeIsActive(pathname, "/app/settings") ? "true" : undefined}
+          >
+            <span className="bow-app-header__avatar" style={{ background: accent }}>{initials(me.name)}</span>
+            <span>{me.first}</span>
           </Link>
         </div>
 
         <button
-          className="bow-nav-mobile-toggle"
-          onClick={() => setMenuOpen((v) => !v)}
+          type="button"
+          className="bow-nav-mobile-toggle bow-app-header__menu-button"
+          onClick={() => setMenuOpen((open) => !open)}
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           aria-expanded={menuOpen}
-          style={{ background: "transparent", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", width: 40, height: 36, borderRadius: 4, flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer" }}
+          aria-controls={menuOpen ? "bow-mobile-navigation" : undefined}
         >
-          <span style={{ display: "block", width: 16, height: 2, background: "var(--bow-ink)" }} />
-          <span style={{ display: "block", width: 16, height: 2, background: "var(--bow-ink)" }} />
-          <span style={{ display: "block", width: 16, height: 2, background: "var(--bow-ink)" }} />
+          <span />
+          <span />
+          <span />
         </button>
       </div>
 
       {menuOpen && (
-        <div className="bow-nav-mobile" style={{ borderTop: "1px solid var(--border-rule)", padding: "10px clamp(16px,4vw,32px) 18px", flexDirection: "column", gap: 2 }}>
-          {nav.map((n) => (
-            <Link key={n.href} href={n.href} onClick={() => setMenuOpen(false)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "0.02em", textTransform: "uppercase", padding: "11px 0", borderBottom: "1px solid var(--border-rule)", color: isActive(pathname, n.href) ? "var(--bow-ink)" : "var(--bow-slate)" }}>
-              {n.label}
-            </Link>
-          ))}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
-            <span style={{ fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>{me ? me.name : "Guest"}</span>
-            <button onClick={goPublic} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)", background: "transparent", border: "none", cursor: "pointer" }}>
-              Public site
-            </button>
+        <nav id="bow-mobile-navigation" className="bow-nav-mobile bow-app-mobile-nav" aria-label="Mobile navigation">
+          {navigation.map((entry) => {
+            if (entry.kind === "link") {
+              const active = entry.id === activeId;
+              return (
+                <Link
+                  key={entry.id}
+                  href={entry.href}
+                  className="bow-app-mobile-nav__primary"
+                  data-active={active ? "true" : undefined}
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {entry.label}
+                </Link>
+              );
+            }
+            return (
+              <section className="bow-app-mobile-nav__group" key={entry.id} aria-labelledby={`bow-mobile-${entry.id}`}>
+                <span id={`bow-mobile-${entry.id}`} className="bow-app-mobile-nav__label">{entry.label}</span>
+                <div className="bow-app-mobile-nav__links">
+                  {entry.items.map((item) => {
+                    const active = item.id === activeId;
+                    return (
+                      <Link
+                        key={item.id}
+                        href={item.href}
+                        data-active={active ? "true" : undefined}
+                        aria-current={active ? "page" : undefined}
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+
+          <div className="bow-app-mobile-nav__utilities">
+            <span>{me.name}</span>
+            <Link href="/app/settings" aria-current={routeIsActive(pathname, "/app/settings") ? "page" : undefined} onClick={() => setMenuOpen(false)}>Account</Link>
+            {alsoSelfPaced && <Link href={selfPacedHref} onClick={() => setMenuOpen(false)}>Self-paced</Link>}
+            <Link href="/" target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>Public site</Link>
+            <button type="button" onClick={signOut}>Sign out</button>
           </div>
-        </div>
+        </nav>
       )}
     </header>
   );

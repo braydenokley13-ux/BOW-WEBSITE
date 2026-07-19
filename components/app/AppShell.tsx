@@ -10,10 +10,16 @@ import ConfirmModal from "./ConfirmModal";
  * layout.tsx has verified the role, so there is no gate or mount flash
  * to manage here.
  */
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({
+  children,
+  instructorCanDeliver = true,
+}: {
+  children: React.ReactNode;
+  instructorCanDeliver?: boolean;
+}) {
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "100vh" }}>
-      <AuthHeader />
+      <AuthHeader instructorCanDeliver={instructorCanDeliver} />
       {children}
       <Toast />
       <ConfirmModal />

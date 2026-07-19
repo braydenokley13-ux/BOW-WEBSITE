@@ -17,7 +17,7 @@ export default async function DiscussionPage({ searchParams }: { searchParams: S
   const page = Math.max(1, Number(sp.page) || 1);
 
   const channelPage = getChannelPosts(channel, page, PER_PAGE, me.id);
-  const counts = getChannelCounts();
+  const counts = getChannelCounts(me.id);
 
   return (
     <DiscussionBoard

@@ -20,8 +20,8 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 }
 
 /**
- * The public, shareable student profile (Feature 3). No reflections or personal
- * data — just the achievement record students put on college applications.
+ * Guardian-approved public credential. The server supplies a minimized display
+ * name and no cohort, contact, reflection, or internal-id data.
  */
 export default function PublicProfileView({ profile, papers = [] }: { profile: PublicProfile; papers?: ProfilePaper[] }) {
   return (
@@ -37,7 +37,7 @@ export default function PublicProfileView({ profile, papers = [] }: { profile: P
         </div>
 
         <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9a9da6" }}>
-          {profile.cohortName}
+          Guardian-approved BOW credential
         </span>
         <h1 style={{ margin: "8px 0 8px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(38px,6vw,68px)", lineHeight: 0.92, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
           {profile.name}
@@ -48,15 +48,10 @@ export default function PublicProfileView({ profile, papers = [] }: { profile: P
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 30 }}>
-          <Stat label="BOW Score" value={String(profile.bowScore)} accent="#6f8bff" />
           <Stat label="Track 101 modules" value={`${profile.modulesCompleted}/${profile.totalModules}`} />
           <Stat label="Track 201 modules" value={`${profile.modules201Completed}/${profile.total201Modules}`} />
-          <Stat label="Econ Quiz (MC)" value={profile.quizScorePct === null ? "—" : `${profile.quizScorePct}%`} />
           <Stat label="Track 101 cert" value={profile.certificateEarned ? "Earned" : "In progress"} accent={profile.certificateEarned ? "#5fcf99" : undefined} />
           <Stat label="Track 201 cert" value={profile.track201CertificateEarned ? "Earned" : "—"} accent={profile.track201CertificateEarned ? "#5fcf99" : undefined} />
-          <Stat label="Simulation Room" value={profile.simulationCompleted ? "Complete" : "Not yet"} accent={profile.simulationCompleted ? "#5fcf99" : undefined} />
-          <Stat label="The Front Office" value={profile.eastfieldCompleted ? "Complete" : "Not yet"} accent={profile.eastfieldCompleted ? "#5fcf99" : undefined} />
-          <Stat label="Discussion posts" value={String(profile.discussionPosts)} />
         </div>
 
         {papers.length > 0 && (

@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Badge, SectionHeader } from "@/components/ds";
-import { requireInstructorSelf } from "@/lib/dal";
+import { requireActiveInstructorSelf } from "@/lib/dal";
 import { getClassDetail } from "@/lib/hiring";
 import { getDb } from "@/lib/db";
+import { formatDateTimeInZone } from "@/lib/timezone";
 
 const cardStyle = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 } as const;
 const labelStyle = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--bow-slate)" };
@@ -11,7 +13,7 @@ const valueStyle = { fontFamily: "var(--font-interface)", fontSize: 14, color: "
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export default async function TeachClassDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { instructor } = await requireInstructorSelf();
+  const { instructor } = await requireActiveInstructorSelf();
   const detail = getClassDetail(id);
   if (!detail) notFound();
 
@@ -30,7 +32,7 @@ export default async function TeachClassDetailPage({ params }: { params: Promise
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="My Classes" title={cls.title} />
+      <SectionHeader kicker="My Classes" title={cls.title} level={1} />
       <Badge status="info">{cls.status.replace(/_/g, " ")}</Badge>
 
       <div style={cardStyle}>
@@ -44,13 +46,25 @@ export default async function TeachClassDetailPage({ params }: { params: Promise
       </div>
 
       <div style={cardStyle}>
-        <span style={{ ...labelStyle, display: "block", marginBottom: 12 }}>Sessions</span>
-        {sessions.length === 0 && <p style={valueStyle}>No sessions scheduled yet.</p>}
+        <span style={{ ...labelStyle, display: "block", marginBottom: 6 }}>Scheduled sessions</span>
+        <p style={{ ...valueStyle, color: "var(--bow-slate)", lineHeight: 1.5, margin: "0 0 12px" }}>
+          Open a scheduled session to record its locked roster, attendance, delivery notes, and final report.
+        </p>
+        {sessions.length === 0 && (
+          <p style={{ ...valueStyle, margin: 0 }}>
+            No sessions are scheduled yet. Delivery cannot be recorded until the Class has a real session.
+          </p>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sessions.map((s) => (
-            <a key={s.id} href={`/app/teach/classes/${id}/sessions/${s.id}`} style={{ ...valueStyle, color: "var(--bow-blue)" }}>
-              {new Date(s.sessionDate).toLocaleString()} {s.location ? `— ${s.location}` : ""}
-            </a>
+            <Link
+              aria-label={`Open scheduled session ${formatDateTimeInZone(s.sessionDate, s.timeZone ?? cls.scheduleTimezone)}`}
+              key={s.id}
+              href={`/app/teach/classes/${id}/sessions/${s.id}`}
+              style={{ ...valueStyle, color: "var(--bow-blue)", display: "block" }}
+            >
+              Open session · {formatDateTimeInZone(s.sessionDate, s.timeZone ?? cls.scheduleTimezone)} {s.location ? `— ${s.location}` : ""}
+            </Link>
           ))}
         </div>
       </div>

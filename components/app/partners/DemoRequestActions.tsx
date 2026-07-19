@@ -13,21 +13,36 @@ export default function DemoRequestActions({ demoRequestId }: { demoRequestId: s
   const run = async () => {
     setBusy(true);
     setError(null);
-    const res = await createFollowUpFromDemoRequest(demoRequestId);
-    if (res.ok) {
-      router.refresh();
-    } else {
-      setError(res.error || "Something went wrong.");
+    try {
+      const res = await createFollowUpFromDemoRequest(demoRequestId);
+      if (res.ok) {
+        router.refresh();
+      } else {
+        setError(res.error || "The follow-up task could not be created.");
+      }
+    } catch {
+      setError("The follow-up task could not be created. Refresh and try again.");
+    } finally {
       setBusy(false);
     }
   };
 
   return (
     <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-      <Button size="sm" variant="secondary" disabled={busy} onClick={run}>
-        {busy ? "Creating…" : "Create Follow-up Task"}
-      </Button>
-      {error && <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-negative)" }}>{error}</span>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, flexWrap: "wrap" }}>
+        <Button
+          size="sm"
+          variant="emphasis"
+          disabled={busy}
+          href={`/app/programs/new?source=demo_request&sourceId=${encodeURIComponent(demoRequestId)}`}
+        >
+          Create Program
+        </Button>
+        <Button size="sm" variant="secondary" disabled={busy} onClick={run}>
+          {busy ? "Creating…" : "Create Follow-up Task"}
+        </Button>
+      </div>
+      {error && <span role="alert" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-negative)", maxWidth: 320 }}>{error}</span>}
     </div>
   );
 }

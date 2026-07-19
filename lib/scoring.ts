@@ -251,12 +251,17 @@ export function getStudentScore(studentId: string, sinceTs = 0): StudentScore | 
 }
 
 /** Active student-role users eligible for the leaderboard. */
-function eligibleStudentIds(): string[] {
+function eligibleStudentIds(orgId: string | null): string[] {
   const rows = getDb()
     .prepare(
-      "SELECT DISTINCT u.id FROM users u JOIN enrollments e ON e.user_id = u.id WHERE u.role = 'student' AND u.status != 'invited' AND e.enroll = 'active'",
+      `SELECT DISTINCT u.id
+         FROM users u
+         JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
+         JOIN enrollments e ON e.user_id = u.id
+        WHERE u.role = 'student' AND u.status = 'active' AND e.enroll = 'active'
+          AND (? IS NULL OR u.org_id = ?)`,
     )
-    .all() as any[];
+    .all(orgId, orgId) as any[];
   return rows.map((r) => r.id as string);
 }
 
@@ -265,11 +270,13 @@ export interface LeaderboardOptions {
   sinceTs?: number;
   /** Restrict to a single cohort. */
   cohortId?: string | null;
+  /** Restrict non-admin viewers to their organization. Null is an intentional cross-network view. */
+  orgId?: string | null;
 }
 
 /** The ranked leaderboard. Sorted by BOW Score (desc), then name. Positions assigned. */
-export function getLeaderboard({ sinceTs = 0, cohortId = null }: LeaderboardOptions = {}): StudentScore[] {
-  let scores = eligibleStudentIds()
+export function getLeaderboard({ sinceTs = 0, cohortId = null, orgId = null }: LeaderboardOptions = {}): StudentScore[] {
+  let scores = eligibleStudentIds(orgId)
     .map((id) => getStudentScore(id, sinceTs))
     .filter((s): s is StudentScore => s !== null);
   if (cohortId) scores = scores.filter((s) => s.cohortId === cohortId);
@@ -290,15 +297,17 @@ export function rangeSince(range: LeaderboardRange): number {
 }
 
 /** Cohorts that currently have at least one eligible student (for the filter). */
-export function getLeaderboardCohorts(): { id: string; name: string }[] {
+export function getLeaderboardCohorts(orgId: string | null = null): { id: string; name: string }[] {
   const rows = getDb()
     .prepare(
       `SELECT DISTINCT c.id AS id, c.name AS name
        FROM cohorts c JOIN enrollments e ON e.cohort_id = c.id JOIN users u ON u.id = e.user_id
-       WHERE u.role = 'student' AND u.status != 'invited' AND e.enroll = 'active'
+       JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
+       WHERE u.role = 'student' AND u.status = 'active' AND e.enroll = 'active'
+         AND (? IS NULL OR u.org_id = ?)
        ORDER BY c.name ASC`,
     )
-    .all() as any[];
+    .all(orgId, orgId) as any[];
   return rows.map((r) => ({ id: r.id, name: r.name }));
 }
 

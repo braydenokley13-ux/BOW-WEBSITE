@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAppState } from "@/components/app/AppState";
 import { Badge } from "@/components/ds";
 import {
@@ -15,6 +15,7 @@ import {
   type LessonProgress,
 } from "@/lib/account";
 import { getLessonById } from "@/lib/lessons";
+import styles from "../../portal-accessibility.module.css";
 
 type BadgeStatus = "positive" | "warning" | "negative";
 
@@ -70,7 +71,6 @@ function fmtLastActive(ts?: number | null): string {
 }
 
 export default function InstructorCohortPage() {
-  const router = useRouter();
   const {
     me,
     selectedCohortId,
@@ -157,9 +157,6 @@ export default function InstructorCohortPage() {
       onConfirm: () => advanceCohortLesson(c.id, nextLesson ? nextLesson.id : null),
     });
 
-  const openSession = () => router.push("/app/instructor/session");
-  const goBack = () => router.push("/app/instructor");
-
   const addNote = () => {
     const text = noteDraft.trim();
     if (!text) return;
@@ -170,7 +167,7 @@ export default function InstructorCohortPage() {
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
       <div style={{ maxWidth: 1040, margin: "0 auto" }}>
-        <span onClick={goBack} style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)", cursor: "pointer", display: "inline-block", marginBottom: 14 }}>← Today</span>
+        <Link className={styles.focusTarget} href="/app/instructor" style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)", cursor: "pointer", display: "inline-block", marginBottom: 14 }}>← Today</Link>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 8 }}>
           <h1 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(30px,4vw,46px)", lineHeight: 0.95, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>{c.name}</h1>
           <Badge status="positive" style={{ height: 24 }}>{c.status}</Badge>
@@ -184,12 +181,12 @@ export default function InstructorCohortPage() {
           <div style={{ background: "var(--bow-white)", padding: "14px 16px" }}><span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 4 }}>Dates</span><span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{c.start + " – " + c.end}</span></div>
           <div style={{ background: "var(--bow-white)", padding: "14px 16px" }}><span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 4 }}>Schedule</span><span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{c.schedule}</span></div>
           <div style={{ background: "var(--bow-white)", padding: "14px 16px" }}><span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 4 }}>Format</span><span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{c.format}</span></div>
-          <div style={{ background: "var(--bow-white)", padding: "14px 16px" }}><span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 4 }}>Next session</span><span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{c.nextSession}</span></div>
+          <div style={{ background: "var(--bow-white)", padding: "14px 16px" }}><span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 4 }}>Cohort schedule note</span><span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{c.nextSession}</span></div>
         </div>
 
         {/* actions */}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 26 }}>
-          <button onClick={openSession} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 22px", border: "none", background: "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Open Current Session</button>
+          <Link className={styles.focusTarget} href={`/app/teach/classes/${c.id}`} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 22px", border: "none", background: "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Open Delivery Class</Link>
         </div>
 
         {L && (
@@ -200,7 +197,7 @@ export default function InstructorCohortPage() {
                 <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 20, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)" }}>{L.title}</span>
                 <p style={{ margin: "4px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>{"Module " + String(L.moduleNumber).padStart(2, "0") + " · " + L.moduleTitle}</p>
               </div>
-              <button onClick={onAdvance} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "9px 14px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer", flexShrink: 0 }}>Manually unlock next ↦</button>
+              <button className={styles.focusTarget} onClick={onAdvance} type="button" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "9px 14px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer", flexShrink: 0 }}>Manually unlock next ↦</button>
             </div>
           </div>
         )}
@@ -279,8 +276,8 @@ export default function InstructorCohortPage() {
             <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Instructor &amp; BOW administration only</span>
           </div>
           <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-            <input value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addNote(); }} placeholder="Add a note about this cohort…" style={{ flex: 1, background: "var(--bow-white)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "12px 14px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 }} />
-            <button onClick={addNote} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "0 20px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Add</button>
+            <input aria-label="Cohort note" value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addNote(); }} placeholder="Add a note about this cohort…" style={{ flex: 1, minWidth: 0, background: "var(--bow-white)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "12px 14px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 }} />
+            <button className={styles.focusTarget} onClick={addNote} type="button" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "0 20px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Add</button>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {notes.length === 0 && <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>No notes yet.</span>}

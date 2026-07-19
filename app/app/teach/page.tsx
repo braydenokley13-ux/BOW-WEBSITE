@@ -2,9 +2,10 @@ import { Badge, SectionHeader } from "@/components/ds";
 import { requireInstructorSelf } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { getInstructorDetail, listTrainingModules, listTrainingSessions, type Task } from "@/lib/hiring";
-import CompleteModuleButton from "@/components/app/teach/CompleteModuleButton";
+import TrainingModuleCard from "@/components/app/teach/TrainingModuleCard";
 import RegisterSessionButton from "@/components/app/teach/RegisterSessionButton";
 import AvailabilityEditor from "@/components/app/hiring/AvailabilityEditor";
+import { formatDateTimeInZone } from "@/lib/timezone";
 
 const STAGE_LABEL: Record<string, string> = {
   accepted: "Accepted",
@@ -20,8 +21,7 @@ const cardStyle = { background: "var(--bow-white)", border: "1px solid var(--bor
 const labelStyle = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--bow-slate)" };
 const valueStyle = { fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-ink)" };
 
-function upcomingSorted<T extends { scheduledAt: number }>(sessions: T[]): T[] {
-  const now = Date.now();
+function upcomingSorted<T extends { scheduledAt: number }>(sessions: T[], now: number): T[] {
   return sessions.filter((s) => s.scheduledAt >= now).sort((a, b) => a.scheduledAt - b.scheduledAt);
 }
 
@@ -30,15 +30,20 @@ export default async function TeachHomePage() {
   const { user, instructor } = await requireInstructorSelf();
   const detail = getInstructorDetail(instructor.id)!;
   const completedModuleIds = new Set(detail.completions.map((c) => c.moduleId));
+  const db = getDb();
+  const now = Number((db.prepare("SELECT unixepoch('now') * 1000 AS now").get() as { now: number }).now);
 
   const modules = listTrainingModules();
+  const moduleViews = new Map(
+    (db.prepare("SELECT module_id, first_viewed_at FROM training_module_views WHERE instructor_id = ?").all(instructor.id) as { module_id: string; first_viewed_at: number }[])
+      .map((view) => [view.module_id, view.first_viewed_at]),
+  );
   const onboardingModules = modules.filter((m) => m.category === "onboarding");
   const trainingModules = modules.filter((m) => m.category === "training");
 
   const sessions = listTrainingSessions();
-  const upcomingSessions = upcomingSorted(sessions);
+  const upcomingSessions = upcomingSorted(sessions, now);
 
-  const db = getDb();
   const registeredSessionIds = new Set(
     (db.prepare("SELECT session_id FROM training_session_registrations WHERE instructor_id = ?").all(instructor.id) as { session_id: string }[]).map(
       (r) => r.session_id,
@@ -49,8 +54,10 @@ export default async function TeachHomePage() {
     (r): Task => ({
       id: r.id,
       title: r.title,
+      kind: r.kind ?? "task",
       ownerUserId: r.owner_user_id ?? null,
       dueAt: r.due_at ?? null,
+      dueOn: r.due_on ?? null,
       status: r.status,
       entityType: r.entity_type ?? null,
       entityId: r.entity_id ?? null,
@@ -66,7 +73,7 @@ export default async function TeachHomePage() {
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="My BOW" title="Onboarding &amp; Training" />
+      <SectionHeader kicker="My BOW" title="Onboarding &amp; Training" level={1} />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
         <Badge status="info">{STAGE_LABEL[instructor.stage] ?? instructor.stage}</Badge>
@@ -81,17 +88,8 @@ export default async function TeachHomePage() {
         <span style={{ ...labelStyle, display: "block", marginBottom: 12 }}>Onboarding checklist</span>
         {onboardingModules.length === 0 && <p style={valueStyle}>Nothing to complete.</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {onboardingModules.map((m) => (
-            <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <span style={valueStyle}>{m.title}</span> {m.required && <Badge status="negative">Required</Badge>}
-              </div>
-              {completedModuleIds.has(m.id) ? (
-                <Badge status="positive">Completed</Badge>
-              ) : (
-                <CompleteModuleButton instructorId={instructor.id} moduleId={m.id} />
-              )}
-            </div>
+          {onboardingModules.map((module) => (
+            <TrainingModuleCard key={module.id} instructorId={instructor.id} module={module} completed={completedModuleIds.has(module.id)} initialViewedAt={moduleViews.get(module.id) ?? null} renderedAt={now} />
           ))}
         </div>
       </section>
@@ -100,17 +98,8 @@ export default async function TeachHomePage() {
         <span style={{ ...labelStyle, display: "block", marginBottom: 12 }}>Training modules</span>
         {trainingModules.length === 0 && <p style={valueStyle}>Nothing to complete.</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {trainingModules.map((m) => (
-            <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <span style={valueStyle}>{m.title}</span> {m.required && <Badge status="negative">Required</Badge>}
-              </div>
-              {completedModuleIds.has(m.id) ? (
-                <Badge status="positive">Completed</Badge>
-              ) : (
-                <CompleteModuleButton instructorId={instructor.id} moduleId={m.id} />
-              )}
-            </div>
+          {trainingModules.map((module) => (
+            <TrainingModuleCard key={module.id} instructorId={instructor.id} module={module} completed={completedModuleIds.has(module.id)} initialViewedAt={moduleViews.get(module.id) ?? null} renderedAt={now} />
           ))}
         </div>
       </section>
@@ -123,7 +112,7 @@ export default async function TeachHomePage() {
             <div key={s.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
                 <span style={valueStyle}>{s.title}</span> {s.required && <Badge status="negative">Required</Badge>}
-                <p style={{ ...labelStyle, margin: "4px 0 0" }}>{new Date(s.scheduledAt).toLocaleString()}</p>
+                <p style={{ ...labelStyle, margin: "4px 0 0" }}>{formatDateTimeInZone(s.scheduledAt, s.timeZone)}</p>
               </div>
               {registeredSessionIds.has(s.id) ? (
                 <Badge status="positive">Registered</Badge>

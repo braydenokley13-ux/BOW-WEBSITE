@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminData } from "@/lib/admin";
-import { createCohort, updateUserRole, type RoleToggle } from "@/app/actions/lms";
+import { createCohort } from "@/app/actions/lms";
 import { createPartnerOrg } from "@/app/actions/partners";
 import { PARTNER_ORG_TYPES, partnerTypeLabel } from "@/lib/account";
 import ContentManager from "@/components/admin/ContentManager";
@@ -207,50 +208,22 @@ function Cohorts({ data, defaultOrgId, defaultTrack, refresh }: { data: AdminDat
 
 /* ---------------- users ---------------- */
 
-function Users({ data, refresh }: { data: AdminData; refresh: () => void }) {
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const setRole = async (id: string, role: RoleToggle) => {
-    setBusyId(id);
-    setError(null);
-    const res = await updateUserRole(id, role);
-    setBusyId(null);
-    if (!res.ok) setError(res.error === "self" ? "You can't change your own role." : res.error === "admin" ? "Admin accounts can't be changed here." : "Couldn't update role.");
-    else refresh();
-  };
-
+function Users({ data }: { data: AdminData; refresh: () => void }) {
   return (
     <section style={panel}>
       <h3 style={panelTitle}>Users ({data.users.length})</h3>
-      {error && <p style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-warning-text)" }}>{error}</p>}
+      <p style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)", lineHeight: 1.5 }}>
+        Account roles are lifecycle outcomes. Manage instructor hiring, training, eligibility, and deactivation from the{" "}
+        <Link href="/app/instructors" style={{ color: "var(--bow-blue)", fontWeight: 700 }}>Instructor Network</Link>.
+      </p>
       {data.users.map((u) => {
-        const locked = u.isSelf || u.role === "admin";
         return (
           <div key={u.id} style={{ ...rowStyle, alignItems: "center", flexWrap: "wrap", gap: 12 }}>
             <span style={{ minWidth: 0, flex: 1 }}>
               <strong>{u.name}</strong>{u.isSelf ? <span style={{ color: "var(--bow-orange)" }}> · you</span> : null}
               <span style={{ display: "block", fontFamily: "var(--font-data)", fontSize: 11.5, color: "var(--bow-slate)" }}>{u.email} · joined {u.createdLabel} · active {u.lastActiveLabel}</span>
             </span>
-            {locked ? (
-              <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: u.role === "admin" ? "var(--bow-orange)" : "var(--bow-slate)" }}>{u.role}</span>
-            ) : (
-              <span style={{ display: "inline-flex", gap: 6 }}>
-                {(["student", "instructor"] as RoleToggle[]).map((r) => {
-                  const active = u.role === r;
-                  return (
-                    <button
-                      key={r}
-                      onClick={() => !active && setRole(u.id, r)}
-                      disabled={busyId === u.id || active}
-                      style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 12px", border: `1px solid ${active ? "var(--bow-ink)" : "var(--border-rule)"}`, background: active ? "var(--bow-ink)" : "transparent", color: active ? "#fff" : "var(--bow-slate)", borderRadius: 4, cursor: active ? "default" : "pointer" }}
-                    >
-                      {r}
-                    </button>
-                  );
-                })}
-              </span>
-            )}
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: u.role === "admin" ? "var(--bow-orange)" : "var(--bow-slate)" }}>{u.role}</span>
           </div>
         );
       })}

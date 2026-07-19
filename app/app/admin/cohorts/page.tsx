@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { CSSProperties } from "react";
-import { Badge } from "@/components/ds";
+import { Badge, Modal } from "@/components/ds";
 import { useAppState } from "@/components/app/AppState";
 import { trackLessons, nextLessonInTrack, type Cohort } from "@/lib/account";
 import { getLessonById, moduleLabel } from "@/lib/lessons";
@@ -86,25 +86,32 @@ export default function AdminCohortsPage() {
             <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Every program, one view</span>
             <h1 style={{ margin: "8px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(30px,4vw,46px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>Cohorts</h1>
           </div>
-          <button onClick={() => setCreateOpen(true)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 22px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Create Cohort</button>
+          <button type="button" onClick={() => setCreateOpen(true)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 22px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Create Cohort</button>
         </div>
 
         <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border-rule)" }}>
-                <th style={{ ...th, padding: "12px 16px" }}>Cohort</th>
-                <th style={th}>Track</th>
-                <th style={th}>Instructor</th>
-                <th style={th}>Enrolled</th>
-                <th style={{ ...th, padding: "12px 16px" }}>Status</th>
+                <th scope="col" style={{ ...th, padding: "12px 16px" }}>Cohort</th>
+                <th scope="col" style={th}>Track</th>
+                <th scope="col" style={th}>Instructor</th>
+                <th scope="col" style={th}>Enrolled</th>
+                <th scope="col" style={{ ...th, padding: "12px 16px" }}>Status</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((c) => (
-                <tr key={c.id} onClick={() => { setSelectedId(c.id); setAddStudentId(""); }} style={{ borderBottom: "1px solid var(--border-rule)", cursor: "pointer" }}>
+                <tr key={c.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
                   <td style={{ padding: "14px 16px" }}>
-                    <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14.5, color: "var(--bow-ink)" }}>{c.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedId(c.id); setAddStudentId(""); }}
+                      aria-label={`Open ${c.name} cohort details`}
+                      style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14.5, color: "var(--bow-blue)", background: "transparent", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }}
+                    >
+                      {c.name}
+                    </button>
                     <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block", marginTop: 2 }}>{c.orgName} · {c.dates}</span>
                   </td>
                   <td style={{ padding: "14px 8px", fontFamily: "var(--font-data)", fontSize: 12.5, color: "var(--bow-ink)" }}>{`Track ${c.track}`}</td>
@@ -119,19 +126,16 @@ export default function AdminCohortsPage() {
       </div>
 
       {/* cohort detail + management */}
-      {selected && (
-        <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 4500, background: "rgba(10,10,11,0.6)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 20px", overflowY: "auto" }} onClick={() => setSelectedId(null)}>
-          <div style={{ background: "var(--bow-white)", maxWidth: 640, width: "100%", borderRadius: 6, borderTop: "4px solid var(--bow-blue)", padding: "clamp(22px,3vw,32px)" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
-              <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 26, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)", lineHeight: 1 }}>{selected.name}</h2>
-              <span onClick={() => setSelectedId(null)} style={{ fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-slate)", cursor: "pointer" }}>Close ✕</span>
-            </div>
+      <Modal open={Boolean(selected)} onClose={() => setSelectedId(null)} title={selected?.name ?? "Cohort details"} maxWidth={640}>
+        {selected && (
+          <>
             <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{getOrg(selected.orgId)?.name} · Track {selected.track} · {selected.start === "—" ? "Dates TBD" : `${selected.start} – ${selected.end}`}</span>
 
             {/* instructor */}
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", margin: "22px 0 8px" }}>Instructor</span>
+            <label htmlFor="cohort-instructor" style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", margin: "22px 0 8px" }}>Instructor</label>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <select
+                id="cohort-instructor"
                 value={selected.instructorId ?? ""}
                 onChange={(e) => assignInstructor(selected.id, e.target.value || null)}
                 style={{ ...input, width: "auto", flex: 1, minWidth: 200 }}
@@ -142,7 +146,7 @@ export default function AdminCohortsPage() {
                 ))}
               </select>
               {selected.instructorId && (
-                <button onClick={() => assignInstructor(selected.id, null)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "9px 14px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer" }}>Remove</button>
+                <button type="button" onClick={() => assignInstructor(selected.id, null)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "9px 14px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer" }}>Remove</button>
               )}
             </div>
 
@@ -187,6 +191,7 @@ export default function AdminCohortsPage() {
                       </select>
                     )}
                     <button
+                      type="button"
                       onClick={() => askConfirm({ title: `Remove ${e.user.name}?`, body: "They’ll be removed from this cohort’s roster. Their account and history stay intact.", confirmLabel: "Remove", tone: "negative", onConfirm: () => removeStudent(selected.id, e.userId) })}
                       style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 11px", border: "1px solid var(--bow-negative)", background: "transparent", color: "var(--bow-negative)", borderRadius: 4, cursor: "pointer" }}
                     >
@@ -198,14 +203,16 @@ export default function AdminCohortsPage() {
             </div>
 
             {/* add student */}
+            <label htmlFor="cohort-add-student" style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 8 }}>Add student</label>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 22, flexWrap: "wrap" }}>
-              <select value={addStudentId} onChange={(e) => setAddStudentId(e.target.value)} style={{ ...input, width: "auto", flex: 1, minWidth: 200 }}>
+              <select id="cohort-add-student" value={addStudentId} onChange={(e) => setAddStudentId(e.target.value)} style={{ ...input, width: "auto", flex: 1, minWidth: 200 }}>
                 <option value="">Add a student…</option>
                 {addableStudents.map((s) => (
                   <option key={s.id} value={s.id}>{s.name} — {getOrg(s.orgId)?.name ?? "—"}</option>
                 ))}
               </select>
               <button
+                type="button"
                 onClick={() => { if (addStudentId) { assignStudent(selected.id, addStudentId); setAddStudentId(""); } }}
                 disabled={!addStudentId}
                 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.05em", textTransform: "uppercase", padding: "11px 18px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: addStudentId ? "pointer" : "not-allowed", opacity: addStudentId ? 1 : 0.5 }}
@@ -215,52 +222,48 @@ export default function AdminCohortsPage() {
             </div>
 
             <button
+              type="button"
               onClick={() => advanceCohortLesson(selected.id, selNextLesson ? selNextLesson.id : null)}
               style={{ width: "100%", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: 13, border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: "pointer" }}
             >
               {selNextLesson ? `Advance to “${selNextLesson.title}”` : "Advance Lesson"}
             </button>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
 
       {/* create cohort */}
-      {createOpen && (
-        <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 4500, background: "rgba(10,10,11,0.62)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 18px", overflowY: "auto" }} onClick={() => setCreateOpen(false)}>
-          <div style={{ background: "var(--bow-white)", maxWidth: 620, width: "100%", borderRadius: 6, borderTop: "4px solid var(--bow-blue)", padding: "clamp(22px,3vw,32px)" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 20 }}>
-              <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 22, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)" }}>Create Cohort</span>
-              <span onClick={() => setCreateOpen(false)} style={{ fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-slate)", cursor: "pointer" }}>Cancel ✕</span>
-            </div>
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create Cohort" maxWidth={620}>
+            <label htmlFor="new-cohort-name" style={label}>Cohort name</label>
+            <input id="new-cohort-name" value={ccName} onChange={(e) => setCcName(e.target.value)} placeholder="e.g. Lincoln Fall — Track 101" style={{ ...input, marginBottom: 16 }} />
 
-            <label style={label}>Cohort name</label>
-            <input value={ccName} onChange={(e) => setCcName(e.target.value)} placeholder="e.g. Lincoln Fall — Track 101" style={{ ...input, marginBottom: 16 }} />
-
-            <label style={label}>Organization</label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            <fieldset style={{ border: 0, padding: 0, margin: "0 0 16px" }}>
+              <legend style={label}>Organization</legend>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {orgOptions.map((o) => {
                 const sel = ccOrg === o.id;
                 return (
-                  <button key={o.id} onClick={() => setCcOrg(o.id)} style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 4, cursor: "pointer", background: sel ? "var(--bow-blue)" : "var(--bow-white)", color: sel ? "#fff" : "var(--bow-ink)", border: `1px solid ${sel ? "var(--bow-blue)" : "var(--border-rule)"}` }}>{o.name}</button>
+                  <button type="button" aria-pressed={sel} key={o.id} onClick={() => setCcOrg(o.id)} style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 4, cursor: "pointer", background: sel ? "var(--bow-blue)" : "var(--bow-white)", color: sel ? "#fff" : "var(--bow-ink)", border: `1px solid ${sel ? "var(--bow-blue)" : "var(--border-rule)"}` }}>{o.name}</button>
                 );
               })}
-            </div>
+              </div>
+            </fieldset>
 
-            <label style={label}>Track</label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+              <legend style={label}>Track</legend>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {[{ id: "101", label: "Track 101 · Foundations" }, { id: "201", label: "Track 201 · Advanced" }].map((t) => {
                 const sel = ccTrack === t.id;
                 return (
-                  <button key={t.id} onClick={() => setCcTrack(t.id)} style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 4, cursor: "pointer", background: sel ? "var(--bow-blue)" : "var(--bow-white)", color: sel ? "#fff" : "var(--bow-ink)", border: `1px solid ${sel ? "var(--bow-blue)" : "var(--border-rule)"}` }}>{t.label}</button>
+                  <button type="button" aria-pressed={sel} key={t.id} onClick={() => setCcTrack(t.id)} style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 13, padding: "9px 14px", borderRadius: 4, cursor: "pointer", background: sel ? "var(--bow-blue)" : "var(--bow-white)", color: sel ? "#fff" : "var(--bow-ink)", border: `1px solid ${sel ? "var(--bow-blue)" : "var(--border-rule)"}` }}>{t.label}</button>
                 );
               })}
-            </div>
+              </div>
+            </fieldset>
 
             <p style={{ margin: "18px 0 0", fontFamily: "var(--font-interface)", fontSize: 12, color: "var(--bow-slate)", lineHeight: 1.5 }}>Creates a draft cohort. Assign an instructor and students from the cohort’s detail panel.</p>
-            <button onClick={submitCreate} disabled={!ccName || !ccOrg || !ccTrack} style={{ width: "100%", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: 14, border: "none", background: "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: ccName && ccOrg && ccTrack ? "pointer" : "not-allowed", opacity: ccName && ccOrg && ccTrack ? 1 : 0.55, marginTop: 16 }}>Create Cohort</button>
-          </div>
-        </div>
-      )}
+            <button type="button" onClick={submitCreate} disabled={!ccName || !ccOrg || !ccTrack} style={{ width: "100%", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: 14, border: "none", background: "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: ccName && ccOrg && ccTrack ? "pointer" : "not-allowed", opacity: ccName && ccOrg && ccTrack ? 1 : 0.55, marginTop: 16 }}>Create Cohort</button>
+      </Modal>
     </div>
   );
 }

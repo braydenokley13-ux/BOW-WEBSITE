@@ -12,7 +12,6 @@ const inputStyle: CSSProperties = {
   padding: "12px 14px",
   fontFamily: "var(--font-interface)",
   fontSize: 15,
-  outline: "none",
   width: "100%",
   borderRadius: 4,
 };
@@ -120,26 +119,27 @@ export default function InstructorApplicationForm() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 16 }}>
         <div>
           <label style={labelStyle} htmlFor="ia-name">Your name</label>
-          <input id="ia-name" style={inputStyle} value={data.name} onChange={set("name")} placeholder="Jordan Avery" />
+          <input className="bow-field" id="ia-name" style={inputStyle} value={data.name} onChange={set("name")} placeholder="Jordan Avery" />
         </div>
         <div>
           <label style={labelStyle} htmlFor="ia-email">Email</label>
-          <input id="ia-email" type="email" style={inputStyle} value={data.email} onChange={set("email")} placeholder="you@email.com" />
+          <input className="bow-field" id="ia-email" type="email" style={inputStyle} value={data.email} onChange={set("email")} placeholder="you@email.com" />
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 16 }}>
         <div>
           <label style={labelStyle} htmlFor="ia-phone">Phone (optional)</label>
-          <input id="ia-phone" style={inputStyle} value={data.phone} onChange={set("phone")} placeholder="(555) 555-5555" />
+          <input className="bow-field" id="ia-phone" style={inputStyle} value={data.phone} onChange={set("phone")} placeholder="(555) 555-5555" />
         </div>
         <div>
           <label style={labelStyle} htmlFor="ia-location">City / location</label>
-          <input id="ia-location" style={inputStyle} value={data.location} onChange={set("location")} placeholder="Chicago, IL" />
+          <input className="bow-field" id="ia-location" style={inputStyle} value={data.location} onChange={set("location")} placeholder="Chicago, IL" />
         </div>
       </div>
       <div>
         <label style={labelStyle} htmlFor="ia-experience">Relevant experience</label>
         <textarea
+          className="bow-field"
           id="ia-experience"
           rows={4}
           style={{ ...inputStyle, resize: "vertical" }}
@@ -151,6 +151,7 @@ export default function InstructorApplicationForm() {
       <div>
         <label style={labelStyle} htmlFor="ia-why">Why BOW?</label>
         <textarea
+          className="bow-field"
           id="ia-why"
           rows={3}
           style={{ ...inputStyle, resize: "vertical" }}
@@ -162,6 +163,7 @@ export default function InstructorApplicationForm() {
       <div>
         <label style={labelStyle} htmlFor="ia-availability">Availability notes</label>
         <textarea
+          className="bow-field"
           id="ia-availability"
           rows={3}
           style={{ ...inputStyle, resize: "vertical" }}

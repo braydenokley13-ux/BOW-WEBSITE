@@ -27,7 +27,7 @@ const sizes: Record<Size, CSSProperties> = {
 
 const variants: Record<Variant, CSSProperties> = {
   primary: { background: "var(--bow-blue)", color: "var(--bow-white)", border: "1px solid var(--bow-blue)" },
-  emphasis: { background: "var(--bow-orange)", color: "var(--bow-white)", border: "1px solid var(--bow-orange)" },
+  emphasis: { background: "var(--bow-orange-solid)", color: "var(--bow-white)", border: "1px solid var(--bow-orange-solid)" },
   ink: { background: "var(--bow-ink)", color: "var(--bow-white)", border: "1px solid var(--bow-ink)" },
   secondary: { background: "transparent", color: "var(--text-primary)", border: "1px solid var(--border-strong)" },
   ghost: { background: "transparent", color: "var(--text-link)", border: "1px solid transparent" },
@@ -88,14 +88,14 @@ export default function Button({
 
   if (href && !disabled) {
     return (
-      <Link href={href} style={base} onClick={onClick} {...press} {...rest}>
+      <Link href={href} className="bow-button" style={base} onClick={onClick} {...press} {...rest}>
         {children}
       </Link>
     );
   }
 
   return (
-    <button type={type} disabled={disabled} onClick={onClick} style={base} {...press} {...rest}>
+    <button className="bow-button" type={type} disabled={disabled} onClick={onClick} style={base} {...press} {...rest}>
       {children}
     </button>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import Button from "./Button";
 import DataStrip, { type DataItem } from "./DataStrip";
@@ -26,8 +26,10 @@ interface DecisionCardProps {
   primaryLabel?: string;
   secondaryLabel?: string;
   consequence?: Consequence | null;
-  onSubmit?: (id: string) => void;
+  onSubmit?: (id: string) => void | Promise<void>;
   onSecondary?: () => void;
+  submitting?: boolean;
+  submitError?: string | null;
   style?: CSSProperties;
 }
 
@@ -55,15 +57,44 @@ export default function DecisionCard({
   consequence = null,
   onSubmit,
   onSecondary,
+  submitting = false,
+  submitError = null,
   style,
 }: DecisionCardProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [locallySubmitting, setLocallySubmitting] = useState(false);
+  const submitGuardRef = useRef(false);
+  const resultRef = useRef<HTMLDivElement>(null);
   const result = submitted && consequence && selected ? consequence.byChoice?.[selected] : null;
+  const busy = submitting || locallySubmitting;
+  const resultChoiceId = result ? selected : null;
+
+  useEffect(() => {
+    if (resultChoiceId) resultRef.current?.focus();
+  }, [resultChoiceId]);
+
+  const commitSelection = async () => {
+    if (!selected || submitGuardRef.current) return;
+    const committedChoice = selected;
+    submitGuardRef.current = true;
+    setLocallySubmitting(true);
+    try {
+      await onSubmit?.(committedChoice);
+      setSubmitted(true);
+    } catch {
+      // Keep the options available. Callers that persist decisions surface
+      // their specific message through submitError.
+    } finally {
+      submitGuardRef.current = false;
+      setLocallySubmitting(false);
+    }
+  };
 
   return (
     <div
       className="bow-front-office"
+      aria-busy={busy}
       style={{
         border: "1px solid var(--bow-dark-border)",
         borderTop: "4px solid var(--bow-blue)",
@@ -117,13 +148,15 @@ export default function DecisionCard({
       )}
 
       {!result && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div role="group" aria-label="Decision options" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {options.map((opt) => {
             const active = selected === opt.id;
             return (
               <button
                 key={opt.id}
                 type="button"
+                disabled={busy}
+                aria-pressed={active}
                 onClick={() => setSelected(opt.id)}
                 style={{
                   textAlign: "left",
@@ -131,7 +164,7 @@ export default function DecisionCard({
                   flexDirection: "column",
                   gap: 3,
                   padding: "14px 16px",
-                  cursor: "pointer",
+                  cursor: busy ? "wait" : "pointer",
                   background: active ? "rgba(49,87,255,0.14)" : "transparent",
                   border: active ? "1px solid var(--bow-blue)" : "1px solid var(--bow-dark-border)",
                   borderRadius: "var(--radius-control)",
@@ -153,6 +186,12 @@ export default function DecisionCard({
 
       {result && (
         <div
+          ref={resultRef}
+          role="region"
+          aria-label="Decision consequence"
+          aria-live="polite"
+          aria-atomic="true"
+          tabIndex={-1}
           style={{
             borderLeft: `4px solid ${resultColor[result.status || "info"] || "var(--bow-blue)"}`,
             paddingLeft: 16,
@@ -185,16 +224,13 @@ export default function DecisionCard({
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Button
             variant="primary"
-            disabled={!selected}
-            onClick={() => {
-              setSubmitted(true);
-              if (selected) onSubmit?.(selected);
-            }}
+            disabled={!selected || busy}
+            onClick={() => void commitSelection()}
           >
-            {primaryLabel}
+            {busy ? "Recording Decision…" : primaryLabel}
           </Button>
           {onSecondary && (
-            <Button variant="ghost" onClick={onSecondary} style={{ color: "#9a9da6" }}>
+            <Button variant="ghost" disabled={busy} onClick={onSecondary} style={{ color: "#9a9da6" }}>
               {secondaryLabel}
             </Button>
           )}
@@ -203,6 +239,7 @@ export default function DecisionCard({
         <Button
           variant="secondary"
           onClick={() => {
+            submitGuardRef.current = false;
             setSubmitted(false);
             setSelected(null);
           }}
@@ -210,6 +247,16 @@ export default function DecisionCard({
         >
           Reconsider
         </Button>
+      )}
+      {busy && (
+        <p role="status" style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, color: "#b9bcc4" }}>
+          Saving this round before revealing the consequence…
+        </p>
+      )}
+      {submitError && (
+        <p role="alert" style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, color: "var(--bow-warning-text)" }}>
+          {submitError}
+        </p>
       )}
     </div>
   );

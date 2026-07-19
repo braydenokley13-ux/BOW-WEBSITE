@@ -59,26 +59,20 @@ export interface ProfileData {
   dailyAnswered: number;
   currentStreak: number;
   longestStreak: number;
+  /** Null until BOW records an active guardian-approved sharing consent. */
+  publicProfilePath: string | null;
 }
 
 export interface PublicProfile {
-  studentId: string;
+  publicSlug: string;
   name: string;
-  cohortName: string;
   rank: BowRank;
-  bowScore: number;
   modulesCompleted: number;
   totalModules: number;
   certificateEarned: boolean;
-  quizScorePct: number | null;
-  simulationCompleted: boolean;
-  /* ---- Track 201 + community (privacy-safe counts only) ---- */
   modules201Completed: number;
   total201Modules: number;
   track201CertificateEarned: boolean;
-  eastfieldCompleted: boolean;
-  discussionPosts: number;
-  weeklyCompletions: number;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -127,6 +121,16 @@ export function getProfileData(studentId: string): ProfileData | null {
   });
   const modules201Completed = modules201.filter((m) => m.completed).length;
   const cert201 = getCertificate(studentId, CERT_TRACK_201);
+  const sharing = getDb()
+    .prepare(
+      `SELECT public_slug
+       FROM profile_sharing_consents
+       WHERE student_user_id = ? AND revoked_at IS NULL
+         AND guardian_verified_at IS NOT NULL AND expires_at > ?
+       ORDER BY granted_at DESC
+       LIMIT 1`,
+    )
+    .get(studentId, Date.now()) as { public_slug: string } | undefined;
 
   return {
     studentId: u.id,
@@ -161,41 +165,75 @@ export function getProfileData(studentId: string): ProfileData | null {
     dailyAnswered: stats.dailyCorrect + stats.dailyIncorrect,
     currentStreak: stats.currentStreak,
     longestStreak: score?.longestStreak ?? 0,
+    publicProfilePath: sharing ? `/profile/${sharing.public_slug}` : null,
   };
 }
 
-/** The public, privacy-safe profile (no reflections or personal data). */
-export function getPublicProfile(studentId: string): PublicProfile | null {
-  const u = getDb().prepare("SELECT id, name, role FROM users WHERE id = ?").get(studentId) as any;
-  if (!u || u.role !== "student") return null;
+export interface PublicProfileRecord {
+  profile: PublicProfile;
+  studentUserId: string;
+}
+
+function minimizedStudentName(first: string, fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
+  return `${first.trim() || parts[0] || "BOW Student"}${last ? ` ${last.charAt(0).toUpperCase()}.` : ""}`;
+}
+
+/**
+ * Resolve a guardian-approved, revocable public credential by high-entropy
+ * sharing slug. Internal user ids are never accepted as public URLs.
+ */
+export function getPublicProfileRecord(publicSlug: string): PublicProfileRecord | null {
+  const u = getDb()
+    .prepare(
+      `SELECT u.id, u.name, u.first, c.public_slug
+       FROM profile_sharing_consents c
+       JOIN users u ON u.id = c.student_user_id
+       JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
+       WHERE c.public_slug = ?
+         AND c.revoked_at IS NULL
+         AND c.guardian_verified_at IS NOT NULL
+         AND c.expires_at > ?
+         AND u.role = 'student'
+         AND u.status = 'active'
+         AND u.deletion_requested = 0
+         AND EXISTS (
+           SELECT 1 FROM enrollments e
+           WHERE e.user_id = u.id AND e.enroll = 'active'
+         )
+       LIMIT 1`,
+    )
+    .get(publicSlug, Date.now()) as any;
+  if (!u) return null;
+
+  const studentId = String(u.id);
 
   const score = getStudentScore(studentId, 0);
   if (!score) return null;
-  const qs = quizScore(studentId);
-  const stats = computeStats(studentId, 0);
   const prog = getSelfProgressMap(studentId);
   const mods101 = getSelfModules(TRACK_101);
   const mods201 = getSelfModules(TRACK_201);
   const completedIn = (ms: { id: string }[]) => ms.filter((m) => prog[m.id]?.completed).length;
 
   return {
-    studentId: u.id,
-    name: u.name,
-    cohortName: score.cohortName,
-    rank: score.rank,
-    bowScore: score.bowScore,
-    modulesCompleted: completedIn(mods101),
-    totalModules: mods101.length,
-    certificateEarned: !!getCertificate(studentId, CERT_TRACK),
-    quizScorePct: qs.answered > 0 ? Math.round((qs.correct / qs.answered) * 100) : null,
-    simulationCompleted: score.simulationCompleted,
-    modules201Completed: completedIn(mods201),
-    total201Modules: mods201.length,
-    track201CertificateEarned: !!getCertificate(studentId, CERT_TRACK_201),
-    eastfieldCompleted: stats.eastfieldCompleted,
-    discussionPosts: stats.discussionPosts,
-    weeklyCompletions: stats.weeklyCompletions,
+    studentUserId: studentId,
+    profile: {
+      publicSlug: String(u.public_slug),
+      name: minimizedStudentName(String(u.first ?? ""), String(u.name ?? "")),
+      rank: score.rank,
+      modulesCompleted: completedIn(mods101),
+      totalModules: mods101.length,
+      certificateEarned: !!getCertificate(studentId, CERT_TRACK),
+      modules201Completed: completedIn(mods201),
+      total201Modules: mods201.length,
+      track201CertificateEarned: !!getCertificate(studentId, CERT_TRACK_201),
+    },
   };
+}
+
+export function getPublicProfile(publicSlug: string): PublicProfile | null {
+  return getPublicProfileRecord(publicSlug)?.profile ?? null;
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */

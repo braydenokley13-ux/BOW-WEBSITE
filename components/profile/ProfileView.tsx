@@ -17,7 +17,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 
 /** The private student profile — everything they've done in BOW (Feature 3). */
 export default function ProfileView({ data }: { data: ProfileData }) {
-  const sharePath = `/profile/${data.studentId}`;
+  const sharePath = data.publicProfilePath;
 
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "100vh", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
@@ -124,15 +124,23 @@ export default function ProfileView({ data }: { data: ProfileData }) {
           <h2 style={{ margin: "8px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(22px,3vw,32px)", lineHeight: 0.98, textTransform: "uppercase" }}>
             Put it on the application.
           </h2>
-          <p style={{ margin: "0 0 18px", fontFamily: "var(--font-interface)", fontSize: 14.5, lineHeight: 1.6, color: "#b9bcc4", maxWidth: 520 }}>
-            Your public profile shows your rank, modules, certificate, and quiz score — no reflections or personal details. Share the link on a college application or send it to a parent.
-          </p>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <ShareButton path={sharePath} />
-            <Link href={sharePath} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "11px 20px", border: "1px solid rgba(255,255,255,0.35)", background: "transparent", color: "#fff", borderRadius: 4, textDecoration: "none" }}>
-              View Public Profile
-            </Link>
-          </div>
+          {sharePath ? (
+            <>
+              <p style={{ margin: "0 0 18px", fontFamily: "var(--font-interface)", fontSize: 14.5, lineHeight: 1.6, color: "#b9bcc4", maxWidth: 520 }}>
+                Guardian-approved sharing is active. The public credential uses a limited display name and never includes reflections, contact details, or cohort identity.
+              </p>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <ShareButton path={sharePath} />
+                <Link href={sharePath} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "11px 20px", border: "1px solid rgba(255,255,255,0.35)", background: "transparent", color: "#fff", borderRadius: 4, textDecoration: "none" }}>
+                  View Public Credential
+                </Link>
+              </div>
+            </>
+          ) : (
+            <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14.5, lineHeight: 1.6, color: "#b9bcc4", maxWidth: 560 }}>
+              Public sharing is off by default. A guardian and BOW administrator must approve a revocable sharing link before this record can be published.
+            </p>
+          )}
         </div>
       </div>
     </div>

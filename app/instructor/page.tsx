@@ -1,4 +1,4 @@
-import { requireRole } from "@/lib/dal";
+import { requireTeachingUser } from "@/lib/dal";
 import { getSelfRoster, getSelfModules, isInstructorOfSelfPaced } from "@/lib/self-paced";
 import { getCohortAnalytics } from "@/lib/analytics";
 import { getLeaderboard } from "@/lib/scoring";
@@ -6,7 +6,7 @@ import { SELF_PACED_COHORT_ID, SELF_PACED_COHORT_NAME, SELF_PACED_SESSIONS } fro
 import InstructorDashboard from "@/components/selfpaced/InstructorDashboard";
 
 export default async function InstructorPage() {
-  const me = await requireRole("instructor", "admin");
+  const me = await requireTeachingUser();
   // Admins can view any cohort; an instructor must actually be assigned to
   // the self-paced cohort — otherwise this page would leak every self-paced
   // student's roster, reflections, and notes to any instructor account.

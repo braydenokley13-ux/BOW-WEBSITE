@@ -5,6 +5,8 @@ import { getDb, rowToPerson } from "@/lib/db";
 import { getClassDetail, listEligibleInstructors, listStudents, listActivity, classStatusFlags } from "@/lib/hiring";
 import { sessionHref } from "@/lib/routes";
 import ClassDetailActions, { RemoveInstructorButton, WithdrawStudentButton } from "@/components/app/classes/ClassDetailActions";
+import { formatDateTimeInZone } from "@/lib/timezone";
+import ConfirmEnrollmentButton from "@/components/app/classes/ConfirmEnrollmentButton";
 
 const cardStyle = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 } as const;
 const labelStyle = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--bow-slate)" };
@@ -27,7 +29,11 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
     return { ...ci, name: personRow ? rowToPerson(personRow).name : ci.instructor_id };
   });
 
-  const enrolled = enrollments.filter((e) => e.status === "enrolled");
+  const enrolled = enrollments.filter(
+    (e) =>
+      e.status === "enrolled" &&
+      Boolean(db.prepare("SELECT 1 FROM students WHERE id = ? AND enrollment_status = 'active'").get(e.studentId)),
+  );
   const enrolledStudentRows = enrolled.map((e) => {
     const s = db.prepare("SELECT * FROM students WHERE id = ?").get(e.studentId) as any;
     return { enrollment: e, name: s?.name ?? e.studentId };
@@ -36,10 +42,13 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
   const eligibleInstructors = listEligibleInstructors();
   const allStudents = listStudents();
   const enrolledIds = new Set(enrolled.map((e) => e.studentId));
-  const studentOptions = allStudents.map((s) => ({ id: s.id, name: s.name, enrolled: enrolledIds.has(s.id) }));
+  const studentOptions = allStudents
+    .filter((student) => student.enrollmentStatus === "active")
+    .map((s) => ({ id: s.id, name: s.name, enrolled: enrolledIds.has(s.id) }));
+  const historical = cls.status === "completed" || cls.status === "cancelled";
 
   const hasEligibleLead = !!(
-    cls.leadInstructorId && db.prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible'").get(cls.leadInstructorId)
+    cls.leadInstructorId && db.prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible' AND stage IN ('eligible','active')").get(cls.leadInstructorId)
   );
   const flags = classStatusFlags(cls, hasEligibleLead, enrolled.length);
 
@@ -47,7 +56,7 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="Classes" title={cls.title} />
+      <SectionHeader kicker="Classes" title={cls.title} level={1} />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
         <Badge status="info">{cls.status.replace(/_/g, " ")}</Badge>
@@ -73,6 +82,10 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
         <div style={cardStyle}>
           <span style={labelStyle}>Dates</span>
           <p style={valueStyle}>{cls.startDate || "—"} – {cls.endDate || "—"}</p>
+        </div>
+        <div style={cardStyle}>
+          <span style={labelStyle}>Delivery timezone</span>
+          <p style={valueStyle}>{cls.scheduleTimezone || "Set when the first session is scheduled"}</p>
         </div>
         <div style={cardStyle}>
           <span style={labelStyle}>Age range</span>
@@ -101,7 +114,7 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
                 <Link href={`/app/instructors/${ir.instructor_id}`} style={{ ...valueStyle, color: "var(--bow-blue)" }}>{ir.name}</Link>{" "}
                 <Badge status={ir.role === "lead" ? "positive" : "neutral"}>{ir.role}</Badge>
               </div>
-              <RemoveInstructorButton classId={id} instructorId={ir.instructor_id} />
+              {!cls.programId && <RemoveInstructorButton classId={id} instructorId={ir.instructor_id} />}
             </div>
           ))}
         </div>
@@ -113,7 +126,7 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sessions.map((s) => (
             <Link key={s.id} href={sessionHref(id, s.id)} style={{ ...valueStyle, color: "var(--bow-blue)", display: "block" }}>
-              {new Date(s.sessionDate).toLocaleString()} {s.location ? `— ${s.location}` : ""}
+              {formatDateTimeInZone(s.sessionDate, s.timeZone ?? cls.scheduleTimezone)} {s.location ? `— ${s.location}` : ""}
             </Link>
           ))}
         </div>
@@ -125,8 +138,24 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {enrolledStudentRows.map((row) => (
             <div key={row.enrollment.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <Link href={`/app/students/${row.enrollment.studentId}`} style={{ ...valueStyle, color: "var(--bow-blue)" }}>{row.name}</Link>
-              <WithdrawStudentButton classId={id} studentId={row.enrollment.studentId} />
+              <div>
+                <Link href={`/app/students/${row.enrollment.studentId}`} style={{ ...valueStyle, color: "var(--bow-blue)" }}>{row.name}</Link>
+                <span style={{ ...labelStyle, display: "block", marginTop: 3 }}>
+                  {row.enrollment.confirmedAt
+                    ? `Confirmed by ${row.enrollment.confirmationSource?.replace(/_/g, " ") ?? "recorded source"} · ${new Date(row.enrollment.confirmedAt).toLocaleDateString()}`
+                    : "Confirmation not yet recorded"}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {row.enrollment.confirmedAt ? (
+                  <Badge status="positive">Confirmed</Badge>
+                ) : historical ? (
+                  <Badge status="neutral">Legacy · unconfirmed</Badge>
+                ) : (
+                  <ConfirmEnrollmentButton enrollmentId={row.enrollment.id} studentName={row.name} />
+                )}
+                {!historical && <WithdrawStudentButton classId={id} studentId={row.enrollment.studentId} />}
+              </div>
             </div>
           ))}
         </div>
@@ -134,12 +163,14 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
 
       <ClassDetailActions
         classId={id}
+        programId={cls.programId}
         status={cls.status}
         eligibleInstructors={eligibleInstructors.map((i) => ({ id: i.id, name: i.person?.name ?? i.id }))}
         assignedInstructorIds={instructorRows.map((ir: any) => ir.instructor_id)}
         students={studentOptions}
         capacity={cls.capacity}
         enrolledCount={enrolled.length}
+        scheduleTimezone={cls.scheduleTimezone}
       />
 
       <div style={cardStyle}>

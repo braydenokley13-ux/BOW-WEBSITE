@@ -26,7 +26,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="Students" title={student.name} />
+      <SectionHeader kicker="Students" title={student.name} level={1} />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
         <Badge status={student.formStatus === "complete" ? "positive" : student.formStatus === "submitted" ? "warning" : "negative"}>
@@ -85,7 +85,14 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
-      <StudentDetailActions studentId={id} formStatus={student.formStatus} communicationNotes={student.communicationNotes ?? ""} />
+      <StudentDetailActions
+        key={student.updatedAt}
+        studentId={id}
+        formStatus={student.formStatus}
+        communicationNotes={student.communicationNotes ?? ""}
+        enrollmentStatus={student.enrollmentStatus}
+        expectedUpdatedAt={student.updatedAt}
+      />
     </div>
   );
 }

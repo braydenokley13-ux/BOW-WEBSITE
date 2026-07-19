@@ -18,11 +18,32 @@ export default function AdminArticleList({ articles, freshness }: { articles: Ar
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: "success" | "warning" | "error"; text: string } | null>(null);
 
-  const act = (fn: () => Promise<unknown>) =>
+  const act = (
+    successMessage: string,
+    fn: () => Promise<{ ok: boolean; error?: string; warning?: string }>,
+    onSuccess?: () => void,
+  ) =>
     startTransition(async () => {
-      await fn();
-      router.refresh();
+      try {
+        const result = await fn();
+        if (!result.ok) {
+          setNotice({
+            tone: "error",
+            text: `${result.error ?? "The article action could not be completed."}${result.warning ? ` ${result.warning}` : ""}`,
+          });
+          return;
+        }
+        onSuccess?.();
+        setNotice({
+          tone: result.warning ? "warning" : "success",
+          text: result.warning ? `${successMessage} ${result.warning}` : successMessage,
+        });
+        router.refresh();
+      } catch {
+        setNotice({ tone: "error", text: "The article action failed unexpectedly. Refresh and verify the current state." });
+      }
     });
 
   const drafts = articles.filter((a) => a.status === "draft").length;
@@ -82,6 +103,23 @@ export default function AdminArticleList({ articles, freshness }: { articles: Ar
           },
         ]}
       />
+      {notice && (
+        <p
+          role={notice.tone === "error" ? "alert" : "status"}
+          aria-live={notice.tone === "error" ? "assertive" : "polite"}
+          style={{
+            margin: 0,
+            padding: "10px 12px",
+            border: "1px solid var(--border-rule)",
+            background: notice.tone === "error" ? "var(--bow-negative-tint)" : notice.tone === "warning" ? "var(--bow-warning-tint)" : "var(--bow-positive-tint)",
+            color: notice.tone === "error" ? "var(--bow-negative)" : notice.tone === "warning" ? "var(--bow-warning-text)" : "var(--bow-positive)",
+            fontFamily: "var(--font-interface)",
+            fontSize: 13,
+          }}
+        >
+          {notice.text}
+        </p>
+      )}
       <p style={{ margin: "-10px 0 0", fontFamily: "var(--font-interface)", fontSize: 12.5, color: "var(--bow-slate)" }}>
         Refresh live stats with <code style={{ fontFamily: "var(--font-data)", background: "var(--bow-white)", border: "1px solid var(--border-rule)", padding: "1px 6px" }}>python3 scripts/nba_ingest.py</code>
         {" "}· contracts &amp; apron tiers are hand-edited in <code style={{ fontFamily: "var(--font-data)", background: "var(--bow-white)", border: "1px solid var(--border-rule)", padding: "1px 6px" }}>data-seeds/contracts.csv</code>
@@ -150,7 +188,12 @@ export default function AdminArticleList({ articles, freshness }: { articles: Ar
                     <Link href={`/analytics/admin/editor/${a.id}`} style={{ ...smallBtn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
                       Edit
                     </Link>
-                    <button type="button" disabled={pending} style={smallBtn} onClick={() => act(() => setArticleStatus(a.id, a.status !== "published"))}>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      style={smallBtn}
+                      onClick={() => act(a.status === "published" ? "Article unpublished." : "Article published.", () => setArticleStatus(a.id, a.status !== "published"))}
+                    >
                       {a.status === "published" ? "Unpublish" : "Publish"}
                     </button>
                     <button
@@ -158,7 +201,7 @@ export default function AdminArticleList({ articles, freshness }: { articles: Ar
                       disabled={pending}
                       title={a.featured ? "Unpin from top of index" : "Pin to top of index"}
                       style={{ ...smallBtn, color: a.featured ? "var(--bow-orange)" : "var(--bow-ink)" }}
-                      onClick={() => act(() => setArticleFeatured(a.id, !a.featured))}
+                      onClick={() => act(a.featured ? "Article removed from featured placement." : "Article featured.", () => setArticleFeatured(a.id, !a.featured))}
                     >
                       {a.featured ? "★ Featured" : "☆ Feature"}
                     </button>
@@ -174,8 +217,7 @@ export default function AdminArticleList({ articles, freshness }: { articles: Ar
                           disabled={pending}
                           style={{ ...smallBtn, background: "var(--bow-negative)", borderColor: "var(--bow-negative)", color: "#fff" }}
                           onClick={() => {
-                            setConfirmDelete(null);
-                            act(() => deleteArticle(a.id));
+                            act("Article deleted.", () => deleteArticle(a.id), () => setConfirmDelete(null));
                           }}
                         >
                           Confirm delete

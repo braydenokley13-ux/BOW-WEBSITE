@@ -4,128 +4,495 @@ import { requireUser } from "@/lib/dal";
 import { roleHomePath } from "@/lib/account";
 import { Badge, SectionHeader } from "@/components/ds";
 import { getLeadershipHomeData } from "@/lib/hiring";
-import { getDb, rowToPerson } from "@/lib/db";
+import { getDb } from "@/lib/db";
+import { listPrograms } from "@/lib/operations";
+import { programStageLabel } from "@/lib/operations-shared";
 import { entityHref, sessionHref } from "@/lib/routes";
+import { getInstructorByUserId } from "@/lib/hiring";
+import { getGrowthLeadershipSnapshot } from "@/lib/growth";
 
-const cardStyle = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 20 } as const;
-const labelStyle = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--bow-slate)" };
-const valueStyle = { fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-ink)" };
+const DAY_MS = 24 * 60 * 60 * 1000;
+const cardStyle = {
+  background: "var(--bow-white)",
+  border: "1px solid var(--border-rule)",
+  borderRadius: 6,
+} as const;
+const labelStyle = {
+  fontFamily: "var(--font-data)",
+  fontSize: 10,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase" as const,
+  color: "var(--bow-slate)",
+};
+const bodyStyle = {
+  fontFamily: "var(--font-interface)",
+  fontSize: 14,
+  lineHeight: 1.55,
+  color: "var(--bow-slate)",
+} as const;
 
-interface Bucket {
+type Severity = "critical" | "high" | "watch";
+type ExceptionDomain = "Programs" | "Delivery" | "Quality" | "People" | "Students" | "Growth" | "Work";
+
+interface OperatingException {
   key: string;
   title: string;
-  items: { id: string; label: string; href: string }[];
+  domain: ExceptionDomain;
+  domainHref: string;
+  severity: Severity;
+  score: number;
+  context: string;
+  owner: string;
+  unassigned: boolean;
+  href: string;
+  actionLabel: string;
+  dueAt?: number | null;
+}
+
+interface ClassContextRow {
+  class_title: string;
+  program_name: string | null;
+  owner_name: string | null;
+}
+
+const severityStatus: Record<Severity, "negative" | "warning" | "neutral"> = {
+  critical: "negative",
+  high: "warning",
+  watch: "neutral",
+};
+
+const severityLabel: Record<Severity, string> = {
+  critical: "Act now",
+  high: "Next up",
+  watch: "Watch",
+};
+
+function dateValue(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(`${value}T12:00:00Z`);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function waitingLabel(timestamp: number, now: number): string {
+  const days = Math.max(0, Math.floor((now - timestamp) / DAY_MS));
+  if (days === 0) return "Entered the queue today.";
+  return `Waiting ${days} day${days === 1 ? "" : "s"}.`;
+}
+
+function shortDate(timestamp: number): string {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(timestamp);
 }
 
 /**
- * The app entry point. Admin and growth both land on the leadership
- * Home here (decision-oriented buckets from getLeadershipHomeData).
- * Everyone else is routed to their role home.
+ * Leadership lands on one ranked management-by-exception queue. Normal work
+ * remains in its domain workspace; this surface answers what needs attention,
+ * why it matters, who owns it, and where the next decision happens.
  */
 export default async function AppHome() {
   const me = await requireUser();
   if (me.role !== "admin" && me.role !== "growth") {
+    if (me.role === "instructor") {
+      const instructor = getInstructorByUserId(me.id);
+      if (!instructor || (instructor.stage === "active" && instructor.eligibilityStatus === "eligible")) {
+        redirect("/app/instructor");
+      }
+      if (["inactive", "rejected"].includes(instructor.stage)) redirect("/app/settings");
+      redirect("/app/teach");
+    }
     redirect(roleHomePath(me.role));
   }
 
   const db = getDb();
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  const personName = (personId: string): string => {
-    const row = db.prepare("SELECT * FROM people WHERE id = ?").get(personId) as any;
-    return row ? rowToPerson(row).name : personId;
-  };
-  /* eslint-enable @typescript-eslint/no-explicit-any */
-
+  const now = Number((db.prepare("SELECT unixepoch('now') * 1000 AS now").get() as { now: number }).now);
   const data = getLeadershipHomeData();
+  const programs = listPrograms();
+  const growth = getGrowthLeadershipSnapshot(now);
+  const personNameStatement = db.prepare("SELECT name FROM people WHERE id = ?");
+  const userNameStatement = db.prepare("SELECT name FROM users WHERE id = ?");
+  const classContextStatement = db.prepare(
+    `SELECT c.title AS class_title, p.name AS program_name, u.name AS owner_name
+       FROM classes c
+       LEFT JOIN programs p ON p.id = c.program_id
+       LEFT JOIN users u ON u.id = p.owner_user_id
+      WHERE c.id = ?`,
+  );
+  const personNames = new Map<string, string>();
+  const userNames = new Map<string, string>();
+  const classContexts = new Map<string, ClassContextRow | null>();
+  const personName = (personId: string): string => {
+    const cached = personNames.get(personId);
+    if (cached) return cached;
+    const row = personNameStatement.get(personId) as { name: string } | undefined;
+    const name = row?.name?.trim() || "Instructor applicant";
+    personNames.set(personId, name);
+    return name;
+  };
+  const userName = (userId: string | null): string | null => {
+    if (!userId) return null;
+    const cached = userNames.get(userId);
+    if (cached) return cached;
+    const row = userNameStatement.get(userId) as { name: string } | undefined;
+    if (!row?.name?.trim()) return null;
+    userNames.set(userId, row.name);
+    return row.name;
+  };
+  const classContext = (classId: string): ClassContextRow | null => {
+    if (classContexts.has(classId)) return classContexts.get(classId) ?? null;
+    const row = classContextStatement.get(classId) as ClassContextRow | undefined;
+    classContexts.set(classId, row ?? null);
+    return row ?? null;
+  };
 
-  const buckets: Bucket[] = [
-    {
-      key: "newApplications",
-      title: "New applications",
-      items: data.newApplications.map((i) => ({ id: i.id, label: personName(i.personId), href: entityHref("instructor", i.id)! })),
-    },
-    {
-      key: "interviewsToSchedule",
-      title: "Interviews to schedule",
-      items: data.interviewsToSchedule.map((i) => ({ id: i.id, label: personName(i.personId), href: entityHref("instructor", i.id)! })),
-    },
-    {
-      key: "awaitingFounderReview",
-      title: "Awaiting founder review",
-      items: data.awaitingFounderReview.map((i) => ({ id: i.id, label: personName(i.personId), href: entityHref("instructor", i.id)! })),
-    },
-    {
-      key: "behindOnOnboardingOrTraining",
-      title: "Behind on onboarding/training",
-      items: data.behindOnOnboardingOrTraining.map((i) => ({ id: i.id, label: personName(i.personId), href: entityHref("instructor", i.id)! })),
-    },
-    {
-      key: "practiceEvalsNeeded",
-      title: "Practice evals needed",
-      items: data.practiceEvalsNeeded.map((i) => ({ id: i.id, label: personName(i.personId), href: entityHref("instructor", i.id)! })),
-    },
-    {
-      key: "classesWithoutEligibleInstructor",
-      title: "Classes without an eligible instructor",
-      items: data.classesWithoutEligibleInstructor.map((c) => ({ id: c.id, label: c.title, href: entityHref("class", c.id)! })),
-    },
-    {
-      key: "classesLaunchingSoonIncomplete",
-      title: "Launching soon, setup incomplete",
-      items: data.classesLaunchingSoonIncomplete.map((c) => ({ id: c.id, label: c.title, href: entityHref("class", c.id)! })),
-    },
-    {
-      key: "missingStudentForms",
-      title: "Missing student forms",
-      items: data.missingStudentForms.map((s) => ({ id: s.id, label: s.name, href: entityHref("student", s.id)! })),
-    },
-    {
-      key: "flaggedSessionReports",
-      title: "Flagged session reports (14d)",
-      items: data.flaggedSessionReports.map((r) => ({
-        id: r.id,
-        label: r.flag_reason || "Flagged session",
-        href: sessionHref(r.class_id, r.session_id),
-      })),
-    },
-    {
-      key: "openFounderHandoffTasks",
-      title: "Open founder handoffs",
-      items: data.openFounderHandoffTasks.map((t) => ({ id: t.id, label: t.title, href: entityHref("task", t.id) ?? "/app/tasks" })),
-    },
+  const exceptions: OperatingException[] = [];
+  const seen = new Set<string>();
+  const add = (item: OperatingException) => {
+    if (seen.has(item.key)) return;
+    seen.add(item.key);
+    exceptions.push(item);
+  };
+
+  const terminalProgramStages = new Set(["completed", "renewed", "closed"]);
+  const programRisks = programs.filter(
+    (summary) => !terminalProgramStages.has(summary.program.stage) && summary.readiness.blockers.length > 0,
+  );
+  const programRiskIds = new Set(programRisks.map((summary) => summary.program.id));
+
+  for (const summary of programRisks) {
+    const launchAt = dateValue(summary.program.launchDate);
+    const daysToLaunch = launchAt === null ? null : Math.ceil((launchAt - now) / DAY_MS);
+    const imminent = daysToLaunch !== null && daysToLaunch <= 14;
+    const deliveryInProgress = ["ready_to_launch", "active"].includes(summary.program.stage);
+    const severity: Severity = imminent || deliveryInProgress ? "critical" : "high";
+    const nextAction = summary.readiness.nextAction;
+    const owner = summary.ownerName ?? nextAction?.owner ?? "Unassigned";
+    const launchContext = launchAt
+      ? `Launch ${shortDate(launchAt)}${daysToLaunch !== null && daysToLaunch < 0 ? " is overdue" : ""}. `
+      : "Launch date is not set. ";
+    add({
+      key: `program:${summary.program.id}`,
+      title: summary.program.name,
+      domain: "Programs",
+      domainHref: "/app/programs",
+      severity,
+      score: (severity === "critical" ? 340 : 240) + Math.max(0, 20 - (daysToLaunch ?? 20)),
+      context: `${programStageLabel(summary.program.stage)} · ${launchContext}${summary.readiness.primaryBlocker}`,
+      owner,
+      unassigned: !summary.ownerName,
+      href: nextAction?.href ?? `/app/programs/${summary.program.id}`,
+      actionLabel: nextAction?.label ?? "Open Program",
+      dueAt: launchAt,
+    });
+  }
+
+  const classRisks = new Map<
+    string,
+    { item: (typeof data.classesWithoutEligibleInstructor)[number]; noLead: boolean; launchIncomplete: boolean }
+  >();
+  for (const item of data.classesWithoutEligibleInstructor) {
+    classRisks.set(item.id, { item, noLead: true, launchIncomplete: false });
+  }
+  for (const item of data.classesLaunchingSoonIncomplete) {
+    const current = classRisks.get(item.id);
+    classRisks.set(item.id, { item, noLead: current?.noLead ?? false, launchIncomplete: true });
+  }
+
+  for (const risk of classRisks.values()) {
+    if (risk.item.programId && programRiskIds.has(risk.item.programId)) continue;
+    const context = classContext(risk.item.id);
+    const startAt = dateValue(risk.item.startDate);
+    const daysToStart = startAt === null ? null : Math.ceil((startAt - now) / DAY_MS);
+    const severity: Severity = risk.launchIncomplete || (daysToStart !== null && daysToStart <= 14) ? "critical" : "high";
+    const problems = [
+      risk.launchIncomplete ? "launch setup is incomplete" : null,
+      risk.noLead ? "no eligible lead instructor is assigned" : null,
+    ].filter((value): value is string => Boolean(value));
+    add({
+      key: `class:${risk.item.id}`,
+      title: risk.item.title,
+      domain: "Delivery",
+      domainHref: "/app/classes",
+      severity,
+      score: severity === "critical" ? 330 : 225,
+      context: `${context?.program_name ? `${context.program_name} · ` : "Standalone Class · "}${problems.join(" and ")}.${
+        startAt ? ` Starts ${shortDate(startAt)}.` : " Start date is not set."
+      }`,
+      owner: context?.owner_name ?? "Operations",
+      unassigned: !context?.owner_name,
+      href: entityHref("class", risk.item.id)!,
+      actionLabel: "Resolve delivery risk",
+      dueAt: startAt,
+    });
+  }
+
+  for (const report of data.flaggedSessionReports) {
+    const context = classContext(report.class_id);
+    add({
+      key: `session-report:${report.id}`,
+      title: `${context?.class_title ?? "Class session"}: quality flag`,
+      domain: "Quality",
+      domainHref: "/app/classes",
+      severity: "critical",
+      score: 325,
+      context: `${report.flag_reason?.trim() || "The instructor flagged this session for leadership review."} Reported ${shortDate(report.reported_at)}.`,
+      owner: context?.owner_name ?? "Program lead",
+      unassigned: !context?.owner_name,
+      href: sessionHref(report.class_id, report.session_id),
+      actionLabel: "Review session",
+      dueAt: report.reported_at,
+    });
+  }
+
+  for (const task of data.openFounderHandoffTasks) {
+    const overdue = task.dueAt !== null && task.dueAt < now;
+    add({
+      key: `task:${task.id}`,
+      title: task.title,
+      domain: "Work",
+      domainHref: "/app/tasks",
+      severity: overdue ? "critical" : "high",
+      score: overdue ? 320 : 250,
+      context: task.dueAt
+        ? `${overdue ? "Overdue" : "Due"} ${shortDate(task.dueAt)}. A founder decision or handoff is waiting.`
+        : "A founder decision or handoff is waiting without a due date.",
+      owner: userName(task.ownerUserId) ?? "Founder",
+      unassigned: false,
+      href: "/app/tasks",
+      actionLabel: "Resolve handoff",
+      dueAt: task.dueAt,
+    });
+  }
+
+  for (const student of data.missingStudentForms) {
+    add({
+      key: `student:${student.id}`,
+      title: `${student.name}: forms incomplete`,
+      domain: "Students",
+      domainHref: "/app/students",
+      severity: "high",
+      score: 235,
+      context: "Required forms are incomplete for an active student record. Confirm the family follow-up before delivery.",
+      owner: "Student operations",
+      unassigned: false,
+      href: entityHref("student", student.id)!,
+      actionLabel: "Complete forms",
+    });
+  }
+
+  for (const instructor of data.awaitingFounderReview) {
+    add({
+      key: `instructor:${instructor.id}`,
+      title: personName(instructor.personId),
+      domain: "People",
+      domainHref: "/app/instructors",
+      severity: "high",
+      score: 255,
+      context: `Founder decision is ready. ${waitingLabel(instructor.updatedAt, now)}`,
+      owner: "Founder",
+      unassigned: false,
+      href: entityHref("instructor", instructor.id)!,
+      actionLabel: "Make decision",
+      dueAt: instructor.updatedAt,
+    });
+  }
+
+  for (const instructor of data.behindOnOnboardingOrTraining) {
+    const owner = userName(instructor.ownerUserId);
+    add({
+      key: `instructor:${instructor.id}`,
+      title: personName(instructor.personId),
+      domain: "People",
+      domainHref: "/app/instructors",
+      severity: "high",
+      score: 230,
+      context: `Onboarding or training has stalled. ${waitingLabel(instructor.updatedAt, now)}`,
+      owner: owner ?? "Instructor manager",
+      unassigned: !owner,
+      href: entityHref("instructor", instructor.id)!,
+      actionLabel: "Unblock development",
+      dueAt: instructor.updatedAt,
+    });
+  }
+
+  for (const instructor of data.practiceEvalsNeeded) {
+    const owner = userName(instructor.ownerUserId);
+    add({
+      key: `instructor:${instructor.id}`,
+      title: personName(instructor.personId),
+      domain: "People",
+      domainHref: "/app/instructors",
+      severity: "high",
+      score: 220,
+      context: `Practice evaluation evidence is still needed before teaching eligibility. ${waitingLabel(instructor.updatedAt, now)}`,
+      owner: owner ?? "Instructor manager",
+      unassigned: !owner,
+      href: entityHref("instructor", instructor.id)!,
+      actionLabel: "Record evaluation",
+      dueAt: instructor.updatedAt,
+    });
+  }
+
+  for (const instructor of data.interviewsToSchedule) {
+    const owner = userName(instructor.ownerUserId);
+    const age = Math.floor((now - instructor.createdAt) / DAY_MS);
+    add({
+      key: `instructor:${instructor.id}`,
+      title: personName(instructor.personId),
+      domain: "People",
+      domainHref: "/app/instructors",
+      severity: age >= 7 ? "high" : "watch",
+      score: age >= 7 ? 210 + Math.min(age, 20) : 120 + age,
+      context: `Interview has not been scheduled. ${waitingLabel(instructor.createdAt, now)}`,
+      owner: owner ?? "Hiring team",
+      unassigned: !owner,
+      href: entityHref("instructor", instructor.id)!,
+      actionLabel: "Schedule interview",
+      dueAt: instructor.createdAt,
+    });
+  }
+
+  for (const instructor of data.newApplications) {
+    const owner = userName(instructor.ownerUserId);
+    add({
+      key: `instructor:${instructor.id}`,
+      title: personName(instructor.personId),
+      domain: "People",
+      domainHref: "/app/instructors",
+      severity: "watch",
+      score: 110,
+      context: `New instructor application needs initial review. ${waitingLabel(instructor.createdAt, now)}`,
+      owner: owner ?? "Hiring team",
+      unassigned: !owner,
+      href: entityHref("instructor", instructor.id)!,
+      actionLabel: "Review application",
+      dueAt: instructor.createdAt,
+    });
+  }
+
+  // Growth stays in its own operating workspace unless canonical evidence
+  // identifies a real decision, ownership gap, or market imbalance.
+  for (const item of growth.exceptions) {
+    const severity: Severity = item.severity === "urgent" ? "critical" : item.severity === "warning" ? "high" : "watch";
+    const owner = item.owner ?? "Unassigned";
+    add({
+      key: `growth:${item.id}`,
+      title: item.title,
+      domain: "Growth",
+      domainHref: "/app/growth",
+      severity,
+      score: severity === "critical" ? 325 : severity === "high" ? 225 : 115,
+      context: item.detail,
+      owner,
+      unassigned: !item.owner,
+      href: item.href,
+      actionLabel: "Resolve in Growth",
+    });
+  }
+
+  exceptions.sort((a, b) => b.score - a.score || (a.dueAt ?? Number.MAX_SAFE_INTEGER) - (b.dueAt ?? Number.MAX_SAFE_INTEGER) || a.title.localeCompare(b.title));
+
+  const criticalCount = exceptions.filter((item) => item.severity === "critical").length;
+  const unassignedCount = exceptions.filter((item) => item.unassigned).length;
+  const founderDecisionCount = data.awaitingFounderReview.length + data.openFounderHandoffTasks.length;
+  const visible = exceptions.slice(0, 15);
+  const remaining = Math.max(0, exceptions.length - visible.length);
+  const metricCards = [
+    { label: "Act now", value: criticalCount, detail: "Launch, delivery, or quality risk", href: "#attention-queue", tone: criticalCount > 0 ? "var(--bow-negative)" : "var(--bow-positive)" },
+    { label: "Programs at risk", value: programRisks.length, detail: "Readiness blockers across the portfolio", href: "/app/programs", tone: programRisks.length > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
+    { label: "Founder decisions", value: founderDecisionCount, detail: "Reviews and handoffs waiting", href: "/app/tasks", tone: founderDecisionCount > 0 ? "var(--bow-blue)" : "var(--bow-positive)" },
+    { label: "Growth exceptions", value: growth.exceptions.length, detail: "Evidence, ownership, or market decisions", href: "/app/growth", tone: growth.exceptions.length > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
+    { label: "Without a named owner", value: unassignedCount, detail: "Exceptions needing accountability", href: "/app/tasks", tone: unassignedCount > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
   ];
 
-  const totalOpen = buckets.reduce((sum, b) => sum + b.items.length, 0);
-
   return (
-    <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="BOW HQ" title="Home" />
-      <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)", maxWidth: 640 }}>
-        Execution state and blockers across the pipeline. {totalOpen} item(s) need attention.
-      </p>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px,1fr))", gap: 16 }}>
-        {buckets.map((b) => (
-          <div key={b.key} style={cardStyle}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <span style={labelStyle}>{b.title}</span>
-              <Badge status={b.items.length > 0 ? "warning" : "neutral"}>{b.items.length}</Badge>
-            </div>
-            {b.items.length === 0 ? (
-              <p style={{ ...valueStyle, color: "var(--bow-slate)" }}>Nothing here.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {b.items.slice(0, 6).map((item) => (
-                  <Link key={item.id} href={item.href} style={{ ...valueStyle, color: "var(--bow-blue)" }}>
-                    {item.label}
-                  </Link>
-                ))}
-                {b.items.length > 6 && <span style={{ ...labelStyle }}>+{b.items.length - 6} more</span>}
-              </div>
-            )}
-          </div>
-        ))}
+    <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 28 }}>
+      <SectionHeader kicker="BOW HQ · Management by exception" title="Founder cockpit" level={1} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, flexWrap: "wrap" }}>
+        <p style={{ ...bodyStyle, fontSize: 15, maxWidth: 690, margin: 0 }}>
+          One ranked view of the decisions and blockers that can change an outcome. Normal operating work stays with the team in its workspace.
+        </p>
+        <Link href="/app/tasks" style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 14, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--bow-blue)", textDecoration: "none" }}>
+          Open all Work →
+        </Link>
       </div>
+
+      <section aria-label="Operating pulse" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+        {metricCards.map((metric) => (
+          <Link key={metric.label} href={metric.href} style={{ ...cardStyle, padding: 18, textDecoration: "none", borderTop: `4px solid ${metric.tone}` }}>
+            <span style={labelStyle}>{metric.label}</span>
+            <strong style={{ display: "block", margin: "8px 0 4px", fontFamily: "var(--font-display)", fontSize: 36, lineHeight: 1, color: "var(--bow-ink)" }}>
+              {metric.value}
+            </strong>
+            <span style={{ ...bodyStyle, fontSize: 12.5 }}>{metric.detail}</span>
+          </Link>
+        ))}
+      </section>
+
+      <section id="attention-queue" aria-labelledby="attention-heading" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
+          <div>
+            <span style={labelStyle}>Ranked by consequence and time</span>
+            <h2 id="attention-heading" style={{ margin: "5px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 24, textTransform: "uppercase", color: "var(--bow-ink)" }}>
+              Attention queue
+            </h2>
+          </div>
+          <span style={{ ...bodyStyle, fontSize: 13 }}>{exceptions.length} open exception{exceptions.length === 1 ? "" : "s"}</span>
+        </div>
+
+        {visible.length === 0 ? (
+          <div style={{ ...cardStyle, padding: 32, textAlign: "center" }}>
+            <Badge status="positive">Portfolio clear</Badge>
+            <h3 style={{ margin: "14px 0 6px", fontFamily: "var(--font-display)", fontSize: 20, textTransform: "uppercase" }}>No exception work is waiting</h3>
+            <p style={{ ...bodyStyle, margin: 0 }}>The team can stay focused on planned delivery and growth.</p>
+          </div>
+        ) : (
+          <ol style={{ ...cardStyle, listStyle: "none", padding: 0, margin: 0, overflow: "hidden" }}>
+            {visible.map((item, index) => (
+              <li key={item.key} style={{ display: "grid", gridTemplateColumns: "42px minmax(0, 1fr)", gap: 12, padding: "18px clamp(14px,3vw,22px)", borderBottom: index === visible.length - 1 ? 0 : "1px solid var(--border-rule)" }}>
+                <span aria-hidden="true" style={{ fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-slate)", paddingTop: 3 }}>
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+                    <Badge status={severityStatus[item.severity]}>{severityLabel[item.severity]}</Badge>
+                    <Link href={item.domainHref} style={{ ...labelStyle, textDecoration: "none", color: "var(--bow-blue)" }}>{item.domain}</Link>
+                    {item.unassigned && <Badge status="negative">Owner needed</Badge>}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 420px", minWidth: 0 }}>
+                      <h3 style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.35, color: "var(--bow-ink)" }}>{item.title}</h3>
+                      <p style={{ ...bodyStyle, margin: "5px 0 0" }}>{item.context}</p>
+                      <span style={{ ...labelStyle, display: "block", marginTop: 9 }}>Accountable · {item.owner}</span>
+                    </div>
+                    <Link href={item.href} style={{ alignSelf: "center", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 13, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--bow-blue)", textDecoration: "none", whiteSpace: "nowrap" }}>
+                      {item.actionLabel} →
+                    </Link>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+        {remaining > 0 && (
+          <p style={{ ...bodyStyle, margin: "2px 0 0", fontSize: 12.5 }}>
+            {remaining} lower-ranked exception{remaining === 1 ? " remains" : "s remain"} in the linked operating workspaces.
+          </p>
+        )}
+      </section>
+
+      <nav aria-label="Operating workspaces" style={{ ...cardStyle, padding: 18, display: "flex", alignItems: "center", gap: "12px 24px", flexWrap: "wrap" }}>
+        <span style={labelStyle}>Move the system</span>
+        {[
+          ["Programs", "/app/programs"],
+          ["Growth", "/app/growth"],
+          ["Work", "/app/tasks"],
+          ["People", me.role === "admin" ? "/app/admin/people" : "/app/instructors"],
+          ["Locations", "/app/locations"],
+        ].map(([label, href]) => (
+          <Link key={href} href={href} style={{ fontFamily: "var(--font-interface)", fontSize: 14, fontWeight: 700, color: "var(--bow-blue)", textDecoration: "none" }}>
+            {label} →
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }

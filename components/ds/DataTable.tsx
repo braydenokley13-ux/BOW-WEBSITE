@@ -46,7 +46,7 @@ export default function DataTable({ columns, children, minWidth = 640, emptyLabe
             {columns.map((c, i) => {
               const col = typeof c === "string" ? { header: c } : c;
               return (
-                <th key={`${col.header}-${i}`} style={{ ...thStyle, textAlign: col.align === "right" ? "right" : "left" }}>
+                <th scope="col" key={`${col.header}-${i}`} style={{ ...thStyle, textAlign: col.align === "right" ? "right" : "left" }}>
                   {col.header}
                 </th>
               );

@@ -1,9 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAppState } from "@/components/app/AppState";
 import { trackLessons, lessonProgressLabel, type LessonProgress } from "@/lib/account";
 import type { Lesson } from "@/lib/lessons";
+import styles from "../portal-accessibility.module.css";
 
 type LessonState = "completed" | "current" | "available" | "in-development" | "locked";
 
@@ -38,14 +39,11 @@ const LABEL: Record<LessonState, string> = {
 
 export default function StudentHomePage() {
   const { me, getCohort, getOrg, getUser, activeEnrollmentFor, cohortCurrentLessonId, lessonProgressFor, setSelectedLessonId } = useAppState();
-  const router = useRouter();
-
   const enr = activeEnrollmentFor(me.id);
   const cohort = enr ? getCohort(enr.cohortId) : null;
 
-  const openStudentLesson = (id: string) => {
+  const selectStudentLesson = (id: string) => {
     setSelectedLessonId(id);
-    router.push("/app/student/lesson");
   };
 
   // Student isn't in an active cohort yet — calm empty state, not a crash.
@@ -154,7 +152,7 @@ export default function StudentHomePage() {
               <h2 style={{ margin: "6px 0 14px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(28px,4vw,46px)", lineHeight: 0.98, letterSpacing: "-0.01em", textTransform: "uppercase" }}>{sv.cur.title}</h2>
               <p style={{ margin: "0 0 24px", fontFamily: "var(--font-editorial)", fontSize: "clamp(16px,1.6vw,20px)", lineHeight: 1.5, color: "#d4d6db", maxWidth: 560 }}>{sv.cur.centralQuestion}</p>
               <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
-                <button onClick={() => openStudentLesson(cur.id)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>{sv.cur.action}</button>
+                <Link className={styles.focusTarget} href="/app/student/lesson" onClick={() => selectStudentLesson(cur.id)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>{sv.cur.action}</Link>
                 <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "#9a9da6" }}>{sv.cur.duration} · {sv.cur.concepts}</span>
               </div>
             </div>
@@ -191,18 +189,32 @@ export default function StudentHomePage() {
             <span style={{ fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-ink)" }}>{completedCount} of {lessons.length} lessons complete</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {progress.map((p) => (
-              <div
-                key={p.id}
-                onClick={p.accessible ? () => openStudentLesson(p.id) : undefined}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "11px 0", borderBottom: "1px solid var(--border-rule)", cursor: p.accessible ? "pointer" : "default" }}
-              >
-                <span style={{ width: 10, height: 10, borderRadius: 999, background: p.dot, flexShrink: 0 }} />
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)", width: 30, flexShrink: 0 }}>{p.n}</span>
-                <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14.5, color: "var(--bow-ink)", flex: 1, minWidth: 0 }}>{p.title}</span>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: p.dot, flexShrink: 0 }}>{p.stLabel}</span>
-              </div>
-            ))}
+            {progress.map((p) => {
+              const content = (
+                <>
+                  <span aria-hidden style={{ width: 10, height: 10, borderRadius: 999, background: p.dot, flexShrink: 0 }} />
+                  <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)", width: 30, flexShrink: 0 }}>{p.n}</span>
+                  <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14.5, color: "var(--bow-ink)", flex: 1, minWidth: 0 }}>{p.title}</span>
+                  <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: p.dot, flexShrink: 0 }}>{p.stLabel}</span>
+                </>
+              );
+              const rowStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 14, padding: "11px 0", borderBottom: "1px solid var(--border-rule)", cursor: p.accessible ? "pointer" : "default" };
+
+              return p.accessible ? (
+                <Link
+                  aria-label={`${p.action ?? "Open lesson"}: ${p.title}`}
+                  className={styles.focusTarget}
+                  href="/app/student/lesson"
+                  key={p.id}
+                  onClick={() => selectStudentLesson(p.id)}
+                  style={rowStyle}
+                >
+                  {content}
+                </Link>
+              ) : (
+                <div key={p.id} style={rowStyle}>{content}</div>
+              );
+            })}
           </div>
         </div>
 

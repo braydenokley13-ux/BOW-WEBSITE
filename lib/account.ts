@@ -32,6 +32,8 @@ export interface User {
   createdAt?: number | null;
   /** True once the student finished the first-time onboarding flow (Feature 7). */
   onboardingCompleted?: boolean;
+  /** Production bootstrap accounts must rotate their one-time credential. */
+  passwordChangeRequired?: boolean;
 }
 
 export interface Organization {
@@ -146,12 +148,17 @@ export interface Invitation {
   created: string;
   expires: string;
   status: InvitationStatus;
+  /** Bearer token used by the acceptance URL. Only serialized to admin views. */
+  token?: string;
+  /** Machine-readable expiry. The formatted `expires` field is display-only. */
+  expiresAt?: number;
 }
 
-export type InquiryStatus = "new" | "reviewing" | "contacted" | "closed" | "spam";
+export type InquiryStatus = "new" | "reviewing" | "contacted" | "converted_to_program" | "closed" | "spam";
 
 export interface Inquiry {
   id: string;
+  organizationId?: string | null;
   name: string;
   email: string;
   type: string;
@@ -264,7 +271,7 @@ export const defaultUserForRole = (role: Role): string =>
   role === "admin" ? "u-admin" : role === "instructor" ? "u-coach" : role === "growth" ? "u-growth" : "u-s1";
 
 export const roleHomePath = (role: Role): string =>
-  role === "admin" ? "/app/admin" : role === "instructor" ? "/app/instructor" : role === "growth" ? "/app" : "/app/student";
+  role === "admin" || role === "growth" ? "/app" : role === "instructor" ? "/app/instructor" : "/app/student";
 
 export const roleLabel = (role: Role | null): string =>
   role === "admin" ? "BOW Administration" : role === "instructor" ? "Instructor" : role === "student" ? "Student" : role === "growth" ? "Growth Lead" : "Not signed in";
@@ -409,6 +416,7 @@ export interface FeedUser {
   decisionsCompleted: number;
   simCompleted: boolean;
   certificateId: string | null;
+  certificateCompletedAt: number | null;
 }
 
 /* ============================================================
@@ -416,13 +424,13 @@ export interface FeedUser {
  * ============================================================ */
 
 /**
- * Development password assigned to every seeded account that has
+ * Development-only password assigned to every seeded account that has
  * "active" or "suspended" status. Seeded "invited" users have no
- * password until they accept their invitation. Real deployments
- * should rotate these out — they exist so the prototype's seed
- * accounts can actually sign in. Override with the SEED_PASSWORD env var.
+ * password until they accept their invitation. Production never uses this
+ * fallback; demo identities are disabled there unless an explicit local-only
+ * demo-mode override is supplied.
  */
-export const SEED_PASSWORD = process.env.SEED_PASSWORD || "bowdemo123";
+export const SEED_PASSWORD = process.env.SEED_PASSWORD || (process.env.NODE_ENV === "production" ? "" : "bowdemo123");
 
 /** Map of seed user email -> account they can sign in with (active/suspended only). */
 export const signInHint = (): { email: string; password: string }[] =>

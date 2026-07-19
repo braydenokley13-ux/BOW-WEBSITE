@@ -192,7 +192,7 @@ export default function NotebookWorkbench({ viewer }: { viewer: { name: string }
   const [copied, setCopied] = useState(false);
   const [paperTitle, setPaperTitle] = useState("");
   const [abstract, setAbstract] = useState("");
-  const [submitState, setSubmitState] = useState<{ ok: boolean; message: string } | null>(null);
+  const [submitState, setSubmitState] = useState<{ ok: boolean; tone: "success" | "warning" | "error"; message: string } | null>(null);
   const [submitting, startSubmit] = useTransition();
 
   const columns: Record<Stance, Clip[]> = { supports: [], challenges: [], open: [] };
@@ -230,16 +230,26 @@ export default function NotebookWorkbench({ viewer }: { viewer: { name: string }
   function handleSubmitPaper() {
     if (!draft) return;
     startSubmit(async () => {
-      const result = await submitPaper({
-        title: paperTitle.trim() || notebook.hypothesis.trim(),
-        abstract: abstract.trim(),
-        body: draft,
-      });
-      setSubmitState(
-        result.ok
-          ? { ok: true, message: "Submitted — your paper is in the desk's review queue. If it holds up, it publishes under your name." }
-          : { ok: false, message: result.error ?? "Something went wrong — try again." },
-      );
+      try {
+        const result = await submitPaper({
+          title: paperTitle.trim() || notebook.hypothesis.trim(),
+          abstract: abstract.trim(),
+          body: draft,
+        });
+        setSubmitState(
+          result.ok
+            ? {
+                ok: true,
+                tone: result.warning ? "warning" : "success",
+                message: result.warning
+                  ? `Submitted to the review queue, but backup durability needs attention. ${result.warning}`
+                  : "Submitted — your paper is in the desk's review queue. If it holds up, it publishes under your name.",
+              }
+            : { ok: false, tone: "error", message: result.error ?? "Something went wrong — try again." },
+        );
+      } catch {
+        setSubmitState({ ok: false, tone: "error", message: "The paper could not be submitted. Refresh and try again." });
+      }
     });
   }
 
@@ -363,7 +373,7 @@ export default function NotebookWorkbench({ viewer }: { viewer: { name: string }
                   desk — accepted papers publish on the site with your name on the byline.
                 </p>
               ) : submitState?.ok ? (
-                <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.55, color: "var(--bow-positive)" }}>
+                <p role="status" aria-live="polite" style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.55, color: submitState.tone === "warning" ? "var(--bow-warning-text)" : "var(--bow-positive)" }}>
                   {submitState.message}
                 </p>
               ) : (
@@ -391,7 +401,7 @@ export default function NotebookWorkbench({ viewer }: { viewer: { name: string }
                       {submitting ? "Submitting…" : "Submit for review"}
                     </Button>
                     {submitState && !submitState.ok && (
-                      <span style={{ fontFamily: "var(--font-interface)", fontSize: 12.5, color: "var(--bow-negative)" }}>{submitState.message}</span>
+                      <span role="alert" style={{ fontFamily: "var(--font-interface)", fontSize: 12.5, color: "var(--bow-negative)" }}>{submitState.message}</span>
                     )}
                   </div>
                 </>

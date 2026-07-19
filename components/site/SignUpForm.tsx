@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ds";
-import { createInquiry } from "@/app/actions/lms";
+import { submitPublicInquiry } from "@/app/actions/public-forms";
 
 const ROLE_OPTIONS = ["Student", "Parent", "Educator", "School / Camp", "Other"];
 const INTEREST_OPTIONS = [
@@ -47,48 +47,68 @@ const fieldStyle: CSSProperties = {
   padding: "12px 14px",
   borderRadius: "var(--radius-control)",
   fontSize: 15,
-  outline: "none",
 };
 
 export default function SignUpForm() {
   const [form, setForm] = useState<FormState>(INITIAL);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const requestKeyRef = useRef<string | null>(null);
+  const submissionPendingRef = useRef(false);
 
   const setField = (key: keyof FormState, value: string) => {
+    if (submissionPendingRef.current) return;
     setForm((f) => ({ ...f, [key]: value }));
     setError("");
   };
 
-  const [pending, setPending] = useState(false);
-
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim() || !/.+@.+\..+/.test(form.email)) {
+    if (submissionPendingRef.current) return;
+    const name = form.name.trim();
+    const email = form.email.trim();
+    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError("Add your name and a valid email so we can reach you.");
       return;
     }
+    submissionPendingRef.current = true;
     setPending(true);
     const summary = [`Interested in ${form.interest}.`, form.message.trim()].filter(Boolean).join(" ");
-    const res = await createInquiry({
-      name: form.name,
-      email: form.email,
-      type: form.role,
-      orgName: form.org,
-      summary,
-    });
-    setPending(false);
-    if (!res.ok) {
-      setError("Something went wrong sending that. Please try again.");
-      return;
+    const requestKey = requestKeyRef.current
+      ?? `signup-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+    requestKeyRef.current = requestKey;
+    try {
+      const res = await submitPublicInquiry({
+        requestKey,
+        source: "sign_up",
+        name,
+        email,
+        type: form.role,
+        orgName: form.org.trim(),
+        summary,
+      });
+      if (!res.ok) {
+        setError(res.error ?? "We could not confirm the submission. Review your details and try again safely.");
+        return;
+      }
+      setSubmitted(true);
+      setError("");
+    } catch {
+      setError("The submission was interrupted. Your information is still here, and it is safe to try again.");
+    } finally {
+      submissionPendingRef.current = false;
+      setPending(false);
     }
-    setSubmitted(true);
-    setError("");
   };
 
   const reset = () => {
     setSubmitted(false);
     setForm(INITIAL);
+    setError("");
+    setPending(false);
+    requestKeyRef.current = null;
+    submissionPendingRef.current = false;
   };
 
   return (
@@ -176,7 +196,7 @@ export default function SignUpForm() {
             }}
           >
             {submitted ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16, textAlign: "left", padding: "12px 0" }}>
+              <div role="status" aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: 16, textAlign: "left", padding: "12px 0" }}>
                 <span
                   style={{
                     fontFamily: "var(--font-data)",
@@ -210,16 +230,22 @@ export default function SignUpForm() {
                 </div>
               </div>
             ) : (
-              <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <form aria-busy={pending} onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <label htmlFor="su-name" style={labelStyle}>
                     Name
                   </label>
                   <input
+                    className="bow-field"
                     id="su-name"
                     value={form.name}
                     onChange={(e) => setField("name", e.target.value)}
                     placeholder="Your name"
+                    required
+                    maxLength={120}
+                    autoComplete="name"
+                    disabled={pending}
+                    aria-describedby={error ? "su-error" : undefined}
                     style={fieldStyle}
                   />
                 </div>
@@ -228,11 +254,17 @@ export default function SignUpForm() {
                     Email
                   </label>
                   <input
+                    className="bow-field"
                     id="su-email"
                     type="email"
                     value={form.email}
                     onChange={(e) => setField("email", e.target.value)}
                     placeholder="you@email.com"
+                    required
+                    maxLength={200}
+                    autoComplete="email"
+                    disabled={pending}
+                    aria-describedby={error ? "su-error" : undefined}
                     style={fieldStyle}
                   />
                 </div>
@@ -242,9 +274,11 @@ export default function SignUpForm() {
                       I am a
                     </label>
                     <select
+                      className="bow-field"
                       id="su-role"
                       value={form.role}
                       onChange={(e) => setField("role", e.target.value)}
+                      disabled={pending}
                       style={fieldStyle}
                     >
                       {ROLE_OPTIONS.map((r) => (
@@ -259,9 +293,11 @@ export default function SignUpForm() {
                       Interested in
                     </label>
                     <select
+                      className="bow-field"
                       id="su-interest"
                       value={form.interest}
                       onChange={(e) => setField("interest", e.target.value)}
+                      disabled={pending}
                       style={fieldStyle}
                     >
                       {INTEREST_OPTIONS.map((o) => (
@@ -278,10 +314,14 @@ export default function SignUpForm() {
                     <span style={{ textTransform: "none", letterSpacing: 0 }}>(optional)</span>
                   </label>
                   <input
+                    className="bow-field"
                     id="su-org"
                     value={form.org}
                     onChange={(e) => setField("org", e.target.value)}
                     placeholder="If you're inquiring for a group"
+                    maxLength={200}
+                    autoComplete="organization"
+                    disabled={pending}
                     style={fieldStyle}
                   />
                 </div>
@@ -290,16 +330,22 @@ export default function SignUpForm() {
                     Anything else <span style={{ textTransform: "none", letterSpacing: 0 }}>(optional)</span>
                   </label>
                   <textarea
+                    className="bow-field"
                     id="su-message"
                     value={form.message}
                     onChange={(e) => setField("message", e.target.value)}
                     rows={3}
                     placeholder="Tell us what you're looking for"
+                    maxLength={1500}
+                    disabled={pending}
                     style={{ ...fieldStyle, resize: "vertical", fontFamily: "var(--font-interface)" }}
                   />
                 </div>
                 {error && (
                   <div
+                    id="su-error"
+                    role="alert"
+                    aria-live="assertive"
                     style={{
                       fontFamily: "var(--font-data)",
                       fontSize: 12,

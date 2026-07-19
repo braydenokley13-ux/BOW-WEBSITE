@@ -6,9 +6,9 @@ BOW Sports Capital is a sports-business education platform: middle and high scho
 students learn economics, finance, leadership, and strategy by making the same
 decisions that shape teams, leagues, and the business of sports.
 
-This repository is the marketing/editorial website, implemented from the Claude
-Design handoff. It is built with **Next.js (App Router) + TypeScript** and is
-structured so the authentication layer and backend can be added later.
+This repository contains both the public education experience and the BOW
+Operating System used to plan Programs, staff Classes, run sessions, and manage
+operational exceptions. It is built with **Next.js (App Router) + TypeScript**.
 
 ## Getting started
 
@@ -62,8 +62,7 @@ The signature device is the **Cap Line**. See `styles/tokens/` and `components/d
 
 ## Expanded Track 101 experience
 
-The self-paced product runs on the same SQLite backend (no new dependencies and
-no new environment variables — `SEED_PASSWORD` is still the only optional one):
+The self-paced product runs on the same SQLite backend with no new package dependencies.
 
 | Route | Who | What |
 | ----- | --- | ---- |
@@ -98,8 +97,12 @@ service required:
   at `data/bow.db` (gitignored) and is created and seeded from `lib/account.ts`
   on first boot, so the app comes up with the prototype's data already loaded.
 - **Passwords** — hashed with scrypt (`node:crypto`); see `lib/password.ts`.
-- **Sessions** — database-backed opaque tokens stored in an HttpOnly cookie
-  (`lib/session.ts`). Validated against the DB on every request.
+- **Sessions** — random opaque tokens stored in an HttpOnly cookie; only their
+  SHA-256 digests are stored in the database (`lib/session.ts`). Validated
+  against the DB on every request.
+- **Password recovery** — enumeration-safe requests issue 30-minute, single-use
+  bearer tokens whose SHA-256 digests are the only token material stored. A
+  successful reset revokes every account session and does not sign the user in.
 - **Route protection** — `proxy.ts` (Next 16's renamed Middleware) does an
   optimistic cookie check; the authoritative check is in the app layout and every
   server action via the Data Access Layer (`lib/dal.ts`).
@@ -108,7 +111,7 @@ service required:
 
 ### Signing in
 
-Seeded accounts share the development password **`bowdemo123`**. For example:
+Local seeded accounts use `SEED_PASSWORD`, or the historical development-only fallback when no local environment file exists. For example:
 
 | Role        | Email                          |
 | ----------- | ------------------------------ |
@@ -117,7 +120,75 @@ Seeded accounts share the development password **`bowdemo123`**. For example:
 | Student     | `jalen.b@lincolnhs.edu`        |
 
 Invited accounts (e.g. `aisha.o@lincolnhs.edu`) have no password until they
-accept their invitation at `/accept-invitation?token=<id>` (admins can copy the
+accept their invitation at `/accept-invitation#token=<secure-token>` (admins can copy the
 link from the Invitations table).
 
-To reset everything, delete the `data/` directory and restart — it re-seeds.
+Password recovery is available from `/forgot-password`. Production transactional
+email uses the Resend REST API and requires `RESEND_API_KEY`, `BOW_EMAIL_FROM`, and
+a public HTTPS `BOW_APP_URL` with no path, query, or credentials. Existing
+deployments may keep `BOW_RESET_EMAIL_FROM` as a backwards-compatible sender
+fallback. Verify the From domain in Resend. Missing or invalid delivery
+configuration, provider failures,
+unknown accounts, and throttled requests all retain the same public response;
+an undelivered reset credential is deleted. Requesting another link atomically
+invalidates every older link for that account. New reset URLs carry the bearer
+token in the URL fragment so it is not sent in the initial HTTP request or ordinary
+Referer headers; already-sent query-token links remain supported and are scrubbed
+from browser history after hydration.
+
+Password-reset and invitation email delivery run with Next.js `after()` once the
+response is finished, which keeps provider latency from becoming an
+account-enumeration signal. This is
+not a durable outbound-email queue and does not automatically retry delivery. The
+self-hosted process must receive `SIGINT` or `SIGTERM` and be allowed a 10–30 second
+graceful drain so pending delivery callbacks can finish before shutdown.
+
+Invitation links also carry the credential in the URL fragment. New and resent
+student invitations, plus founder-approved instructor invitations, queue email
+automatically after their database transaction commits. The issuing operator still
+receives a one-time copy fallback; “queued” never means provider delivery is
+guaranteed. Before sending, the callback rechecks that the exact invitation digest,
+email, status, and expiry are still current. Provider/configuration failures create
+a staff notification without storing or logging the raw credential.
+
+For local testing only, set `BOW_APP_URL=http://localhost:3000` and
+`BOW_REVEAL_RESET_LINKS=true` to reveal the link in the confirmation screen.
+Production ignores this reveal flag. Never enable it in a shared environment.
+
+Production never seeds the demo identities by default. A fresh production database
+requires `BOW_BOOTSTRAP_ADMIN_EMAIL`, `BOW_BOOTSTRAP_ADMIN_NAME`, and a unique
+`BOW_BOOTSTRAP_ADMIN_PASSWORD` of at least 16 characters. That bootstrap account is
+flagged for immediate password rotation. On the first production start of an
+existing database, every active credential is checked once and startup refuses to
+continue if any account uses the historical public demo password. Production mode
+never seeds demo identities or demo-authored content.
+
+### Production topology
+
+The current persistence adapter is SQLite. It is safe only when every application
+request reaches one deployment with one durable filesystem. Set `BOW_DATABASE_PATH`
+to an absolute path on that durable volume and include the database plus its WAL/SHM
+files in the backup plan.
+
+Do **not** deploy this SQLite adapter to Vercel Functions or another ephemeral,
+horizontally scaled serverless runtime. Production startup intentionally fails on
+Vercel because separate function instances cannot share this database safely and
+their local files are not durable. A Vercel deployment requires replacing the
+persistence adapter with managed Postgres first.
+
+Editorial mirrors require two separate stores: `BLOB_READ_WRITE_TOKEN` for the
+public, published-only article payloads and `ARTICLE_PRIVATE_BLOB_READ_WRITE_TOKEN`
+for a store configured with private access. Keep both tokens available during the
+privacy migration so legacy public full-row artifacts can be discovered and removed.
+
+Sign-in and public-intake throttles are persisted in SQLite. To enable their network
+bucket, set `BOW_TRUSTED_CLIENT_IP_HEADER` to `x-forwarded-for`, `x-real-ip`, or
+`cf-connecting-ip`, and configure the production reverse proxy to replace that one
+header with one canonical client IP (not an untrusted forwarded chain). Other
+forwarding headers are ignored, and a configured header that is missing or malformed
+fails closed. Identity-based limits remain active when no trusted client-address
+header is configured.
+
+For a disposable local-development database only, you may delete the local `data/`
+directory and restart to re-seed. Never run that reset against production or any
+directory mounted from a production backup or durable volume.

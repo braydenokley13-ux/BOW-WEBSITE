@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAppState } from "@/components/app/AppState";
 import {
@@ -16,6 +15,7 @@ import {
 import { getLessonById } from "@/lib/lessons";
 import { podcastAllEpisodes, podTakeaways } from "@/lib/podcast";
 import PodcastPlayer from "@/components/site/PodcastPlayer";
+import styles from "../../portal-accessibility.module.css";
 
 export default function StudentLessonPage() {
   const {
@@ -33,8 +33,6 @@ export default function StudentLessonPage() {
     checkAndUnlockNextLesson,
     saveReflectionAndCheck,
   } = useAppState();
-  const router = useRouter();
-
   const enr = activeEnrollmentFor(me.id);
   const cohort = enr ? getCohort(enr.cohortId) : null;
 
@@ -145,7 +143,7 @@ export default function StudentLessonPage() {
       done: status !== "not-started",
       render: () =>
         status === "not-started" ? (
-          <button onClick={() => startLesson(lid)} style={primaryBtn}>Start Lesson</button>
+          <button className={styles.focusTarget} onClick={() => startLesson(lid)} type="button" style={primaryBtn}>Start Lesson</button>
         ) : (
           <span style={doneTag}>Started{prog?.startedAt ? ` · ${prog.startedAt}` : ""}</span>
         ),
@@ -162,13 +160,13 @@ export default function StudentLessonPage() {
         prog?.simulationDone ? (
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <span style={doneTag}>Your call{selectedOption ? `: ${selectedOption}` : " · recorded"}</span>
-            <button onClick={() => setSimulationDone(lid, false)} style={ghostBtn}>Undo</button>
+            <button className={styles.focusTarget} onClick={() => setSimulationDone(lid, false)} type="button" style={ghostBtn}>Undo</button>
           </div>
         ) : (
           <div style={{ width: "100%" }}>
-            <button onClick={() => setCaseOpen((v) => !v)} style={ghostBtn}>{caseOpen ? "Hide the case file" : "Open the case file"}</button>
+            <button aria-controls="student-case-file" aria-expanded={caseOpen} className={styles.focusTarget} onClick={() => setCaseOpen((v) => !v)} type="button" style={ghostBtn}>{caseOpen ? "Hide the case file" : "Open the case file"}</button>
             {caseOpen && (
-              <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div id="student-case-file" style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
                 {L.decisionPrompt && (
                   <p style={{ margin: 0, fontFamily: "var(--font-editorial)", fontSize: 15, lineHeight: 1.55, color: "var(--bow-ink)" }}>{L.decisionPrompt}</p>
                 )}
@@ -204,11 +202,13 @@ export default function StudentLessonPage() {
                     <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Make your call</span>
                     {L.decisionOptions.map((opt) => (
                       <button
+                        className={styles.focusTarget}
                         key={opt.label}
                         onClick={() => {
                           setSelectedOption(opt.label);
                           setSimulationDone(lid, true);
                         }}
+                        type="button"
                         style={{ textAlign: "left", display: "flex", flexDirection: "column", gap: 3, padding: "12px 14px", cursor: "pointer", background: "var(--bow-paper)", border: "1px solid var(--border-rule)", borderRadius: 4 }}
                       >
                         <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)" }}>{opt.label}</span>
@@ -217,10 +217,10 @@ export default function StudentLessonPage() {
                     ))}
                   </div>
                 ) : (
-                  <button onClick={() => setSimulationDone(lid, true)} style={primaryBtn}>Mark case complete</button>
+                  <button className={styles.focusTarget} onClick={() => setSimulationDone(lid, true)} type="button" style={primaryBtn}>Mark case complete</button>
                 )}
                 {L.simulationStatus === "available" && (
-                  <Link href={L.simulationUrl ?? "/simulation"} style={{ ...primaryBtn, display: "inline-block", textDecoration: "none", width: "fit-content" }}>Launch Simulation →</Link>
+                  <Link className={styles.focusTarget} href={L.simulationUrl ?? "/simulation"} style={{ ...primaryBtn, display: "inline-block", textDecoration: "none", width: "fit-content" }}>Launch Simulation →</Link>
                 )}
               </div>
             )}
@@ -265,7 +265,7 @@ export default function StudentLessonPage() {
             style={{ width: "100%", background: "var(--bow-paper)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "11px 13px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14, resize: "vertical" }}
           />
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
-            <button onClick={handleReflectionSave} style={primaryBtn}>Save reflection</button>
+            <button className={styles.focusTarget} onClick={handleReflectionSave} type="button" style={primaryBtn}>Save reflection</button>
             <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.04em", color: liveWords >= MIN_REFLECTION_WORDS ? "var(--bow-positive)" : "var(--bow-slate)" }}>
               {liveWords} / {MIN_REFLECTION_WORDS} words
             </span>
@@ -280,9 +280,9 @@ export default function StudentLessonPage() {
       done: !!prog?.challengeDone,
       render: () =>
         prog?.challengeDone ? (
-          <button onClick={() => setChallengeDone(lid, false)} style={ghostBtn}>Undo</button>
+          <button className={styles.focusTarget} onClick={() => setChallengeDone(lid, false)} type="button" style={ghostBtn}>Undo</button>
         ) : (
-          <button onClick={() => setChallengeDone(lid, true)} style={primaryBtn}>Mark challenge complete</button>
+          <button className={styles.focusTarget} onClick={() => setChallengeDone(lid, true)} type="button" style={primaryBtn}>Mark challenge complete</button>
         ),
     },
   ];
@@ -299,9 +299,9 @@ export default function StudentLessonPage() {
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(20px,3vw,36px) clamp(16px,4vw,32px) 96px" }}>
       <div style={{ maxWidth: 880, margin: "0 auto" }}>
-        <span onClick={() => router.push("/app/student/track")} style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)", cursor: "pointer", display: "inline-block", marginBottom: 18 }}>
+        <Link className={styles.focusTarget} href="/app/student/track" style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)", cursor: "pointer", display: "inline-block", marginBottom: 18 }}>
           ← My Track
-        </span>
+        </Link>
 
         {/* case-file header */}
         <div style={{ background: "var(--bow-ink)", color: "#fff", borderRadius: 6, padding: "clamp(24px,3.5vw,40px)", marginBottom: 22, position: "relative", overflow: "hidden" }}>
@@ -313,7 +313,7 @@ export default function StudentLessonPage() {
           <p style={{ margin: "0 0 22px", fontFamily: "var(--font-editorial)", fontSize: "clamp(17px,1.8vw,22px)", lineHeight: 1.45, color: "#d4d6db", maxWidth: 600 }}>{L.centralQuestion}</p>
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             {!locked && (
-              <button onClick={() => (status === "not-started" ? startLesson(lid) : undefined)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: status === "not-started" ? "pointer" : "default" }}>{primaryLabel}</button>
+              <button className={styles.focusTarget} disabled={status !== "not-started"} onClick={() => startLesson(lid)} type="button" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: status === "not-started" ? "pointer" : "default" }}>{primaryLabel}</button>
             )}
             <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "#9a9da6" }}>Role · {L.role} · {L.duration}</span>
           </div>
@@ -368,7 +368,7 @@ export default function StudentLessonPage() {
                 {completed ? "You’ve completed this lesson." : allDone ? "All steps done — lock it in." : "Finish the steps above to complete the lesson."}
               </span>
               {!completed && (
-                <button onClick={() => completeLesson(lid)} disabled={!allDone} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 24px", border: "none", background: allDone ? "var(--bow-positive)" : "var(--bow-inactive)", color: "#fff", borderRadius: 4, cursor: allDone ? "pointer" : "not-allowed" }}>Complete Lesson</button>
+                <button className={styles.focusTarget} onClick={() => completeLesson(lid)} disabled={!allDone} type="button" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 24px", border: "none", background: allDone ? "var(--bow-positive)" : "var(--bow-inactive)", color: "#fff", borderRadius: 4, cursor: allDone ? "pointer" : "not-allowed" }}>Complete Lesson</button>
               )}
             </div>
           </div>

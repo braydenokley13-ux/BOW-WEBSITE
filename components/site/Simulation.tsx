@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, DataStrip, DecisionCard } from "@/components/ds";
 import type { DataItem } from "@/components/ds";
 import {
@@ -54,18 +54,23 @@ function tone(v: number | undefined): DataItem["tone"] {
 const SECTION_PAD_ENTRY = "clamp(24px,3vw,36px) clamp(18px,4vw,40px) clamp(48px,7vw,96px)";
 
 interface SimulationProps {
+  /** Optional server evidence recorder. The consequence is hidden until it confirms the choice. */
+  onDecision?: (stepIndex: number, choiceId: string) => Promise<{ ok: boolean; error?: string }>;
   /** Fires once the simulation reaches its debrief — used by embedders (e.g. the Daily Feed). */
   onComplete?: () => void;
   /** Optional footer to render on the completed screen in place of the marketing CTAs. */
   completedFooter?: React.ReactNode;
 }
 
-export default function Simulation({ onComplete, completedFooter }: SimulationProps = {}) {
+export default function Simulation({ onDecision, onComplete, completedFooter }: SimulationProps = {}) {
   const [started, setStarted] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [step, setStep] = useState(0);
   const [choices, setChoices] = useState<Choices>({});
   const [revealed, setRevealed] = useState<Revealed>({});
+  const [decisionPending, setDecisionPending] = useState(false);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const decisionPendingRef = useRef(false);
 
   useEffect(() => {
     if (completed) onComplete?.();
@@ -83,14 +88,33 @@ export default function Simulation({ onComplete, completedFooter }: SimulationPr
     setStep(0);
     setChoices({});
     setRevealed({});
+    setDecisionPending(false);
+    setDecisionError(null);
+    decisionPendingRef.current = false;
     scrollTop();
   };
 
   const replay = () => beginSim();
 
-  const submit = (choiceId: string) => {
-    setChoices((c) => ({ ...c, [step]: choiceId }));
-    setRevealed((r) => ({ ...r, [step]: true }));
+  const submit = async (choiceId: string) => {
+    if (decisionPendingRef.current) return;
+    decisionPendingRef.current = true;
+    setDecisionPending(true);
+    setDecisionError(null);
+    try {
+      const result = onDecision ? await onDecision(step, choiceId) : { ok: true };
+      if (!result.ok) {
+        setDecisionError(result.error ?? "That decision could not be recorded. Try again.");
+        return;
+      }
+      setChoices((c) => ({ ...c, [step]: choiceId }));
+      setRevealed((r) => ({ ...r, [step]: true }));
+    } catch {
+      setDecisionError("That decision could not be recorded. Check your connection and try again.");
+    } finally {
+      decisionPendingRef.current = false;
+      setDecisionPending(false);
+    }
   };
 
   const advance = () => {
@@ -121,6 +145,8 @@ export default function Simulation({ onComplete, completedFooter }: SimulationPr
           choices={choices}
           revealed={!!revealed[step]}
           onSubmit={submit}
+          decisionPending={decisionPending}
+          decisionError={decisionError}
           onAdvance={advance}
           onReviewBrief={reviewBrief}
         />
@@ -313,16 +339,21 @@ function ActiveScreen({
   choices,
   revealed,
   onSubmit,
+  decisionPending,
+  decisionError,
   onAdvance,
   onReviewBrief,
 }: {
   step: number;
   choices: Choices;
   revealed: boolean;
-  onSubmit: (id: string) => void;
+  onSubmit: (id: string) => void | Promise<void>;
+  decisionPending: boolean;
+  decisionError: string | null;
   onAdvance: () => void;
   onReviewBrief: () => void;
 }) {
+  const resultRef = useRef<HTMLDivElement>(null);
   const dec = SIM[step] ?? SIM[0];
   const choiceNow = choices[step] ?? null;
   const detailNow = revealed && choiceNow ? dec.detail[choiceNow] : null;
@@ -342,6 +373,10 @@ function ActiveScreen({
 
   const isLast = step >= SIM.length - 1;
   const advanceLabel = isLast ? "See the Final Result" : "Next Decision";
+
+  useEffect(() => {
+    if (revealed) resultRef.current?.focus();
+  }, [revealed, step]);
 
   const progress = SIM.map((d, i) => {
     const done = i < step || (i === step && revealed);
@@ -444,6 +479,8 @@ function ActiveScreen({
             unknowns={dec.unknowns}
             options={dec.options}
             onSubmit={onSubmit}
+            submitting={decisionPending}
+            submitError={decisionError}
             onSecondary={onReviewBrief}
             primaryLabel="Make the Call"
             secondaryLabel="Re-read the Brief"
@@ -454,6 +491,12 @@ function ActiveScreen({
         {revealed && detailNow && (
           <>
             <div
+              ref={resultRef}
+              role="region"
+              aria-label="Decision result"
+              aria-live="polite"
+              aria-atomic="true"
+              tabIndex={-1}
               style={{
                 border: "1px solid var(--bow-dark-border)",
                 borderTop: "4px solid var(--bow-blue)",
@@ -568,6 +611,7 @@ function DetailCell({
 
 /* ===================== COMPLETED ===================== */
 function CompletedScreen({ choices, onReplay, footer }: { choices: Choices; onReplay: () => void; footer?: React.ReactNode }) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const axisSum = Object.keys(choices).reduce(
     (a, k) => a + ((SIM_AXIS[Number(k)] && SIM_AXIS[Number(k)][choices[Number(k)]]) || 0),
     0,
@@ -589,6 +633,10 @@ function CompletedScreen({ choices, onReplay, footer }: { choices: Choices; onRe
     label: METRIC_META[k].name,
     value: String(finalM[k]),
   }));
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   return (
     <section
@@ -627,6 +675,8 @@ function CompletedScreen({ choices, onReplay, footer }: { choices: Choices; onRe
           Simulation Complete · Your Front Office, Debriefed
         </span>
         <h1
+          ref={headingRef}
+          tabIndex={-1}
           style={{
             margin: "14px 0 0",
             fontFamily: "var(--font-display)",
