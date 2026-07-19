@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { CSSProperties } from "react";
 import { useAppState } from "@/components/app/AppState";
 
 type Tone = "warning" | "info" | "negative" | "neutral" | "positive";
@@ -14,16 +13,6 @@ const toneColor = (t: Tone): string =>
     neutral: "var(--bow-slate)",
     positive: "var(--bow-positive)",
   })[t];
-
-const eyebrow: CSSProperties = {
-  fontFamily: "var(--font-data)",
-  fontSize: 11,
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
-  color: "var(--bow-slate)",
-};
-
-const colHead: CSSProperties = { ...eyebrow, display: "block", marginBottom: 12 };
 
 export default function AdminOverviewPage() {
   const router = useRouter();
@@ -72,73 +61,81 @@ export default function AdminOverviewPage() {
   ];
 
   return (
-    <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <span style={eyebrow}>BOW Administration</span>
-        <h1 style={{ margin: "8px 0 26px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>Keep every program moving.</h1>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 1, background: "var(--border-rule)", border: "1px solid var(--border-rule)", borderRadius: 6, overflow: "hidden", marginBottom: 28 }}>
-          {statCells.map((s) => (
-            <div key={s.label} style={{ background: "var(--bow-white)", padding: "18px 16px" }}>
-              <span style={{ fontFamily: "var(--font-data)", fontSize: 30, fontWeight: 500, color: s.color, display: "block", lineHeight: 1 }}>{s.value}</span>
-              <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{s.label}</span>
-            </div>
-          ))}
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">BOW Administration</span>
+          <h1 className="ops-title">Keep every program moving.</h1>
         </div>
+      </header>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 24 }}>
-          <div>
-            <span style={colHead}>Needs attention</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {topNeeds.length === 0 && (
-                <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 5, padding: "14px 16px" }}>
-                  <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>Everything’s in order. Nothing needs your attention.</p>
-                </div>
-              )}
-              {topNeeds.map((n) => (
-                <div key={`${n.action}-${n.text}`} style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderLeft: `3px solid ${toneColor(n.tone)}`, borderRadius: 5, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                  <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)", flex: 1, minWidth: 160 }}>{n.text}</span>
-                  <button
-                    type="button"
-                    onClick={n.onGo}
-                    style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--bow-blue)", cursor: "pointer", whiteSpace: "nowrap", background: "transparent", border: 0, padding: "6px 0 6px 10px" }}
-                  >
-                    {n.action} →
-                  </button>
-                </div>
-              ))}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 1, background: "var(--border-rule)", border: "1px solid var(--border-rule)", borderRadius: 6, overflow: "hidden" }}>
+        {statCells.map((s) => (
+          <div key={s.label} style={{ background: "var(--bow-white)", padding: "18px 16px" }}>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 30, fontWeight: 500, color: s.color, display: "block", lineHeight: 1 }}>{s.value}</span>
+            <span className="ops-label">{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="ops-grid">
+        <div className="ops-stack">
+          <section>
+            <div className="ops-section-head">
+              <span className="ops-section-title" style={{ fontSize: 20 }}>Needs attention</span>
             </div>
+            {topNeeds.length === 0 ? (
+              <div className="ops-empty">
+                <p className="ops-empty__body" style={{ margin: 0 }}>Everything&apos;s in order. Nothing needs your attention.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {topNeeds.map((n) => (
+                  <div key={`${n.action}-${n.text}`} className="ops-panel" style={{ borderLeft: `3px solid ${toneColor(n.tone)}`, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)", flex: 1, minWidth: 160 }}>{n.text}</span>
+                    <button type="button" onClick={n.onGo} className="ops-inline-link" style={{ cursor: "pointer", whiteSpace: "nowrap", background: "transparent", border: 0, padding: "6px 0 6px 10px" }}>
+                      {n.action} →
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
-            <span style={{ ...eyebrow, display: "block", margin: "26px 0 12px" }}>Recent activity</span>
+          <section>
+            <div className="ops-section-head">
+              <span className="ops-section-title" style={{ fontSize: 20 }}>Recent activity</span>
+            </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
               {activity.map((a) => (
                 <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--border-rule)" }}>
                   <span style={{ width: 7, height: 7, borderRadius: 999, background: "var(--bow-blue)", flexShrink: 0 }} />
                   <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)", flex: 1 }}>{a.text}</span>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", flexShrink: 0 }}>{a.when}</span>
+                  <span className="ops-record-meta">{a.when}</span>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
+        </div>
 
-          <div>
-            <span style={colHead}>Quick actions</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {quickActions.map((q) => (
-                <button
-                  type="button"
-                  key={q.label}
-                  onClick={q.onGo}
-                  style={{ textAlign: "left", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", padding: "15px 18px", border: "1px solid var(--border-rule)", background: "var(--bow-white)", color: "var(--bow-ink)", borderRadius: 5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}
-                >
-                  <span>{q.label}</span>
-                  <span style={{ color: "var(--bow-blue)" }}>→</span>
-                </button>
-              ))}
-            </div>
+        <div>
+          <span className="ops-label" style={{ display: "block", marginBottom: 12 }}>Quick actions</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {quickActions.map((q) => (
+              <button
+                type="button"
+                key={q.label}
+                onClick={q.onGo}
+                className="ops-panel"
+                style={{ textAlign: "left", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.03em", textTransform: "uppercase", padding: "15px 18px", color: "var(--bow-ink)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}
+              >
+                <span>{q.label}</span>
+                <span style={{ color: "var(--bow-blue)" }}>→</span>
+              </button>
+            ))}
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

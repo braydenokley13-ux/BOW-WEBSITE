@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, SectionHeader } from "@/components/ds";
+import { Badge } from "@/components/ds";
 import { listStaffUsers, resolveUserNames } from "@/lib/hiring";
 import { getDb } from "@/lib/db";
 import { entityHref } from "@/lib/routes";
@@ -9,24 +9,6 @@ import { requireStaff } from "@/lib/dal";
 import { addCanonicalDays, canonicalDateInZone, formatCanonicalDate } from "@/lib/timezone";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const cardStyle = {
-  background: "var(--bow-white)",
-  border: "1px solid var(--border-rule)",
-  borderRadius: 6,
-} as const;
-const labelStyle = {
-  fontFamily: "var(--font-data)",
-  fontSize: 10,
-  letterSpacing: "0.09em",
-  textTransform: "uppercase" as const,
-  color: "var(--bow-slate)",
-};
-const bodyStyle = {
-  fontFamily: "var(--font-interface)",
-  fontSize: 13.5,
-  lineHeight: 1.5,
-  color: "var(--bow-slate)",
-} as const;
 
 interface TaskRow {
   id: string;
@@ -169,7 +151,7 @@ export default async function TasksPage() {
   };
 
   const renderItems = (items: WorkItem[], completed = false) => (
-    <div style={{ ...cardStyle, overflow: "hidden" }}>
+    <div className="ops-panel" style={{ padding: 0, overflow: "hidden" }}>
       {items.map((item, index) => {
         const href = entityHref(item.entityType, item.entityId);
         const overdue = !completed && isOverdue(item);
@@ -199,29 +181,35 @@ export default async function TasksPage() {
                 {completed && <Badge status="positive">Completed</Badge>}
               </div>
 
-              <h3 style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.35, color: "var(--bow-ink)" }}>{item.title}</h3>
-              {item.context && <p style={{ ...bodyStyle, margin: "6px 0 0" }}>{item.context}</p>}
+              <h3 style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.35, color: "var(--bow-ink)" }}>
+                {href ? (
+                  <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>{item.title}</Link>
+                ) : (
+                  item.title
+                )}
+              </h3>
+              {item.context && <p className="ops-body" style={{ margin: "6px 0 0" }}>{item.context}</p>}
               {item.recommendedAction && !completed && (
-                <p style={{ ...bodyStyle, margin: "7px 0 0", color: "var(--bow-ink)" }}>
+                <p className="ops-body" style={{ margin: "7px 0 0", color: "var(--bow-ink)" }}>
                   <strong>Next:</strong> {item.recommendedAction}
                 </p>
               )}
               {completed && item.completionNote && (
-                <p style={{ ...bodyStyle, margin: "7px 0 0" }}><strong>Outcome:</strong> {item.completionNote}</p>
+                <p className="ops-body" style={{ margin: "7px 0 0" }}><strong>Outcome:</strong> {item.completionNote}</p>
               )}
 
               <div style={{ display: "flex", gap: "7px 18px", flexWrap: "wrap", marginTop: 11 }}>
-                <span style={labelStyle}>Owner · {ownerLabel(item)}</span>
+                <span className="ops-label">Owner · {ownerLabel(item)}</span>
                 {(item.dueOn || item.dueAt) && !completed && (
-                  <time dateTime={item.dueOn ?? new Date(item.dueAt!).toISOString()} style={labelStyle}>
+                  <time dateTime={item.dueOn ?? new Date(item.dueAt!).toISOString()} className="ops-label">
                     Due · {item.dueOn ? formatCanonicalDate(item.dueOn) : shortDate(item.dueAt!)}
                   </time>
                 )}
                 {completed && item.completedAt && (
-                  <time dateTime={new Date(item.completedAt).toISOString()} style={labelStyle}>Closed · {shortDate(item.completedAt)}</time>
+                  <time dateTime={new Date(item.completedAt).toISOString()} className="ops-label">Closed · {shortDate(item.completedAt)}</time>
                 )}
                 {href && (
-                  <Link href={href} style={{ ...labelStyle, color: "var(--bow-blue)", textDecoration: "none" }}>
+                  <Link href={href} className="ops-label" style={{ color: "var(--bow-blue)", textDecoration: "none" }}>
                     Related · {displayLabel(item.entityType ?? "record")} →
                   </Link>
                 )}
@@ -254,11 +242,17 @@ export default async function TasksPage() {
   ];
 
   return (
-    <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 28 }}>
-      <SectionHeader kicker="BOW OS · Accountability" title="Work" level={1} />
-      <p style={{ ...bodyStyle, margin: 0, maxWidth: 720, fontSize: 15 }}>
-        Every cross-functional commitment exposes its owner, operating context, due date, and intended outcome—even when one is missing. Exceptions rise automatically; planned work stays visible without competing for founder attention.
-      </p>
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">BOW OS · Accountability</span>
+          <h1 className="ops-title">Work</h1>
+          <p className="ops-summary">
+            Every cross-functional commitment exposes its owner, operating context, due date, and intended outcome—even when one is missing. Exceptions rise automatically; planned work stays visible without competing for founder attention.
+          </p>
+        </div>
+      </header>
+
       <CreateWorkForm
         staffUsers={staffUsers}
         defaultOwnerId={staffUsers.some((user) => user.id === me.id) ? me.id : ""}
@@ -267,27 +261,27 @@ export default async function TasksPage() {
 
       <section aria-label="Work queue summary" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
         {metrics.map((metric) => (
-          <div key={metric.label} style={{ ...cardStyle, padding: 16, borderTop: `4px solid ${metric.tone}` }}>
-            <span style={labelStyle}>{metric.label}</span>
+          <div key={metric.label} className="ops-panel" style={{ padding: 16, borderTop: `4px solid ${metric.tone}` }}>
+            <span className="ops-label">{metric.label}</span>
             <strong style={{ display: "block", margin: "7px 0 3px", fontFamily: "var(--font-display)", fontSize: 30, lineHeight: 1, color: "var(--bow-ink)" }}>{metric.value}</strong>
-            <span style={{ ...bodyStyle, fontSize: 12 }}>{metric.detail}</span>
+            <span className="ops-body" style={{ fontSize: 12 }}>{metric.detail}</span>
           </div>
         ))}
       </section>
 
       {open.length === 0 ? (
-        <section style={{ ...cardStyle, padding: 34, textAlign: "center" }}>
+        <section className="ops-empty">
           <Badge status="positive">Queue clear</Badge>
-          <h2 style={{ margin: "14px 0 6px", fontFamily: "var(--font-display)", fontSize: 22, textTransform: "uppercase" }}>No open Work</h2>
-          <p style={{ ...bodyStyle, margin: 0 }}>There are no commitments waiting for an owner or outcome.</p>
+          <h2 className="ops-empty__title" style={{ marginTop: 12 }}>No open Work</h2>
+          <p className="ops-empty__body">There are no commitments waiting for an owner or outcome.</p>
         </section>
       ) : (
         <>
           {attention.length > 0 && (
             <section aria-labelledby="attention-work-heading" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div>
-                <span style={labelStyle}>Overdue · urgent · founder · unassigned</span>
-                <h2 id="attention-work-heading" style={{ margin: "5px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 22, textTransform: "uppercase" }}>Needs attention</h2>
+                <span className="ops-label">Overdue · urgent · founder · unassigned</span>
+                <h2 id="attention-work-heading" className="ops-section-title">Needs attention</h2>
               </div>
               {renderItems(attention)}
             </section>
@@ -296,8 +290,8 @@ export default async function TasksPage() {
           {planned.length > 0 && (
             <section aria-labelledby="planned-work-heading" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div>
-                <span style={labelStyle}>Owned commitments</span>
-                <h2 id="planned-work-heading" style={{ margin: "5px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 22, textTransform: "uppercase" }}>Planned queue</h2>
+                <span className="ops-label">Owned commitments</span>
+                <h2 id="planned-work-heading" className="ops-section-title">Planned queue</h2>
               </div>
               {renderItems(planned)}
             </section>
@@ -308,12 +302,12 @@ export default async function TasksPage() {
       {done.length > 0 && (
         <section aria-labelledby="completed-work-heading" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div>
-            <span style={labelStyle}>Latest 25 outcomes</span>
-            <h2 id="completed-work-heading" style={{ margin: "5px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 22, textTransform: "uppercase" }}>Recently completed</h2>
+            <span className="ops-label">Latest 25 outcomes</span>
+            <h2 id="completed-work-heading" className="ops-section-title">Recently completed</h2>
           </div>
           {renderItems(done, true)}
         </section>
       )}
-    </div>
+    </main>
   );
 }

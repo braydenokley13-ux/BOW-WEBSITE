@@ -1,31 +1,9 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeTask, reassignTask } from "@/app/actions/tasks";
 import { Button, Modal } from "@/components/ds";
-
-const fieldStyle: CSSProperties = {
-  background: "var(--bow-paper)",
-  border: "1px solid var(--border-rule)",
-  color: "var(--bow-ink)",
-  padding: "10px 12px",
-  fontFamily: "var(--font-interface)",
-  fontSize: 14,
-  width: "100%",
-  borderRadius: 4,
-  marginBottom: 12,
-};
-
-const labelStyle: CSSProperties = {
-  display: "block",
-  marginBottom: 6,
-  fontFamily: "var(--font-data)",
-  fontSize: 10,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "var(--bow-slate)",
-};
 
 interface WorkItemActionsProps {
   taskId: string;
@@ -102,44 +80,46 @@ export default function WorkItemActions({
       </div>
 
       <Modal open={modal === "complete"} onClose={close} title="Complete Work" dismissible={!busy}>
-        <label htmlFor={`work-note-${taskId}`} style={labelStyle}>Completion note (optional)</label>
-        <textarea
-          id={`work-note-${taskId}`}
-          disabled={busy}
-          rows={3}
-          maxLength={2000}
-          placeholder="What changed, and is any follow-up still needed?"
-          style={{ ...fieldStyle, resize: "vertical" }}
-          value={completionNote}
-          onChange={(event) => setCompletionNote(event.target.value)}
-        />
-        {error && <p role="alert" style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-negative)" }}>{error}</p>}
+        <div className="ops-field" style={{ marginBottom: 12 }}>
+          <label htmlFor={`work-note-${taskId}`}>Completion note (optional)</label>
+          <textarea
+            id={`work-note-${taskId}`}
+            disabled={busy}
+            rows={3}
+            maxLength={2000}
+            placeholder="What changed, and is any follow-up still needed?"
+            value={completionNote}
+            onChange={(event) => setCompletionNote(event.target.value)}
+          />
+        </div>
+        {error && <p role="alert" className="ops-error" style={{ margin: "0 0 12px" }}>{error}</p>}
         <Button variant="primary" size="sm" disabled={busy} onClick={() => run(() => completeTask(taskId, completionNote), "Work completed.")}>
           {busy ? "Saving…" : "Confirm complete"}
         </Button>
       </Modal>
 
       <Modal open={modal === "owner"} onClose={close} title="Set accountable owner" dismissible={!busy}>
-        <label htmlFor={`work-owner-${taskId}`} style={labelStyle}>BOW owner</label>
-        <select
-          id={`work-owner-${taskId}`}
-          disabled={busy}
-          style={fieldStyle}
-          value={ownerId}
-          onChange={(event) => setOwnerId(event.target.value)}
-        >
-          <option value="">Unassigned</option>
-          {currentOwnerId && !currentOwnerIsAvailable && (
-            <option value={currentOwnerId}>Current owner (account unavailable)</option>
-          )}
-          {staffUsers.map((user) => (
-            <option key={user.id} value={user.id}>{user.name}</option>
-          ))}
-        </select>
-        <p style={{ margin: "-3px 0 12px", fontFamily: "var(--font-interface)", fontSize: 12.5, lineHeight: 1.45, color: "var(--bow-slate)" }}>
+        <div className="ops-field" style={{ marginBottom: 6 }}>
+          <label htmlFor={`work-owner-${taskId}`}>BOW owner</label>
+          <select
+            id={`work-owner-${taskId}`}
+            disabled={busy}
+            value={ownerId}
+            onChange={(event) => setOwnerId(event.target.value)}
+          >
+            <option value="">Unassigned</option>
+            {currentOwnerId && !currentOwnerIsAvailable && (
+              <option value={currentOwnerId}>Current owner (account unavailable)</option>
+            )}
+            {staffUsers.map((user) => (
+              <option key={user.id} value={user.id}>{user.name}</option>
+            ))}
+          </select>
+        </div>
+        <p className="ops-field__help" style={{ margin: "0 0 12px" }}>
           Ownership means this person is accountable for moving the item to a clear outcome.
         </p>
-        {error && <p role="alert" style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-negative)" }}>{error}</p>}
+        {error && <p role="alert" className="ops-error" style={{ margin: "0 0 12px" }}>{error}</p>}
         <Button
           variant="primary"
           size="sm"
