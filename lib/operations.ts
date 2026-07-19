@@ -55,42 +55,42 @@ interface OperationsSnapshot {
   inquiries: any[];
 }
 
-function loadSnapshot(): OperationsSnapshot {
+async function loadSnapshot(): Promise<OperationsSnapshot> {
   const db = getDb();
   return {
-    programs: db.prepare("SELECT * FROM programs ORDER BY updated_at DESC").all() as any[],
-    locations: db.prepare("SELECT * FROM locations ORDER BY name").all() as any[],
-    regions: db.prepare("SELECT * FROM operating_regions ORDER BY name").all() as any[],
-    organizations: db.prepare("SELECT * FROM organizations ORDER BY name").all() as any[],
-    organizationPeople: db.prepare("SELECT * FROM organization_people WHERE active = 1").all() as any[],
-    organizationLocations: db.prepare("SELECT * FROM organization_locations WHERE active = 1").all() as any[],
-    people: db.prepare("SELECT * FROM people ORDER BY name").all() as any[],
-    curricula: db.prepare("SELECT * FROM curricula ORDER BY title").all() as any[],
-    users: db.prepare("SELECT id, name, role, status, deletion_requested FROM users ORDER BY name").all() as any[],
-    classes: db.prepare("SELECT * FROM classes ORDER BY updated_at DESC").all() as any[],
+    programs: (await db.prepare("SELECT * FROM programs ORDER BY updated_at DESC").all()) as any[],
+    locations: (await db.prepare("SELECT * FROM locations ORDER BY name").all()) as any[],
+    regions: (await db.prepare("SELECT * FROM operating_regions ORDER BY name").all()) as any[],
+    organizations: (await db.prepare("SELECT * FROM organizations ORDER BY name").all()) as any[],
+    organizationPeople: (await db.prepare("SELECT * FROM organization_people WHERE active = 1").all()) as any[],
+    organizationLocations: (await db.prepare("SELECT * FROM organization_locations WHERE active = 1").all()) as any[],
+    people: (await db.prepare("SELECT * FROM people ORDER BY name").all()) as any[],
+    curricula: (await db.prepare("SELECT * FROM curricula ORDER BY title").all()) as any[],
+    users: (await db.prepare("SELECT id, name, role, status, deletion_requested FROM users ORDER BY name").all()) as any[],
+    classes: (await db.prepare("SELECT * FROM classes ORDER BY updated_at DESC").all()) as any[],
     // Operations/readiness is a present-tense view. Historical assignment
     // intervals are queried directly by workforce and quality read models.
-    classInstructors: db.prepare("SELECT * FROM class_instructors WHERE removed_at IS NULL").all() as any[],
-    staffingDecisions: db.prepare(
-      `SELECT od.id, od.entity_id, od.decision, od.fingerprint, od.metadata
+    classInstructors: (await db.prepare("SELECT * FROM class_instructors WHERE removed_at IS NULL").all()) as any[],
+    staffingDecisions: (await db.prepare(
+          `SELECT od.id, od.entity_id, od.decision, od.fingerprint, od.metadata
          FROM operational_decisions od
          JOIN class_instructors ci ON ci.decision_id = od.id
         WHERE ci.removed_at IS NULL
           AND od.entity_type = 'class'
           AND od.decision_type = 'instructor_assignment'`,
-    ).all() as any[],
-    instructors: db.prepare("SELECT * FROM instructors ORDER BY updated_at DESC").all() as any[],
-    qualifications: db.prepare("SELECT * FROM instructor_qualifications").all() as any[],
-    availability: db.prepare("SELECT * FROM instructor_availability").all() as any[],
-    enrollments: db.prepare("SELECT * FROM class_enrollments").all() as any[],
-    students: db.prepare("SELECT * FROM students").all() as any[],
-    sessions: db.prepare("SELECT * FROM class_sessions ORDER BY session_date").all() as any[],
-    sessionReports: db.prepare("SELECT * FROM class_session_reports ORDER BY reported_at DESC").all() as any[],
-    tasks: db.prepare("SELECT * FROM tasks ORDER BY status, due_at").all() as any[],
-    feedback: db.prepare("SELECT * FROM instructor_feedback ORDER BY created_at DESC").all() as any[],
-    development: db.prepare("SELECT * FROM instructor_development_items ORDER BY created_at DESC").all() as any[],
-    activity: db.prepare("SELECT * FROM crm_activity ORDER BY created_at DESC").all() as any[],
-    inquiries: db.prepare("SELECT * FROM inquiries ORDER BY rowid DESC").all() as any[],
+        ).all()) as any[],
+    instructors: (await db.prepare("SELECT * FROM instructors ORDER BY updated_at DESC").all()) as any[],
+    qualifications: (await db.prepare("SELECT * FROM instructor_qualifications").all()) as any[],
+    availability: (await db.prepare("SELECT * FROM instructor_availability").all()) as any[],
+    enrollments: (await db.prepare("SELECT * FROM class_enrollments").all()) as any[],
+    students: (await db.prepare("SELECT * FROM students").all()) as any[],
+    sessions: (await db.prepare("SELECT * FROM class_sessions ORDER BY session_date").all()) as any[],
+    sessionReports: (await db.prepare("SELECT * FROM class_session_reports ORDER BY reported_at DESC").all()) as any[],
+    tasks: (await db.prepare("SELECT * FROM tasks ORDER BY status, due_at").all()) as any[],
+    feedback: (await db.prepare("SELECT * FROM instructor_feedback ORDER BY created_at DESC").all()) as any[],
+    development: (await db.prepare("SELECT * FROM instructor_development_items ORDER BY created_at DESC").all()) as any[],
+    activity: (await db.prepare("SELECT * FROM crm_activity ORDER BY created_at DESC").all()) as any[],
+    inquiries: (await db.prepare("SELECT * FROM inquiries ORDER BY rowid DESC").all()) as any[],
   };
 }
 
@@ -671,8 +671,8 @@ function summaryFor(snapshot: OperationsSnapshot, program: Program): ProgramSumm
   };
 }
 
-export function listPrograms(): ProgramSummary[] {
-  const snapshot = loadSnapshot();
+export async function listPrograms(): Promise<ProgramSummary[]> {
+  const snapshot = (await loadSnapshot());
   return snapshot.programs
     .map(mapProgram)
     .map((program) => summaryFor(snapshot, program))
@@ -913,8 +913,8 @@ export interface ProgramDetail extends ProgramSummary {
   relatedPrograms: { id: string; name: string; stage: ProgramStage; relationship: "parent" | "renewal_or_expansion" }[];
 }
 
-export function getProgram(id: string): ProgramDetail | null {
-  const snapshot = loadSnapshot();
+export async function getProgram(id: string): Promise<ProgramDetail | null> {
+  const snapshot = (await loadSnapshot());
   const row = snapshot.programs.find((candidate) => candidate.id === id);
   if (!row) return null;
   const program = mapProgram(row);
@@ -1122,13 +1122,13 @@ export function getProgram(id: string): ProgramDetail | null {
   };
 }
 
-export function getClassStaffingRecommendation(
+export async function getClassStaffingRecommendation(
   programId: string,
   classId: string,
   instructorId: string,
   role: "lead" | "additional" = "lead",
-): StaffingRecommendation | null {
-  const snapshot = loadSnapshot();
+): Promise<StaffingRecommendation | null> {
+  const snapshot = (await loadSnapshot());
   const programRow = snapshot.programs.find((candidate) => candidate.id === programId);
   const classRow = snapshot.classes.find((candidate) => candidate.id === classId && candidate.program_id === programId);
   const instructor = snapshot.instructors.find((candidate) => candidate.id === instructorId);
@@ -1137,14 +1137,14 @@ export function getClassStaffingRecommendation(
   return staffingFor(snapshot, program, classId, role).find((candidate) => candidate.instructorId === instructorId) ?? null;
 }
 
-export function getProgramReadiness(id: string): ProgramReadiness | null {
-  const snapshot = loadSnapshot();
+export async function getProgramReadiness(id: string): Promise<ProgramReadiness | null> {
+  const snapshot = (await loadSnapshot());
   const row = snapshot.programs.find((candidate) => candidate.id === id);
   return row ? readinessFor(snapshot, mapProgram(row)) : null;
 }
 
-export function getProgramFormOptions() {
-  const snapshot = loadSnapshot();
+export async function getProgramFormOptions() {
+  const snapshot = (await loadSnapshot());
   const regions = byId(snapshot.regions);
   const organizationsByPerson = new Map<string, Set<string>>();
   for (const relationship of snapshot.organizationPeople) {
@@ -1180,42 +1180,42 @@ export function getProgramFormOptions() {
   };
 }
 
-export function getProgramSourcePrefill(
+export async function getProgramSourcePrefill(
   sourceType: string | null,
   sourceId: string | null,
-): { name: string; partnerOrgId: string | null; primaryContactPersonId?: string | null } | null {
+): Promise<{ name: string; partnerOrgId: string | null; primaryContactPersonId?: string | null } | null> {
   if (!sourceType || !sourceId) return null;
   const db = getDb();
   if (sourceType === "class") {
-    const row = db.prepare("SELECT title, partner_org_id FROM classes WHERE id = ?").get(sourceId) as
+    const row = (await db.prepare("SELECT title, partner_org_id FROM classes WHERE id = ?").get(sourceId)) as
       | { title: string; partner_org_id: string | null }
       | undefined;
     return row ? { name: row.title, partnerOrgId: row.partner_org_id } : null;
   }
   if (sourceType === "class_proposal") {
-    const row = db.prepare("SELECT title FROM class_proposals WHERE id = ?").get(sourceId) as { title: string } | undefined;
+    const row = (await db.prepare("SELECT title FROM class_proposals WHERE id = ?").get(sourceId)) as { title: string } | undefined;
     return row ? { name: row.title, partnerOrgId: null } : null;
   }
   if (sourceType === "inquiry") {
-    const row = db.prepare("SELECT organization_id, org_name, email FROM inquiries WHERE id = ?").get(sourceId) as
+    const row = (await db.prepare("SELECT organization_id, org_name, email FROM inquiries WHERE id = ?").get(sourceId)) as
       | { organization_id: string | null; org_name: string; email: string }
       | undefined;
     if (!row) return null;
     const organization = row.organization_id
-      ? db.prepare("SELECT id FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(row.organization_id) as
+      ? (await db.prepare("SELECT id FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(row.organization_id)) as
         | { id: string }
         | undefined
       : undefined;
     const contact = organization
-      ? db.prepare(
-        `SELECT pe.id
+      ? (await db.prepare(
+                `SELECT pe.id
            FROM people pe
            JOIN organization_people op ON op.person_id = pe.id
           WHERE op.organization_id = ? AND op.active = 1
             AND lower(trim(pe.email)) = lower(trim(?))
           ORDER BY op.is_primary DESC, op.updated_at DESC
           LIMIT 1`,
-      ).get(organization.id, row.email) as { id: string } | undefined
+              ).get(organization.id, row.email)) as { id: string } | undefined
       : undefined;
     return {
       name: `${row.org_name} Program`,
@@ -1224,11 +1224,11 @@ export function getProgramSourcePrefill(
     };
   }
   if (sourceType === "demo_request") {
-    const row = db
-      .prepare("SELECT p.name FROM demo_requests d JOIN partner_orgs p ON p.slug = d.org_slug WHERE d.id = ?")
-      .get(sourceId) as { name: string } | undefined;
+    const row = (await db
+          .prepare("SELECT p.name FROM demo_requests d JOIN partner_orgs p ON p.slug = d.org_slug WHERE d.id = ?")
+          .get(sourceId)) as { name: string } | undefined;
     if (!row) return null;
-    const organization = db.prepare("SELECT id FROM organizations WHERE lower(name) = lower(?)").get(row.name) as
+    const organization = (await db.prepare("SELECT id FROM organizations WHERE lower(name) = lower(?)").get(row.name)) as
       | { id: string }
       | undefined;
     return { name: `${row.name} Program`, partnerOrgId: organization?.id ?? null };
@@ -1330,8 +1330,8 @@ function locationSummaryFor(snapshot: OperationsSnapshot, location: Location): L
   };
 }
 
-export function listLocations(): LocationSummary[] {
-  const snapshot = loadSnapshot();
+export async function listLocations(): Promise<LocationSummary[]> {
+  const snapshot = (await loadSnapshot());
   return snapshot.locations
     .map(mapLocation)
     .map((location) => locationSummaryFor(snapshot, location))
@@ -1367,8 +1367,8 @@ export interface LocationDetail extends LocationSummary {
   activity: { id: string; kind: string; body: string | null; actorName: string | null; createdAt: number }[];
 }
 
-export function getLocation(id: string): LocationDetail | null {
-  const snapshot = loadSnapshot();
+export async function getLocation(id: string): Promise<LocationDetail | null> {
+  const snapshot = (await loadSnapshot());
   const qualificationNow = Date.now();
   const qualificationToday = canonicalDateInZone(qualificationNow);
   const row = snapshot.locations.find((candidate) => candidate.id === id);

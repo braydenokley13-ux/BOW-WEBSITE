@@ -66,32 +66,32 @@ function isWorkEntityType(value: string): value is WorkEntityType {
   return Object.hasOwn(ENTITY_TABLES, value);
 }
 
-function assertActiveStaffOwner(db: ReturnType<typeof getDb>, userId: string | null): void {
+async function assertActiveStaffOwner(db: ReturnType<typeof getDb>, userId: string | null): Promise<void> {
   if (!userId) return;
-  const owner = db
-    .prepare("SELECT 1 FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'")
-    .get(userId);
+  const owner = (await db
+      .prepare("SELECT 1 FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'")
+      .get(userId));
   if (!owner) throw new WorkActionError("Choose an active BOW staff owner.");
 }
 
-function assertRelatedEntity(db: ReturnType<typeof getDb>, entityType: WorkEntityType | null, entityId: string | null): void {
+async function assertRelatedEntity(db: ReturnType<typeof getDb>, entityType: WorkEntityType | null, entityId: string | null): Promise<void> {
   if (!entityType && !entityId) return;
   if (!entityType || !entityId) throw new WorkActionError("Choose both a related record type and record ID.");
   const table = ENTITY_TABLES[entityType];
-  if (!db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(entityId)) {
+  if (!(await db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(entityId))) {
     throw new WorkActionError("The related record no longer exists.");
   }
 }
 
-function runImmediate<T>(operation: (db: ReturnType<typeof getDb>) => T): T {
+async function runImmediate<T>(operation: (db: ReturnType<typeof getDb>) => T): Promise<T> {
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     const result = operation(db);
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
     return result;
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     throw error;
   }
 }
@@ -152,40 +152,40 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
   const now = Date.now();
 
   try {
-    runImmediate((db) => {
-      assertActiveStaffOwner(db, ownerUserId);
-      assertRelatedEntity(db, entityType, entityId);
-      db.prepare(
-        `INSERT INTO tasks
+    (await runImmediate(async (db) => {
+            (await assertActiveStaffOwner(db, ownerUserId));
+            (await assertRelatedEntity(db, entityType, entityId));
+            (await db.prepare(
+                      `INSERT INTO tasks
           (id, title, owner_user_id, due_at, due_on, status, kind, priority, context, recommended_action,
            entity_type, entity_id, handoff_to_founder, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        id,
-        title,
-        ownerUserId,
-        dueAt ?? null,
-        dueDateResolution?.ok ? dueDateResolution.canonicalDate : null,
-        kindValue,
-        priorityValue,
-        context,
-        recommendedAction,
-        entityType,
-        entityId,
-        input?.handoffToFounder ? 1 : 0,
-        now,
-        now,
-      );
-      logActivity(
-        "task",
-        id,
-        "created",
-        `Captured manually in Work as ${kindValue.replace(/_/g, " ")} (${priorityValue} priority)${
-          entityType && entityId ? ` for ${entityType} ${entityId}` : ""
-        }.`,
-        me.id,
-      );
-    });
+                    ).run(
+                      id,
+                      title,
+                      ownerUserId,
+                      dueAt ?? null,
+                      dueDateResolution?.ok ? dueDateResolution.canonicalDate : null,
+                      kindValue,
+                      priorityValue,
+                      context,
+                      recommendedAction,
+                      entityType,
+                      entityId,
+                      input?.handoffToFounder ? 1 : 0,
+                      now,
+                      now,
+                    ));
+            (await logActivity(
+                      "task",
+                      id,
+                      "created",
+                      `Captured manually in Work as ${kindValue.replace(/_/g, " ")} (${priorityValue} priority)${
+                        entityType && entityId ? ` for ${entityType} ${entityId}` : ""
+                      }.`,
+                      me.id,
+                    ));
+          }));
   } catch (error) {
     return actionError(error);
   }
@@ -196,7 +196,7 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
 
 async function mutationActor(id: string): Promise<Awaited<ReturnType<typeof requireStaff>>> {
   let me = await requireStaff();
-  const snapshot = getDb().prepare("SELECT handoff_to_founder FROM tasks WHERE id = ?").get(id) as
+  const snapshot = (await getDb().prepare("SELECT handoff_to_founder FROM tasks WHERE id = ?").get(id)) as
     | { handoff_to_founder: number }
     | undefined;
   if (snapshot?.handoff_to_founder === 1 && me.role !== "admin") me = await requireAdmin();
@@ -212,34 +212,34 @@ export async function completeTask(idValue: string, noteValue?: string): Promise
   const now = Date.now();
 
   try {
-    runImmediate((db) => {
-      const task = db.prepare(
-        "SELECT status, owner_user_id, handoff_to_founder, updated_at FROM tasks WHERE id = ?",
-      ).get(id) as
-        | { status: string; owner_user_id: string | null; handoff_to_founder: number; updated_at: number }
-        | undefined;
-      if (!task || task.status !== "open") {
-        throw new WorkActionError("This Work item was already completed or no longer exists.");
-      }
-      if (task.handoff_to_founder === 1 && me.role !== "admin") {
-        throw new WorkActionError("Only an admin can resolve founder-decision Work.");
-      }
-      const completed = db.prepare(
-        `UPDATE tasks
+    (await runImmediate(async (db) => {
+            const task = (await db.prepare(
+                    "SELECT status, owner_user_id, handoff_to_founder, updated_at FROM tasks WHERE id = ?",
+                  ).get(id)) as
+              | { status: string; owner_user_id: string | null; handoff_to_founder: number; updated_at: number }
+              | undefined;
+            if (!task || task.status !== "open") {
+              throw new WorkActionError("This Work item was already completed or no longer exists.");
+            }
+            if (task.handoff_to_founder === 1 && me.role !== "admin") {
+              throw new WorkActionError("Only an admin can resolve founder-decision Work.");
+            }
+            const completed = (await db.prepare(
+                    `UPDATE tasks
             SET status = 'done', completed_at = ?, completion_note = ?, updated_at = ?
           WHERE id = ? AND status = 'open' AND updated_at = ? AND handoff_to_founder = ?`,
-      ).run(now, note, now, id, task.updated_at, task.handoff_to_founder);
-      if (completed.changes !== 1) throw new WorkActionError("This Work item changed. Refresh and try again.");
-      logActivity(
-        "task",
-        id,
-        "completed",
-        `Completed from Work${note ? ` with outcome: ${note}` : " without a completion note"}. Prior owner: ${
-          task.owner_user_id ?? "unassigned"
-        }.`,
-        me.id,
-      );
-    });
+                  ).run(now, note, now, id, task.updated_at, task.handoff_to_founder));
+            if (completed.changes !== 1) throw new WorkActionError("This Work item changed. Refresh and try again.");
+            (await logActivity(
+                      "task",
+                      id,
+                      "completed",
+                      `Completed from Work${note ? ` with outcome: ${note}` : " without a completion note"}. Prior owner: ${
+                        task.owner_user_id ?? "unassigned"
+                      }.`,
+                      me.id,
+                    ));
+          }));
   } catch (error) {
     return actionError(error);
   }
@@ -257,31 +257,31 @@ export async function reassignTask(idValue: string, ownerValue: string): Promise
   const now = Date.now();
 
   try {
-    runImmediate((db) => {
-      const task = db.prepare(
-        "SELECT status, owner_user_id, handoff_to_founder, updated_at FROM tasks WHERE id = ?",
-      ).get(id) as
-        | { status: string; owner_user_id: string | null; handoff_to_founder: number; updated_at: number }
-        | undefined;
-      if (!task || task.status !== "open") throw new WorkActionError("This Work item is completed or no longer exists.");
-      if (task.handoff_to_founder === 1 && me.role !== "admin") {
-        throw new WorkActionError("Only an admin can reassign founder-decision Work.");
-      }
-      if (task.owner_user_id === ownerUserId) throw new WorkActionError("Choose a different owner.");
-      assertActiveStaffOwner(db, ownerUserId);
-      const updated = db.prepare(
-        `UPDATE tasks SET owner_user_id = ?, updated_at = ?
+    (await runImmediate(async (db) => {
+            const task = (await db.prepare(
+                    "SELECT status, owner_user_id, handoff_to_founder, updated_at FROM tasks WHERE id = ?",
+                  ).get(id)) as
+              | { status: string; owner_user_id: string | null; handoff_to_founder: number; updated_at: number }
+              | undefined;
+            if (!task || task.status !== "open") throw new WorkActionError("This Work item is completed or no longer exists.");
+            if (task.handoff_to_founder === 1 && me.role !== "admin") {
+              throw new WorkActionError("Only an admin can reassign founder-decision Work.");
+            }
+            if (task.owner_user_id === ownerUserId) throw new WorkActionError("Choose a different owner.");
+            (await assertActiveStaffOwner(db, ownerUserId));
+            const updated = (await db.prepare(
+                    `UPDATE tasks SET owner_user_id = ?, updated_at = ?
           WHERE id = ? AND status = 'open' AND updated_at = ? AND handoff_to_founder = ?`,
-      ).run(ownerUserId, now, id, task.updated_at, task.handoff_to_founder);
-      if (updated.changes !== 1) throw new WorkActionError("This Work item changed. Refresh and try again.");
-      logActivity(
-        "task",
-        id,
-        "owner_changed",
-        `Owner changed from ${task.owner_user_id ?? "unassigned"} to ${ownerUserId ?? "unassigned"} in Work.`,
-        me.id,
-      );
-    });
+                  ).run(ownerUserId, now, id, task.updated_at, task.handoff_to_founder));
+            if (updated.changes !== 1) throw new WorkActionError("This Work item changed. Refresh and try again.");
+            (await logActivity(
+                      "task",
+                      id,
+                      "owner_changed",
+                      `Owner changed from ${task.owner_user_id ?? "unassigned"} to ${ownerUserId ?? "unassigned"} in Work.`,
+                      me.id,
+                    ));
+          }));
   } catch (error) {
     return actionError(error);
   }

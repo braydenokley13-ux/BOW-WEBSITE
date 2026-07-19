@@ -117,30 +117,30 @@ function urgencyScore(item: WorkItem, now: number, today: string, dueSoonOn: str
 export default async function TasksPage() {
   const me = await requireStaff();
   const db = getDb();
-  const now = Number((db.prepare("SELECT unixepoch('now') * 1000 AS now").get() as { now: number }).now);
+  const now = Number(((await db.prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
   const today = canonicalDateInZone(now);
   const dueSoonOn = addCanonicalDays(today, 7);
-  const open = (db.prepare("SELECT * FROM tasks WHERE status = 'open'").all() as unknown as TaskRow[]).map(toWorkItem);
+  const open = ((await db.prepare("SELECT * FROM tasks WHERE status = 'open'").all()) as unknown as TaskRow[]).map(toWorkItem);
   const done = (
-    db.prepare("SELECT * FROM tasks WHERE status = 'done' ORDER BY completed_at DESC, updated_at DESC LIMIT 25").all() as unknown as TaskRow[]
+    (await db.prepare("SELECT * FROM tasks WHERE status = 'done' ORDER BY completed_at DESC, updated_at DESC LIMIT 25").all()) as unknown as TaskRow[]
   ).map(toWorkItem);
   const activeStaffIds = new Set(
-    (db.prepare("SELECT id FROM users WHERE status = 'active'").all() as { id: string }[]).map((row) => row.id),
+    ((await db.prepare("SELECT id FROM users WHERE status = 'active'").all()) as { id: string }[]).map((row) => row.id),
   );
   // node:sqlite rows use a null prototype. Client Component props must cross the
   // React boundary as explicit plain view models rather than raw database rows.
-  const staffUsers = listStaffUsers()
+  const staffUsers = (await listStaffUsers())
     .filter((user) => activeStaffIds.has(user.id))
     .map((user) => ({ id: user.id, name: user.name }));
-  const ownerNames = resolveUserNames([...open, ...done].map((item) => item.ownerUserId));
+  const ownerNames = (await resolveUserNames([...open, ...done].map((item) => item.ownerUserId)));
   const relatedRecords: Record<string, RelatedRecordOption[]> = {
-    program: toRelatedRecordOptions(db.prepare("SELECT id, name AS label FROM programs ORDER BY CASE WHEN stage IN ('completed','renewed','closed') THEN 1 ELSE 0 END, updated_at DESC, name LIMIT 250").all() as unknown as RelatedRecordOption[]),
-    class: toRelatedRecordOptions(db.prepare("SELECT id, title || ' · ' || replace(status, '_', ' ') AS label FROM classes ORDER BY CASE WHEN status IN ('completed','cancelled') THEN 1 ELSE 0 END, updated_at DESC, title LIMIT 250").all() as unknown as RelatedRecordOption[]),
-    instructor: toRelatedRecordOptions(db.prepare("SELECT i.id, p.name || ' · ' || replace(i.stage, '_', ' ') AS label FROM instructors i JOIN people p ON p.id = i.person_id ORDER BY CASE WHEN i.stage IN ('rejected','inactive') THEN 1 ELSE 0 END, i.updated_at DESC, p.name LIMIT 250").all() as unknown as RelatedRecordOption[]),
-    student: toRelatedRecordOptions(db.prepare("SELECT id, name AS label FROM students ORDER BY updated_at DESC, name LIMIT 250").all() as unknown as RelatedRecordOption[]),
-    organization: toRelatedRecordOptions(db.prepare("SELECT id, name || ' · ' || type AS label FROM organizations ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, name LIMIT 250").all() as unknown as RelatedRecordOption[]),
-    location: toRelatedRecordOptions(db.prepare("SELECT id, name || ' · ' || replace(stage, '_', ' ') AS label FROM locations ORDER BY CASE stage WHEN 'closed' THEN 1 ELSE 0 END, updated_at DESC, name LIMIT 250").all() as unknown as RelatedRecordOption[]),
-    region: toRelatedRecordOptions(db.prepare("SELECT id, name || ' · ' || replace(stage, '_', ' ') AS label FROM operating_regions ORDER BY CASE stage WHEN 'closed' THEN 1 ELSE 0 END, updated_at DESC, name LIMIT 250").all() as unknown as RelatedRecordOption[]),
+    program: toRelatedRecordOptions((await db.prepare("SELECT id, name AS label FROM programs ORDER BY CASE WHEN stage IN ('completed','renewed','closed') THEN 1 ELSE 0 END, updated_at DESC, name LIMIT 250").all()) as unknown as RelatedRecordOption[]),
+    class: toRelatedRecordOptions((await db.prepare("SELECT id, title || ' · ' || replace(status, '_', ' ') AS label FROM classes ORDER BY CASE WHEN status IN ('completed','cancelled') THEN 1 ELSE 0 END, updated_at DESC, title LIMIT 250").all()) as unknown as RelatedRecordOption[]),
+    instructor: toRelatedRecordOptions((await db.prepare("SELECT i.id, p.name || ' · ' || replace(i.stage, '_', ' ') AS label FROM instructors i JOIN people p ON p.id = i.person_id ORDER BY CASE WHEN i.stage IN ('rejected','inactive') THEN 1 ELSE 0 END, i.updated_at DESC, p.name LIMIT 250").all()) as unknown as RelatedRecordOption[]),
+    student: toRelatedRecordOptions((await db.prepare("SELECT id, name AS label FROM students ORDER BY updated_at DESC, name LIMIT 250").all()) as unknown as RelatedRecordOption[]),
+    organization: toRelatedRecordOptions((await db.prepare("SELECT id, name || ' · ' || type AS label FROM organizations ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, name LIMIT 250").all()) as unknown as RelatedRecordOption[]),
+    location: toRelatedRecordOptions((await db.prepare("SELECT id, name || ' · ' || replace(stage, '_', ' ') AS label FROM locations ORDER BY CASE stage WHEN 'closed' THEN 1 ELSE 0 END, updated_at DESC, name LIMIT 250").all()) as unknown as RelatedRecordOption[]),
+    region: toRelatedRecordOptions((await db.prepare("SELECT id, name || ' · ' || replace(stage, '_', ' ') AS label FROM operating_regions ORDER BY CASE stage WHEN 'closed' THEN 1 ELSE 0 END, updated_at DESC, name LIMIT 250").all()) as unknown as RelatedRecordOption[]),
   };
 
   open.sort(

@@ -31,11 +31,11 @@ export async function createCurriculum(input: CreateCurriculumInput): Promise<Ac
 
   const id = `pfx-${randomUUID().slice(0, 8)}`;
   const now = Date.now();
-  getDb()
-    .prepare(
-      "INSERT INTO curricula (id, title, description, age_range, published, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
-    )
-    .run(id, title.slice(0, 200), description || null, ageRange || null, now, now);
+  (await getDb()
+        .prepare(
+          "INSERT INTO curricula (id, title, description, age_range, published, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+        )
+        .run(id, title.slice(0, 200), description || null, ageRange || null, now, now));
 
   revalidatePath("/app/curriculum");
   return { ok: true, id };
@@ -51,7 +51,7 @@ export interface UpdateCurriculumPatch {
 export async function updateCurriculum(id: string, patch: UpdateCurriculumPatch): Promise<ActionResult> {
   await requireAdmin();
   const db = getDb();
-  const row = db.prepare("SELECT * FROM curricula WHERE id = ?").get(id) as { id: string } | undefined;
+  const row = (await db.prepare("SELECT * FROM curricula WHERE id = ?").get(id)) as { id: string } | undefined;
   if (!row) return { ok: false, error: "Not found." };
 
   const sets: string[] = [];
@@ -79,7 +79,7 @@ export async function updateCurriculum(id: string, patch: UpdateCurriculumPatch)
   sets.push("updated_at = ?");
   vals.push(Date.now());
   vals.push(id);
-  db.prepare(`UPDATE curricula SET ${sets.join(", ")} WHERE id = ?`).run(...(vals as []));
+  (await db.prepare(`UPDATE curricula SET ${sets.join(", ")} WHERE id = ?`).run(...(vals as [])));
 
   revalidatePath("/app/curriculum");
   revalidatePath(`/app/curriculum/${id}`);

@@ -28,7 +28,7 @@ export default async function TeamPage({ params }: { params: Promise<{ team: str
   // Filter the full curated list in-memory rather than adding a
   // team-scoped query to lib/nba — the whole player set is already
   // cheap to load and this keeps team math entirely in lib/team-aasv.
-  const allPlayers = getAnalyticsPlayers();
+  const allPlayers = (await getAnalyticsPlayers());
   const players = allPlayers.filter((p) => p.team === team);
   if (players.length === 0) notFound();
 

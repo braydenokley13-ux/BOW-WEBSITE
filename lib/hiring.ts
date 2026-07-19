@@ -356,29 +356,29 @@ export function classStatusFlags(cls: Class, hasEligibleLead: boolean, enrollmen
  * one instructor and persist them. Call after any module completion,
  * session attendance, or practice evaluation write.
  */
-export function recomputeInstructorStatuses(instructorId: string): void {
+export async function recomputeInstructorStatuses(instructorId: string): Promise<void> {
   const db = getDb();
-  const modules = (db.prepare("SELECT * FROM training_modules WHERE active = 1").all() as any[]).map(rowToTrainingModule); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const modules = ((await db.prepare("SELECT * FROM training_modules WHERE active = 1").all()) as any[]).map(rowToTrainingModule); // eslint-disable-line @typescript-eslint/no-explicit-any
   const requiredOnboarding = modules.filter((m) => m.category === "onboarding" && m.required).map((m) => m.id);
   const requiredTraining = modules.filter((m) => m.category === "training" && m.required).map((m) => m.id);
   const completed = new Set(
-    (db.prepare("SELECT module_id FROM training_module_completions WHERE instructor_id = ?").all(instructorId) as { module_id: string }[]).map(
+    ((await db.prepare("SELECT module_id FROM training_module_completions WHERE instructor_id = ?").all(instructorId)) as { module_id: string }[]).map(
       (r) => r.module_id,
     ),
   );
 
   const now = Date.now();
-  const requiredSessionState = db
-    .prepare(
-      `SELECT
+  const requiredSessionState = (await db
+      .prepare(
+        `SELECT
          COALESCE(MAX(CASE WHEN s.scheduled_at <= ? AND (a.attended IS NULL OR a.attended = 0) THEN 1 ELSE 0 END), 0) AS missed,
          COALESCE(MAX(CASE WHEN s.scheduled_at > ? AND (a.attended IS NULL OR a.attended = 0) THEN 1 ELSE 0 END), 0) AS pending
        FROM training_session_registrations reg
        JOIN training_sessions s ON s.id = reg.session_id
        LEFT JOIN training_session_attendance a ON a.session_id = reg.session_id AND a.instructor_id = reg.instructor_id
        WHERE reg.instructor_id = ? AND s.required = 1`,
-    )
-    .get(now, now, instructorId) as { missed: number; pending: number };
+      )
+      .get(now, now, instructorId)) as { missed: number; pending: number };
 
   const onboardingStatus = deriveOnboardingStatus(requiredOnboarding, completed);
   const trainingStatus = deriveTrainingStatus(
@@ -388,14 +388,14 @@ export function recomputeInstructorStatuses(instructorId: string): void {
     requiredSessionState.pending === 1,
   );
 
-  const latestEval = db
-    .prepare("SELECT decision FROM practice_evaluations WHERE instructor_id = ? ORDER BY evaluated_at DESC LIMIT 1")
-    .get(instructorId) as { decision: PracticeEvalDecision } | undefined;
+  const latestEval = (await db
+      .prepare("SELECT decision FROM practice_evaluations WHERE instructor_id = ? ORDER BY evaluated_at DESC LIMIT 1")
+      .get(instructorId)) as { decision: PracticeEvalDecision } | undefined;
   const eligibilityStatus = deriveEligibility(onboardingStatus, trainingStatus, latestEval?.decision ?? null);
 
-  db.prepare(
-    "UPDATE instructors SET onboarding_status = ?, training_status = ?, eligibility_status = ?, updated_at = ? WHERE id = ?",
-  ).run(onboardingStatus, trainingStatus, eligibilityStatus, now, instructorId);
+  (await db.prepare(
+        "UPDATE instructors SET onboarding_status = ?, training_status = ?, eligibility_status = ?, updated_at = ? WHERE id = ?",
+      ).run(onboardingStatus, trainingStatus, eligibilityStatus, now, instructorId));
 }
 
 /**
@@ -405,11 +405,11 @@ export function recomputeInstructorStatuses(instructorId: string): void {
  * leadership reads never trust eligibility that is stale merely because no one
  * has performed another write yet.
  */
-function refreshNewlyMissedRequiredTrainingStatuses(instructorId?: string, now: number = Date.now()): number {
+async function refreshNewlyMissedRequiredTrainingStatuses(instructorId?: string, now: number = Date.now()): Promise<number> {
   const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT DISTINCT i.id
+  const rows = (await db
+      .prepare(
+        `SELECT DISTINCT i.id
          FROM instructors i
          JOIN training_session_registrations reg ON reg.instructor_id = i.id
          JOIN training_sessions s ON s.id = reg.session_id
@@ -422,9 +422,9 @@ function refreshNewlyMissedRequiredTrainingStatuses(instructorId?: string, now: 
           AND (a.attended IS NULL OR a.attended = 0)
           AND (? IS NULL OR i.id = ?)
         ORDER BY i.id`,
-    )
-    .all(now, instructorId ?? null, instructorId ?? null) as { id: string }[];
-  for (const instructor of rows) recomputeInstructorStatuses(instructor.id);
+      )
+      .all(now, instructorId ?? null, instructorId ?? null)) as { id: string }[];
+  for (const instructor of rows) (await recomputeInstructorStatuses(instructor.id));
   return rows.length;
 }
 
@@ -433,44 +433,44 @@ function refreshNewlyMissedRequiredTrainingStatuses(instructorId?: string, now: 
  * Callers hold the writer transaction so no eligibility decision can observe a
  * half-updated population.
  */
-export function recomputeAllInstructorStatuses(): number {
-  const instructorIds = getDb()
-    .prepare("SELECT id FROM instructors WHERE stage NOT IN ('rejected','inactive') ORDER BY id")
-    .all() as { id: string }[];
-  for (const instructor of instructorIds) recomputeInstructorStatuses(instructor.id);
+export async function recomputeAllInstructorStatuses(): Promise<number> {
+  const instructorIds = (await getDb()
+      .prepare("SELECT id FROM instructors WHERE stage NOT IN ('rejected','inactive') ORDER BY id")
+      .all()) as { id: string }[];
+  for (const instructor of instructorIds) (await recomputeInstructorStatuses(instructor.id));
   return instructorIds.length;
 }
 
 /* ---------------- read functions ---------------- */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export function listInstructors(): (Instructor & { person: Person | null })[] {
+export async function listInstructors(): Promise<(Instructor & { person: Person | null })[]> {
   const db = getDb();
-  refreshNewlyMissedRequiredTrainingStatuses();
-  const instructors = (db.prepare("SELECT * FROM instructors ORDER BY updated_at DESC").all() as any[]).map(rowToInstructor);
-  return instructors.map((i) => {
-    const p = db.prepare("SELECT * FROM people WHERE id = ?").get(i.personId) as any;
-    return { ...i, person: p ? rowToPerson(p) : null };
-  });
+  (await refreshNewlyMissedRequiredTrainingStatuses());
+  const instructors = ((await db.prepare("SELECT * FROM instructors ORDER BY updated_at DESC").all()) as any[]).map(rowToInstructor);
+  return (await Promise.all(instructors.map(async (i) => {
+      const p = (await db.prepare("SELECT * FROM people WHERE id = ?").get(i.personId)) as any;
+      return { ...i, person: p ? rowToPerson(p) : null };
+    })));
 }
 
-export function getInstructorDetail(id: string) {
+export async function getInstructorDetail(id: string) {
   const db = getDb();
-  refreshNewlyMissedRequiredTrainingStatuses(id);
-  const row = db.prepare("SELECT * FROM instructors WHERE id = ?").get(id) as any;
+  (await refreshNewlyMissedRequiredTrainingStatuses(id));
+  const row = (await db.prepare("SELECT * FROM instructors WHERE id = ?").get(id)) as any;
   if (!row) return null;
   const instructor = rowToInstructor(row);
-  const personRow = db.prepare("SELECT * FROM people WHERE id = ?").get(instructor.personId) as any;
-  const availability = (db.prepare("SELECT * FROM instructor_availability WHERE instructor_id = ?").all(id) as any[]).map(
+  const personRow = (await db.prepare("SELECT * FROM people WHERE id = ?").get(instructor.personId)) as any;
+  const availability = ((await db.prepare("SELECT * FROM instructor_availability WHERE instructor_id = ?").all(id)) as any[]).map(
     (r): InstructorAvailability => ({
       id: r.id, instructorId: r.instructor_id, dayOfWeek: r.day_of_week, startTime: r.start_time, endTime: r.end_time,
       notes: r.notes ?? null, createdAt: r.created_at,
     }),
   );
-  const completions = (db.prepare("SELECT * FROM training_module_completions WHERE instructor_id = ?").all(id) as any[]).map(
+  const completions = ((await db.prepare("SELECT * FROM training_module_completions WHERE instructor_id = ?").all(id)) as any[]).map(
     (r): TrainingModuleCompletion => ({ id: r.id, instructorId: r.instructor_id, moduleId: r.module_id, completedAt: r.completed_at, notes: r.notes ?? null }),
   );
-  const evaluations = (db.prepare("SELECT * FROM practice_evaluations WHERE instructor_id = ? ORDER BY evaluated_at DESC").all(id) as any[]).map(
+  const evaluations = ((await db.prepare("SELECT * FROM practice_evaluations WHERE instructor_id = ? ORDER BY evaluated_at DESC").all(id)) as any[]).map(
     (r): PracticeEvaluation => ({
       id: r.id, instructorId: r.instructor_id, evaluatorUserId: r.evaluator_user_id ?? null, evaluatedAt: r.evaluated_at,
       lessonUsed: r.lesson_used ?? null, ratingCurriculumDelivery: r.rating_curriculum_delivery,
@@ -481,7 +481,7 @@ export function getInstructorDetail(id: string) {
   return { instructor, person: personRow ? rowToPerson(personRow) : null, availability, completions, evaluations };
 }
 
-export function getInstructorByUserId(userId: string): Instructor | null {
+export async function getInstructorByUserId(userId: string): Promise<Instructor | null> {
   const db = getDb();
   const statement = db.prepare(
       `SELECT i.*
@@ -495,37 +495,37 @@ export function getInstructorByUserId(userId: string): Instructor | null {
           i.id DESC
         LIMIT 1`,
     );
-  let row = statement.get(userId) as any;
-  if (row && refreshNewlyMissedRequiredTrainingStatuses(String(row.id)) > 0) {
-    row = statement.get(userId) as any;
+  let row = (await statement.get(userId)) as any;
+  if (row && (await refreshNewlyMissedRequiredTrainingStatuses(String(row.id))) > 0) {
+    row = (await statement.get(userId)) as any;
   }
   return row ? rowToInstructor(row) : null;
 }
 
-export function listTrainingModules(): TrainingModule[] {
+export async function listTrainingModules(): Promise<TrainingModule[]> {
   const db = getDb();
-  return (db.prepare("SELECT * FROM training_modules WHERE active = 1 ORDER BY category, ordinal").all() as any[]).map(rowToTrainingModule);
+  return ((await db.prepare("SELECT * FROM training_modules WHERE active = 1 ORDER BY category, ordinal").all()) as any[]).map(rowToTrainingModule);
 }
 
-export function listTrainingSessions(): TrainingSession[] {
+export async function listTrainingSessions(): Promise<TrainingSession[]> {
   const db = getDb();
-  return (db.prepare("SELECT * FROM training_sessions ORDER BY scheduled_at DESC").all() as any[]).map(rowToTrainingSession);
+  return ((await db.prepare("SELECT * FROM training_sessions ORDER BY scheduled_at DESC").all()) as any[]).map(rowToTrainingSession);
 }
 
-export function listClasses(): Class[] {
+export async function listClasses(): Promise<Class[]> {
   const db = getDb();
-  return (db.prepare("SELECT * FROM classes ORDER BY updated_at DESC").all() as any[]).map(rowToClass);
+  return ((await db.prepare("SELECT * FROM classes ORDER BY updated_at DESC").all()) as any[]).map(rowToClass);
 }
 
-export function getClassDetail(id: string) {
+export async function getClassDetail(id: string) {
   const db = getDb();
-  const row = db.prepare("SELECT * FROM classes WHERE id = ?").get(id) as any;
+  const row = (await db.prepare("SELECT * FROM classes WHERE id = ?").get(id)) as any;
   if (!row) return null;
   const cls = rowToClass(row);
-  const instructors = db
-    .prepare("SELECT ci.*, i.stage FROM class_instructors ci JOIN instructors i ON i.id = ci.instructor_id WHERE ci.class_id = ? AND ci.removed_at IS NULL")
-    .all(id) as any[];
-  const sessions = (db.prepare("SELECT * FROM class_sessions WHERE class_id = ? ORDER BY session_date").all(id) as any[]).map(
+  const instructors = (await db
+      .prepare("SELECT ci.*, i.stage FROM class_instructors ci JOIN instructors i ON i.id = ci.instructor_id WHERE ci.class_id = ? AND ci.removed_at IS NULL")
+      .all(id)) as any[];
+  const sessions = ((await db.prepare("SELECT * FROM class_sessions WHERE class_id = ? ORDER BY session_date").all(id)) as any[]).map(
     (r): ClassSession => ({
       id: r.id,
       classId: r.class_id,
@@ -535,7 +535,7 @@ export function getClassDetail(id: string) {
       createdAt: r.created_at,
     }),
   );
-  const enrollments = (db.prepare("SELECT * FROM class_enrollments WHERE class_id = ?").all(id) as any[]).map(
+  const enrollments = ((await db.prepare("SELECT * FROM class_enrollments WHERE class_id = ?").all(id)) as any[]).map(
     (r): ClassEnrollment => ({
       id: r.id,
       classId: r.class_id,
@@ -549,20 +549,20 @@ export function getClassDetail(id: string) {
   return { class: cls, instructors, sessions, enrollments };
 }
 
-export function listStudents(): Student[] {
+export async function listStudents(): Promise<Student[]> {
   const db = getDb();
-  return (db.prepare("SELECT * FROM students ORDER BY updated_at DESC").all() as any[]).map(rowToStudent);
+  return ((await db.prepare("SELECT * FROM students ORDER BY updated_at DESC").all()) as any[]).map(rowToStudent);
 }
 
-export function getStudentDetail(id: string) {
+export async function getStudentDetail(id: string) {
   const db = getDb();
-  const row = db.prepare("SELECT * FROM students WHERE id = ?").get(id) as any;
+  const row = (await db.prepare("SELECT * FROM students WHERE id = ?").get(id)) as any;
   if (!row) return null;
   const student = rowToStudent(row);
   const guardian = student.guardianPersonId
-    ? (db.prepare("SELECT * FROM people WHERE id = ?").get(student.guardianPersonId) as any)
+    ? ((await db.prepare("SELECT * FROM people WHERE id = ?").get(student.guardianPersonId)) as any)
     : null;
-  const enrollments = (db.prepare("SELECT * FROM class_enrollments WHERE student_id = ?").all(id) as any[]).map(
+  const enrollments = ((await db.prepare("SELECT * FROM class_enrollments WHERE student_id = ?").all(id)) as any[]).map(
     (r): ClassEnrollment => ({
       id: r.id,
       classId: r.class_id,
@@ -576,50 +576,50 @@ export function getStudentDetail(id: string) {
   return { student, guardian: guardian ? rowToPerson(guardian) : null, enrollments };
 }
 
-export function getStudentAttendanceHistory(studentId: string) {
+export async function getStudentAttendanceHistory(studentId: string) {
   const db = getDb();
-  return db
-    .prepare(
-      `SELECT ar.*, cs.session_date, cs.class_id, c.title AS class_title
+  return (await db
+      .prepare(
+        `SELECT ar.*, cs.session_date, cs.class_id, c.title AS class_title
        FROM attendance_records ar
        JOIN class_sessions cs ON cs.id = ar.session_id
        JOIN classes c ON c.id = cs.class_id
        WHERE ar.student_id = ?
        ORDER BY cs.session_date DESC`,
-    )
-    .all(studentId) as any[];
+      )
+      .all(studentId)) as any[];
 }
 
-export function listCurricula(): Curriculum[] {
+export async function listCurricula(): Promise<Curriculum[]> {
   const db = getDb();
-  return (db.prepare("SELECT * FROM curricula ORDER BY title").all() as any[]).map(rowToCurriculum);
+  return ((await db.prepare("SELECT * FROM curricula ORDER BY title").all()) as any[]).map(rowToCurriculum);
 }
 
-export function listTasks(): Task[] {
+export async function listTasks(): Promise<Task[]> {
   const db = getDb();
-  return (db.prepare("SELECT * FROM tasks ORDER BY status, due_at").all() as any[]).map(rowToTask);
+  return ((await db.prepare("SELECT * FROM tasks ORDER BY status, due_at").all()) as any[]).map(rowToTask);
 }
 
 /** Instructors eligible to lead/assist a class (stage eligible or active). */
-export function listEligibleInstructors(): (Instructor & { person: Person | null })[] {
+export async function listEligibleInstructors(): Promise<(Instructor & { person: Person | null })[]> {
   const db = getDb();
-  refreshNewlyMissedRequiredTrainingStatuses();
+  (await refreshNewlyMissedRequiredTrainingStatuses());
   const rows = (
-    db
-      .prepare(
-        `SELECT * FROM instructors
+    (await db
+            .prepare(
+              `SELECT * FROM instructors
           WHERE stage IN ('eligible','active')
             AND eligibility_status = 'eligible'
             AND onboarding_status = 'complete'
             AND training_status = 'complete'
           ORDER BY updated_at DESC`,
-      )
-      .all() as any[]
+            )
+            .all()) as any[]
   ).map(rowToInstructor);
-  return rows.map((i) => {
-    const p = db.prepare("SELECT * FROM people WHERE id = ?").get(i.personId) as any;
-    return { ...i, person: p ? rowToPerson(p) : null };
-  });
+  return (await Promise.all(rows.map(async (i) => {
+      const p = (await db.prepare("SELECT * FROM people WHERE id = ?").get(i.personId)) as any;
+      return { ...i, person: p ? rowToPerson(p) : null };
+    })));
 }
 
 export interface Organization {
@@ -630,9 +630,9 @@ export interface Organization {
   status: string;
 }
 
-export function listOrganizations(): Organization[] {
+export async function listOrganizations(): Promise<Organization[]> {
   const db = getDb();
-  return db.prepare("SELECT * FROM organizations ORDER BY name").all() as unknown as Organization[];
+  return (await db.prepare("SELECT * FROM organizations ORDER BY name").all()) as unknown as Organization[];
 }
 
 export interface DemoRequest {
@@ -647,15 +647,15 @@ export interface DemoRequest {
 }
 
 /** Website "Request a Demo" submissions, joined to partner_orgs for a display name. Newest first. */
-export function listDemoRequests(): DemoRequest[] {
+export async function listDemoRequests(): Promise<DemoRequest[]> {
   const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT d.*, p.name AS org_name FROM demo_requests d
+  const rows = (await db
+      .prepare(
+        `SELECT d.*, p.name AS org_name FROM demo_requests d
        LEFT JOIN partner_orgs p ON p.slug = d.org_slug
        ORDER BY d.created_at DESC`,
-    )
-    .all() as any[];
+      )
+      .all()) as any[];
   return rows.map((r) => ({
     id: r.id,
     orgSlug: r.org_slug,
@@ -668,17 +668,17 @@ export function listDemoRequests(): DemoRequest[] {
   }));
 }
 
-export function getOrganizationDetail(id: string) {
+export async function getOrganizationDetail(id: string) {
   const db = getDb();
-  const org = db.prepare("SELECT * FROM organizations WHERE id = ?").get(id) as unknown as Organization | undefined;
+  const org = (await db.prepare("SELECT * FROM organizations WHERE id = ?").get(id)) as unknown as Organization | undefined;
   if (!org) return null;
-  const relatedClasses = (db.prepare("SELECT * FROM classes WHERE partner_org_id = ? ORDER BY updated_at DESC").all(id) as any[]).map(rowToClass);
+  const relatedClasses = ((await db.prepare("SELECT * FROM classes WHERE partner_org_id = ? ORDER BY updated_at DESC").all(id)) as any[]).map(rowToClass);
   return { org, relatedClasses };
 }
 
-export function listClassProposals(): ClassProposal[] {
+export async function listClassProposals(): Promise<ClassProposal[]> {
   const db = getDb();
-  return (db.prepare("SELECT * FROM class_proposals ORDER BY updated_at DESC").all() as any[]).map(
+  return ((await db.prepare("SELECT * FROM class_proposals ORDER BY updated_at DESC").all()) as any[]).map(
     (r): ClassProposal => ({
       id: r.id,
       instructorId: r.instructor_id,
@@ -697,93 +697,93 @@ export function listClassProposals(): ClassProposal[] {
   );
 }
 
-export function listClassProposalsForInstructor(instructorId: string): ClassProposal[] {
-  return listClassProposals().filter((p) => p.instructorId === instructorId);
+export async function listClassProposalsForInstructor(instructorId: string): Promise<ClassProposal[]> {
+  return (await listClassProposals()).filter((p) => p.instructorId === instructorId);
 }
 
 /** Classes where the given instructor is lead or additional. */
-export function listClassesForInstructor(instructorId: string): Class[] {
+export async function listClassesForInstructor(instructorId: string): Promise<Class[]> {
   const db = getDb();
   return (
-    db
-      .prepare(
-        "SELECT c.* FROM classes c JOIN class_instructors ci ON ci.class_id = c.id WHERE ci.instructor_id = ? AND ci.removed_at IS NULL ORDER BY c.updated_at DESC",
-      )
-      .all(instructorId) as any[]
+    (await db
+            .prepare(
+              "SELECT c.* FROM classes c JOIN class_instructors ci ON ci.class_id = c.id WHERE ci.instructor_id = ? AND ci.removed_at IS NULL ORDER BY c.updated_at DESC",
+            )
+            .all(instructorId)) as any[]
   ).map(rowToClass);
 }
 
 /** Leadership Home buckets — real queries where the underlying tables are ready. */
-export function getLeadershipHomeData() {
+export async function getLeadershipHomeData() {
   const db = getDb();
   const now = Date.now();
-  refreshNewlyMissedRequiredTrainingStatuses(undefined, now);
+  (await refreshNewlyMissedRequiredTrainingStatuses(undefined, now));
   const staleCutoff = now - STALE_DAYS * DAY_MS;
 
-  const newApplications = (db.prepare("SELECT * FROM instructors WHERE stage = 'applied' ORDER BY created_at DESC").all() as any[]).map(rowToInstructor);
+  const newApplications = ((await db.prepare("SELECT * FROM instructors WHERE stage = 'applied' ORDER BY created_at DESC").all()) as any[]).map(rowToInstructor);
   const interviewsToSchedule = (
-    db.prepare("SELECT * FROM instructors WHERE stage IN ('applied','reviewing') AND interview_at IS NULL ORDER BY created_at").all() as any[]
+    (await db.prepare("SELECT * FROM instructors WHERE stage IN ('applied','reviewing') AND interview_at IS NULL ORDER BY created_at").all()) as any[]
   ).map(rowToInstructor);
-  const awaitingFounderReview = (db.prepare("SELECT * FROM instructors WHERE stage = 'founder_review' ORDER BY updated_at").all() as any[]).map(
+  const awaitingFounderReview = ((await db.prepare("SELECT * FROM instructors WHERE stage = 'founder_review' ORDER BY updated_at").all()) as any[]).map(
     rowToInstructor,
   );
   const behindOnOnboardingOrTraining = (
-    db
-      .prepare(
-        "SELECT * FROM instructors WHERE stage IN ('onboarding','training') AND (updated_at < ? OR training_status = 'behind') ORDER BY updated_at",
-      )
-      .all(staleCutoff) as any[]
+    (await db
+            .prepare(
+              "SELECT * FROM instructors WHERE stage IN ('onboarding','training') AND (updated_at < ? OR training_status = 'behind') ORDER BY updated_at",
+            )
+            .all(staleCutoff)) as any[]
   ).map(rowToInstructor);
   const practiceEvalsNeeded = (
-    db
-      .prepare(
-        "SELECT i.* FROM instructors i WHERE i.stage = 'practice_evaluation' AND NOT EXISTS (SELECT 1 FROM practice_evaluations e WHERE e.instructor_id = i.id AND e.decision = 'pass') ORDER BY i.updated_at",
-      )
-      .all() as any[]
+    (await db
+            .prepare(
+              "SELECT i.* FROM instructors i WHERE i.stage = 'practice_evaluation' AND NOT EXISTS (SELECT 1 FROM practice_evaluations e WHERE e.instructor_id = i.id AND e.decision = 'pass') ORDER BY i.updated_at",
+            )
+            .all()) as any[]
   ).map(rowToInstructor);
   const classesWithoutEligibleInstructor = (
-    db
-      .prepare(
-        `SELECT c.* FROM classes c
+    (await db
+            .prepare(
+              `SELECT c.* FROM classes c
          WHERE c.status NOT IN ('completed','cancelled')
            AND (c.lead_instructor_id IS NULL
              OR NOT EXISTS (SELECT 1 FROM instructors i WHERE i.id = c.lead_instructor_id AND i.eligibility_status = 'eligible' AND i.stage IN ('eligible','active')))
          ORDER BY c.updated_at`,
-      )
-      .all() as any[]
+            )
+            .all()) as any[]
   ).map(rowToClass);
 
-  const activeClasses = (db.prepare("SELECT * FROM classes WHERE status NOT IN ('completed','cancelled')").all() as any[]).map(rowToClass);
-  const classesLaunchingSoonIncomplete: Class[] = activeClasses.filter((cls) => {
+  const activeClasses = ((await db.prepare("SELECT * FROM classes WHERE status NOT IN ('completed','cancelled')").all()) as any[]).map(rowToClass);
+  const classesLaunchingSoonIncomplete: Class[] = activeClasses.filter(async (cls) => {
     const enrollmentCount = (
-      db.prepare(
-        `SELECT COUNT(*) AS n
+      (await db.prepare(
+                `SELECT COUNT(*) AS n
            FROM class_enrollments ce
            JOIN students s ON s.id = ce.student_id
           WHERE ce.class_id = ? AND ce.status = 'enrolled' AND s.enrollment_status = 'active'`,
-      ).get(cls.id) as { n: number }
+              ).get(cls.id)) as { n: number }
     ).n;
     const hasEligibleLead = !!(
       cls.leadInstructorId &&
-      (db
-        .prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible' AND stage IN ('eligible','active')")
-        .get(cls.leadInstructorId) as { 1: number } | undefined)
+      ((await db
+                .prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible' AND stage IN ('eligible','active')")
+                .get(cls.leadInstructorId)) as { 1: number } | undefined)
     );
     return classStatusFlags(cls, hasEligibleLead, enrollmentCount).launchingSoonIncomplete;
   });
 
   const missingStudentForms = (
-    db.prepare("SELECT * FROM students WHERE enrollment_status = 'active' AND form_status != 'complete' ORDER BY updated_at").all() as any[]
+    (await db.prepare("SELECT * FROM students WHERE enrollment_status = 'active' AND form_status != 'complete' ORDER BY updated_at").all()) as any[]
   ).map(rowToStudent);
-  const flaggedSessionReports = db
-    .prepare(
-      `SELECT r.*, s.class_id AS class_id FROM class_session_reports r
+  const flaggedSessionReports = (await db
+      .prepare(
+        `SELECT r.*, s.class_id AS class_id FROM class_session_reports r
        JOIN class_sessions s ON s.id = r.session_id
        WHERE r.flagged = 1 AND r.reported_at > ? ORDER BY r.reported_at DESC`,
-    )
-    .all(now - STALE_DAYS * DAY_MS) as any[];
+      )
+      .all(now - STALE_DAYS * DAY_MS)) as any[];
   const openFounderHandoffTasks = (
-    db.prepare("SELECT * FROM tasks WHERE handoff_to_founder = 1 AND status = 'open' ORDER BY due_at").all() as any[]
+    (await db.prepare("SELECT * FROM tasks WHERE handoff_to_founder = 1 AND status = 'open' ORDER BY due_at").all()) as any[]
   ).map(rowToTask);
 
   return {
@@ -809,20 +809,20 @@ export function getLeadershipHomeData() {
  * the same transaction-less call without crossing the action boundary
  * twice.
  */
-export function logActivity(entityType: string, entityId: string, kind: string, body: string | null, actorUserId: string | null): void {
+export async function logActivity(entityType: string, entityId: string, kind: string, body: string | null, actorUserId: string | null): Promise<void> {
   const db = getDb();
   const id = `pfx-${randomUUID().slice(0, 8)}`;
-  db.prepare(
-    "INSERT INTO crm_activity (id, entity_type, entity_id, kind, body, actor_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-  ).run(id, entityType, entityId, kind, body ?? null, actorUserId, Date.now());
+  (await db.prepare(
+        "INSERT INTO crm_activity (id, entity_type, entity_id, kind, body, actor_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ).run(id, entityType, entityId, kind, body ?? null, actorUserId, Date.now()));
 }
 
-export function listActivity(entityType: string, entityId: string): CrmActivity[] {
+export async function listActivity(entityType: string, entityId: string): Promise<CrmActivity[]> {
   const db = getDb();
   return (
-    db
-      .prepare("SELECT * FROM crm_activity WHERE entity_type = ? AND entity_id = ? ORDER BY created_at DESC")
-      .all(entityType, entityId) as any[]
+    (await db
+            .prepare("SELECT * FROM crm_activity WHERE entity_type = ? AND entity_id = ? ORDER BY created_at DESC")
+            .all(entityType, entityId)) as any[]
   ).map(
     (r): CrmActivity => ({
       id: r.id,
@@ -836,12 +836,12 @@ export function listActivity(entityType: string, entityId: string): CrmActivity[
   );
 }
 
-export function listOpenTasksForEntity(entityType: string, entityId: string): Task[] {
+export async function listOpenTasksForEntity(entityType: string, entityId: string): Promise<Task[]> {
   const db = getDb();
   return (
-    db
-      .prepare("SELECT * FROM tasks WHERE entity_type = ? AND entity_id = ? AND status = 'open' ORDER BY due_at")
-      .all(entityType, entityId) as any[]
+    (await db
+            .prepare("SELECT * FROM tasks WHERE entity_type = ? AND entity_id = ? AND status = 'open' ORDER BY due_at")
+            .all(entityType, entityId)) as any[]
   ).map(rowToTask);
 }
 
@@ -851,63 +851,63 @@ export function listOpenTasksForEntity(entityType: string, entityId: string): Ta
  * blank — an applicant filling the public form twice shouldn't clobber
  * a name staff has since corrected.
  */
-export function upsertPersonByEmail(name: string, email: string, phone: string): string {
+export async function upsertPersonByEmail(name: string, email: string, phone: string): Promise<string> {
   const db = getDb();
   const normalized = email.trim().toLowerCase();
-  const existing = db.prepare("SELECT * FROM people WHERE lower(email) = ?").get(normalized) as any;
+  const existing = (await db.prepare("SELECT * FROM people WHERE lower(email) = ?").get(normalized)) as any;
   const now = Date.now();
   if (existing) {
-    db.prepare(
-      "UPDATE people SET name = CASE WHEN name IS NULL OR name = '' THEN ? ELSE name END, phone = CASE WHEN phone IS NULL OR phone = '' THEN ? ELSE phone END, updated_at = ? WHERE id = ?",
-    ).run(name, phone, now, existing.id);
+    (await db.prepare(
+            "UPDATE people SET name = CASE WHEN name IS NULL OR name = '' THEN ? ELSE name END, phone = CASE WHEN phone IS NULL OR phone = '' THEN ? ELSE phone END, updated_at = ? WHERE id = ?",
+          ).run(name, phone, now, existing.id));
     return existing.id;
   }
   const id = `pfx-${randomUUID().slice(0, 8)}`;
-  db.prepare(
-    "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)",
-  ).run(id, name, normalized, phone ?? "", now, now);
+  (await db.prepare(
+        "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)",
+      ).run(id, name, normalized, phone ?? "", now, now));
   return id;
 }
 
-export function getPersonByEmail(email: string): Person | null {
+export async function getPersonByEmail(email: string): Promise<Person | null> {
   const db = getDb();
-  const row = db.prepare("SELECT * FROM people WHERE lower(email) = ?").get(email.trim().toLowerCase()) as any;
+  const row = (await db.prepare("SELECT * FROM people WHERE lower(email) = ?").get(email.trim().toLowerCase())) as any;
   return row ? rowToPerson(row) : null;
 }
 
 /** The active (non-terminal) instructors row for a person, if any. */
-export function getActiveInstructorForPerson(personId: string): Instructor | null {
+export async function getActiveInstructorForPerson(personId: string): Promise<Instructor | null> {
   const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT * FROM instructors
+  const row = (await db
+      .prepare(
+        `SELECT * FROM instructors
         WHERE person_id = ? AND stage NOT IN ('rejected','inactive')
         ORDER BY CASE WHEN stage = 'active' THEN 1 ELSE 0 END, created_at DESC, id DESC
         LIMIT 1`,
-    )
-    .get(personId) as any;
+      )
+      .get(personId)) as any;
   return row ? rowToInstructor(row) : null;
 }
 
 /** Staff (admin | growth) user ids — used to fan out pipeline notifications. */
-export function listStaffUserIds(): string[] {
+export async function listStaffUserIds(): Promise<string[]> {
   const db = getDb();
-  return (db.prepare("SELECT id FROM users WHERE role IN ('admin','growth') AND status = 'active'").all() as { id: string }[]).map((r) => r.id);
+  return ((await db.prepare("SELECT id FROM users WHERE role IN ('admin','growth') AND status = 'active'").all()) as { id: string }[]).map((r) => r.id);
 }
 
 /** Staff (admin | growth) users by name — feeds UserSelect pickers. */
-export function listStaffUsers(): { id: string; name: string }[] {
+export async function listStaffUsers(): Promise<{ id: string; name: string }[]> {
   const db = getDb();
-  return db.prepare("SELECT id, name FROM users WHERE role IN ('admin','growth') AND status = 'active' ORDER BY name").all() as { id: string; name: string }[];
+  return (await db.prepare("SELECT id, name FROM users WHERE role IN ('admin','growth') AND status = 'active' ORDER BY name").all()) as { id: string; name: string }[];
 }
 
 /** Resolves a set of user ids to display names (any role, not just staff). Unknown ids pass through unchanged. */
-export function resolveUserNames(ids: (string | null | undefined)[]): Map<string, string> {
+export async function resolveUserNames(ids: (string | null | undefined)[]): Promise<Map<string, string>> {
   const db = getDb();
   const unique = [...new Set(ids.filter((id): id is string => !!id))];
   const map = new Map<string, string>();
   for (const id of unique) {
-    const row = db.prepare("SELECT name FROM users WHERE id = ?").get(id) as { name: string } | undefined;
+    const row = (await db.prepare("SELECT name FROM users WHERE id = ?").get(id)) as { name: string } | undefined;
     map.set(id, row?.name ?? id);
   }
   return map;
@@ -943,7 +943,7 @@ export interface InvitationRecord {
  * because every export of a "use server" module must itself be an async
  * action — a plain sync helper can't live there.
  */
-export function createInvitationInternal(input: NewInvitationInput): InvitationRecord {
+export async function createInvitationInternal(input: NewInvitationInput): Promise<InvitationRecord> {
   const db = getDb();
   const id = `inv-${randomUUID()}`;
   const today = new Date();
@@ -957,14 +957,14 @@ export function createInvitationInternal(input: NewInvitationInput): InvitationR
   if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Enter a valid email address.");
   if (input.role !== "student" && input.role !== "instructor") throw new Error("Choose a valid invitation role.");
   const nestedTransaction = db.isTransaction;
-  db.exec(nestedTransaction ? "SAVEPOINT create_invitation" : "BEGIN IMMEDIATE");
+  (await db.exec(nestedTransaction ? "SAVEPOINT create_invitation" : "BEGIN IMMEDIATE"));
   try {
     // These authorization reads intentionally happen after the writer lock.
     // Otherwise a partner pause could revoke access between the read and the
     // invitation insert, leaving a brand-new credential for an inactive org.
-    const existingUser = db
-      .prepare("SELECT role, org_id, status, password_hash FROM users WHERE lower(email) = lower(?)")
-      .get(email) as { role: string; org_id: string; status: string; password_hash: string | null } | undefined;
+    const existingUser = (await db
+          .prepare("SELECT role, org_id, status, password_hash FROM users WHERE lower(email) = lower(?)")
+          .get(email)) as { role: string; org_id: string; status: string; password_hash: string | null } | undefined;
     const claimablePlaceholder =
       existingUser?.status === "invited" &&
       existingUser.password_hash == null &&
@@ -973,53 +973,53 @@ export function createInvitationInternal(input: NewInvitationInput): InvitationR
     if (existingUser && !claimablePlaceholder) {
       throw new Error("That email already has an account. Use sign in or account recovery instead of an invitation.");
     }
-    if (!db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status = 'active'").get(input.orgId)) {
+    if (!(await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status = 'active'").get(input.orgId))) {
       throw new Error("The invitation organization is no longer active.");
     }
     if (input.role === "student") {
       if (!input.cohortId) throw new Error("Student invitations require a cohort.");
-      const cohort = db.prepare("SELECT org_id, status FROM cohorts WHERE id = ?").get(input.cohortId) as
+      const cohort = (await db.prepare("SELECT org_id, status FROM cohorts WHERE id = ?").get(input.cohortId)) as
         | { org_id: string; status: string }
         | undefined;
       if (!cohort || cohort.org_id !== input.orgId || !["active", "enrolling"].includes(cohort.status)) {
         throw new Error("The invited cohort is no longer available for enrollment.");
       }
     } else {
-      const approvedProfiles = db.prepare(
-        `SELECT i.id
+      const approvedProfiles = (await db.prepare(
+              `SELECT i.id
            FROM people p
            JOIN instructors i ON i.person_id = p.id
           WHERE lower(trim(p.email)) = ?
             AND i.stage IN ('accepted','onboarding','training','practice_evaluation','eligible','active')
           ORDER BY i.created_at DESC, i.id DESC`,
-      ).all(email) as { id: string }[];
+            ).all(email)) as { id: string }[];
       if (input.orgId !== "org-bow" || approvedProfiles.length !== 1) {
         throw new Error("Instructor invitations must come from one approved BOW hiring record.");
       }
     }
 
-    db.prepare("UPDATE invitations SET status = 'revoked' WHERE lower(email) = lower(?) AND status = 'pending'").run(email);
-    db.prepare(
-      "INSERT INTO invitations (id, email, role, org_id, cohort_id, created, expires, expires_at, status, token, token_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
-    ).run(
-      id,
-      email,
-      input.role,
-      input.orgId,
-      input.cohortId,
-      created,
-      expires,
-      expiresAt,
-      `retired:${randomUUID()}`,
-      hashOpaqueToken(token),
-    );
-    db.exec(nestedTransaction ? "RELEASE SAVEPOINT create_invitation" : "COMMIT");
+    (await db.prepare("UPDATE invitations SET status = 'revoked' WHERE lower(email) = lower(?) AND status = 'pending'").run(email));
+    (await db.prepare(
+            "INSERT INTO invitations (id, email, role, org_id, cohort_id, created, expires, expires_at, status, token, token_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+          ).run(
+            id,
+            email,
+            input.role,
+            input.orgId,
+            input.cohortId,
+            created,
+            expires,
+            expiresAt,
+            `retired:${randomUUID()}`,
+            hashOpaqueToken(token),
+          ));
+    (await db.exec(nestedTransaction ? "RELEASE SAVEPOINT create_invitation" : "COMMIT"));
   } catch (error) {
     if (nestedTransaction) {
-      db.exec("ROLLBACK TO SAVEPOINT create_invitation");
-      db.exec("RELEASE SAVEPOINT create_invitation");
+      (await db.exec("ROLLBACK TO SAVEPOINT create_invitation"));
+      (await db.exec("RELEASE SAVEPOINT create_invitation"));
     } else if (db.isTransaction) {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     }
     throw error;
   }

@@ -102,19 +102,19 @@ function validTime(value: string | null): boolean {
   return !value || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
-function exists(table: "organizations" | "people" | "locations" | "curricula" | "users" | "programs", id: string | null): boolean {
+async function exists(table: "organizations" | "people" | "locations" | "curricula" | "users" | "programs", id: string | null): Promise<boolean> {
   if (!id) return true;
-  return Boolean(getDb().prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id));
+  return Boolean((await getDb().prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id)));
 }
 
-function operatingPartnerExists(id: string | null): boolean {
+async function operatingPartnerExists(id: string | null): Promise<boolean> {
   if (!id) return true;
   return Boolean(
-    getDb().prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(id),
+    (await getDb().prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(id)),
   );
 }
 
-function validateInput(input: ProgramInput) {
+async function validateInput(input: ProgramInput) {
   const name = clean(input.name, 160);
   const partnerOrgId = cleanId(input.partnerOrgId);
   const primaryContactPersonId = cleanId(input.primaryContactPersonId);
@@ -175,31 +175,31 @@ function validateInput(input: ProgramInput) {
   if (capacity != null && minimumEnrollment > capacity) {
     return { ok: false as const, error: "Minimum enrollment cannot exceed capacity." };
   }
-  if (!operatingPartnerExists(partnerOrgId)) {
+  if (!(await operatingPartnerExists(partnerOrgId))) {
     return { ok: false as const, error: "Only prospect or active partners can receive Program work." };
   }
-  if (!exists("people", primaryContactPersonId)) return { ok: false as const, error: "Primary contact not found." };
+  if (!(await exists("people", primaryContactPersonId))) return { ok: false as const, error: "Primary contact not found." };
   if (primaryContactPersonId && !partnerOrgId) {
     return { ok: false as const, error: "Choose the contact's partner organization first." };
   }
   if (primaryContactPersonId && partnerOrgId) {
-    const relationship = getDb().prepare(
-      `SELECT 1 FROM organization_people
+    const relationship = (await getDb().prepare(
+          `SELECT 1 FROM organization_people
         WHERE organization_id = ? AND person_id = ? AND active = 1
         LIMIT 1`,
-    ).get(partnerOrgId, primaryContactPersonId);
+        ).get(partnerOrgId, primaryContactPersonId));
     if (!relationship) {
       return { ok: false as const, error: "Choose a contact who is already connected to this partner organization." };
     }
   }
-  if (!exists("locations", locationId)) return { ok: false as const, error: "Location not found." };
+  if (!(await exists("locations", locationId))) return { ok: false as const, error: "Location not found." };
   if (locationId) {
-    const location = getDb().prepare("SELECT stage FROM locations WHERE id = ?").get(locationId) as { stage: string } | undefined;
+    const location = (await getDb().prepare("SELECT stage FROM locations WHERE id = ?").get(locationId)) as { stage: string } | undefined;
     if (!location || location.stage === "closed") return { ok: false as const, error: "Closed Locations cannot receive new operating work." };
   }
-  if (!exists("curricula", curriculumId)) return { ok: false as const, error: "Curriculum not found." };
+  if (!(await exists("curricula", curriculumId))) return { ok: false as const, error: "Curriculum not found." };
   if (ownerUserId) {
-    const owner = getDb().prepare("SELECT role, status FROM users WHERE id = ?").get(ownerUserId) as
+    const owner = (await getDb().prepare("SELECT role, status FROM users WHERE id = ?").get(ownerUserId)) as
       | { role: string; status: string }
       | undefined;
     if (!owner) return { ok: false as const, error: "Owner not found." };
@@ -207,7 +207,7 @@ function validateInput(input: ProgramInput) {
       return { ok: false as const, error: "Program owner must be an active BOW staff member." };
     }
   }
-  if (!exists("programs", parentProgramId)) return { ok: false as const, error: "Parent Program not found." };
+  if (!(await exists("programs", parentProgramId))) return { ok: false as const, error: "Parent Program not found." };
 
   return {
     ok: true as const,
@@ -252,14 +252,14 @@ function revalidateProgram(programId?: string) {
   if (programId) revalidateEntity("program", programId);
 }
 
-function resolveLaunchPlanWorkIfReady(
+async function resolveLaunchPlanWorkIfReady(
   programId: string,
   actorUserId: string,
   now: number,
   force = false,
-): void {
+): Promise<void> {
   if (!force) {
-    const readiness = getProgramReadiness(programId);
+    const readiness = (await getProgramReadiness(programId));
     const sourceFactKeys = new Set(["partner", "partner_confirmation", "contact", "owner", "location", "schedule", "curriculum", "materials"]);
     const sourceFactsReady = Boolean(
       readiness
@@ -271,50 +271,50 @@ function resolveLaunchPlanWorkIfReady(
   }
 
   const db = getDb();
-  const tasks = db.prepare(
-    `SELECT id FROM tasks
+  const tasks = (await db.prepare(
+      `SELECT id FROM tasks
       WHERE entity_type = 'program' AND entity_id = ? AND status = 'open'
         AND title LIKE 'Complete launch plan:%'`,
-  ).all(programId) as { id: string }[];
+    ).all(programId)) as { id: string }[];
   for (const task of tasks) {
-    const completed = db.prepare(
-      `UPDATE tasks
+    const completed = (await db.prepare(
+          `UPDATE tasks
           SET status = 'done', completed_at = ?, completion_note = ?, updated_at = ?
         WHERE id = ? AND status = 'open'`,
-    ).run(now, `Resolved from authoritative Program ${programId} launch facts.`, now, task.id);
+        ).run(now, `Resolved from authoritative Program ${programId} launch facts.`, now, task.id));
     if (completed.changes !== 1) throw new Error("launch_plan_work_changed");
-    logActivity("task", task.id, "completed", `Resolved from authoritative Program ${programId} launch facts.`, actorUserId);
+    (await logActivity("task", task.id, "completed", `Resolved from authoritative Program ${programId} launch facts.`, actorUserId));
   }
 }
 
-function resolveContinuationHoldWork(programId: string, actorUserId: string, now: number, note: string): void {
+async function resolveContinuationHoldWork(programId: string, actorUserId: string, now: number, note: string): Promise<void> {
   const db = getDb();
-  const tasks = db.prepare(
-    `SELECT id FROM tasks
+  const tasks = (await db.prepare(
+      `SELECT id FROM tasks
       WHERE entity_type = 'program' AND entity_id = ? AND status = 'open'
         AND kind = 'review' AND title LIKE 'Review continuation hold:%'`,
-  ).all(programId) as { id: string }[];
+    ).all(programId)) as { id: string }[];
   for (const task of tasks) {
-    const completed = db.prepare(
-      `UPDATE tasks
+    const completed = (await db.prepare(
+          `UPDATE tasks
           SET status = 'done', completed_at = ?, completion_note = ?, updated_at = ?
         WHERE id = ? AND status = 'open'`,
-    ).run(now, note, now, task.id);
+        ).run(now, note, now, task.id));
     if (completed.changes !== 1) throw new Error("continuation_hold_work_changed");
-    logActivity("task", task.id, "completed", note, actorUserId);
+    (await logActivity("task", task.id, "completed", note, actorUserId));
   }
 }
 
-function beginTransaction<T>(work: () => T): T {
+async function beginTransaction<T>(work: () => T): Promise<T> {
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     const result = work();
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
     return result;
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // The original error is the useful one.
     }
@@ -328,33 +328,33 @@ function beginTransaction<T>(work: () => T): T {
  * authority; a missing active portal account therefore clears the legacy
  * pointer instead of granting delivery access through stale LMS data.
  */
-function synchronizeLegacyCohortLead(
+async function synchronizeLegacyCohortLead(
   db: ReturnType<typeof getDb>,
   programId: string,
   classId: string,
   instructorId: string | null,
-): void {
-  const source = db.prepare(
-    "SELECT source_type, source_id FROM programs WHERE id = ?",
-  ).get(programId) as { source_type: string | null; source_id: string | null } | undefined;
+): Promise<void> {
+  const source = (await db.prepare(
+      "SELECT source_type, source_id FROM programs WHERE id = ?",
+    ).get(programId)) as { source_type: string | null; source_id: string | null } | undefined;
   if (!source || source.source_type !== "legacy_class" || source.source_id !== classId) return;
 
   const legacyUser = instructorId
-    ? db.prepare(
-      `SELECT p.user_id
+    ? (await db.prepare(
+            `SELECT p.user_id
          FROM instructors i
          JOIN people p ON p.id = i.person_id
          JOIN users u ON u.id = p.user_id
         WHERE i.id = ? AND u.role = 'instructor' AND u.status = 'active'`,
-    ).get(instructorId) as { user_id: string } | undefined
+          ).get(instructorId)) as { user_id: string } | undefined
     : undefined;
-  const updated = db.prepare(
-    "UPDATE cohorts SET instructor_id = ? WHERE id = ?",
-  ).run(legacyUser?.user_id ?? null, source.source_id);
+  const updated = (await db.prepare(
+      "UPDATE cohorts SET instructor_id = ? WHERE id = ?",
+    ).run(legacyUser?.user_id ?? null, source.source_id));
   if (updated.changes !== 1) throw new Error("legacy_projection_changed");
 }
 
-function connectProgramTopology(
+async function connectProgramTopology(
   db: ReturnType<typeof getDb>,
   organizationId: string | null,
   personId: string | null,
@@ -362,43 +362,43 @@ function connectProgramTopology(
   now: number,
 ) {
   if (organizationId && personId) {
-    db.prepare(
-      `UPDATE organization_people
+    (await db.prepare(
+            `UPDATE organization_people
           SET active = 1, is_primary = 1, updated_at = ?
         WHERE organization_id = ? AND person_id = ? AND relationship_type = 'program_contact'`,
-    ).run(now, organizationId, personId);
-    db.prepare(
-      `INSERT INTO organization_people
+          ).run(now, organizationId, personId));
+    (await db.prepare(
+            `INSERT INTO organization_people
         (id, organization_id, person_id, relationship_type, is_primary, active, created_at, updated_at)
        SELECT ?, ?, ?, 'program_contact', 1, 1, ?, ?
         WHERE NOT EXISTS (
           SELECT 1 FROM organization_people
            WHERE organization_id = ? AND person_id = ? AND relationship_type = 'program_contact'
         )`,
-    ).run(`orp-${randomUUID()}`, organizationId, personId, now, now, organizationId, personId);
+          ).run(`orp-${randomUUID()}`, organizationId, personId, now, now, organizationId, personId));
   }
   if (organizationId && locationId) {
-    db.prepare(
-      `UPDATE organization_locations
+    (await db.prepare(
+            `UPDATE organization_locations
           SET active = 1, updated_at = ?
         WHERE organization_id = ? AND location_id = ? AND relationship_type = 'program_site'`,
-    ).run(now, organizationId, locationId);
-    db.prepare(
-      `INSERT INTO organization_locations
+          ).run(now, organizationId, locationId));
+    (await db.prepare(
+            `INSERT INTO organization_locations
         (id, organization_id, location_id, relationship_type, active, created_at, updated_at)
        SELECT ?, ?, ?, 'program_site', 1, ?, ?
         WHERE NOT EXISTS (
           SELECT 1 FROM organization_locations
            WHERE organization_id = ? AND location_id = ? AND relationship_type = 'program_site'
         )`,
-    ).run(`orl-${randomUUID()}`, organizationId, locationId, now, now, organizationId, locationId);
+          ).run(`orl-${randomUUID()}`, organizationId, locationId, now, now, organizationId, locationId));
   }
 
   // Program-derived topology is a projection of every current Program. Keep
   // prior keys for history, but make active flags exact without deactivating a
   // relationship that another Program still uses.
-  db.prepare(
-    `UPDATE organization_people AS op
+  (await db.prepare(
+        `UPDATE organization_people AS op
         SET active = CASE WHEN EXISTS (
           SELECT 1 FROM programs p
            WHERE p.partner_org_id = op.organization_id
@@ -411,9 +411,9 @@ function connectProgramTopology(
         ) THEN 1 ELSE 0 END,
             updated_at = ?
       WHERE op.relationship_type = 'program_contact'`,
-  ).run(now);
-  db.prepare(
-    `UPDATE organization_locations AS ol
+      ).run(now));
+  (await db.prepare(
+        `UPDATE organization_locations AS ol
         SET active = CASE WHEN EXISTS (
           SELECT 1 FROM programs p
            WHERE p.partner_org_id = ol.organization_id
@@ -421,7 +421,7 @@ function connectProgramTopology(
         ) THEN 1 ELSE 0 END,
             updated_at = ?
       WHERE ol.relationship_type = 'program_site'`,
-  ).run(now);
+      ).run(now));
 }
 
 function classStatusForProgramStage(stage: ProgramStage): ClassStatus | null {
@@ -440,13 +440,13 @@ function isHistoricalProgramStage(stage: ProgramStage): boolean {
   return stage === "completed" || stage === "renewal_review" || stage === "renewed" || stage === "closed";
 }
 
-function synchronizeProgramClassStatuses(
+async function synchronizeProgramClassStatuses(
   programId: string,
   stage: ProgramStage,
   now: number,
   actorUserId: string,
   transitionReason: string | null,
-): void {
+): Promise<void> {
   const db = getDb();
   const target = stage === "planning" ? "staffing" : classStatusForProgramStage(stage);
   if (!target || stage === "completed") return;
@@ -468,70 +468,70 @@ function synchronizeProgramClassStatuses(
             : [];
   if (eligibleStatuses.length === 0) return;
   const placeholders = eligibleStatuses.map(() => "?").join(", ");
-  const classes = db
-    .prepare(`SELECT id, status FROM classes WHERE program_id = ? AND status IN (${placeholders})`)
-    .all(programId, ...eligibleStatuses) as { id: string; status: ClassStatus }[];
+  const classes = (await db
+      .prepare(`SELECT id, status FROM classes WHERE program_id = ? AND status IN (${placeholders})`)
+      .all(programId, ...eligibleStatuses)) as { id: string; status: ClassStatus }[];
   const reason = `Program moved to ${stage.replace(/_/g, " ")}.${transitionReason ? ` ${transitionReason}` : ""}`;
   for (const cls of classes) {
     if (cls.status === target) continue;
-    const updated = db.prepare("UPDATE classes SET status = ?, updated_at = ? WHERE id = ? AND status = ?").run(target, now, cls.id, cls.status);
+    const updated = (await db.prepare("UPDATE classes SET status = ?, updated_at = ? WHERE id = ? AND status = ?").run(target, now, cls.id, cls.status));
     if (updated.changes !== 1) throw new Error(`Class ${cls.id} changed while the Program transition was being recorded.`);
-    db.prepare(
-      `INSERT INTO class_status_events
+    (await db.prepare(
+            `INSERT INTO class_status_events
         (id, class_id, from_status, to_status, reason, actor_user_id, source, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'program_transition', ?)`,
-    ).run(`cse-${randomUUID()}`, cls.id, cls.status, target, reason, actorUserId, now);
-    logActivity("class", cls.id, "stage_change", `${reason} Class moved to ${target.replace(/_/g, " ")}.`, actorUserId);
+          ).run(`cse-${randomUUID()}`, cls.id, cls.status, target, reason, actorUserId, now));
+    (await logActivity("class", cls.id, "stage_change", `${reason} Class moved to ${target.replace(/_/g, " ")}.`, actorUserId));
   }
 }
 
-function resolveSourcePartner(sourceType: string, sourceId: string | null, selectedPartnerId: string | null): string | null {
+async function resolveSourcePartner(sourceType: string, sourceId: string | null, selectedPartnerId: string | null): Promise<string | null> {
   if (selectedPartnerId || !sourceId) return selectedPartnerId;
   const db = getDb();
   if (sourceType === "inquiry") {
-    const inquiry = db.prepare(
-      `SELECT i.organization_id
+    const inquiry = (await db.prepare(
+          `SELECT i.organization_id
          FROM inquiries i
          JOIN organizations o ON o.id = i.organization_id AND o.status IN ('prospect','active')
         WHERE i.id = ?`,
-    ).get(sourceId) as { organization_id: string } | undefined;
+        ).get(sourceId)) as { organization_id: string } | undefined;
     return inquiry?.organization_id ?? null;
   }
   if (sourceType === "demo_request") {
-    const request = db
-      .prepare("SELECT p.name FROM demo_requests d JOIN partner_orgs p ON p.slug = d.org_slug WHERE d.id = ?")
-      .get(sourceId) as { name: string } | undefined;
+    const request = (await db
+          .prepare("SELECT p.name FROM demo_requests d JOIN partner_orgs p ON p.slug = d.org_slug WHERE d.id = ?")
+          .get(sourceId)) as { name: string } | undefined;
     if (request) {
-      const org = db
-        .prepare("SELECT id FROM organizations WHERE lower(trim(name)) = lower(trim(?)) AND status IN ('prospect','active') ORDER BY id LIMIT 1")
-        .get(request.name) as { id: string } | undefined;
+      const org = (await db
+              .prepare("SELECT id FROM organizations WHERE lower(trim(name)) = lower(trim(?)) AND status IN ('prospect','active') ORDER BY id LIMIT 1")
+              .get(request.name)) as { id: string } | undefined;
       return org?.id ?? null;
     }
   }
   return null;
 }
 
-function sourceExists(sourceType: string, sourceId: string | null): boolean {
+async function sourceExists(sourceType: string, sourceId: string | null): Promise<boolean> {
   if (sourceType === "manual") return sourceId == null;
   if (!sourceId) return false;
   const db = getDb();
   if (sourceType === "inquiry") {
-    return Boolean(db.prepare("SELECT 1 FROM inquiries WHERE id = ? AND status IN ('new','reviewing','contacted')").get(sourceId));
+    return Boolean((await db.prepare("SELECT 1 FROM inquiries WHERE id = ? AND status IN ('new','reviewing','contacted')").get(sourceId)));
   }
   if (sourceType === "demo_request") {
-    return Boolean(db.prepare("SELECT 1 FROM demo_requests WHERE id = ? AND dispositioned = 0").get(sourceId));
+    return Boolean((await db.prepare("SELECT 1 FROM demo_requests WHERE id = ? AND dispositioned = 0").get(sourceId)));
   }
   if (sourceType === "class") {
-    return Boolean(db.prepare("SELECT 1 FROM classes WHERE id = ? AND program_id IS NULL AND status IN ('planning','staffing')").get(sourceId));
+    return Boolean((await db.prepare("SELECT 1 FROM classes WHERE id = ? AND program_id IS NULL AND status IN ('planning','staffing')").get(sourceId)));
   }
   if (sourceType === "class_proposal") {
-    return Boolean(db.prepare("SELECT 1 FROM class_proposals WHERE id = ? AND status = 'approved'").get(sourceId));
+    return Boolean((await db.prepare("SELECT 1 FROM class_proposals WHERE id = ? AND status = 'approved'").get(sourceId)));
   }
   if (sourceType === "renewal" || sourceType === "expansion") {
     const allowedStages = sourceType === "renewal"
       ? "('completed','renewal_review')"
       : "('active','completed','renewal_review')";
-    return Boolean(db.prepare(`SELECT 1 FROM programs WHERE id = ? AND stage IN ${allowedStages}`).get(sourceId));
+    return Boolean((await db.prepare(`SELECT 1 FROM programs WHERE id = ? AND stage IN ${allowedStages}`).get(sourceId)));
   }
   return false;
 }
@@ -545,16 +545,16 @@ interface InquirySourceRow {
   status: string;
 }
 
-function getInquirySource(db: ReturnType<typeof getDb>, sourceId: string | null): InquirySourceRow | null {
+async function getInquirySource(db: ReturnType<typeof getDb>, sourceId: string | null): Promise<InquirySourceRow | null> {
   if (!sourceId) return null;
-  return (db.prepare("SELECT id, organization_id, name, email, org_name, status FROM inquiries WHERE id = ?").get(sourceId) as InquirySourceRow | undefined) ?? null;
+  return ((await db.prepare("SELECT id, organization_id, name, email, org_name, status FROM inquiries WHERE id = ?").get(sourceId)) as InquirySourceRow | undefined) ?? null;
 }
 
 type StaffUser = Awaited<ReturnType<typeof requireStaff>>;
 
 export async function createProgram(input: ProgramInput): Promise<ActionResult & { id?: string }> {
   const me = await requireStaff();
-  return createProgramInternal(input, me, false);
+  return (await createProgramInternal(input, me, false));
 }
 
 async function createProgramInternal(
@@ -562,7 +562,7 @@ async function createProgramInternal(
   me: StaffUser,
   allowContinuation: boolean,
 ): Promise<ActionResult & { id?: string }> {
-  const validated = validateInput(input);
+  const validated = (await validateInput(input));
   if (!validated.ok) return { ok: false, error: validated.error };
   const value = validated.value;
   if (value.stage !== "opportunity" && value.stage !== "planning") {
@@ -576,9 +576,9 @@ async function createProgramInternal(
     return { ok: false, error: "A continuation must identify the same Program as its source and parent." };
   }
   if (value.requestKey) {
-    const existing = getDb().prepare(
-      "SELECT id, source_type, source_id FROM programs WHERE request_key = ?",
-    ).get(value.requestKey) as { id: string; source_type: string | null; source_id: string | null } | undefined;
+    const existing = (await getDb().prepare(
+          "SELECT id, source_type, source_id FROM programs WHERE request_key = ?",
+        ).get(value.requestKey)) as { id: string; source_type: string | null; source_id: string | null } | undefined;
     if (existing) {
       if (existing.source_type === value.sourceType && existing.source_id === value.sourceId) {
         return { ok: true, id: existing.id };
@@ -586,26 +586,26 @@ async function createProgramInternal(
       return { ok: false, error: "That submission key already belongs to another Program. Refresh the form and try again." };
     }
   }
-  if (!sourceExists(value.sourceType, value.sourceId)) {
+  if (!(await sourceExists(value.sourceType, value.sourceId))) {
     return { ok: false, error: "The selected Program source does not exist or is incomplete." };
   }
   if (
     value.sourceId &&
     ["inquiry", "demo_request", "class", "class_proposal"].includes(value.sourceType) &&
-    getDb().prepare("SELECT 1 FROM programs WHERE source_type = ? AND source_id = ?").get(value.sourceType, value.sourceId)
+    (await getDb().prepare("SELECT 1 FROM programs WHERE source_type = ? AND source_id = ?").get(value.sourceType, value.sourceId))
   ) {
     return { ok: false, error: "That source has already been converted into a Program." };
   }
-  let partnerOrgId = resolveSourcePartner(value.sourceType, value.sourceId, value.partnerOrgId);
+  let partnerOrgId = (await resolveSourcePartner(value.sourceType, value.sourceId, value.partnerOrgId));
   let primaryContactPersonId = value.primaryContactPersonId;
-  const sourceCanResolvePartner = value.sourceType === "inquiry" && Boolean(getInquirySource(getDb(), value.sourceId)?.organization_id);
+  const sourceCanResolvePartner = value.sourceType === "inquiry" && Boolean((await getInquirySource(getDb(), value.sourceId))?.organization_id);
   if (value.partnerConfirmed && !partnerOrgId && !sourceCanResolvePartner) {
     return { ok: false, error: "Choose a partner before recording partner confirmation." };
   }
   const id = `prg-${randomUUID().slice(0, 10)}`;
   const now = Date.now();
   const plannedLocation = value.locationId
-    ? (getDb().prepare("SELECT name, city, state FROM locations WHERE id = ?").get(value.locationId) as
+    ? ((await getDb().prepare("SELECT name, city, state FROM locations WHERE id = ?").get(value.locationId)) as
         | { name: string; city: string | null; state: string | null }
         | undefined)
     : undefined;
@@ -615,131 +615,131 @@ async function createProgramInternal(
   const plannedOnlineFormat = value.deliveryFormat === "online" ? "Online" : value.deliveryFormat === "hybrid" ? "Hybrid" : null;
 
   try {
-    beginTransaction(() => {
-      const db = getDb();
-      if (!sourceExists(value.sourceType, value.sourceId)) throw new Error("Program source is no longer eligible.");
-      if (partnerOrgId && !db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(partnerOrgId)) {
-        throw new Error("Program partner is no longer available.");
-      }
-      if (value.locationId && !db.prepare("SELECT 1 FROM locations WHERE id = ? AND stage != 'closed'").get(value.locationId)) {
-        throw new Error("Program Location is no longer available.");
-      }
-      if (
-        partnerOrgId
-        && value.primaryContactPersonId
-        && !db.prepare(
-          "SELECT 1 FROM organization_people WHERE organization_id = ? AND person_id = ? AND active = 1 LIMIT 1",
-        ).get(partnerOrgId, value.primaryContactPersonId)
-      ) {
-        throw new Error("Program contact is no longer connected to the partner.");
-      }
-      if (
-        value.sourceId &&
-        ["inquiry", "demo_request", "class", "class_proposal"].includes(value.sourceType) &&
-        db.prepare("SELECT 1 FROM programs WHERE source_type = ? AND source_id = ?").get(value.sourceType, value.sourceId)
-      ) {
-        throw new Error("Program source has already been converted.");
-      }
+    (await beginTransaction(async () => {
+            const db = getDb();
+            if (!(await sourceExists(value.sourceType, value.sourceId))) throw new Error("Program source is no longer eligible.");
+            if (partnerOrgId && !(await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(partnerOrgId))) {
+              throw new Error("Program partner is no longer available.");
+            }
+            if (value.locationId && !(await db.prepare("SELECT 1 FROM locations WHERE id = ? AND stage != 'closed'").get(value.locationId))) {
+              throw new Error("Program Location is no longer available.");
+            }
+            if (
+              partnerOrgId
+              && value.primaryContactPersonId
+              && !(await db.prepare(
+                          "SELECT 1 FROM organization_people WHERE organization_id = ? AND person_id = ? AND active = 1 LIMIT 1",
+                        ).get(partnerOrgId, value.primaryContactPersonId))
+            ) {
+              throw new Error("Program contact is no longer connected to the partner.");
+            }
+            if (
+              value.sourceId &&
+              ["inquiry", "demo_request", "class", "class_proposal"].includes(value.sourceType) &&
+              (await db.prepare("SELECT 1 FROM programs WHERE source_type = ? AND source_id = ?").get(value.sourceType, value.sourceId))
+            ) {
+              throw new Error("Program source has already been converted.");
+            }
 
-      if (value.sourceType === "inquiry") {
-        const inquiry = getInquirySource(db, value.sourceId);
-        if (!inquiry || !["new", "reviewing", "contacted"].includes(inquiry.status)) {
-          throw new Error("Program source is no longer eligible.");
-        }
-        if (inquiry.organization_id && partnerOrgId && inquiry.organization_id !== partnerOrgId) {
-          throw new Error("Inquiry partner does not match the reviewed demand record.");
-        }
-        partnerOrgId = partnerOrgId ?? inquiry.organization_id;
-        const topology = ensureInquiryTopology(
-          db,
-          {
-            organizationName: inquiry.org_name,
-            contactName: inquiry.name,
-            contactEmail: inquiry.email,
-          },
-          {
-            selectedOrganizationId: partnerOrgId,
-            selectedPrimaryPersonId: primaryContactPersonId,
-            requireOperatingPartner: true,
-            now,
-          },
-        );
-        partnerOrgId = topology.organizationId;
-        primaryContactPersonId = topology.primaryPersonId;
-        if (!partnerOrgId) {
-          throw new Error("Choose a partner organization before converting this inquiry.");
-        }
-      }
-      if (partnerOrgId && !db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(partnerOrgId)) {
-        throw new Error("Program partner is no longer available.");
-      }
-      if (
-        value.sourceType === "renewal"
-        && value.sourceId
-        && db.prepare(
-          "SELECT 1 FROM programs WHERE source_type = 'renewal' AND source_id = ? AND stage != 'closed' LIMIT 1",
-        ).get(value.sourceId)
-      ) {
-        throw new Error("An open renewal already exists for this Program.");
-      }
-      if (value.partnerConfirmed && !partnerOrgId) throw new Error("Choose a partner before recording partner confirmation.");
-      db.prepare(
-      `INSERT INTO programs
+            if (value.sourceType === "inquiry") {
+              const inquiry = (await getInquirySource(db, value.sourceId));
+              if (!inquiry || !["new", "reviewing", "contacted"].includes(inquiry.status)) {
+                throw new Error("Program source is no longer eligible.");
+              }
+              if (inquiry.organization_id && partnerOrgId && inquiry.organization_id !== partnerOrgId) {
+                throw new Error("Inquiry partner does not match the reviewed demand record.");
+              }
+              partnerOrgId = partnerOrgId ?? inquiry.organization_id;
+              const topology = (await ensureInquiryTopology(
+                        db,
+                        {
+                          organizationName: inquiry.org_name,
+                          contactName: inquiry.name,
+                          contactEmail: inquiry.email,
+                        },
+                        {
+                          selectedOrganizationId: partnerOrgId,
+                          selectedPrimaryPersonId: primaryContactPersonId,
+                          requireOperatingPartner: true,
+                          now,
+                        },
+                      ));
+              partnerOrgId = topology.organizationId;
+              primaryContactPersonId = topology.primaryPersonId;
+              if (!partnerOrgId) {
+                throw new Error("Choose a partner organization before converting this inquiry.");
+              }
+            }
+            if (partnerOrgId && !(await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(partnerOrgId))) {
+              throw new Error("Program partner is no longer available.");
+            }
+            if (
+              value.sourceType === "renewal"
+              && value.sourceId
+              && (await db.prepare(
+                          "SELECT 1 FROM programs WHERE source_type = 'renewal' AND source_id = ? AND stage != 'closed' LIMIT 1",
+                        ).get(value.sourceId))
+            ) {
+              throw new Error("An open renewal already exists for this Program.");
+            }
+            if (value.partnerConfirmed && !partnerOrgId) throw new Error("Choose a partner before recording partner confirmation.");
+            (await db.prepare(
+                    `INSERT INTO programs
         (id, request_key, name, partner_org_id, primary_contact_person_id, location_id, curriculum_id, audience, delivery_format,
          stage, start_date, end_date, launch_date, schedule_label, schedule_day, schedule_start_time, schedule_end_time,
          schedule_timezone, capacity, minimum_enrollment, owner_user_id, partner_confirmed, materials_status, renewal_status,
          source_type, source_id, parent_program_id, outcome_summary, notes, launch_exception_reason,
          launch_exception_approved_by, launch_exception_approved_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_due', ?, ?, ?, NULL, ?, NULL, NULL, NULL, ?, ?)`,
-      ).run(
-      id,
-      value.requestKey,
-      value.name,
-      partnerOrgId,
-      primaryContactPersonId,
-      value.locationId,
-      value.curriculumId,
-      value.audience,
-      value.deliveryFormat,
-      value.stage,
-      value.startDate,
-      value.endDate,
-      value.launchDate,
-      value.scheduleLabel,
-      value.scheduleDay,
-      value.scheduleStartTime,
-      value.scheduleEndTime,
-      value.scheduleTimezone,
-      value.capacity,
-      value.minimumEnrollment,
-      value.ownerUserId ?? me.id,
-      value.partnerConfirmed ? 1 : 0,
-      value.materialsStatus,
-      value.sourceType,
-      value.sourceId,
-      value.parentProgramId,
-      value.notes,
-      now,
-      now,
-    );
-      connectProgramTopology(db, partnerOrgId, primaryContactPersonId, value.locationId, now);
+                    ).run(
+                    id,
+                    value.requestKey,
+                    value.name,
+                    partnerOrgId,
+                    primaryContactPersonId,
+                    value.locationId,
+                    value.curriculumId,
+                    value.audience,
+                    value.deliveryFormat,
+                    value.stage,
+                    value.startDate,
+                    value.endDate,
+                    value.launchDate,
+                    value.scheduleLabel,
+                    value.scheduleDay,
+                    value.scheduleStartTime,
+                    value.scheduleEndTime,
+                    value.scheduleTimezone,
+                    value.capacity,
+                    value.minimumEnrollment,
+                    value.ownerUserId ?? me.id,
+                    value.partnerConfirmed ? 1 : 0,
+                    value.materialsStatus,
+                    value.sourceType,
+                    value.sourceId,
+                    value.parentProgramId,
+                    value.notes,
+                    now,
+                    now,
+                  ));
+            (await connectProgramTopology(db, partnerOrgId, primaryContactPersonId, value.locationId, now));
 
-      let classId: string | null = null;
-      if (value.sourceType === "class" && value.sourceId) classId = value.sourceId;
-      if (value.sourceType === "class_proposal" && value.sourceId) {
-        const proposal = db.prepare("SELECT converted_class_id FROM class_proposals WHERE id = ?").get(value.sourceId) as
-          | { converted_class_id: string | null }
-          | undefined;
-        classId = proposal?.converted_class_id ?? null;
-      }
-      if (classId) {
-        const cls = db.prepare("SELECT id, program_id FROM classes WHERE id = ?").get(classId) as
-          | { id: string; program_id: string | null }
-          | undefined;
-        if (!cls) throw new Error("Source Class not found.");
-        if (cls.program_id && cls.program_id !== id) throw new Error("Source Class already belongs to another Program.");
-        db.prepare(
-          `UPDATE classes SET
+            let classId: string | null = null;
+            if (value.sourceType === "class" && value.sourceId) classId = value.sourceId;
+            if (value.sourceType === "class_proposal" && value.sourceId) {
+              const proposal = (await db.prepare("SELECT converted_class_id FROM class_proposals WHERE id = ?").get(value.sourceId)) as
+                | { converted_class_id: string | null }
+                | undefined;
+              classId = proposal?.converted_class_id ?? null;
+            }
+            if (classId) {
+              const cls = (await db.prepare("SELECT id, program_id FROM classes WHERE id = ?").get(classId)) as
+                | { id: string; program_id: string | null }
+                | undefined;
+              if (!cls) throw new Error("Source Class not found.");
+              if (cls.program_id && cls.program_id !== id) throw new Error("Source Class already belongs to another Program.");
+              (await db.prepare(
+                          `UPDATE classes SET
             program_id = ?, partner_org_id = COALESCE(?, partner_org_id), location_id = COALESCE(?, location_id), location = COALESCE(?, location),
             curriculum_id = COALESCE(?, curriculum_id), online_format = COALESCE(?, online_format), start_date = COALESCE(?, start_date),
             end_date = COALESCE(?, end_date), recurrence = COALESCE(?, recurrence),
@@ -748,86 +748,86 @@ async function createProgramInternal(
             age_range = COALESCE(?, age_range),
             capacity = COALESCE(?, capacity), minimum_enrollment = ?, updated_at = ?
            WHERE id = ?`,
-        ).run(
-          id,
-          partnerOrgId,
-          value.locationId,
-          plannedLocationLabel,
-          value.curriculumId,
-          plannedOnlineFormat,
-          value.startDate,
-          value.endDate,
-          value.scheduleLabel,
-          value.scheduleDay,
-          value.scheduleStartTime,
-          value.scheduleEndTime,
-          value.scheduleTimezone,
-          value.audience,
-          value.capacity,
-          value.minimumEnrollment,
-          now,
-          classId,
-        );
-      }
+                        ).run(
+                          id,
+                          partnerOrgId,
+                          value.locationId,
+                          plannedLocationLabel,
+                          value.curriculumId,
+                          plannedOnlineFormat,
+                          value.startDate,
+                          value.endDate,
+                          value.scheduleLabel,
+                          value.scheduleDay,
+                          value.scheduleStartTime,
+                          value.scheduleEndTime,
+                          value.scheduleTimezone,
+                          value.audience,
+                          value.capacity,
+                          value.minimumEnrollment,
+                          now,
+                          classId,
+                        ));
+            }
 
-      if (value.sourceType === "demo_request" && value.sourceId) {
-        db.prepare("UPDATE demo_requests SET dispositioned = 1 WHERE id = ?").run(value.sourceId);
-      }
-      if (value.sourceType === "inquiry" && value.sourceId) {
-        const converted = db.prepare(
-          `UPDATE inquiries
+            if (value.sourceType === "demo_request" && value.sourceId) {
+              (await db.prepare("UPDATE demo_requests SET dispositioned = 1 WHERE id = ?").run(value.sourceId));
+            }
+            if (value.sourceType === "inquiry" && value.sourceId) {
+              const converted = (await db.prepare(
+                        `UPDATE inquiries
               SET status = 'converted_to_program', organization_id = ?
             WHERE id = ? AND status IN ('new','reviewing','contacted')
               AND (organization_id IS NULL OR organization_id = ?)`,
-        ).run(partnerOrgId, value.sourceId, partnerOrgId);
-        if (converted.changes !== 1) throw new Error("Program source is no longer eligible.");
-        logActivity("inquiry", value.sourceId, "converted", `Converted into Program ${value.name}.`, me.id);
-        if (partnerOrgId) {
-          logActivity("organization", partnerOrgId, "program_created", `Program ${value.name} created from a public inquiry.`, me.id);
-        }
-      }
-      if ((value.sourceType === "renewal" || value.sourceType === "expansion") && value.sourceId) {
-        db.prepare("UPDATE programs SET renewal_status = ?, updated_at = ? WHERE id = ?")
-          .run(value.sourceType === "renewal" ? "renewed" : "expanded", now, value.sourceId);
-        logActivity(
-          "program",
-          value.sourceId,
-          value.sourceType,
-          `${value.sourceType === "renewal" ? "Renewal" : "Expansion"} Program ${id} created.`,
-          me.id,
-        );
-        resolveContinuationHoldWork(
-          value.sourceId,
-          me.id,
-          now,
-          `${value.sourceType === "renewal" ? "Renewal" : "Expansion"} Program created.`,
-        );
-      }
+                      ).run(partnerOrgId, value.sourceId, partnerOrgId));
+              if (converted.changes !== 1) throw new Error("Program source is no longer eligible.");
+              (await logActivity("inquiry", value.sourceId, "converted", `Converted into Program ${value.name}.`, me.id));
+              if (partnerOrgId) {
+                (await logActivity("organization", partnerOrgId, "program_created", `Program ${value.name} created from a public inquiry.`, me.id));
+              }
+            }
+            if ((value.sourceType === "renewal" || value.sourceType === "expansion") && value.sourceId) {
+              (await db.prepare("UPDATE programs SET renewal_status = ?, updated_at = ? WHERE id = ?")
+                          .run(value.sourceType === "renewal" ? "renewed" : "expanded", now, value.sourceId));
+              (await logActivity(
+                          "program",
+                          value.sourceId,
+                          value.sourceType,
+                          `${value.sourceType === "renewal" ? "Renewal" : "Expansion"} Program ${id} created.`,
+                          me.id,
+                        ));
+              (await resolveContinuationHoldWork(
+                          value.sourceId,
+                          me.id,
+                          now,
+                          `${value.sourceType === "renewal" ? "Renewal" : "Expansion"} Program created.`,
+                        ));
+            }
 
-      logActivity("program", id, "created", `Program created${value.sourceType !== "manual" ? ` from ${value.sourceType.replace(/_/g, " ")}` : ""}.`, me.id);
-      db.prepare(
-      `INSERT INTO tasks
+            (await logActivity("program", id, "created", `Program created${value.sourceType !== "manual" ? ` from ${value.sourceType.replace(/_/g, " ")}` : ""}.`, me.id));
+            (await db.prepare(
+                    `INSERT INTO tasks
         (id, title, owner_user_id, due_at, status, kind, priority, context, recommended_action,
          entity_type, entity_id, handoff_to_founder, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'open', 'task', 'normal', ?, ?, 'program', ?, 0, ?, ?)`,
-      ).run(
-      `wrk-${randomUUID().slice(0, 10)}`,
-      `Complete launch plan: ${value.name}`,
-      value.ownerUserId ?? me.id,
-      now + 7 * 24 * 60 * 60 * 1000,
-      "A complete Program plan allows staffing, enrollment, and launch readiness to be derived.",
-      "Confirm the partner, contact, Location, Curriculum, schedule, and launch date.",
-      id,
-      now,
-      now,
-      );
-      resolveLaunchPlanWorkIfReady(id, me.id, now);
-    });
+                    ).run(
+                    `wrk-${randomUUID().slice(0, 10)}`,
+                    `Complete launch plan: ${value.name}`,
+                    value.ownerUserId ?? me.id,
+                    now + 7 * 24 * 60 * 60 * 1000,
+                    "A complete Program plan allows staffing, enrollment, and launch readiness to be derived.",
+                    "Confirm the partner, contact, Location, Curriculum, schedule, and launch date.",
+                    id,
+                    now,
+                    now,
+                    ));
+            (await resolveLaunchPlanWorkIfReady(id, me.id, now));
+          }));
   } catch (error) {
     if (value.requestKey) {
-      const existing = getDb().prepare(
-        "SELECT id, source_type, source_id FROM programs WHERE request_key = ?",
-      ).get(value.requestKey) as { id: string; source_type: string | null; source_id: string | null } | undefined;
+      const existing = (await getDb().prepare(
+              "SELECT id, source_type, source_id FROM programs WHERE request_key = ?",
+            ).get(value.requestKey)) as { id: string; source_type: string | null; source_id: string | null } | undefined;
       if (existing?.source_type === value.sourceType && existing.source_id === value.sourceId) {
         return { ok: true, id: existing.id };
       }
@@ -864,7 +864,7 @@ async function createProgramInternal(
 
 export async function updateProgramPlan(id: string, input: ProgramInput): Promise<ActionResult> {
   const me = await requireStaff();
-  const current = getProgram(id);
+  const current = (await getProgram(id));
   if (!current) return { ok: false, error: "Program not found." };
   if (isHistoricalProgramStage(current.program.stage)) {
     return { ok: false, error: "Completed and closed Programs are historical records. Create a renewal or expansion instead." };
@@ -875,7 +875,7 @@ export async function updateProgramPlan(id: string, input: ProgramInput): Promis
       error: "Authorized launch and active delivery plans are locked. Move the Program to Staffing or Recovery before amending source facts.",
     };
   }
-  const validated = validateInput({ ...input, stage: current.program.stage, sourceType: current.program.sourceType ?? "manual" });
+  const validated = (await validateInput({ ...input, stage: current.program.stage, sourceType: current.program.sourceType ?? "manual" }));
   if (!validated.ok) return { ok: false, error: validated.error };
   const value = validated.value;
   const curriculumChanged = current.program.curriculumId !== value.curriculumId;
@@ -926,88 +926,88 @@ export async function updateProgramPlan(id: string, input: ProgramInput): Promis
   const now = Date.now();
   const db = getDb();
   const location = value.locationId
-    ? (db.prepare("SELECT name, city, state FROM locations WHERE id = ?").get(value.locationId) as
+    ? ((await db.prepare("SELECT name, city, state FROM locations WHERE id = ?").get(value.locationId)) as
         | { name: string; city: string | null; state: string | null }
         | undefined)
     : undefined;
   const locationLabel = location ? [location.name, location.city, location.state].filter(Boolean).join(" · ") : null;
   const onlineFormat = value.deliveryFormat === "online" ? "Online" : value.deliveryFormat === "hybrid" ? "Hybrid" : null;
   try {
-    beginTransaction(() => {
-    if (value.partnerOrgId && !db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(value.partnerOrgId)) {
-      throw new Error("partner_unavailable");
-    }
-    if (value.locationId && !db.prepare("SELECT 1 FROM locations WHERE id = ? AND stage != 'closed'").get(value.locationId)) {
-      throw new Error("location_unavailable");
-    }
-    if (
-      value.partnerOrgId
-      && value.primaryContactPersonId
-      && !db.prepare(
-        "SELECT 1 FROM organization_people WHERE organization_id = ? AND person_id = ? AND active = 1 LIMIT 1",
-      ).get(value.partnerOrgId, value.primaryContactPersonId)
-    ) {
-      throw new Error("contact_unavailable");
-    }
-    const liveClassCount = (db.prepare("SELECT COUNT(*) AS n FROM classes WHERE program_id = ?").get(id) as { n: number }).n;
-    if (liveClassCount > 0 && !value.curriculumId) throw new Error("program_changed");
-    const updated = db.prepare(
-      `UPDATE programs SET
+    (await beginTransaction(async () => {
+          if (value.partnerOrgId && !(await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(value.partnerOrgId))) {
+            throw new Error("partner_unavailable");
+          }
+          if (value.locationId && !(await db.prepare("SELECT 1 FROM locations WHERE id = ? AND stage != 'closed'").get(value.locationId))) {
+            throw new Error("location_unavailable");
+          }
+          if (
+            value.partnerOrgId
+            && value.primaryContactPersonId
+            && !(await db.prepare(
+                      "SELECT 1 FROM organization_people WHERE organization_id = ? AND person_id = ? AND active = 1 LIMIT 1",
+                    ).get(value.partnerOrgId, value.primaryContactPersonId))
+          ) {
+            throw new Error("contact_unavailable");
+          }
+          const liveClassCount = ((await db.prepare("SELECT COUNT(*) AS n FROM classes WHERE program_id = ?").get(id)) as { n: number }).n;
+          if (liveClassCount > 0 && !value.curriculumId) throw new Error("program_changed");
+          const updated = (await db.prepare(
+                `UPDATE programs SET
         name = ?, partner_org_id = ?, primary_contact_person_id = ?, location_id = ?, curriculum_id = ?, audience = ?,
         delivery_format = ?, start_date = ?, end_date = ?, launch_date = ?, schedule_label = ?, schedule_day = ?,
         schedule_start_time = ?, schedule_end_time = ?, schedule_timezone = ?, capacity = ?, minimum_enrollment = ?, owner_user_id = ?,
         partner_confirmed = ?, materials_status = ?, notes = ?, updated_at = ?
        WHERE id = ? AND stage = ? AND updated_at = ?`,
-    ).run(
-      value.name,
-      value.partnerOrgId,
-      value.primaryContactPersonId,
-      value.locationId,
-      value.curriculumId,
-      value.audience,
-      value.deliveryFormat,
-      value.startDate,
-      value.endDate,
-      value.launchDate,
-      value.scheduleLabel,
-      value.scheduleDay,
-      value.scheduleStartTime,
-      value.scheduleEndTime,
-      value.scheduleTimezone,
-      value.capacity,
-      value.minimumEnrollment,
-      value.ownerUserId ?? me.id,
-      value.partnerConfirmed ? 1 : 0,
-      value.materialsStatus,
-      value.notes,
-      now,
-      id,
-      current.program.stage,
-      current.program.updatedAt,
-    );
-    if (updated.changes !== 1) throw new Error("program_changed");
-    connectProgramTopology(db, value.partnerOrgId, value.primaryContactPersonId, value.locationId, now);
-    if (liveClassCount > 0) {
-      db.prepare(
-        `UPDATE classes SET
+              ).run(
+                value.name,
+                value.partnerOrgId,
+                value.primaryContactPersonId,
+                value.locationId,
+                value.curriculumId,
+                value.audience,
+                value.deliveryFormat,
+                value.startDate,
+                value.endDate,
+                value.launchDate,
+                value.scheduleLabel,
+                value.scheduleDay,
+                value.scheduleStartTime,
+                value.scheduleEndTime,
+                value.scheduleTimezone,
+                value.capacity,
+                value.minimumEnrollment,
+                value.ownerUserId ?? me.id,
+                value.partnerConfirmed ? 1 : 0,
+                value.materialsStatus,
+                value.notes,
+                now,
+                id,
+                current.program.stage,
+                current.program.updatedAt,
+              ));
+          if (updated.changes !== 1) throw new Error("program_changed");
+          (await connectProgramTopology(db, value.partnerOrgId, value.primaryContactPersonId, value.locationId, now));
+          if (liveClassCount > 0) {
+            (await db.prepare(
+                      `UPDATE classes SET
           partner_org_id = ?, location_id = ?, location = ?, curriculum_id = ?, online_format = ?,
           schedule_timezone = COALESCE(schedule_timezone, ?), updated_at = ?
          WHERE program_id = ? AND status NOT IN ('completed','cancelled')`,
-      ).run(
-        value.partnerOrgId,
-        value.locationId,
-        locationLabel,
-        value.curriculumId,
-        onlineFormat,
-        value.scheduleTimezone,
-        now,
-        id,
-      );
-    }
-    const changeSummary = changedFields.length > 0 ? changedFields.map(([label]) => label).join(", ") : "no material fields";
-    logActivity("program", id, "plan_updated", `Program plan updated. Changed: ${changeSummary}. Shared partner, Location, Curriculum, and format were synchronized; Class schedules and delivery limits remained authoritative.`, me.id);
-    resolveLaunchPlanWorkIfReady(id, me.id, now);
-    });
+                    ).run(
+                      value.partnerOrgId,
+                      value.locationId,
+                      locationLabel,
+                      value.curriculumId,
+                      onlineFormat,
+                      value.scheduleTimezone,
+                      now,
+                      id,
+                    ));
+          }
+          const changeSummary = changedFields.length > 0 ? changedFields.map(([label]) => label).join(", ") : "no material fields";
+          (await logActivity("program", id, "plan_updated", `Program plan updated. Changed: ${changeSummary}. Shared partner, Location, Curriculum, and format were synchronized; Class schedules and delivery limits remained authoritative.`, me.id));
+          (await resolveLaunchPlanWorkIfReady(id, me.id, now));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "program_changed") {
       return { ok: false, error: "The Program changed while this plan was being saved. Refresh and review the latest plan before trying again." };
@@ -1033,7 +1033,7 @@ export async function updateProgramPlan(id: string, input: ProgramInput): Promis
 export async function setProgramPartnerConfirmation(id: string, confirmed: boolean): Promise<ActionResult> {
   const me = await requireStaff();
   const db = getDb();
-  const row = db.prepare("SELECT id, partner_org_id, stage FROM programs WHERE id = ?").get(id) as
+  const row = (await db.prepare("SELECT id, partner_org_id, stage FROM programs WHERE id = ?").get(id)) as
     | { id: string; partner_org_id: string | null; stage: ProgramStage }
     | undefined;
   if (!row) return { ok: false, error: "Program not found." };
@@ -1043,25 +1043,25 @@ export async function setProgramPartnerConfirmation(id: string, confirmed: boole
     return { ok: false, error: "Move the Program back to Staffing or Recovery before withdrawing a launch fact." };
   }
   try {
-    beginTransaction(() => {
-      const live = db.prepare("SELECT partner_org_id, stage FROM programs WHERE id = ?").get(id) as
-        | { partner_org_id: string | null; stage: ProgramStage }
-        | undefined;
-      if (!live || live.stage !== row.stage) throw new Error("program_changed");
-      if (confirmed && !live.partner_org_id) throw new Error("partner_missing");
-      if (
-        confirmed
-        && live.partner_org_id
-        && !db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(live.partner_org_id)
-      ) {
-        throw new Error("partner_unavailable");
-      }
-      if (!confirmed && ["ready_to_launch", "active"].includes(live.stage)) throw new Error("launch_fact_locked");
-      const updated = db.prepare("UPDATE programs SET partner_confirmed = ?, updated_at = ? WHERE id = ? AND stage = ?")
-        .run(confirmed ? 1 : 0, Date.now(), id, live.stage);
-      if (updated.changes !== 1) throw new Error("program_changed");
-      logActivity("program", id, "partner_confirmation", confirmed ? "Partner confirmation recorded." : "Partner confirmation removed.", me.id);
-    });
+    (await beginTransaction(async () => {
+            const live = (await db.prepare("SELECT partner_org_id, stage FROM programs WHERE id = ?").get(id)) as
+              | { partner_org_id: string | null; stage: ProgramStage }
+              | undefined;
+            if (!live || live.stage !== row.stage) throw new Error("program_changed");
+            if (confirmed && !live.partner_org_id) throw new Error("partner_missing");
+            if (
+              confirmed
+              && live.partner_org_id
+              && !(await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(live.partner_org_id))
+            ) {
+              throw new Error("partner_unavailable");
+            }
+            if (!confirmed && ["ready_to_launch", "active"].includes(live.stage)) throw new Error("launch_fact_locked");
+            const updated = (await db.prepare("UPDATE programs SET partner_confirmed = ?, updated_at = ? WHERE id = ? AND stage = ?")
+                    .run(confirmed ? 1 : 0, Date.now(), id, live.stage));
+            if (updated.changes !== 1) throw new Error("program_changed");
+            (await logActivity("program", id, "partner_confirmation", confirmed ? "Partner confirmation recorded." : "Partner confirmation removed.", me.id));
+          }));
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "partner_missing") return { ok: false, error: "Choose a partner before recording confirmation." };
@@ -1081,29 +1081,29 @@ export async function setProgramMaterialsStatus(
   const me = await requireStaff();
   if (!MATERIALS.has(status)) return { ok: false, error: "Invalid materials status." };
   const db = getDb();
-  const row = db.prepare("SELECT id, stage FROM programs WHERE id = ?").get(id) as { id: string; stage: ProgramStage } | undefined;
+  const row = (await db.prepare("SELECT id, stage FROM programs WHERE id = ?").get(id)) as { id: string; stage: ProgramStage } | undefined;
   if (!row) return { ok: false, error: "Program not found." };
   if (isHistoricalProgramStage(row.stage)) return { ok: false, error: "Historical Programs cannot be edited." };
-  const currentStatus = db.prepare("SELECT materials_status FROM programs WHERE id = ?").get(id) as
+  const currentStatus = (await db.prepare("SELECT materials_status FROM programs WHERE id = ?").get(id)) as
     | { materials_status: string }
     | undefined;
   if (["ready_to_launch", "active"].includes(row.stage) && currentStatus?.materials_status === "ready" && status !== "ready") {
     return { ok: false, error: "Move the Program back to Staffing or Recovery before removing material readiness." };
   }
   try {
-    beginTransaction(() => {
-      const live = db.prepare("SELECT stage, materials_status FROM programs WHERE id = ?").get(id) as
-        | { stage: ProgramStage; materials_status: string }
-        | undefined;
-      if (!live || live.stage !== row.stage) throw new Error("program_changed");
-      if (["ready_to_launch", "active"].includes(live.stage) && live.materials_status === "ready" && status !== "ready") {
-        throw new Error("launch_fact_locked");
-      }
-      const updated = db.prepare("UPDATE programs SET materials_status = ?, updated_at = ? WHERE id = ? AND stage = ?")
-        .run(status, Date.now(), id, live.stage);
-      if (updated.changes !== 1) throw new Error("program_changed");
-      logActivity("program", id, "materials", `Materials marked ${status.replace(/_/g, " ")}.`, me.id);
-    });
+    (await beginTransaction(async () => {
+            const live = (await db.prepare("SELECT stage, materials_status FROM programs WHERE id = ?").get(id)) as
+              | { stage: ProgramStage; materials_status: string }
+              | undefined;
+            if (!live || live.stage !== row.stage) throw new Error("program_changed");
+            if (["ready_to_launch", "active"].includes(live.stage) && live.materials_status === "ready" && status !== "ready") {
+              throw new Error("launch_fact_locked");
+            }
+            const updated = (await db.prepare("UPDATE programs SET materials_status = ?, updated_at = ? WHERE id = ? AND stage = ?")
+                    .run(status, Date.now(), id, live.stage));
+            if (updated.changes !== 1) throw new Error("program_changed");
+            (await logActivity("program", id, "materials", `Materials marked ${status.replace(/_/g, " ")}.`, me.id));
+          }));
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "launch_fact_locked") return { ok: false, error: "Move the Program back to Staffing or Recovery before removing material readiness." };
@@ -1117,7 +1117,7 @@ export async function setProgramMaterialsStatus(
 export async function attachClassToProgram(programId: string, classId: string): Promise<ActionResult> {
   const me = await requireStaff();
   const db = getDb();
-  const program = db.prepare("SELECT * FROM programs WHERE id = ?").get(programId) as
+  const program = (await db.prepare("SELECT * FROM programs WHERE id = ?").get(programId)) as
     | {
         id: string;
         partner_org_id: string | null;
@@ -1131,7 +1131,7 @@ export async function attachClassToProgram(programId: string, classId: string): 
         stage: ProgramStage;
       }
     | undefined;
-  const cls = db.prepare("SELECT id, program_id, partner_org_id, location_id, curriculum_id, schedule_timezone, status FROM classes WHERE id = ?").get(classId) as
+  const cls = (await db.prepare("SELECT id, program_id, partner_org_id, location_id, curriculum_id, schedule_timezone, status FROM classes WHERE id = ?").get(classId)) as
     | { id: string; program_id: string | null; partner_org_id: string | null; location_id: string | null; curriculum_id: string | null; schedule_timezone: string | null; status: ClassStatus }
     | undefined;
   if (!program || !cls) return { ok: false, error: "Program or Class not found." };
@@ -1157,52 +1157,52 @@ export async function attachClassToProgram(programId: string, classId: string): 
   }
   const now = Date.now();
   try {
-    beginTransaction(() => {
-      const liveProgram = db.prepare(
-        `SELECT id, partner_org_id, location_id, curriculum_id, minimum_enrollment,
+    (await beginTransaction(async () => {
+            const liveProgram = (await db.prepare(
+                    `SELECT id, partner_org_id, location_id, curriculum_id, minimum_enrollment,
                 schedule_day, schedule_start_time, schedule_end_time, schedule_timezone, stage
            FROM programs WHERE id = ?`,
-      ).get(programId) as typeof program | undefined;
-      const liveClass = db.prepare(
-        "SELECT id, program_id, partner_org_id, location_id, curriculum_id, schedule_timezone, status FROM classes WHERE id = ?",
-      ).get(classId) as typeof cls | undefined;
-      if (!liveProgram || !liveClass) throw new Error("attachment_changed");
-      if (isHistoricalProgramStage(liveProgram.stage) || ["ready_to_launch", "active", "paused"].includes(liveProgram.stage)) {
-        throw new Error("attachment_changed");
-      }
-      if (!["planning", "staffing"].includes(liveClass.status)) throw new Error("attachment_changed");
-      if (liveClass.program_id && liveClass.program_id !== programId) throw new Error("attachment_changed");
-      if (liveProgram.partner_org_id && liveClass.partner_org_id && liveProgram.partner_org_id !== liveClass.partner_org_id) throw new Error("attachment_changed");
-      if (liveProgram.location_id && liveClass.location_id && liveProgram.location_id !== liveClass.location_id) throw new Error("attachment_changed");
-      if (liveProgram.curriculum_id && liveClass.curriculum_id && liveProgram.curriculum_id !== liveClass.curriculum_id) throw new Error("attachment_changed");
-      if (liveProgram.schedule_timezone && liveClass.schedule_timezone && liveProgram.schedule_timezone !== liveClass.schedule_timezone) throw new Error("attachment_changed");
-      const updated = db.prepare(
-        `UPDATE classes SET
+                  ).get(programId)) as typeof program | undefined;
+            const liveClass = (await db.prepare(
+                    "SELECT id, program_id, partner_org_id, location_id, curriculum_id, schedule_timezone, status FROM classes WHERE id = ?",
+                  ).get(classId)) as typeof cls | undefined;
+            if (!liveProgram || !liveClass) throw new Error("attachment_changed");
+            if (isHistoricalProgramStage(liveProgram.stage) || ["ready_to_launch", "active", "paused"].includes(liveProgram.stage)) {
+              throw new Error("attachment_changed");
+            }
+            if (!["planning", "staffing"].includes(liveClass.status)) throw new Error("attachment_changed");
+            if (liveClass.program_id && liveClass.program_id !== programId) throw new Error("attachment_changed");
+            if (liveProgram.partner_org_id && liveClass.partner_org_id && liveProgram.partner_org_id !== liveClass.partner_org_id) throw new Error("attachment_changed");
+            if (liveProgram.location_id && liveClass.location_id && liveProgram.location_id !== liveClass.location_id) throw new Error("attachment_changed");
+            if (liveProgram.curriculum_id && liveClass.curriculum_id && liveProgram.curriculum_id !== liveClass.curriculum_id) throw new Error("attachment_changed");
+            if (liveProgram.schedule_timezone && liveClass.schedule_timezone && liveProgram.schedule_timezone !== liveClass.schedule_timezone) throw new Error("attachment_changed");
+            const updated = (await db.prepare(
+                    `UPDATE classes SET
           program_id = ?, partner_org_id = COALESCE(partner_org_id, ?), location_id = COALESCE(location_id, ?),
           curriculum_id = COALESCE(curriculum_id, ?),
           schedule_day = COALESCE(schedule_day, ?), schedule_start_time = COALESCE(schedule_start_time, ?),
           schedule_end_time = COALESCE(schedule_end_time, ?), schedule_timezone = COALESCE(schedule_timezone, ?),
           status = ?, updated_at = ?
          WHERE id = ? AND status = ? AND (program_id IS NULL OR program_id = ?)`,
-      ).run(
-        programId,
-        liveProgram.partner_org_id,
-        liveProgram.location_id,
-        liveProgram.curriculum_id,
-        liveProgram.schedule_day,
-        liveProgram.schedule_start_time,
-        liveProgram.schedule_end_time,
-        liveProgram.schedule_timezone,
-        liveProgram.stage === "staffing" || liveProgram.stage === "enrollment" ? "staffing" : "planning",
-        now,
-        classId,
-        liveClass.status,
-        programId,
-      );
-      if (updated.changes !== 1) throw new Error("attachment_changed");
-      logActivity("program", programId, "class_attached", `Class ${classId} connected to the Program.`, me.id);
-      logActivity("class", classId, "program_attached", `Connected to Program ${programId}.`, me.id);
-    });
+                  ).run(
+                    programId,
+                    liveProgram.partner_org_id,
+                    liveProgram.location_id,
+                    liveProgram.curriculum_id,
+                    liveProgram.schedule_day,
+                    liveProgram.schedule_start_time,
+                    liveProgram.schedule_end_time,
+                    liveProgram.schedule_timezone,
+                    liveProgram.stage === "staffing" || liveProgram.stage === "enrollment" ? "staffing" : "planning",
+                    now,
+                    classId,
+                    liveClass.status,
+                    programId,
+                  ));
+            if (updated.changes !== 1) throw new Error("attachment_changed");
+            (await logActivity("program", programId, "class_attached", `Class ${classId} connected to the Program.`, me.id));
+            (await logActivity("class", classId, "program_attached", `Connected to Program ${programId}.`, me.id));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "attachment_changed") {
       return { ok: false, error: "The Program or Class changed while they were being connected. Refresh and review the current plan before trying again." };
@@ -1217,7 +1217,7 @@ export async function attachClassToProgram(programId: string, classId: string): 
 export async function createClassForProgram(programId: string, title?: string): Promise<ActionResult & { classId?: string }> {
   const me = await requireStaff();
   const db = getDb();
-  const program = db.prepare("SELECT * FROM programs WHERE id = ?").get(programId) as ProgramClassSourceRow | undefined;
+  const program = (await db.prepare("SELECT * FROM programs WHERE id = ?").get(programId)) as ProgramClassSourceRow | undefined;
   if (!program) return { ok: false, error: "Program not found." };
   if (isHistoricalProgramStage(program.stage)) return { ok: false, error: "Historical Programs cannot receive new Classes." };
   if (program.stage === "ready_to_launch" || program.stage === "active" || program.stage === "paused") {
@@ -1227,7 +1227,7 @@ export async function createClassForProgram(programId: string, title?: string): 
   const classId = `cls-${randomUUID().slice(0, 10)}`;
   const now = Date.now();
   const location = program.location_id
-    ? (db.prepare("SELECT name, city, state FROM locations WHERE id = ?").get(program.location_id) as
+    ? ((await db.prepare("SELECT name, city, state FROM locations WHERE id = ?").get(program.location_id)) as
         | { name: string; city: string | null; state: string | null }
         | undefined)
     : undefined;
@@ -1236,52 +1236,52 @@ export async function createClassForProgram(programId: string, title?: string): 
   const classStatus = classStatusForProgramStage(program.stage) ?? "planning";
 
   try {
-    beginTransaction(() => {
-      const liveProgram = db.prepare("SELECT stage, curriculum_id, updated_at FROM programs WHERE id = ?").get(programId) as
-        | { stage: ProgramStage; curriculum_id: string | null; updated_at: number }
-        | undefined;
-      if (
-        !liveProgram
-        || liveProgram.updated_at !== program.updated_at
-        || liveProgram.curriculum_id !== program.curriculum_id
-        || isHistoricalProgramStage(liveProgram.stage)
-        || ["ready_to_launch", "active", "paused"].includes(liveProgram.stage)
-      ) {
-        throw new Error("program_changed");
-      }
-      db.prepare(
-      `INSERT INTO classes
+    (await beginTransaction(async () => {
+            const liveProgram = (await db.prepare("SELECT stage, curriculum_id, updated_at FROM programs WHERE id = ?").get(programId)) as
+              | { stage: ProgramStage; curriculum_id: string | null; updated_at: number }
+              | undefined;
+            if (
+              !liveProgram
+              || liveProgram.updated_at !== program.updated_at
+              || liveProgram.curriculum_id !== program.curriculum_id
+              || isHistoricalProgramStage(liveProgram.stage)
+              || ["ready_to_launch", "active", "paused"].includes(liveProgram.stage)
+            ) {
+              throw new Error("program_changed");
+            }
+            (await db.prepare(
+                    `INSERT INTO classes
         (id, title, curriculum_id, partner_org_id, location, online_format, start_date, end_date, recurrence,
          schedule_day, schedule_start_time, schedule_end_time, schedule_timezone, age_range, capacity, minimum_enrollment,
          lead_instructor_id, program_id, location_id, status, internal_notes, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-      classId,
-      classTitle,
-      program.curriculum_id,
-      program.partner_org_id,
-      locationLabel,
-      program.delivery_format === "online" ? "Online" : program.delivery_format === "hybrid" ? "Hybrid" : null,
-      program.start_date,
-      program.end_date,
-      program.schedule_label,
-      program.schedule_day,
-      program.schedule_start_time,
-      program.schedule_end_time,
-      program.schedule_timezone,
-      program.audience,
-      program.capacity,
-      program.minimum_enrollment,
-      programId,
-      program.location_id,
-      classStatus,
-      `Created from Program ${programId}.`,
-      now,
-      now,
-      );
-      logActivity("program", programId, "class_created", `Delivery Class created: ${classTitle}.`, me.id);
-      logActivity("class", classId, "created", `Created from Program ${programId}.`, me.id);
-    });
+                    ).run(
+                    classId,
+                    classTitle,
+                    program.curriculum_id,
+                    program.partner_org_id,
+                    locationLabel,
+                    program.delivery_format === "online" ? "Online" : program.delivery_format === "hybrid" ? "Hybrid" : null,
+                    program.start_date,
+                    program.end_date,
+                    program.schedule_label,
+                    program.schedule_day,
+                    program.schedule_start_time,
+                    program.schedule_end_time,
+                    program.schedule_timezone,
+                    program.audience,
+                    program.capacity,
+                    program.minimum_enrollment,
+                    programId,
+                    program.location_id,
+                    classStatus,
+                    `Created from Program ${programId}.`,
+                    now,
+                    now,
+                    ));
+            (await logActivity("program", programId, "class_created", `Delivery Class created: ${classTitle}.`, me.id));
+            (await logActivity("class", classId, "created", `Created from Program ${programId}.`, me.id));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "program_changed") {
       return { ok: false, error: "The Program plan changed while the Class was being created. Refresh and try again." };
@@ -1303,14 +1303,14 @@ export async function assignInstructorToProgramClass(
 ): Promise<ActionResult> {
   const me = await requireStaff();
   const db = getDb();
-  const cls = db.prepare("SELECT id, program_id, lead_instructor_id, status FROM classes WHERE id = ?").get(classId) as
+  const cls = (await db.prepare("SELECT id, program_id, lead_instructor_id, status FROM classes WHERE id = ?").get(classId)) as
     | { id: string; program_id: string | null; lead_instructor_id: string | null; status: ClassStatus }
     | undefined;
-  const instructor = db.prepare("SELECT id, stage, eligibility_status FROM instructors WHERE id = ?").get(instructorId) as
+  const instructor = (await db.prepare("SELECT id, stage, eligibility_status FROM instructors WHERE id = ?").get(instructorId)) as
     | { id: string; stage: string; eligibility_status: string }
     | undefined;
   if (!cls || cls.program_id !== programId) return { ok: false, error: "Class does not belong to this Program." };
-  const programStage = getProgram(programId)?.program.stage;
+  const programStage = (await getProgram(programId))?.program.stage;
   if (!programStage) return { ok: false, error: "Program not found." };
   if (isHistoricalProgramStage(programStage)) return { ok: false, error: "Historical Programs cannot be staffed." };
   if (["completed", "cancelled"].includes(cls.status)) return { ok: false, error: "Historical Classes cannot be staffed." };
@@ -1319,7 +1319,7 @@ export async function assignInstructorToProgramClass(
     return { ok: false, error: "Only an eligible instructor in the BOW network can be assigned." };
   }
   if (role !== "lead" && role !== "additional") return { ok: false, error: "Invalid instructor role." };
-  const recommendation = getClassStaffingRecommendation(programId, classId, instructorId, role);
+  const recommendation = (await getClassStaffingRecommendation(programId, classId, instructorId, role));
   if (!recommendation || recommendation.tier === "blocked") {
     return { ok: false, error: "Resolve the instructor's required approvals before assigning them to this Program." };
   }
@@ -1342,108 +1342,108 @@ export async function assignInstructorToProgramClass(
   });
 
   try {
-    beginTransaction(() => {
-    recomputeInstructorStatuses(instructorId);
-    const liveClass = db.prepare("SELECT program_id, lead_instructor_id, status FROM classes WHERE id = ?").get(classId) as
-      | { program_id: string | null; lead_instructor_id: string | null; status: ClassStatus }
-      | undefined;
-    const liveProgram = db.prepare("SELECT stage FROM programs WHERE id = ?").get(programId) as { stage: ProgramStage } | undefined;
-    const liveInstructor = db.prepare("SELECT stage, eligibility_status FROM instructors WHERE id = ?").get(instructorId) as
-      | { stage: string; eligibility_status: string }
-      | undefined;
-    if (!liveClass || liveClass.program_id !== programId || !liveProgram || isHistoricalProgramStage(liveProgram.stage)) {
-      throw new Error("staffing_changed");
-    }
-    if (["completed", "cancelled"].includes(liveClass.status)) throw new Error("staffing_changed");
-    if (!liveInstructor || liveInstructor.eligibility_status !== "eligible" || !["eligible", "active"].includes(liveInstructor.stage)) {
-      throw new Error("staffing_changed");
-    }
-    const liveRecommendation = getClassStaffingRecommendation(programId, classId, instructorId, role);
-    if (!liveRecommendation || liveRecommendation.tier === "blocked") throw new Error("staffing_changed");
-    const liveRecommendationFingerprint = classStaffingRecommendationFingerprint({
-      programId,
-      classId,
-      instructorId,
-      role,
-      classStatus: liveClass.status,
-      recommendation: liveRecommendation,
-    });
-    if (liveRecommendationFingerprint !== initialRecommendationFingerprint) throw new Error("staffing_changed");
-    if (role === "additional" && liveClass.lead_instructor_id === instructorId) throw new Error("staffing_changed");
-    if (role === "lead") {
-      const displacedLeads = db.prepare(
-        "SELECT id, instructor_id FROM class_instructors WHERE class_id = ? AND role = 'lead' AND removed_at IS NULL AND instructor_id <> ?",
-      ).all(classId, instructorId) as { id: string; instructor_id: string }[];
-      for (const displaced of displacedLeads) {
-        const demotionReason = `Lead assignment replaced by instructor ${instructorId}. ${recordedReason}`;
-        const decision = recordClassStaffingDecision(db, {
-          classId,
-          instructorId: displaced.instructor_id,
-          assignmentId: displaced.id,
-          action: "role_changed",
-          role: "additional",
-          reason: demotionReason,
-          actorUserId: me.id,
-          decidedAt: now,
-          programId,
-        });
-        db.prepare(
-          `UPDATE class_instructors
+    (await beginTransaction(async () => {
+          (await recomputeInstructorStatuses(instructorId));
+          const liveClass = (await db.prepare("SELECT program_id, lead_instructor_id, status FROM classes WHERE id = ?").get(classId)) as
+            | { program_id: string | null; lead_instructor_id: string | null; status: ClassStatus }
+            | undefined;
+          const liveProgram = (await db.prepare("SELECT stage FROM programs WHERE id = ?").get(programId)) as { stage: ProgramStage } | undefined;
+          const liveInstructor = (await db.prepare("SELECT stage, eligibility_status FROM instructors WHERE id = ?").get(instructorId)) as
+            | { stage: string; eligibility_status: string }
+            | undefined;
+          if (!liveClass || liveClass.program_id !== programId || !liveProgram || isHistoricalProgramStage(liveProgram.stage)) {
+            throw new Error("staffing_changed");
+          }
+          if (["completed", "cancelled"].includes(liveClass.status)) throw new Error("staffing_changed");
+          if (!liveInstructor || liveInstructor.eligibility_status !== "eligible" || !["eligible", "active"].includes(liveInstructor.stage)) {
+            throw new Error("staffing_changed");
+          }
+          const liveRecommendation = await getClassStaffingRecommendation(programId, classId, instructorId, role);
+          if (!liveRecommendation || liveRecommendation.tier === "blocked") throw new Error("staffing_changed");
+          const liveRecommendationFingerprint = classStaffingRecommendationFingerprint({
+            programId,
+            classId,
+            instructorId,
+            role,
+            classStatus: liveClass.status,
+            recommendation: liveRecommendation,
+          });
+          if (liveRecommendationFingerprint !== initialRecommendationFingerprint) throw new Error("staffing_changed");
+          if (role === "additional" && liveClass.lead_instructor_id === instructorId) throw new Error("staffing_changed");
+          if (role === "lead") {
+            const displacedLeads = (await db.prepare(
+                    "SELECT id, instructor_id FROM class_instructors WHERE class_id = ? AND role = 'lead' AND removed_at IS NULL AND instructor_id <> ?",
+                  ).all(classId, instructorId)) as { id: string; instructor_id: string }[];
+            for (const displaced of displacedLeads) {
+              const demotionReason = `Lead assignment replaced by instructor ${instructorId}. ${recordedReason}`;
+              const decision = (await recordClassStaffingDecision(db, {
+                        classId,
+                        instructorId: displaced.instructor_id,
+                        assignmentId: displaced.id,
+                        action: "role_changed",
+                        role: "additional",
+                        reason: demotionReason,
+                        actorUserId: me.id,
+                        decidedAt: now,
+                        programId,
+                      }));
+              (await db.prepare(
+                          `UPDATE class_instructors
               SET role = 'additional', decision_reason = ?, assigned_by = ?, decision_id = ?,
                   decision_fingerprint = ?, decision_at = ?
             WHERE id = ? AND removed_at IS NULL`,
-        ).run(demotionReason, me.id, decision.decisionId, decision.fingerprint, now, displaced.id);
-      }
-      db.prepare("UPDATE classes SET lead_instructor_id = ?, updated_at = ? WHERE id = ?").run(instructorId, now, classId);
-      synchronizeLegacyCohortLead(db, programId, classId, instructorId);
-    }
-    const existing = db
-      .prepare("SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL")
-      .get(classId, instructorId) as { id: string; role: string } | undefined;
-    const assignmentId = existing?.id ?? `cin-${randomUUID().slice(0, 10)}`;
-    const decision = recordClassStaffingDecision(db, {
-      classId,
-      instructorId,
-      assignmentId,
-      action: existing && existing.role !== role ? "role_changed" : "assigned",
-      role,
-      reason: recordedReason,
-      actorUserId: me.id,
-      decidedAt: now,
-      programId,
-      recommendationFingerprint: liveRecommendationFingerprint,
-    });
-    if (existing) {
-      db.prepare(
-        `UPDATE class_instructors
+                        ).run(demotionReason, me.id, decision.decisionId, decision.fingerprint, now, displaced.id));
+            }
+            (await db.prepare("UPDATE classes SET lead_instructor_id = ?, updated_at = ? WHERE id = ?").run(instructorId, now, classId));
+            (await synchronizeLegacyCohortLead(db, programId, classId, instructorId));
+          }
+          const existing = (await db
+                .prepare("SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL")
+                .get(classId, instructorId)) as { id: string; role: string } | undefined;
+          const assignmentId = existing?.id ?? `cin-${randomUUID().slice(0, 10)}`;
+          const decision = (await recordClassStaffingDecision(db, {
+                classId,
+                instructorId,
+                assignmentId,
+                action: existing && existing.role !== role ? "role_changed" : "assigned",
+                role,
+                reason: recordedReason,
+                actorUserId: me.id,
+                decidedAt: now,
+                programId,
+                recommendationFingerprint: liveRecommendationFingerprint,
+              }));
+          if (existing) {
+            (await db.prepare(
+                      `UPDATE class_instructors
             SET role = ?, decision_reason = ?, assigned_by = ?, decision_id = ?,
                 decision_fingerprint = ?, decision_at = ?
           WHERE id = ? AND removed_at IS NULL`,
-      ).run(role, recordedReason, me.id, decision.decisionId, decision.fingerprint, now, existing.id);
-    } else {
-      db.prepare(
-        `INSERT INTO class_instructors
+                    ).run(role, recordedReason, me.id, decision.decisionId, decision.fingerprint, now, existing.id));
+          } else {
+            (await db.prepare(
+                      `INSERT INTO class_instructors
           (id, class_id, instructor_id, role, decision_reason, assigned_by,
            decision_id, decision_fingerprint, decision_at, added_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(assignmentId, classId, instructorId, role, recordedReason, me.id, decision.decisionId, decision.fingerprint, now, now);
-    }
-    if (liveInstructor.stage === "eligible") {
-      const activated = db.prepare(
-        "UPDATE instructors SET stage = 'active', updated_at = ? WHERE id = ? AND stage = 'eligible' AND eligibility_status = 'eligible'",
-      ).run(now, instructorId);
-      if (activated.changes !== 1) throw new Error("staffing_changed");
-      logActivity(
-        "instructor",
-        instructorId,
-        "stage_change",
-        "Activated automatically on first approved Class assignment.",
-        me.id,
-      );
-    }
-    logActivity("program", programId, "staffing", `Instructor ${instructorId} assigned as ${role}. Decision record: ${recordedReason}`, me.id);
-    logActivity("class", classId, "staffing", `Instructor ${instructorId} assigned as ${role}. Decision record: ${recordedReason}`, me.id);
-    });
+                    ).run(assignmentId, classId, instructorId, role, recordedReason, me.id, decision.decisionId, decision.fingerprint, now, now));
+          }
+          if (liveInstructor.stage === "eligible") {
+            const activated = (await db.prepare(
+                    "UPDATE instructors SET stage = 'active', updated_at = ? WHERE id = ? AND stage = 'eligible' AND eligibility_status = 'eligible'",
+                  ).run(now, instructorId));
+            if (activated.changes !== 1) throw new Error("staffing_changed");
+            (await logActivity(
+                      "instructor",
+                      instructorId,
+                      "stage_change",
+                      "Activated automatically on first approved Class assignment.",
+                      me.id,
+                    ));
+          }
+          (await logActivity("program", programId, "staffing", `Instructor ${instructorId} assigned as ${role}. Decision record: ${recordedReason}`, me.id));
+          (await logActivity("class", classId, "staffing", `Instructor ${instructorId} assigned as ${role}. Decision record: ${recordedReason}`, me.id));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "staffing_changed") {
       return { ok: false, error: "The Class, instructor eligibility, or staffing recommendation changed. Refresh and review the current recommendation before deciding." };
@@ -1469,14 +1469,14 @@ export async function removeInstructorFromProgramClass(
 ): Promise<ActionResult> {
   const me = await requireStaff();
   const db = getDb();
-  const cls = db.prepare("SELECT program_id, lead_instructor_id, status FROM classes WHERE id = ?").get(classId) as
+  const cls = (await db.prepare("SELECT program_id, lead_instructor_id, status FROM classes WHERE id = ?").get(classId)) as
     | { program_id: string | null; lead_instructor_id: string | null; status: ClassStatus }
     | undefined;
-  const program = getProgram(programId)?.program;
+  const program = (await getProgram(programId))?.program;
   if (!cls || cls.program_id !== programId || !program) return { ok: false, error: "Program assignment not found." };
   if (isHistoricalProgramStage(program.stage)) return { ok: false, error: "Historical Programs cannot be restaffed." };
   if (["completed", "cancelled"].includes(cls.status)) return { ok: false, error: "Historical Classes cannot be restaffed." };
-  const assignment = db.prepare("SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL").get(classId, instructorId) as
+  const assignment = (await db.prepare("SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL").get(classId, instructorId)) as
     | { id: string; role: string }
     | undefined;
   if (!assignment) return { ok: false, error: "Instructor is not assigned to this Class." };
@@ -1486,56 +1486,56 @@ export async function removeInstructorFromProgramClass(
   }
   const now = Date.now();
   try {
-    beginTransaction(() => {
-      const liveClass = db.prepare("SELECT program_id, lead_instructor_id, status FROM classes WHERE id = ?").get(classId) as
-        | { program_id: string | null; lead_instructor_id: string | null; status: ClassStatus }
-        | undefined;
-      const liveProgram = db.prepare("SELECT stage FROM programs WHERE id = ?").get(programId) as { stage: ProgramStage } | undefined;
-      const liveAssignment = db.prepare("SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL")
-        .get(classId, instructorId) as { id: string; role: string } | undefined;
-      if (
-        !liveClass
-        || liveClass.program_id !== programId
-        || ["completed", "cancelled"].includes(liveClass.status)
-        || !liveProgram
-        || isHistoricalProgramStage(liveProgram.stage)
-        || !liveAssignment
-      ) {
-        throw new Error("staffing_changed");
-      }
-      const removalDecision = recordClassStaffingDecision(db, {
-        classId,
-        instructorId,
-        assignmentId: liveAssignment.id,
-        action: "removed",
-        role: liveAssignment.role === "lead" ? "lead" : "additional",
-        reason: recordedReason,
-        actorUserId: me.id,
-        decidedAt: now,
-        programId,
-      });
-      const removed = db.prepare(
-        `UPDATE class_instructors
+    (await beginTransaction(async () => {
+            const liveClass = (await db.prepare("SELECT program_id, lead_instructor_id, status FROM classes WHERE id = ?").get(classId)) as
+              | { program_id: string | null; lead_instructor_id: string | null; status: ClassStatus }
+              | undefined;
+            const liveProgram = (await db.prepare("SELECT stage FROM programs WHERE id = ?").get(programId)) as { stage: ProgramStage } | undefined;
+            const liveAssignment = (await db.prepare("SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL")
+                    .get(classId, instructorId)) as { id: string; role: string } | undefined;
+            if (
+              !liveClass
+              || liveClass.program_id !== programId
+              || ["completed", "cancelled"].includes(liveClass.status)
+              || !liveProgram
+              || isHistoricalProgramStage(liveProgram.stage)
+              || !liveAssignment
+            ) {
+              throw new Error("staffing_changed");
+            }
+            const removalDecision = (await recordClassStaffingDecision(db, {
+                    classId,
+                    instructorId,
+                    assignmentId: liveAssignment.id,
+                    action: "removed",
+                    role: liveAssignment.role === "lead" ? "lead" : "additional",
+                    reason: recordedReason,
+                    actorUserId: me.id,
+                    decidedAt: now,
+                    programId,
+                  }));
+            const removed = (await db.prepare(
+                    `UPDATE class_instructors
             SET removed_at = ?, removal_reason = ?, removed_by = ?,
                 removal_decision_id = ?, removal_decision_fingerprint = ?
           WHERE id = ? AND removed_at IS NULL`,
-      ).run(
-        now,
-        recordedReason,
-        me.id,
-        removalDecision.decisionId,
-        removalDecision.fingerprint,
-        liveAssignment.id,
-      );
-      if (removed.changes !== 1) throw new Error("staffing_changed");
-      if (liveClass.lead_instructor_id === instructorId) {
-        db.prepare("UPDATE classes SET lead_instructor_id = NULL, updated_at = ? WHERE id = ? AND lead_instructor_id = ?")
-          .run(now, classId, instructorId);
-        synchronizeLegacyCohortLead(db, programId, classId, null);
-      }
-      logActivity("program", programId, "staffing", `Instructor ${instructorId} removed from Class ${classId}. ${recordedReason}`, me.id);
-      logActivity("class", classId, "staffing", `Instructor ${instructorId} removed through the Program launch room. ${recordedReason}`, me.id);
-    });
+                  ).run(
+                    now,
+                    recordedReason,
+                    me.id,
+                    removalDecision.decisionId,
+                    removalDecision.fingerprint,
+                    liveAssignment.id,
+                  ));
+            if (removed.changes !== 1) throw new Error("staffing_changed");
+            if (liveClass.lead_instructor_id === instructorId) {
+              (await db.prepare("UPDATE classes SET lead_instructor_id = NULL, updated_at = ? WHERE id = ? AND lead_instructor_id = ?")
+                          .run(now, classId, instructorId));
+              (await synchronizeLegacyCohortLead(db, programId, classId, null));
+            }
+            (await logActivity("program", programId, "staffing", `Instructor ${instructorId} removed from Class ${classId}. ${recordedReason}`, me.id));
+            (await logActivity("class", classId, "staffing", `Instructor ${instructorId} removed through the Program launch room. ${recordedReason}`, me.id));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "staffing_changed") {
       return { ok: false, error: "The Program, Class, or staffing assignment changed. Refresh before recording this removal." };
@@ -1559,7 +1559,7 @@ export async function transitionProgram(
   launchExceptionReason?: string,
 ): Promise<ActionResult> {
   const me = await requireStaff();
-  const detail = getProgram(id);
+  const detail = (await getProgram(id));
   if (!detail) return { ok: false, error: "Program not found." };
   if (!PROGRAM_STAGES.includes(nextStage)) return { ok: false, error: "Invalid Program stage." };
   if (!allowedProgramTransitions(detail.program.stage).includes(nextStage)) {
@@ -1573,7 +1573,7 @@ export async function transitionProgram(
   }
 
   const launchGate = nextStage === "ready_to_launch" || nextStage === "active";
-  const readiness = launchGate ? getProgramReadiness(id) : null;
+  const readiness = launchGate ? (await getProgramReadiness(id)) : null;
   if (launchGate && !readiness) return { ok: false, error: "Program readiness could not be evaluated. Refresh and try again." };
   const readinessSnapshot = readiness
     ? JSON.stringify(readiness.items.map((item) => [item.key, item.state, item.detail]))
@@ -1591,61 +1591,61 @@ export async function transitionProgram(
     return { ok: false, error: "Record the reason and recovery or closure decision before changing this lifecycle state." };
   }
   try {
-    beginTransaction(() => {
-      const live = getProgram(id);
-      if (!live || live.program.stage !== detail.program.stage) throw new Error("program_changed");
-      if (!allowedProgramTransitions(live.program.stage).includes(nextStage)) throw new Error("program_changed");
-      if (nextStage === "partner_confirmed" && (!live.program.partnerOrgId || !live.program.partnerConfirmed)) {
-        throw new Error("partner_not_confirmed");
-      }
-      if (launchGate) {
-        const liveReadiness = getProgramReadiness(id);
-        if (!liveReadiness) throw new Error("program_changed");
-        const liveSnapshot = JSON.stringify(liveReadiness.items.map((item) => [item.key, item.state, item.detail]));
-        if (liveSnapshot !== readinessSnapshot) throw new Error("readiness_changed");
-      }
-      const updated = getDb()
-        .prepare(
-          `UPDATE programs SET stage = ?, renewal_status = CASE
+    (await beginTransaction(async () => {
+            const live = await getProgram(id);
+            if (!live || live.program.stage !== detail.program.stage) throw new Error("program_changed");
+            if (!allowedProgramTransitions(live.program.stage).includes(nextStage)) throw new Error("program_changed");
+            if (nextStage === "partner_confirmed" && (!live.program.partnerOrgId || !live.program.partnerConfirmed)) {
+              throw new Error("partner_not_confirmed");
+            }
+            if (launchGate) {
+              const liveReadiness = await getProgramReadiness(id);
+              if (!liveReadiness) throw new Error("program_changed");
+              const liveSnapshot = JSON.stringify(liveReadiness.items.map((item) => [item.key, item.state, item.detail]));
+              if (liveSnapshot !== readinessSnapshot) throw new Error("readiness_changed");
+            }
+            const updated = (await getDb()
+                    .prepare(
+                      `UPDATE programs SET stage = ?, renewal_status = CASE
              WHEN ? = 'renewal_review' THEN 'in_review'
              WHEN ? = 'closed' AND stage IN ('completed','renewal_review','renewed') THEN 'not_pursued'
              ELSE renewal_status
            END,
            launch_exception_reason = ?, launch_exception_approved_by = ?, launch_exception_approved_at = ?, updated_at = ?
            WHERE id = ? AND stage = ?`,
-        )
-        .run(
-          nextStage,
-          nextStage,
-          nextStage,
-          needsException ? exception : null,
-          needsException ? me.id : null,
-          needsException ? now : null,
-          now,
-          id,
-          detail.program.stage,
-        );
-      if (updated.changes !== 1) throw new Error("program_changed");
-      synchronizeProgramClassStatuses(id, nextStage, now, me.id, cleanNote);
-      logActivity(
-        "program",
-        id,
-        "stage_change",
-        `Program moved from ${detail.program.stage.replace(/_/g, " ")} to ${nextStage.replace(/_/g, " ")}.${cleanNote ? ` ${cleanNote}` : ""}${needsException && exception ? ` Launch exception: ${exception}` : ""}`,
-        me.id,
-      );
-      if (nextStage === "ready_to_launch" || nextStage === "active") {
-        resolveLaunchPlanWorkIfReady(id, me.id, now, true);
-      }
-      if (nextStage === "renewal_review" || nextStage === "closed") {
-        resolveContinuationHoldWork(
-          id,
-          me.id,
-          now,
-          nextStage === "renewal_review" ? "Continuation review resumed." : "Program closed; continuation hold ended.",
-        );
-      }
-    });
+                    )
+                    .run(
+                      nextStage,
+                      nextStage,
+                      nextStage,
+                      needsException ? exception : null,
+                      needsException ? me.id : null,
+                      needsException ? now : null,
+                      now,
+                      id,
+                      detail.program.stage,
+                    ));
+            if (updated.changes !== 1) throw new Error("program_changed");
+            (await synchronizeProgramClassStatuses(id, nextStage, now, me.id, cleanNote));
+            (await logActivity(
+                      "program",
+                      id,
+                      "stage_change",
+                      `Program moved from ${detail.program.stage.replace(/_/g, " ")} to ${nextStage.replace(/_/g, " ")}.${cleanNote ? ` ${cleanNote}` : ""}${needsException && exception ? ` Launch exception: ${exception}` : ""}`,
+                      me.id,
+                    ));
+            if (nextStage === "ready_to_launch" || nextStage === "active") {
+              (await resolveLaunchPlanWorkIfReady(id, me.id, now, true));
+            }
+            if (nextStage === "renewal_review" || nextStage === "closed") {
+              (await resolveContinuationHoldWork(
+                          id,
+                          me.id,
+                          now,
+                          nextStage === "renewal_review" ? "Continuation review resumed." : "Program closed; continuation hold ended.",
+                        ));
+            }
+          }));
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "partner_not_confirmed") return { ok: false, error: "Link the partner and record its confirmation before moving to Partner Confirmed." };
@@ -1663,12 +1663,12 @@ export async function completeProgram(id: string, outcomeSummary: string): Promi
   const me = await requireStaff();
   const summary = clean(outcomeSummary, 5000);
   if (!summary) return { ok: false, error: "Record the Program outcome before completing it." };
-  const row = getDb().prepare("SELECT stage FROM programs WHERE id = ?").get(id) as { stage: ProgramStage } | undefined;
+  const row = (await getDb().prepare("SELECT stage FROM programs WHERE id = ?").get(id)) as { stage: ProgramStage } | undefined;
   if (!row) return { ok: false, error: "Program not found." };
   if (row.stage !== "active") return { ok: false, error: "Only an active Program can be completed." };
-  const openClasses = getDb()
-    .prepare("SELECT title, status FROM classes WHERE program_id = ? AND status NOT IN ('completed','cancelled') ORDER BY title")
-    .all(id) as { title: string; status: string }[];
+  const openClasses = (await getDb()
+      .prepare("SELECT title, status FROM classes WHERE program_id = ? AND status NOT IN ('completed','cancelled') ORDER BY title")
+      .all(id)) as { title: string; status: string }[];
   if (openClasses.length > 0) {
     return {
       ok: false,
@@ -1677,13 +1677,13 @@ export async function completeProgram(id: string, outcomeSummary: string): Promi
   }
   const now = Date.now();
   try {
-    beginTransaction(() => {
-      const remaining = getDb()
-        .prepare("SELECT 1 FROM classes WHERE program_id = ? AND status NOT IN ('completed','cancelled') LIMIT 1")
-        .get(id);
-      if (remaining) throw new Error("classes_still_open");
-      const incompleteEvidence = getDb().prepare(
-        `SELECT c.id
+    (await beginTransaction(async () => {
+            const remaining = (await getDb()
+                    .prepare("SELECT 1 FROM classes WHERE program_id = ? AND status NOT IN ('completed','cancelled') LIMIT 1")
+                    .get(id));
+            if (remaining) throw new Error("classes_still_open");
+            const incompleteEvidence = (await getDb().prepare(
+                    `SELECT c.id
            FROM classes c
           WHERE c.program_id = ? AND c.status = 'completed'
             AND (
@@ -1699,13 +1699,13 @@ export async function completeProgram(id: string, outcomeSummary: string): Promi
               )
             )
           LIMIT 1`,
-      ).get(id, now);
-      if (incompleteEvidence) throw new Error("delivery_evidence_incomplete");
-      const updated = getDb().prepare("UPDATE programs SET stage = 'completed', renewal_status = 'review_due', outcome_summary = ?, updated_at = ? WHERE id = ? AND stage = 'active'")
-        .run(summary, now, id);
-      if (updated.changes !== 1) throw new Error("program_changed");
-      logActivity("program", id, "completed", `Program completed. ${summary}`, me.id);
-    });
+                  ).get(id, now));
+            if (incompleteEvidence) throw new Error("delivery_evidence_incomplete");
+            const updated = (await getDb().prepare("UPDATE programs SET stage = 'completed', renewal_status = 'review_due', outcome_summary = ?, updated_at = ? WHERE id = ? AND stage = 'active'")
+                    .run(summary, now, id));
+            if (updated.changes !== 1) throw new Error("program_changed");
+            (await logActivity("program", id, "completed", `Program completed. ${summary}`, me.id));
+          }));
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "classes_still_open") return { ok: false, error: "A delivery Class changed while completion was being recorded. Complete or cancel every Class and try again." };
@@ -1746,76 +1746,76 @@ export async function holdProgramContinuation(
   }
 
   try {
-    beginTransaction(() => {
-      const db = getDb();
-      const program = db.prepare(
-        "SELECT name, stage, renewal_status, owner_user_id FROM programs WHERE id = ?",
-      ).get(id) as { name: string; stage: ProgramStage; renewal_status: string; owner_user_id: string | null } | undefined;
-      if (!program) throw new Error("program_missing");
-      if (!["completed", "renewal_review"].includes(program.stage)) throw new Error("hold_stage_invalid");
-      if (["renewed", "expanded"].includes(program.renewal_status)) throw new Error("continuation_exists");
-      const updated = db.prepare(
-        `UPDATE programs
+    (await beginTransaction(async () => {
+            const db = getDb();
+            const program = (await db.prepare(
+                    "SELECT name, stage, renewal_status, owner_user_id FROM programs WHERE id = ?",
+                  ).get(id)) as { name: string; stage: ProgramStage; renewal_status: string; owner_user_id: string | null } | undefined;
+            if (!program) throw new Error("program_missing");
+            if (!["completed", "renewal_review"].includes(program.stage)) throw new Error("hold_stage_invalid");
+            if (["renewed", "expanded"].includes(program.renewal_status)) throw new Error("continuation_exists");
+            const updated = (await db.prepare(
+                    `UPDATE programs
             SET renewal_status = 'on_hold', updated_at = ?
           WHERE id = ? AND stage = ? AND renewal_status NOT IN ('renewed','expanded')`,
-      ).run(now, id, program.stage);
-      if (updated.changes !== 1) throw new Error("program_changed");
+                  ).run(now, id, program.stage));
+            if (updated.changes !== 1) throw new Error("program_changed");
 
-      const activeProgramOwner = program.owner_user_id
-        ? db.prepare(
-          "SELECT id FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'",
-        ).get(program.owner_user_id) as { id: string } | undefined
-        : undefined;
-      const workOwnerId = activeProgramOwner?.id ?? me.id;
+            const activeProgramOwner = program.owner_user_id
+              ? (await db.prepare(
+                          "SELECT id FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'",
+                        ).get(program.owner_user_id)) as { id: string } | undefined
+              : undefined;
+            const workOwnerId = activeProgramOwner?.id ?? me.id;
 
-      const title = `Review continuation hold: ${program.name}`;
-      const existing = db.prepare(
-        `SELECT id FROM tasks
+            const title = `Review continuation hold: ${program.name}`;
+            const existing = (await db.prepare(
+                    `SELECT id FROM tasks
           WHERE entity_type = 'program' AND entity_id = ? AND status = 'open'
             AND kind = 'review' AND title LIKE 'Review continuation hold:%'
           ORDER BY created_at DESC LIMIT 1`,
-      ).get(id) as { id: string } | undefined;
-      if (existing) {
-        db.prepare(
-          `UPDATE tasks
+                  ).get(id)) as { id: string } | undefined;
+            if (existing) {
+              (await db.prepare(
+                          `UPDATE tasks
               SET title = ?, owner_user_id = ?, due_at = ?, priority = 'normal',
                   context = ?, recommended_action = ?, updated_at = ?
             WHERE id = ? AND status = 'open'`,
-        ).run(
-          title,
-          workOwnerId,
-          reviewAt,
-          cleanReason,
-          "Review the partner outcome, changed conditions, and whether to renew, expand, continue the hold, or close.",
-          now,
-          existing.id,
-        );
-      } else {
-        db.prepare(
-          `INSERT INTO tasks
+                        ).run(
+                          title,
+                          workOwnerId,
+                          reviewAt,
+                          cleanReason,
+                          "Review the partner outcome, changed conditions, and whether to renew, expand, continue the hold, or close.",
+                          now,
+                          existing.id,
+                        ));
+            } else {
+              (await db.prepare(
+                          `INSERT INTO tasks
             (id, title, owner_user_id, due_at, status, kind, priority, context, recommended_action,
              entity_type, entity_id, handoff_to_founder, created_at, updated_at)
            VALUES (?, ?, ?, ?, 'open', 'review', 'normal', ?, ?, 'program', ?, 0, ?, ?)`,
-        ).run(
-          `wrk-${randomUUID().slice(0, 10)}`,
-          title,
-          workOwnerId,
-          reviewAt,
-          cleanReason,
-          "Review the partner outcome, changed conditions, and whether to renew, expand, continue the hold, or close.",
-          id,
-          now,
-          now,
-        );
-      }
-      logActivity(
-        "program",
-        id,
-        "continuation_hold",
-        `Continuation placed on hold until ${cleanReviewDate}. ${cleanReason}`,
-        me.id,
-      );
-    });
+                        ).run(
+                          `wrk-${randomUUID().slice(0, 10)}`,
+                          title,
+                          workOwnerId,
+                          reviewAt,
+                          cleanReason,
+                          "Review the partner outcome, changed conditions, and whether to renew, expand, continue the hold, or close.",
+                          id,
+                          now,
+                          now,
+                        ));
+            }
+            (await logActivity(
+                      "program",
+                      id,
+                      "continuation_hold",
+                      `Continuation placed on hold until ${cleanReviewDate}. ${cleanReason}`,
+                      me.id,
+                    ));
+          }));
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "program_missing") return { ok: false, error: "Program not found." };
@@ -1835,7 +1835,7 @@ export async function createProgramContinuation(
   requestKey?: string,
 ): Promise<ActionResult & { id?: string }> {
   const me = await requireStaff();
-  const source = getProgram(id);
+  const source = (await getProgram(id));
   if (!source) return { ok: false, error: "Program not found." };
   const sourceAllowsContinuation =
     mode === "expansion"
@@ -1849,9 +1849,9 @@ export async function createProgramContinuation(
   }
   const cleanRequestKey = cleanId(requestKey);
   if (cleanRequestKey) {
-    const replay = getDb()
-      .prepare("SELECT id, source_type, source_id FROM programs WHERE request_key = ?")
-      .get(cleanRequestKey) as { id: string; source_type: string | null; source_id: string | null } | undefined;
+    const replay = (await getDb()
+          .prepare("SELECT id, source_type, source_id FROM programs WHERE request_key = ?")
+          .get(cleanRequestKey)) as { id: string; source_type: string | null; source_id: string | null } | undefined;
     if (replay) {
       if (replay.source_type === mode && replay.source_id === id) return { ok: true, id: replay.id };
       return { ok: false, error: "That submission key already belongs to another Program. Refresh and try again." };
@@ -1859,9 +1859,9 @@ export async function createProgramContinuation(
   }
   const nextName = clean(name, 160) ?? `${source.program.name} — ${mode === "renewal" ? "Renewal" : "Expansion"}`;
   if (mode === "renewal") {
-    const existingRenewal = getDb()
-      .prepare("SELECT id FROM programs WHERE source_type = 'renewal' AND source_id = ? AND stage != 'closed' ORDER BY created_at DESC LIMIT 1")
-      .get(id) as { id: string } | undefined;
+    const existingRenewal = (await getDb()
+          .prepare("SELECT id FROM programs WHERE source_type = 'renewal' AND source_id = ? AND stage != 'closed' ORDER BY created_at DESC LIMIT 1")
+          .get(id)) as { id: string } | undefined;
     if (existingRenewal) return { ok: false, error: "An open renewal already exists for this Program." };
   }
   const result = await createProgramInternal({
@@ -1895,9 +1895,9 @@ export async function addProgramNote(id: string, body: string): Promise<ActionRe
   const me = await requireStaff();
   const note = clean(body, 4000);
   if (!note) return { ok: false, error: "Write a note before saving." };
-  const row = getDb().prepare("SELECT id FROM programs WHERE id = ?").get(id);
+  const row = (await getDb().prepare("SELECT id FROM programs WHERE id = ?").get(id));
   if (!row) return { ok: false, error: "Program not found." };
-  logActivity("program", id, "note", note, me.id);
+  (await logActivity("program", id, "note", note, me.id));
   revalidateProgram(id);
   return { ok: true };
 }

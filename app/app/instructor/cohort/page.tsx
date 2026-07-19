@@ -154,13 +154,13 @@ export default function InstructorCohortPage() {
         : "This is the final lesson.",
       confirmLabel: "Unlock for cohort",
       tone: "info",
-      onConfirm: () => advanceCohortLesson(c.id, nextLesson ? nextLesson.id : null),
+      onConfirm: async () => (await advanceCohortLesson(c.id, nextLesson ? nextLesson.id : null)),
     });
 
-  const addNote = () => {
+  const addNote = async () => {
     const text = noteDraft.trim();
     if (!text) return;
-    addSessionNote(c.id, "Cohort · " + c.name, text);
+    (await addSessionNote(c.id, "Cohort · " + c.name, text));
     setNoteDraft("");
   };
 
@@ -276,7 +276,7 @@ export default function InstructorCohortPage() {
             <span style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Instructor &amp; BOW administration only</span>
           </div>
           <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-            <input aria-label="Cohort note" value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addNote(); }} placeholder="Add a note about this cohort…" style={{ flex: 1, minWidth: 0, background: "var(--bow-white)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "12px 14px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 }} />
+            <input aria-label="Cohort note" value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} onKeyDown={async (e) => { if (e.key === "Enter") (await addNote()); }} placeholder="Add a note about this cohort…" style={{ flex: 1, minWidth: 0, background: "var(--bow-white)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: "12px 14px", borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 }} />
             <button className={styles.focusTarget} onClick={addNote} type="button" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "0 20px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Add</button>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

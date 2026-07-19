@@ -27,21 +27,21 @@ export interface EastfieldActionResult {
 }
 
 /** True once the student has completed Module 201-2 (the Front Office sim gate). */
-function module201_2Complete(studentId: string): boolean {
-  return getSelfModuleViews(studentId, "201").find((v) => v.module.ordinal === 2)?.completed ?? false;
+async function module201_2Complete(studentId: string): Promise<boolean> {
+  return (await getSelfModuleViews(studentId, "201")).find((v) => v.module.ordinal === 2)?.completed ?? false;
 }
 
-function touchActive(uid: string) {
-  getDb().prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(Date.now(), uid);
+async function touchActive(uid: string) {
+  (await getDb().prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(Date.now(), uid));
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function loadActiveRow(studentId: string): any {
-  return getDb()
-    .prepare(
-      "SELECT * FROM simulations WHERE student_id = ? AND completed = 0 AND sim_type = 'eastfield' ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(studentId);
+async function loadActiveRow(studentId: string): Promise<any> {
+  return (await getDb()
+      .prepare(
+        "SELECT * FROM simulations WHERE student_id = ? AND completed = 0 AND sim_type = 'eastfield' ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(studentId));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -51,21 +51,21 @@ function loadActiveRow(studentId: string): any {
  */
 export async function startEastfield(): Promise<EastfieldActionResult> {
   const me = await requireRole("student");
-  if (!module201_2Complete(me.id)) return { ok: false, error: "locked" };
+  if (!(await module201_2Complete(me.id))) return { ok: false, error: "locked" };
 
-  const existing = getActiveSimulation(me.id, TRACK_201_SIM_TYPE);
+  const existing = (await getActiveSimulation(me.id, TRACK_201_SIM_TYPE));
   if (existing) return { ok: true, state: existing };
 
   const id = `sim-${randomUUID().slice(0, 12)}`;
-  getDb()
-    .prepare(
-      "INSERT INTO simulations (id, student_id, turn, cap_space, team_record, decisions, completed, final_score, created_at, sim_type) VALUES (?, ?, 1, ?, '0-0', '[]', 0, NULL, ?, 'eastfield')",
-    )
-    .run(id, me.id, START_CAP_EASTFIELD, Date.now());
-  touchActive(me.id);
+  (await getDb()
+        .prepare(
+          "INSERT INTO simulations (id, student_id, turn, cap_space, team_record, decisions, completed, final_score, created_at, sim_type) VALUES (?, ?, 1, ?, '0-0', '[]', 0, NULL, ?, 'eastfield')",
+        )
+        .run(id, me.id, START_CAP_EASTFIELD, Date.now()));
+  (await touchActive(me.id));
   revalidatePath("/front-office");
 
-  return { ok: true, state: getActiveSimulation(me.id, TRACK_201_SIM_TYPE) ?? undefined };
+  return { ok: true, state: (await getActiveSimulation(me.id, TRACK_201_SIM_TYPE)) ?? undefined };
 }
 
 /**
@@ -76,7 +76,7 @@ export async function startEastfield(): Promise<EastfieldActionResult> {
  */
 export async function makeEastfieldDecision(choiceId: string): Promise<EastfieldActionResult> {
   const me = await requireRole("student");
-  const row = loadActiveRow(me.id);
+  const row = (await loadActiveRow(me.id));
   if (!row) return { ok: false, error: "no-sim" };
 
   const turn = Number(row.turn) || 1;
@@ -123,20 +123,20 @@ export async function makeEastfieldDecision(choiceId: string): Promise<Eastfield
 
   if (isLast) {
     report = gradeEastfield(decisions);
-    db.prepare(
-      "UPDATE simulations SET turn = ?, cap_space = ?, team_record = ?, decisions = ?, completed = 1, final_score = ? WHERE id = ?",
-    ).run(TOTAL_TURNS_EASTFIELD, capAfter, `${winsAfter}-${lossesAfter}`, JSON.stringify(decisions), report.capEfficiency, row.id);
+    (await db.prepare(
+            "UPDATE simulations SET turn = ?, cap_space = ?, team_record = ?, decisions = ?, completed = 1, final_score = ? WHERE id = ?",
+          ).run(TOTAL_TURNS_EASTFIELD, capAfter, `${winsAfter}-${lossesAfter}`, JSON.stringify(decisions), report.capEfficiency, row.id));
   } else {
-    db.prepare(
-      "UPDATE simulations SET turn = ?, cap_space = ?, team_record = ?, decisions = ? WHERE id = ?",
-    ).run(turn + 1, capAfter, `${winsAfter}-${lossesAfter}`, JSON.stringify(decisions), row.id);
+    (await db.prepare(
+            "UPDATE simulations SET turn = ?, cap_space = ?, team_record = ?, decisions = ? WHERE id = ?",
+          ).run(turn + 1, capAfter, `${winsAfter}-${lossesAfter}`, JSON.stringify(decisions), row.id));
   }
 
-  touchActive(me.id);
+  (await touchActive(me.id));
   revalidatePath("/front-office");
   revalidatePath("/profile");
 
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const updated = db.prepare("SELECT * FROM simulations WHERE id = ?").get(row.id) as any;
+  const updated = (await db.prepare("SELECT * FROM simulations WHERE id = ?").get(row.id)) as any;
   return { ok: true, state: rowToSimState(updated), justResolved: decision, report };
 }

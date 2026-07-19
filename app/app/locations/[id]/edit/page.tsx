@@ -8,7 +8,7 @@ import { getLocation } from "@/lib/operations";
 export default async function EditLocationPage({ params }: { params: Promise<{ id: string }> }) {
   await requireStaff();
   const { id } = await params;
-  const detail = getLocation(id);
+  const detail = (await getLocation(id));
   if (!detail) notFound();
 
   if (detail.location.stage === "closed") {

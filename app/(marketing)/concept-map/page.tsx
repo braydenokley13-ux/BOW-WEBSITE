@@ -19,8 +19,8 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
-export default function ConceptMapPage() {
-  const entries = getConceptMap();
+export default async function ConceptMapPage() {
+  const entries = (await getConceptMap());
 
   return (
     <div data-screen-label="Concept Map">

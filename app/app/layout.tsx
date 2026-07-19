@@ -17,7 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const me = await requireUser();
   // growth-role users work entirely in the new BOW HQ data layer — never
   // load or ship the LMS snapshot to them.
-  const instructor = me.role === "instructor" ? getInstructorByUserId(me.id) : null;
+  const instructor = me.role === "instructor" ? (await getInstructorByUserId(me.id)) : null;
   const instructorCanReceiveDeliveryData = !instructor
     || (instructor.stage === "active" && instructor.eligibilityStatus === "eligible");
   const scoped = me.role === "growth" || (me.role === "instructor" && !instructorCanReceiveDeliveryData)

@@ -20,14 +20,14 @@ export function isGrowthSearchKind(value: unknown): value is GrowthSearchKind {
  * Authorization belongs at the server-action boundary; keeping this reader
  * separate makes the exact SQL independently verifiable against an isolated DB.
  */
-export function searchGrowthEntityOptions(kind: GrowthSearchKind, query: string): GrowthOption[] {
+export async function searchGrowthEntityOptions(kind: GrowthSearchKind, query: string): Promise<GrowthOption[]> {
   const db = getDb();
   const normalizedQuery = query.trim().toLowerCase();
   let rows: Array<Record<string, unknown>>;
 
   if (kind === "person" || kind === "prospective_contributor") {
-    rows = db.prepare(
-      `SELECT p.id, p.name AS label, p.email AS meta
+    rows = (await db.prepare(
+          `SELECT p.id, p.name AS label, p.email AS meta
          FROM people p
         WHERE (? = '' OR instr(lower(p.name), ?) > 0 OR instr(lower(p.email), ?) > 0)
           ${kind === "prospective_contributor" ? "AND NOT EXISTS (SELECT 1 FROM growth_contributors c WHERE c.person_id = p.id)" : ""}
@@ -37,17 +37,17 @@ export function searchGrowthEntityOptions(kind: GrowthSearchKind, query: string)
           ELSE 2
         END, p.name, p.id
         LIMIT 20`,
-    ).all(
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-    ) as unknown as Array<Record<string, unknown>>;
+        ).all(
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+        )) as unknown as Array<Record<string, unknown>>;
   } else if (kind === "student" || kind === "referral_student") {
-    rows = db.prepare(
-      `SELECT s.id, s.name AS label,
+    rows = (await db.prepare(
+          `SELECT s.id, s.name AS label,
               COALESCE(NULLIF(trim(s.email), ''), NULLIF(trim(s.grade), ''), 'Student') AS meta
          FROM students s
         WHERE s.enrollment_status = 'active'
@@ -59,17 +59,17 @@ export function searchGrowthEntityOptions(kind: GrowthSearchKind, query: string)
           ELSE 2
         END, s.name, s.id
         LIMIT 20`,
-    ).all(
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-    ) as unknown as Array<Record<string, unknown>>;
+        ).all(
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+        )) as unknown as Array<Record<string, unknown>>;
   } else {
-    rows = db.prepare(
-      `SELECT p.id, p.name AS label, replace(p.stage, '_', ' ') AS meta
+    rows = (await db.prepare(
+          `SELECT p.id, p.name AS label, replace(p.stage, '_', ' ') AS meta
          FROM programs p
         WHERE (? = '' OR instr(lower(p.name), ?) > 0 OR instr(lower(p.id), ?) > 0)
         ORDER BY CASE
@@ -80,14 +80,14 @@ export function searchGrowthEntityOptions(kind: GrowthSearchKind, query: string)
         CASE WHEN p.stage IN ('completed','renewed','closed') THEN 1 ELSE 0 END,
         p.name, p.id
         LIMIT 20`,
-    ).all(
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-      normalizedQuery,
-    ) as unknown as Array<Record<string, unknown>>;
+        ).all(
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+          normalizedQuery,
+        )) as unknown as Array<Record<string, unknown>>;
   }
 
   return rows.map((row) => ({

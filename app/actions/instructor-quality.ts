@@ -141,15 +141,15 @@ function optionalRating(value: unknown, label: string): number | null {
   return Number(value);
 }
 
-function runImmediate<T>(operation: (db: Database) => T): T {
+async function runImmediate<T>(operation: (db: Database) => T): Promise<T> {
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     const result = operation(db);
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
     return result;
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     throw error;
   }
 }
@@ -159,36 +159,36 @@ function actionError(error: unknown): QualityActionResult {
   throw error;
 }
 
-function assertActiveInstructor(db: Database, instructorId: string): { id: string; name: string; updated_at: number } {
-  const row = db
-    .prepare(
-      `SELECT i.id, p.name, i.updated_at
+async function assertActiveInstructor(db: Database, instructorId: string): Promise<{ id: string; name: string; updated_at: number }> {
+  const row = (await db
+      .prepare(
+        `SELECT i.id, p.name, i.updated_at
          FROM instructors i
          JOIN people p ON p.id = i.person_id
         WHERE i.id = ? AND i.stage NOT IN ('rejected','inactive')`,
-    )
-    .get(instructorId) as { id: string; name: string; updated_at: number } | undefined;
+      )
+      .get(instructorId)) as { id: string; name: string; updated_at: number } | undefined;
   if (!row) throw new QualityActionError("This instructor is inactive, rejected, or no longer exists.");
   return row;
 }
 
-function assertInstructorExists(db: Database, instructorId: string): { id: string; name: string } {
-  const row = db
-    .prepare("SELECT i.id, p.name FROM instructors i JOIN people p ON p.id = i.person_id WHERE i.id = ?")
-    .get(instructorId) as { id: string; name: string } | undefined;
+async function assertInstructorExists(db: Database, instructorId: string): Promise<{ id: string; name: string }> {
+  const row = (await db
+      .prepare("SELECT i.id, p.name FROM instructors i JOIN people p ON p.id = i.person_id WHERE i.id = ?")
+      .get(instructorId)) as { id: string; name: string } | undefined;
   if (!row) throw new QualityActionError("This instructor no longer exists.");
   return row;
 }
 
-function activeStaffName(db: Database, userId: string): string {
-  const row = db
-    .prepare("SELECT name FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'")
-    .get(userId) as { name: string } | undefined;
+async function activeStaffName(db: Database, userId: string): Promise<string> {
+  const row = (await db
+      .prepare("SELECT name FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'")
+      .get(userId)) as { name: string } | undefined;
   if (!row) throw new QualityActionError("Choose an active BOW staff owner.");
   return row.name;
 }
 
-function qualificationTarget(db: Database, kind: QualificationKind, rawValue: string): { value: string; label: string } {
+async function qualificationTarget(db: Database, kind: QualificationKind, rawValue: string): Promise<{ value: string; label: string }> {
   const value = rawValue.trim();
   if (!value || value.length > 160) throw new QualityActionError("Choose a valid qualification scope.");
   if (value === "all") {
@@ -204,17 +204,17 @@ function qualificationTarget(db: Database, kind: QualificationKind, rawValue: st
   }
 
   if (kind === "curriculum") {
-    const row = db.prepare("SELECT title FROM curricula WHERE id = ? AND published = 1").get(value) as { title: string } | undefined;
+    const row = (await db.prepare("SELECT title FROM curricula WHERE id = ? AND published = 1").get(value)) as { title: string } | undefined;
     if (!row) throw new QualityActionError("Choose a published Curriculum.");
     return { value, label: row.title };
   }
   if (kind === "location") {
-    const row = db.prepare("SELECT name FROM locations WHERE id = ? AND stage <> 'closed'").get(value) as { name: string } | undefined;
+    const row = (await db.prepare("SELECT name FROM locations WHERE id = ? AND stage <> 'closed'").get(value)) as { name: string } | undefined;
     if (!row) throw new QualityActionError("Choose an open Location.");
     return { value, label: row.name };
   }
   if (kind === "region") {
-    const row = db.prepare("SELECT name FROM operating_regions WHERE id = ? AND stage <> 'closed'").get(value) as { name: string } | undefined;
+    const row = (await db.prepare("SELECT name FROM operating_regions WHERE id = ? AND stage <> 'closed'").get(value)) as { name: string } | undefined;
     if (!row) throw new QualityActionError("Choose an open Region.");
     return { value, label: row.name };
   }
@@ -228,28 +228,28 @@ function qualificationTarget(db: Database, kind: QualificationKind, rawValue: st
   }
 
   if (value.length < 2) throw new QualityActionError("Choose a specific age group.");
-  const knownAgeGroup = db
-    .prepare(
-      `SELECT 1 FROM (
+  const knownAgeGroup = (await db
+      .prepare(
+        `SELECT 1 FROM (
          SELECT DISTINCT trim(age_range) AS value FROM classes WHERE trim(COALESCE(age_range, '')) <> ''
          UNION SELECT DISTINCT trim(audience) AS value FROM programs WHERE trim(COALESCE(audience, '')) <> ''
        ) WHERE lower(value) = lower(?) LIMIT 1`,
-    )
-    .get(value);
+      )
+      .get(value));
   if (!knownAgeGroup) throw new QualityActionError("Choose an age group already used by a Class or Program.");
   return { value, label: value };
 }
 
-function historicalQualificationLabel(db: Database, kind: QualificationKind, value: string): string {
+async function historicalQualificationLabel(db: Database, kind: QualificationKind, value: string): Promise<string> {
   if (value === "all") return `All ${kind.replace(/_/g, " ")} scope`;
   if (kind === "curriculum") {
-    return (db.prepare("SELECT title FROM curricula WHERE id = ?").get(value) as { title: string } | undefined)?.title ?? "Retired Curriculum";
+    return ((await db.prepare("SELECT title FROM curricula WHERE id = ?").get(value)) as { title: string } | undefined)?.title ?? "Retired Curriculum";
   }
   if (kind === "location") {
-    return (db.prepare("SELECT name FROM locations WHERE id = ?").get(value) as { name: string } | undefined)?.name ?? "Removed Location";
+    return ((await db.prepare("SELECT name FROM locations WHERE id = ?").get(value)) as { name: string } | undefined)?.name ?? "Removed Location";
   }
   if (kind === "region") {
-    return (db.prepare("SELECT name FROM operating_regions WHERE id = ?").get(value) as { name: string } | undefined)?.name ?? "Removed Region";
+    return ((await db.prepare("SELECT name FROM operating_regions WHERE id = ?").get(value)) as { name: string } | undefined)?.name ?? "Removed Region";
   }
   return value.replace(/_/g, " ");
 }
@@ -271,7 +271,7 @@ function revalidateInstructorQuality(instructorId: string): void {
   revalidatePath("/app");
 }
 
-function createConcernFollowUp(
+async function createConcernFollowUp(
   db: Database,
   input: {
     suffix: string;
@@ -287,47 +287,47 @@ function createConcernFollowUp(
     priority: "high" | "urgent";
     actorUserId: string;
   },
-): { developmentId: string; taskId: string } {
+): Promise<{ developmentId: string; taskId: string }> {
   const now = Date.now();
   const developmentId = `dev-${input.suffix}`;
   const taskId = `wrk-${input.suffix}`;
-  db.prepare(
-    `INSERT INTO instructor_development_items
+  (await db.prepare(
+        `INSERT INTO instructor_development_items
       (id, instructor_id, kind, title, stage, owner_user_id, due_at, due_on, status, notes,
        related_feedback_id, created_at, updated_at, resolved_at)
      VALUES (?, ?, ?, ?, 'identified', ?, ?, ?, 'open', ?, ?, ?, ?, NULL)`,
-  ).run(
-    developmentId,
-    input.instructorId,
-    input.kind,
-    input.title,
-    input.ownerUserId,
-    input.dueAt,
-    input.dueOn,
-    input.notes,
-    input.relatedFeedbackId,
-    now,
-    now,
-  );
-  db.prepare(
-    `INSERT INTO tasks
+      ).run(
+        developmentId,
+        input.instructorId,
+        input.kind,
+        input.title,
+        input.ownerUserId,
+        input.dueAt,
+        input.dueOn,
+        input.notes,
+        input.relatedFeedbackId,
+        now,
+        now,
+      ));
+  (await db.prepare(
+        `INSERT INTO tasks
       (id, title, owner_user_id, due_at, due_on, status, kind, priority, context, recommended_action,
        entity_type, entity_id, handoff_to_founder, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, 'open', 'follow_up', ?, ?, ?, 'instructor', ?, 0, ?, ?)`,
-  ).run(
-    taskId,
-    input.title,
-    input.ownerUserId,
-    input.dueAt,
-    input.dueOn,
-    input.priority,
-    input.notes,
-    `Review the evidence with ${input.instructorName}, agree on the next coaching step, and document the outcome in the development record.`,
-    input.instructorId,
-    now,
-    now,
-  );
-  logActivity("task", taskId, "created", `Created from an instructor quality concern for ${input.instructorName}.`, input.actorUserId);
+      ).run(
+        taskId,
+        input.title,
+        input.ownerUserId,
+        input.dueAt,
+        input.dueOn,
+        input.priority,
+        input.notes,
+        `Review the evidence with ${input.instructorName}, agree on the next coaching step, and document the outcome in the development record.`,
+        input.instructorId,
+        now,
+        now,
+      ));
+  (await logActivity("task", taskId, "created", `Created from an instructor quality concern for ${input.instructorName}.`, input.actorUserId));
   return { developmentId, taskId };
 }
 
@@ -349,29 +349,29 @@ export async function upsertInstructorQualification(input: QualificationInput): 
     const now = Date.now();
     const id = `qlf-${randomUUID()}`;
 
-    runImmediate((db) => {
-      const instructor = assertActiveInstructor(db, instructorId);
-      const target = qualificationTarget(db, kind, String(input?.value ?? ""));
-      db.prepare(
-        `INSERT INTO instructor_qualifications
+    (await runImmediate(async (db) => {
+            const instructor = (await assertActiveInstructor(db, instructorId));
+            const target = (await qualificationTarget(db, kind, String(input?.value ?? "")));
+            (await db.prepare(
+                      `INSERT INTO instructor_qualifications
           (id, instructor_id, kind, value, status, approved_by, approved_at, expires_at, expires_on, notes, created_at, updated_at)
          VALUES (?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(instructor_id, kind, value) DO UPDATE SET
            status = 'approved', approved_by = excluded.approved_by, approved_at = excluded.approved_at,
            expires_at = excluded.expires_at, expires_on = excluded.expires_on,
            notes = excluded.notes, updated_at = excluded.updated_at`,
-      ).run(id, instructorId, kind, target.value, me.id, now, expiresAt, expiration?.canonicalDate ?? null, notes, now, now);
-      logActivity(
-        "instructor",
-        instructorId,
-        "qualification_approved",
-        `${kind.replace(/_/g, " ")} approval granted for ${target.label}${expiration ? ` through ${expiration.canonicalDate}` : ""}.`,
-        me.id,
-      );
-      // Touch the dossier record so pipeline lists reflect the manager's most
-      // recent workforce decision without changing hiring stage semantics.
-      db.prepare("UPDATE instructors SET updated_at = ? WHERE id = ? AND updated_at = ?").run(now, instructorId, instructor.updated_at);
-    });
+                    ).run(id, instructorId, kind, target.value, me.id, now, expiresAt, expiration?.canonicalDate ?? null, notes, now, now));
+            (await logActivity(
+                      "instructor",
+                      instructorId,
+                      "qualification_approved",
+                      `${kind.replace(/_/g, " ")} approval granted for ${target.label}${expiration ? ` through ${expiration.canonicalDate}` : ""}.`,
+                      me.id,
+                    ));
+            // Touch the dossier record so pipeline lists reflect the manager's most
+            // recent workforce decision without changing hiring stage semantics.
+            (await db.prepare("UPDATE instructors SET updated_at = ? WHERE id = ? AND updated_at = ?").run(now, instructorId, instructor.updated_at));
+          }));
     revalidateInstructorQuality(instructorId);
     return { ok: true };
   } catch (error) {
@@ -386,26 +386,26 @@ export async function revokeInstructorQualification(instructorValue: string, qua
     instructorId = requiredId(instructorValue, "Instructor");
     const qualificationId = requiredId(qualificationValue, "Qualification");
     const now = Date.now();
-    runImmediate((db) => {
-      assertInstructorExists(db, instructorId);
-      const row = db
-        .prepare("SELECT kind, value, status, updated_at FROM instructor_qualifications WHERE id = ? AND instructor_id = ?")
-        .get(qualificationId, instructorId) as { kind: QualificationKind; value: string; status: string; updated_at: number } | undefined;
-      if (!row) throw new QualityActionError("This qualification no longer exists.");
-      if (row.status !== "approved") throw new QualityActionError("This qualification is already inactive.");
-      const targetLabel = historicalQualificationLabel(db, row.kind, row.value);
-      const updated = db
-        .prepare("UPDATE instructor_qualifications SET status = 'revoked', updated_at = ? WHERE id = ? AND status = 'approved' AND updated_at = ?")
-        .run(now, qualificationId, row.updated_at);
-      if (updated.changes !== 1) throw new QualityActionError("This qualification changed. Refresh and try again.");
-      logActivity(
-        "instructor",
-        instructorId,
-        "qualification_revoked",
-        `${row.kind.replace(/_/g, " ")} approval revoked for ${targetLabel}.`,
-        me.id,
-      );
-    });
+    (await runImmediate(async (db) => {
+            (await assertInstructorExists(db, instructorId));
+            const row = (await db
+                    .prepare("SELECT kind, value, status, updated_at FROM instructor_qualifications WHERE id = ? AND instructor_id = ?")
+                    .get(qualificationId, instructorId)) as { kind: QualificationKind; value: string; status: string; updated_at: number } | undefined;
+            if (!row) throw new QualityActionError("This qualification no longer exists.");
+            if (row.status !== "approved") throw new QualityActionError("This qualification is already inactive.");
+            const targetLabel = (await historicalQualificationLabel(db, row.kind, row.value));
+            const updated = (await db
+                    .prepare("UPDATE instructor_qualifications SET status = 'revoked', updated_at = ? WHERE id = ? AND status = 'approved' AND updated_at = ?")
+                    .run(now, qualificationId, row.updated_at));
+            if (updated.changes !== 1) throw new QualityActionError("This qualification changed. Refresh and try again.");
+            (await logActivity(
+                      "instructor",
+                      instructorId,
+                      "qualification_revoked",
+                      `${row.kind.replace(/_/g, " ")} approval revoked for ${targetLabel}.`,
+                      me.id,
+                    ));
+          }));
     revalidateInstructorQuality(instructorId);
     return { ok: true };
   } catch (error) {
@@ -424,41 +424,41 @@ export async function updateInstructorWorkforceProfile(input: WorkforceProfileIn
     }
     const developmentFocus = limitedText(input?.developmentFocus, "Development focus", 1200);
     const now = Date.now();
-    runImmediate((db) => {
-      const instructor = assertActiveInstructor(db, instructorId);
-      const before = db
-        .prepare("SELECT progression_level, max_weekly_classes, development_focus, updated_at FROM instructors WHERE id = ?")
-        .get(instructorId) as {
-          progression_level: string;
-          max_weekly_classes: number;
-          development_focus: string | null;
-          updated_at: number;
-        };
-      const updated = db
-        .prepare(
-          `UPDATE instructors
+    (await runImmediate(async (db) => {
+            const instructor = (await assertActiveInstructor(db, instructorId));
+            const before = (await db
+                    .prepare("SELECT progression_level, max_weekly_classes, development_focus, updated_at FROM instructors WHERE id = ?")
+                    .get(instructorId)) as {
+                progression_level: string;
+                max_weekly_classes: number;
+                development_focus: string | null;
+                updated_at: number;
+              };
+            const updated = (await db
+                    .prepare(
+                      `UPDATE instructors
               SET progression_level = ?, max_weekly_classes = ?, development_focus = ?, updated_at = ?
             WHERE id = ? AND updated_at = ?`,
-        )
-        .run(input.progressionLevel, input.maxWeeklyClasses, developmentFocus, now, instructorId, before.updated_at);
-      if (updated.changes !== 1) throw new QualityActionError("This workforce profile changed. Refresh and try again.");
-      const changes = [
-        before.progression_level !== input.progressionLevel
-          ? `progression ${before.progression_level.replace(/_/g, " ")} → ${input.progressionLevel.replace(/_/g, " ")}`
-          : null,
-        before.max_weekly_classes !== input.maxWeeklyClasses
-          ? `weekly capacity ${before.max_weekly_classes} → ${input.maxWeeklyClasses}`
-          : null,
-        before.development_focus !== developmentFocus ? "development focus updated" : null,
-      ].filter(Boolean);
-      logActivity(
-        "instructor",
-        instructorId,
-        "workforce_profile_updated",
-        changes.length > 0 ? `Workforce profile updated: ${changes.join("; ")}.` : `Workforce profile reviewed for ${instructor.name}; no values changed.`,
-        me.id,
-      );
-    });
+                    )
+                    .run(input.progressionLevel, input.maxWeeklyClasses, developmentFocus, now, instructorId, before.updated_at));
+            if (updated.changes !== 1) throw new QualityActionError("This workforce profile changed. Refresh and try again.");
+            const changes = [
+              before.progression_level !== input.progressionLevel
+                ? `progression ${before.progression_level.replace(/_/g, " ")} → ${input.progressionLevel.replace(/_/g, " ")}`
+                : null,
+              before.max_weekly_classes !== input.maxWeeklyClasses
+                ? `weekly capacity ${before.max_weekly_classes} → ${input.maxWeeklyClasses}`
+                : null,
+              before.development_focus !== developmentFocus ? "development focus updated" : null,
+            ].filter(Boolean);
+            (await logActivity(
+                      "instructor",
+                      instructorId,
+                      "workforce_profile_updated",
+                      changes.length > 0 ? `Workforce profile updated: ${changes.join("; ")}.` : `Workforce profile reviewed for ${instructor.name}; no values changed.`,
+                      me.id,
+                    ));
+          }));
     revalidateInstructorQuality(instructorId);
     return { ok: true };
   } catch (error) {
@@ -466,11 +466,11 @@ export async function updateInstructorWorkforceProfile(input: WorkforceProfileIn
   }
 }
 
-function validateFeedbackContext(
+async function validateFeedbackContext(
   db: Database,
   input: FeedbackInput,
   instructorId: string,
-): { classId: string | null; programId: string | null; partnerOrgId: string | null; sessionId: string | null } {
+): Promise<{ classId: string | null; programId: string | null; partnerOrgId: string | null; sessionId: string | null }> {
   let classId = cleanText(input.classId);
   let programId = cleanText(input.programId);
   let partnerOrgId = cleanText(input.partnerOrgId);
@@ -481,9 +481,9 @@ function validateFeedbackContext(
   }
 
   if (sessionId) {
-    const session = db
-      .prepare("SELECT cs.class_id, cs.session_date, c.program_id, c.partner_org_id FROM class_sessions cs JOIN classes c ON c.id = cs.class_id WHERE cs.id = ?")
-      .get(sessionId) as { class_id: string; session_date: number; program_id: string | null; partner_org_id: string | null } | undefined;
+    const session = (await db
+          .prepare("SELECT cs.class_id, cs.session_date, c.program_id, c.partner_org_id FROM class_sessions cs JOIN classes c ON c.id = cs.class_id WHERE cs.id = ?")
+          .get(sessionId)) as { class_id: string; session_date: number; program_id: string | null; partner_org_id: string | null } | undefined;
     if (!session) throw new QualityActionError("Choose an existing Class session.");
     if (session.session_date > Date.now()) throw new QualityActionError("Feedback cannot be attached to a future Class session.");
     sessionDate = session.session_date;
@@ -500,22 +500,22 @@ function validateFeedbackContext(
   }
 
   if (classId) {
-    const cls = db.prepare("SELECT program_id, partner_org_id FROM classes WHERE id = ?").get(classId) as
+    const cls = (await db.prepare("SELECT program_id, partner_org_id FROM classes WHERE id = ?").get(classId)) as
       | { program_id: string | null; partner_org_id: string | null }
       | undefined;
     if (!cls) throw new QualityActionError("Choose an existing Class.");
     const assignment = sessionDate == null
-      ? db.prepare(
-          "SELECT 1 FROM class_instructors WHERE class_id = ? AND instructor_id = ? LIMIT 1",
-        ).get(classId, instructorId)
-      : db.prepare(
-          `SELECT 1
+      ? (await db.prepare(
+                  "SELECT 1 FROM class_instructors WHERE class_id = ? AND instructor_id = ? LIMIT 1",
+                ).get(classId, instructorId))
+      : (await db.prepare(
+                  `SELECT 1
              FROM class_instructors
             WHERE class_id = ? AND instructor_id = ?
               AND added_at <= ?
               AND (removed_at IS NULL OR removed_at > ?)
             LIMIT 1`,
-        ).get(classId, instructorId, sessionDate, sessionDate);
+                ).get(classId, instructorId, sessionDate, sessionDate));
     if (!assignment) throw new QualityActionError("The selected Class is not part of this instructor's assignment history.");
     if (programId && programId !== cls.program_id) {
       throw new QualityActionError("The selected Class does not belong to the selected Program.");
@@ -528,15 +528,15 @@ function validateFeedbackContext(
   }
 
   if (programId) {
-    const program = db.prepare("SELECT partner_org_id FROM programs WHERE id = ?").get(programId) as { partner_org_id: string | null } | undefined;
+    const program = (await db.prepare("SELECT partner_org_id FROM programs WHERE id = ?").get(programId)) as { partner_org_id: string | null } | undefined;
     if (!program) throw new QualityActionError("Choose an existing Program.");
-    const assignment = db
-      .prepare(
-        `SELECT 1 FROM class_instructors ci
+    const assignment = (await db
+          .prepare(
+            `SELECT 1 FROM class_instructors ci
           JOIN classes c ON c.id = ci.class_id
          WHERE ci.instructor_id = ? AND c.program_id = ? LIMIT 1`,
-      )
-      .get(instructorId, programId);
+          )
+          .get(instructorId, programId));
     if (!assignment) throw new QualityActionError("The selected Program is not part of this instructor's assignment history.");
     if (partnerOrgId && partnerOrgId !== program.partner_org_id) {
       throw new QualityActionError("The selected Program does not belong to the selected partner.");
@@ -545,16 +545,16 @@ function validateFeedbackContext(
   }
 
   if (partnerOrgId) {
-    const partner = db.prepare("SELECT 1 FROM organizations WHERE id = ?").get(partnerOrgId);
+    const partner = (await db.prepare("SELECT 1 FROM organizations WHERE id = ?").get(partnerOrgId));
     if (!partner) throw new QualityActionError("Choose an existing partner organization.");
     if (!classId && !programId) {
-      const assignment = db
-        .prepare(
-          `SELECT 1 FROM class_instructors ci
+      const assignment = (await db
+              .prepare(
+                `SELECT 1 FROM class_instructors ci
             JOIN classes c ON c.id = ci.class_id
            WHERE ci.instructor_id = ? AND c.partner_org_id = ? LIMIT 1`,
-        )
-        .get(instructorId, partnerOrgId);
+              )
+              .get(instructorId, partnerOrgId));
       if (!assignment) throw new QualityActionError("The selected partner is not part of this instructor's assignment history.");
     }
   }
@@ -601,79 +601,79 @@ export async function recordInstructorFeedback(input: FeedbackInput): Promise<Qu
 
     const id = `fbk-${randomUUID()}`;
     const now = Date.now();
-    runImmediate((db) => {
-      const instructor = assertActiveInstructor(db, instructorId);
-      const context = validateFeedbackContext(db, input, instructorId);
-      let ownerName: string | null = null;
-      if (needsFollowUp && followUpOwnerUserId) ownerName = activeStaffName(db, followUpOwnerUserId);
-      db.prepare(
-        `INSERT INTO instructor_feedback
+    (await runImmediate(async (db) => {
+            const instructor = (await assertActiveInstructor(db, instructorId));
+            const context = (await validateFeedbackContext(db, input, instructorId));
+            let ownerName: string | null = null;
+            if (needsFollowUp && followUpOwnerUserId) ownerName = (await activeStaffName(db, followUpOwnerUserId));
+            (await db.prepare(
+                      `INSERT INTO instructor_feedback
           (id, instructor_id, source_type, submitted_by_user_id, author_name, class_id, program_id,
            partner_org_id, session_id, visibility, curriculum_delivery, student_family_relationships,
            organization_reliability, leadership_contribution, strengths, concerns, body,
            follow_up_required, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'leadership', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        id,
-        instructorId,
-        input.sourceType,
-        me.id,
-        authorName,
-        context.classId,
-        context.programId,
-        context.partnerOrgId,
-        context.sessionId,
-        curriculumDelivery,
-        studentFamilyRelationships,
-        organizationReliability,
-        leadershipContribution,
-        strengths,
-        concerns,
-        body,
-        needsFollowUp ? 1 : 0,
-        now,
-      );
-      if (needsFollowUp && followUpOwnerUserId && followUpDueAt) {
-        const suffix = randomUUID();
-        const sourceLabel = input.sourceType.replace(/_/g, " ");
-        const title = followUpTitle ?? `Quality follow-up: ${instructor.name}`;
-        const ratingEvidence = [
-          curriculumDelivery != null ? `curriculum ${curriculumDelivery}/5` : null,
-          studentFamilyRelationships != null ? `student/family ${studentFamilyRelationships}/5` : null,
-          organizationReliability != null ? `reliability ${organizationReliability}/5` : null,
-          leadershipContribution != null ? `leadership ${leadershipContribution}/5` : null,
-        ].filter(Boolean).join(", ");
-        const notes = [
-          `Feedback source: ${sourceLabel}${authorName ? ` (${authorName})` : ""}.`,
-          ratingEvidence ? `Ratings: ${ratingEvidence}.` : null,
-          concerns ? `Concern: ${concerns}` : null,
-          body ? `Context: ${body}` : null,
-          `Owner: ${ownerName}.`,
-        ].filter(Boolean).join("\n").slice(0, 4000);
-        createConcernFollowUp(db, {
-          suffix,
-          instructorId,
-          instructorName: instructor.name,
-          kind: concerns || lowSignal ? "concern" : "coaching",
-          title,
-          ownerUserId: followUpOwnerUserId,
-          dueAt: followUpDueAt,
-          dueOn: followUpDue!.canonicalDate,
-          notes,
-          relatedFeedbackId: id,
-          priority: ratings.some((rating) => rating === 1) ? "urgent" : "high",
-          actorUserId: me.id,
-        });
-      }
-      const ratedDimensions = ratings.filter((rating) => rating != null).length;
-      logActivity(
-        "instructor",
-        instructorId,
-        "feedback_recorded",
-        `Leadership feedback recorded from ${input.sourceType.replace(/_/g, " ")} across ${ratedDimensions} rated dimension${ratedDimensions === 1 ? "" : "s"}${needsFollowUp ? "; development and Work follow-up opened" : ""}.`,
-        me.id,
-      );
-    });
+                    ).run(
+                      id,
+                      instructorId,
+                      input.sourceType,
+                      me.id,
+                      authorName,
+                      context.classId,
+                      context.programId,
+                      context.partnerOrgId,
+                      context.sessionId,
+                      curriculumDelivery,
+                      studentFamilyRelationships,
+                      organizationReliability,
+                      leadershipContribution,
+                      strengths,
+                      concerns,
+                      body,
+                      needsFollowUp ? 1 : 0,
+                      now,
+                    ));
+            if (needsFollowUp && followUpOwnerUserId && followUpDueAt) {
+              const suffix = randomUUID();
+              const sourceLabel = input.sourceType.replace(/_/g, " ");
+              const title = followUpTitle ?? `Quality follow-up: ${instructor.name}`;
+              const ratingEvidence = [
+                curriculumDelivery != null ? `curriculum ${curriculumDelivery}/5` : null,
+                studentFamilyRelationships != null ? `student/family ${studentFamilyRelationships}/5` : null,
+                organizationReliability != null ? `reliability ${organizationReliability}/5` : null,
+                leadershipContribution != null ? `leadership ${leadershipContribution}/5` : null,
+              ].filter(Boolean).join(", ");
+              const notes = [
+                `Feedback source: ${sourceLabel}${authorName ? ` (${authorName})` : ""}.`,
+                ratingEvidence ? `Ratings: ${ratingEvidence}.` : null,
+                concerns ? `Concern: ${concerns}` : null,
+                body ? `Context: ${body}` : null,
+                `Owner: ${ownerName}.`,
+              ].filter(Boolean).join("\n").slice(0, 4000);
+              (await createConcernFollowUp(db, {
+                          suffix,
+                          instructorId,
+                          instructorName: instructor.name,
+                          kind: concerns || lowSignal ? "concern" : "coaching",
+                          title,
+                          ownerUserId: followUpOwnerUserId,
+                          dueAt: followUpDueAt,
+                          dueOn: followUpDue!.canonicalDate,
+                          notes,
+                          relatedFeedbackId: id,
+                          priority: ratings.some((rating) => rating === 1) ? "urgent" : "high",
+                          actorUserId: me.id,
+                        }));
+            }
+            const ratedDimensions = ratings.filter((rating) => rating != null).length;
+            (await logActivity(
+                      "instructor",
+                      instructorId,
+                      "feedback_recorded",
+                      `Leadership feedback recorded from ${input.sourceType.replace(/_/g, " ")} across ${ratedDimensions} rated dimension${ratedDimensions === 1 ? "" : "s"}${needsFollowUp ? "; development and Work follow-up opened" : ""}.`,
+                      me.id,
+                    ));
+          }));
     revalidateInstructorQuality(instructorId);
     return { ok: true, id };
   } catch (error) {
@@ -704,53 +704,53 @@ export async function createInstructorDevelopmentItem(input: DevelopmentItemInpu
     const suffix = randomUUID();
     const id = `dev-${suffix}`;
     const now = Date.now();
-    runImmediate((db) => {
-      const instructor = assertActiveInstructor(db, instructorId);
-      activeStaffName(db, ownerUserId);
-      if (input.kind === "concern") {
-        if (!dueAt) throw new QualityActionError("A concern needs a due date.");
-        createConcernFollowUp(db, {
-          suffix,
-          instructorId,
-          instructorName: instructor.name,
-          kind: "concern",
-          title,
-          ownerUserId,
-          dueAt,
-          dueOn: dueDate!.canonicalDate,
-          notes,
-          relatedFeedbackId: null,
-          priority: "high",
-          actorUserId: me.id,
-        });
-      } else {
-        db.prepare(
-          `INSERT INTO instructor_development_items
+    (await runImmediate(async (db) => {
+            const instructor = (await assertActiveInstructor(db, instructorId));
+            (await activeStaffName(db, ownerUserId));
+            if (input.kind === "concern") {
+              if (!dueAt) throw new QualityActionError("A concern needs a due date.");
+              (await createConcernFollowUp(db, {
+                          suffix,
+                          instructorId,
+                          instructorName: instructor.name,
+                          kind: "concern",
+                          title,
+                          ownerUserId,
+                          dueAt,
+                          dueOn: dueDate!.canonicalDate,
+                          notes,
+                          relatedFeedbackId: null,
+                          priority: "high",
+                          actorUserId: me.id,
+                        }));
+            } else {
+              (await db.prepare(
+                          `INSERT INTO instructor_development_items
             (id, instructor_id, kind, title, stage, owner_user_id, due_at, due_on, status, notes,
              related_feedback_id, created_at, updated_at, resolved_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, NULL, ?, ?, NULL)`,
-        ).run(
-          id,
-          instructorId,
-          input.kind,
-          title,
-          input.kind === "recognition" ? "recognized" : "identified",
-          ownerUserId,
-          dueAt,
-          dueDate?.canonicalDate ?? null,
-          notes,
-          now,
-          now,
-        );
-      }
-      logActivity(
-        "instructor",
-        instructorId,
-        input.kind === "recognition" ? "recognition_recorded" : "development_opened",
-        `${input.kind.replace(/_/g, " ")} recorded: ${title}${input.kind === "concern" ? "; atomic Work follow-up opened" : ""}.`,
-        me.id,
-      );
-    });
+                        ).run(
+                          id,
+                          instructorId,
+                          input.kind,
+                          title,
+                          input.kind === "recognition" ? "recognized" : "identified",
+                          ownerUserId,
+                          dueAt,
+                          dueDate?.canonicalDate ?? null,
+                          notes,
+                          now,
+                          now,
+                        ));
+            }
+            (await logActivity(
+                      "instructor",
+                      instructorId,
+                      input.kind === "recognition" ? "recognition_recorded" : "development_opened",
+                      `${input.kind.replace(/_/g, " ")} recorded: ${title}${input.kind === "concern" ? "; atomic Work follow-up opened" : ""}.`,
+                      me.id,
+                    ));
+          }));
     revalidateInstructorQuality(instructorId);
     return { ok: true, id };
   } catch (error) {
@@ -770,31 +770,31 @@ export async function advanceInstructorDevelopmentItem(
     const developmentId = requiredId(developmentValue, "Development item");
     const progressNote = limitedText(progressNoteValue, "Progress note", 2000);
     const now = Date.now();
-    runImmediate((db) => {
-      assertActiveInstructor(db, instructorId);
-      const item = db
-        .prepare("SELECT title, stage, status, notes, updated_at FROM instructor_development_items WHERE id = ? AND instructor_id = ?")
-        .get(developmentId, instructorId) as
-        | { title: string; stage: string; status: string; notes: string | null; updated_at: number }
-        | undefined;
-      if (!item || item.status !== "open") throw new QualityActionError("This development item is resolved or no longer exists.");
-      const nextStage = DEVELOPMENT_NEXT_STAGE[item.stage];
-      if (!nextStage) throw new QualityActionError("This item is ready for resolution rather than another stage.");
-      const evidenceLine = progressNote
-        ? `${new Date(now).toLocaleDateString("en-US")} · ${me.name}: ${progressNote}`
-        : `${new Date(now).toLocaleDateString("en-US")} · ${me.name}: Advanced from ${item.stage.replace(/_/g, " ")} to ${nextStage.replace(/_/g, " ")}.`;
-      const updated = db
-        .prepare("UPDATE instructor_development_items SET stage = ?, notes = ?, updated_at = ? WHERE id = ? AND status = 'open' AND updated_at = ?")
-        .run(nextStage, appendEvidence(item.notes, evidenceLine), now, developmentId, item.updated_at);
-      if (updated.changes !== 1) throw new QualityActionError("This development item changed. Refresh and try again.");
-      logActivity(
-        "instructor",
-        instructorId,
-        "development_advanced",
-        `${item.title} advanced to ${nextStage.replace(/_/g, " ")}.`,
-        me.id,
-      );
-    });
+    (await runImmediate(async (db) => {
+            (await assertActiveInstructor(db, instructorId));
+            const item = (await db
+                    .prepare("SELECT title, stage, status, notes, updated_at FROM instructor_development_items WHERE id = ? AND instructor_id = ?")
+                    .get(developmentId, instructorId)) as
+              | { title: string; stage: string; status: string; notes: string | null; updated_at: number }
+              | undefined;
+            if (!item || item.status !== "open") throw new QualityActionError("This development item is resolved or no longer exists.");
+            const nextStage = DEVELOPMENT_NEXT_STAGE[item.stage];
+            if (!nextStage) throw new QualityActionError("This item is ready for resolution rather than another stage.");
+            const evidenceLine = progressNote
+              ? `${new Date(now).toLocaleDateString("en-US")} · ${me.name}: ${progressNote}`
+              : `${new Date(now).toLocaleDateString("en-US")} · ${me.name}: Advanced from ${item.stage.replace(/_/g, " ")} to ${nextStage.replace(/_/g, " ")}.`;
+            const updated = (await db
+                    .prepare("UPDATE instructor_development_items SET stage = ?, notes = ?, updated_at = ? WHERE id = ? AND status = 'open' AND updated_at = ?")
+                    .run(nextStage, appendEvidence(item.notes, evidenceLine), now, developmentId, item.updated_at));
+            if (updated.changes !== 1) throw new QualityActionError("This development item changed. Refresh and try again.");
+            (await logActivity(
+                      "instructor",
+                      instructorId,
+                      "development_advanced",
+                      `${item.title} advanced to ${nextStage.replace(/_/g, " ")}.`,
+                      me.id,
+                    ));
+          }));
     revalidateInstructorQuality(instructorId);
     return { ok: true };
   } catch (error) {
@@ -815,35 +815,35 @@ export async function resolveInstructorDevelopmentItem(
     const outcome = limitedText(outcomeValue, "Resolution outcome", 2000);
     if (!outcome || outcome.length < 3) throw new QualityActionError("Document the resolution outcome.");
     const now = Date.now();
-    runImmediate((db) => {
-      assertInstructorExists(db, instructorId);
-      const item = db
-        .prepare("SELECT title, status, notes, updated_at FROM instructor_development_items WHERE id = ? AND instructor_id = ?")
-        .get(developmentId, instructorId) as { title: string; status: string; notes: string | null; updated_at: number } | undefined;
-      if (!item || item.status !== "open") throw new QualityActionError("This development item is already resolved or no longer exists.");
-      const evidence = appendEvidence(item.notes, `${new Date(now).toLocaleDateString("en-US")} · Resolved by ${me.name}: ${outcome}`);
-      const updated = db
-        .prepare(
-          `UPDATE instructor_development_items
+    (await runImmediate(async (db) => {
+            (await assertInstructorExists(db, instructorId));
+            const item = (await db
+                    .prepare("SELECT title, status, notes, updated_at FROM instructor_development_items WHERE id = ? AND instructor_id = ?")
+                    .get(developmentId, instructorId)) as { title: string; status: string; notes: string | null; updated_at: number } | undefined;
+            if (!item || item.status !== "open") throw new QualityActionError("This development item is already resolved or no longer exists.");
+            const evidence = appendEvidence(item.notes, `${new Date(now).toLocaleDateString("en-US")} · Resolved by ${me.name}: ${outcome}`);
+            const updated = (await db
+                    .prepare(
+                      `UPDATE instructor_development_items
               SET stage = 'resolved', status = 'resolved', notes = ?, resolved_at = ?, updated_at = ?
             WHERE id = ? AND status = 'open' AND updated_at = ?`,
-        )
-        .run(evidence, now, now, developmentId, item.updated_at);
-      if (updated.changes !== 1) throw new QualityActionError("This development item changed. Refresh and try again.");
+                    )
+                    .run(evidence, now, now, developmentId, item.updated_at));
+            if (updated.changes !== 1) throw new QualityActionError("This development item changed. Refresh and try again.");
 
-      const taskId = `wrk-${developmentId.slice(4)}`;
-      const task = db.prepare("SELECT status, updated_at FROM tasks WHERE id = ?").get(taskId) as { status: string; updated_at: number } | undefined;
-      if (task?.status === "open") {
-        const completed = db.prepare(
-          `UPDATE tasks
+            const taskId = `wrk-${developmentId.slice(4)}`;
+            const task = (await db.prepare("SELECT status, updated_at FROM tasks WHERE id = ?").get(taskId)) as { status: string; updated_at: number } | undefined;
+            if (task?.status === "open") {
+              const completed = (await db.prepare(
+                        `UPDATE tasks
               SET status = 'done', completed_at = ?, completion_note = ?, updated_at = ?
             WHERE id = ? AND status = 'open' AND updated_at = ?`,
-        ).run(now, outcome, now, taskId, task.updated_at);
-        if (completed.changes !== 1) throw new QualityActionError("The linked Work item changed. Refresh and try again.");
-        logActivity("task", taskId, "completed", `Closed with the linked instructor development outcome.`, me.id);
-      }
-      logActivity("instructor", instructorId, "development_resolved", `${item.title} resolved with documented outcome.`, me.id);
-    });
+                      ).run(now, outcome, now, taskId, task.updated_at));
+              if (completed.changes !== 1) throw new QualityActionError("The linked Work item changed. Refresh and try again.");
+              (await logActivity("task", taskId, "completed", `Closed with the linked instructor development outcome.`, me.id));
+            }
+            (await logActivity("instructor", instructorId, "development_resolved", `${item.title} resolved with documented outcome.`, me.id));
+          }));
     revalidateInstructorQuality(instructorId);
     return { ok: true };
   } catch (error) {

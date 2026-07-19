@@ -15,10 +15,10 @@ export const metadata: Metadata = {
 export default async function SimulationRoomPage() {
   const me = await requireRole("student");
   // Gate: the Simulation Room unlocks after Module 2.
-  const module2 = getSelfModuleViews(me.id).find((v) => v.module.ordinal === 2)?.completed ?? false;
+  const module2 = (await getSelfModuleViews(me.id)).find((v) => v.module.ordinal === 2)?.completed ?? false;
   if (!module2) redirect("/dashboard");
 
-  const state = getCurrentSimulation(me.id);
+  const state = (await getCurrentSimulation(me.id));
   // Pre-pick content only — outcomes, cap, and win impacts stay server-side.
   const turns = SIM_TURNS.map((t) => ({
     turn: t.turn,

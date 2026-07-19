@@ -46,7 +46,7 @@ export default async function LocationsPage({
   await requireStaff();
   const requested = (await searchParams).view;
   const view: View = VIEW_LABELS.some((item) => item.value === requested) ? (requested as View) : "pipeline";
-  const locations = listLocations();
+  const locations = (await listLocations());
   const visible = locations.filter((location) => matchesView(location, view));
   const pipelineCount = locations.filter((location) => matchesView(location, "pipeline")).length;
   const activeCount = locations.filter((location) => matchesView(location, "active")).length;

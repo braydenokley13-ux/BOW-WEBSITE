@@ -113,15 +113,15 @@ function nextTimestamp(previous?: number | null): number {
   return Math.max(Date.now(), (previous ?? 0) + 1);
 }
 
-function transaction<T>(db: Db, work: () => T): T {
-  db.exec("BEGIN IMMEDIATE");
+async function transaction<T>(db: Db, work: () => T): Promise<T> {
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     const result = work();
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
     return result;
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the operating error that explains why no mutation committed.
     }
@@ -143,10 +143,10 @@ function revalidateGrowth(): void {
   revalidatePath("/app/tasks");
 }
 
-function activeStaff(db: Db, userId: string): boolean {
-  return Boolean(db.prepare(
-    "SELECT 1 FROM users WHERE id = ? AND status = 'active' AND role IN ('admin','growth')",
-  ).get(userId));
+async function activeStaff(db: Db, userId: string): Promise<boolean> {
+  return Boolean((await db.prepare(
+          "SELECT 1 FROM users WHERE id = ? AND status = 'active' AND role IN ('admin','growth')",
+        ).get(userId)));
 }
 
 export type { GrowthSearchKind } from "@/lib/growth-search";
@@ -175,27 +175,27 @@ export async function searchGrowthEntities(input: {
   }
 
   try {
-    return { ok: true, options: searchGrowthEntityOptions(kind, query) };
+    return { ok: true, options: (await searchGrowthEntityOptions(kind, query)) };
   } catch {
     return { ok: false, options: [], error: "Search is temporarily unavailable. Try again." };
   }
 }
 
-function resolvedScope(
+async function resolvedScope(
   db: Db,
   regionValue: unknown,
   locationValue: unknown,
-): { regionId: string | null; locationId: string | null } {
+): Promise<{ regionId: string | null; locationId: string | null }> {
   let regionId = optionalIdentifier(regionValue, "Region");
   const locationId = optionalIdentifier(locationValue, "Location");
   if (locationId) {
-    const location = db.prepare("SELECT region_id FROM locations WHERE id = ? AND stage <> 'closed'")
-      .get(locationId) as unknown as { region_id: string | null } | undefined;
+    const location = (await db.prepare("SELECT region_id FROM locations WHERE id = ? AND stage <> 'closed'")
+          .get(locationId)) as unknown as { region_id: string | null } | undefined;
     if (!location) throw new GrowthActionError("Choose an open Location.");
     if (regionId && location.region_id !== regionId) throw new GrowthActionError("The selected Location does not belong to that Region.");
     regionId = location.region_id ?? regionId;
   }
-  if (regionId && !db.prepare("SELECT 1 FROM operating_regions WHERE id = ? AND stage <> 'closed'").get(regionId)) {
+  if (regionId && !(await db.prepare("SELECT 1 FROM operating_regions WHERE id = ? AND stage <> 'closed'").get(regionId))) {
     throw new GrowthActionError("Choose an open Region.");
   }
   return { regionId, locationId };
@@ -228,7 +228,7 @@ function normalizedTimeZone(value: string | null): string {
  * assignment supplies the market timezone. This keeps a Los Angeles event out
  * of the next UTC day while preserving the exact epoch for audit ordering.
  */
-function resolveEvidenceCalendar(
+async function resolveEvidenceCalendar(
   db: Db,
   input: {
     channelId: string;
@@ -236,20 +236,20 @@ function resolveEvidenceCalendar(
     contributorId: string | null;
     occurredAt: number;
   },
-): { occurredOn: string; timeZone: string } {
+): Promise<{ occurredOn: string; timeZone: string }> {
   let campaign: EvidenceCampaignRow | undefined;
   let timeZone = DEFAULT_TIME_ZONE;
   let occurredOn = canonicalDateInZone(input.occurredAt, timeZone);
 
   if (input.campaignId) {
-    campaign = db.prepare(
-      `SELECT c.region_id, c.location_id, c.starts_on, c.ends_on,
+    campaign = (await db.prepare(
+          `SELECT c.region_id, c.location_id, c.starts_on, c.ends_on,
               COALESCE(NULLIF(trim(l.timezone), ''), NULLIF(trim(r.timezone), '')) AS timezone
          FROM growth_campaigns c
          LEFT JOIN locations l ON l.id = c.location_id
          LEFT JOIN operating_regions r ON r.id = c.region_id
         WHERE c.id = ? AND c.channel_id = ? AND c.status = 'active'`,
-    ).get(input.campaignId, input.channelId) as unknown as EvidenceCampaignRow | undefined;
+        ).get(input.campaignId, input.channelId)) as unknown as EvidenceCampaignRow | undefined;
     if (!campaign) {
       throw new GrowthActionError("The selected campaign is not active or does not use that channel.");
     }
@@ -261,18 +261,18 @@ function resolveEvidenceCalendar(
   }
 
   if (input.contributorId) {
-    if (!db.prepare("SELECT 1 FROM growth_contributors WHERE id = ? AND status = 'active'").get(input.contributorId)) {
+    if (!(await db.prepare("SELECT 1 FROM growth_contributors WHERE id = ? AND status = 'active'").get(input.contributorId))) {
       throw new GrowthActionError("Choose an active contributor.");
     }
-    const assignments = db.prepare(
-      `SELECT a.id, a.region_id, a.location_id, a.starts_on, a.ends_on,
+    const assignments = (await db.prepare(
+          `SELECT a.id, a.region_id, a.location_id, a.starts_on, a.ends_on,
               COALESCE(NULLIF(trim(l.timezone), ''), NULLIF(trim(r.timezone), '')) AS timezone
          FROM growth_assignments a
          LEFT JOIN locations l ON l.id = a.location_id
          LEFT JOIN operating_regions r ON r.id = a.region_id
         WHERE a.contributor_id = ?
         ORDER BY a.starts_on, a.id`,
-    ).all(input.contributorId) as unknown as EvidenceAssignmentRow[];
+        ).all(input.contributorId)) as unknown as EvidenceAssignmentRow[];
     const matching = assignments.filter((assignment) => {
       const assignmentZone = campaign ? timeZone : normalizedTimeZone(assignment.timezone);
       const assignmentDate = campaign ? occurredOn : canonicalDateInZone(input.occurredAt, assignmentZone);
@@ -330,41 +330,41 @@ export async function createGrowthCampaign(input: CreateGrowthCampaignInput): Pr
     const targetValue = positiveInteger(input?.targetValue, "Target");
     const budgetCents = nonNegativeInteger(input?.budgetCents, "Budget in cents");
     const db = getDb();
-    if (!db.prepare("SELECT 1 FROM growth_channels WHERE id = ? AND status = 'active'").get(channelId)) {
+    if (!(await db.prepare("SELECT 1 FROM growth_channels WHERE id = ? AND status = 'active'").get(channelId))) {
       throw new GrowthActionError("Choose an active growth channel.");
     }
-    if (ownerUserId && !activeStaff(db, ownerUserId)) throw new GrowthActionError("Choose an active staff owner.");
+    if (ownerUserId && !(await activeStaff(db, ownerUserId))) throw new GrowthActionError("Choose an active staff owner.");
     if (input.status === "active" && !ownerUserId) throw new GrowthActionError("An active campaign needs an accountable owner.");
-    const scope = resolvedScope(db, input?.regionId, input?.locationId);
+    const scope = (await resolvedScope(db, input?.regionId, input?.locationId));
     const now = Date.now();
     const id = `gcp-${randomUUID()}`;
-    transaction(db, () => {
-      db.prepare(
-        `INSERT INTO growth_campaigns
+    (await transaction(db, async () => {
+            (await db.prepare(
+                      `INSERT INTO growth_campaigns
           (id, name, channel_id, owner_user_id, region_id, location_id, hypothesis, status,
            starts_on, ends_on, target_metric, target_value, budget_cents, spend_cents,
            result_value, decision, learning, created_by_user_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, ?, ?, ?)`,
-      ).run(
-        id,
-        name,
-        channelId,
-        ownerUserId,
-        scope.regionId,
-        scope.locationId,
-        hypothesis,
-        input.status,
-        startsOn,
-        endsOn,
-        input.targetMetric,
-        targetValue,
-        budgetCents,
-        me.id,
-        now,
-        now,
-      );
-      logActivity("growth_campaign", id, "created", `${name} created as ${input.status}; target ${targetValue} ${input.targetMetric.replace(/_/g, " ")}.`, me.id);
-    });
+                    ).run(
+                      id,
+                      name,
+                      channelId,
+                      ownerUserId,
+                      scope.regionId,
+                      scope.locationId,
+                      hypothesis,
+                      input.status,
+                      startsOn,
+                      endsOn,
+                      input.targetMetric,
+                      targetValue,
+                      budgetCents,
+                      me.id,
+                      now,
+                      now,
+                    ));
+            (await logActivity("growth_campaign", id, "created", `${name} created as ${input.status}; target ${targetValue} ${input.targetMetric.replace(/_/g, " ")}.`, me.id));
+          }));
     revalidateGrowth();
     return { ok: true, id, updatedAt: now };
   } catch (error) {
@@ -393,78 +393,78 @@ export async function updateGrowthCampaignState(input: UpdateGrowthCampaignState
     const decision = isOneOf(CAMPAIGN_DECISIONS, input?.decision) ? input.decision : null;
     const learning = optionalText(input?.learning, "Learning", 3000);
     const db = getDb();
-    const updatedAt = transaction(db, () => {
-      const campaign = db.prepare(
-        `SELECT status, target_metric, starts_on, ends_on, spend_cents, updated_at
+    const updatedAt = (await transaction(db, async () => {
+          const campaign = (await db.prepare(
+                  `SELECT status, target_metric, starts_on, ends_on, spend_cents, updated_at
            FROM growth_campaigns WHERE id = ?`,
-      ).get(id) as unknown as {
-        status: CampaignStatus;
-        target_metric: CampaignMetric;
-        starts_on: string;
-        ends_on: string;
-        spend_cents: number;
-        updated_at: number;
-      } | undefined;
-      if (!campaign) throw new GrowthActionError("This campaign no longer exists.");
-      if (campaign.updated_at !== expectedUpdatedAt) throw new GrowthActionError("This campaign changed. Refresh before saving another decision.");
-      const allowed: Record<CampaignStatus, CampaignStatus[]> = {
-        draft: ["draft", "active", "cancelled"],
-        active: ["active", "paused", "completed", "cancelled"],
-        paused: ["paused", "active", "completed", "cancelled"],
-        completed: ["completed"],
-        cancelled: ["cancelled"],
-      };
-      if (!allowed[campaign.status].includes(input.nextStatus)) {
-        throw new GrowthActionError(`A ${campaign.status} campaign cannot move to ${input.nextStatus}.`);
-      }
-      if (campaign.status === "completed" || campaign.status === "cancelled") {
-        throw new GrowthActionError("Completed and cancelled campaigns are locked operating history.");
-      }
-      if (input.nextStatus === "completed" && (!decision || !learning || learning.length < 20)) {
-        throw new GrowthActionError("Completion needs a scale, iterate, hold, or stop decision and at least 20 characters of reusable learning.");
-      }
-      if (input.nextStatus === "cancelled" && (!learning || learning.length < 10)) {
-        throw new GrowthActionError("Explain why this campaign is being cancelled.");
-      }
-      if (input.nextStatus === "active" && campaign.ends_on < canonicalDateInZone()) {
-        throw new GrowthActionError("An expired campaign cannot be activated. Close it with a result and decision instead.");
-      }
-      if (input.nextStatus === "draft" && spendCents > 0) {
-        throw new GrowthActionError("Draft campaigns cannot record spend before activation.");
-      }
-      const spendDelta = spendCents - Number(campaign.spend_cents);
-      if (spendDelta !== 0 && (!spendNote || spendNote.length < 10)) {
-        throw new GrowthActionError("Explain the invoice, expense, or correction whenever campaign spend changes.");
-      }
-      const resultValue = input.nextStatus === "completed" || input.nextStatus === "cancelled"
-        ? deriveGrowthMetricActual(campaign.target_metric, "campaign", id, campaign.starts_on, campaign.ends_on)
-        : null;
-      const resolvedDecision = input.nextStatus === "cancelled" ? "stop" : decision;
-      const nextUpdatedAt = nextTimestamp(campaign.updated_at);
-      const result = db.prepare(
-        `UPDATE growth_campaigns
+                ).get(id)) as unknown as {
+            status: CampaignStatus;
+            target_metric: CampaignMetric;
+            starts_on: string;
+            ends_on: string;
+            spend_cents: number;
+            updated_at: number;
+          } | undefined;
+          if (!campaign) throw new GrowthActionError("This campaign no longer exists.");
+          if (campaign.updated_at !== expectedUpdatedAt) throw new GrowthActionError("This campaign changed. Refresh before saving another decision.");
+          const allowed: Record<CampaignStatus, CampaignStatus[]> = {
+            draft: ["draft", "active", "cancelled"],
+            active: ["active", "paused", "completed", "cancelled"],
+            paused: ["paused", "active", "completed", "cancelled"],
+            completed: ["completed"],
+            cancelled: ["cancelled"],
+          };
+          if (!allowed[campaign.status].includes(input.nextStatus)) {
+            throw new GrowthActionError(`A ${campaign.status} campaign cannot move to ${input.nextStatus}.`);
+          }
+          if (campaign.status === "completed" || campaign.status === "cancelled") {
+            throw new GrowthActionError("Completed and cancelled campaigns are locked operating history.");
+          }
+          if (input.nextStatus === "completed" && (!decision || !learning || learning.length < 20)) {
+            throw new GrowthActionError("Completion needs a scale, iterate, hold, or stop decision and at least 20 characters of reusable learning.");
+          }
+          if (input.nextStatus === "cancelled" && (!learning || learning.length < 10)) {
+            throw new GrowthActionError("Explain why this campaign is being cancelled.");
+          }
+          if (input.nextStatus === "active" && campaign.ends_on < canonicalDateInZone()) {
+            throw new GrowthActionError("An expired campaign cannot be activated. Close it with a result and decision instead.");
+          }
+          if (input.nextStatus === "draft" && spendCents > 0) {
+            throw new GrowthActionError("Draft campaigns cannot record spend before activation.");
+          }
+          const spendDelta = spendCents - Number(campaign.spend_cents);
+          if (spendDelta !== 0 && (!spendNote || spendNote.length < 10)) {
+            throw new GrowthActionError("Explain the invoice, expense, or correction whenever campaign spend changes.");
+          }
+          const resultValue = input.nextStatus === "completed" || input.nextStatus === "cancelled"
+            ? deriveGrowthMetricActual(campaign.target_metric, "campaign", id, campaign.starts_on, campaign.ends_on)
+            : null;
+          const resolvedDecision = input.nextStatus === "cancelled" ? "stop" : decision;
+          const nextUpdatedAt = nextTimestamp(campaign.updated_at);
+          const result = (await db.prepare(
+                  `UPDATE growth_campaigns
             SET status = ?, spend_cents = ?, result_value = ?, decision = ?, learning = ?, updated_at = ?
           WHERE id = ? AND updated_at = ?`,
-      ).run(
-        input.nextStatus,
-        spendCents,
-        resultValue,
-        resolvedDecision,
-        learning,
-        nextUpdatedAt,
-        id,
-        campaign.updated_at,
-      );
-      if (Number(result.changes) !== 1) throw new GrowthActionError("This campaign changed. Refresh before saving another decision.");
-      logActivity(
-        "growth_campaign",
-        id,
-        "status",
-        `${campaign.status} → ${input.nextStatus}; spend $${(spendCents / 100).toFixed(2)}${spendDelta === 0 ? "" : ` (${spendDelta > 0 ? "+" : "-"}$${(Math.abs(spendDelta) / 100).toFixed(2)}: ${spendNote})`}${resultValue == null ? "" : `; derived result ${resultValue}`}.${learning ? ` Learning: ${learning}` : ""}`,
-        me.id,
-      );
-      return nextUpdatedAt;
-    });
+                ).run(
+                  input.nextStatus,
+                  spendCents,
+                  resultValue,
+                  resolvedDecision,
+                  learning,
+                  nextUpdatedAt,
+                  id,
+                  campaign.updated_at,
+                ));
+          if (Number(result.changes) !== 1) throw new GrowthActionError("This campaign changed. Refresh before saving another decision.");
+          (await logActivity(
+                    "growth_campaign",
+                    id,
+                    "status",
+                    `${campaign.status} → ${input.nextStatus}; spend $${(spendCents / 100).toFixed(2)}${spendDelta === 0 ? "" : ` (${spendDelta > 0 ? "+" : "-"}$${(Math.abs(spendDelta) / 100).toFixed(2)}: ${spendNote})`}${resultValue == null ? "" : `; derived result ${resultValue}`}.${learning ? ` Learning: ${learning}` : ""}`,
+                    me.id,
+                  ));
+          return nextUpdatedAt;
+        }));
     revalidateGrowth();
     return { ok: true, id, updatedAt };
   } catch (error) {
@@ -491,24 +491,24 @@ export async function createGrowthContributor(input: CreateGrowthContributorInpu
       : null;
     const notes = optionalText(input?.notes, "Contributor notes", 2000);
     const db = getDb();
-    if (!db.prepare("SELECT 1 FROM people WHERE id = ?").get(personId)) throw new GrowthActionError("Choose an existing Person record.");
-    if (db.prepare("SELECT 1 FROM growth_contributors WHERE person_id = ?").get(personId)) {
+    if (!(await db.prepare("SELECT 1 FROM people WHERE id = ?").get(personId))) throw new GrowthActionError("Choose an existing Person record.");
+    if ((await db.prepare("SELECT 1 FROM growth_contributors WHERE person_id = ?").get(personId))) {
       throw new GrowthActionError("This person already has a growth-network record.");
     }
-    if (sourceChannelId && !db.prepare("SELECT 1 FROM growth_channels WHERE id = ?").get(sourceChannelId)) {
+    if (sourceChannelId && !(await db.prepare("SELECT 1 FROM growth_channels WHERE id = ?").get(sourceChannelId))) {
       throw new GrowthActionError("Choose a valid source channel.");
     }
     const id = `gct-${randomUUID()}`;
     const now = Date.now();
-    transaction(db, () => {
-      db.prepare(
-        `INSERT INTO growth_contributors
+    (await transaction(db, async () => {
+            (await db.prepare(
+                      `INSERT INTO growth_contributors
           (id, person_id, status, source_channel_id, joined_on, exited_on, notes, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
-      ).run(id, personId, input.status, sourceChannelId, joinedOn, notes, now, now);
-      logActivity("growth_contributor", id, "created", `Growth-network record created as ${input.status}.`, me.id);
-      logActivity("person", personId, "growth_network", `Joined the growth network as ${input.status}.`, me.id);
-    });
+                    ).run(id, personId, input.status, sourceChannelId, joinedOn, notes, now, now));
+            (await logActivity("growth_contributor", id, "created", `Growth-network record created as ${input.status}.`, me.id));
+            (await logActivity("person", personId, "growth_network", `Joined the growth network as ${input.status}.`, me.id));
+          }));
     revalidateGrowth();
     return { ok: true, id, updatedAt: now };
   } catch (error) {
@@ -538,29 +538,29 @@ export async function createGrowthAssignment(input: CreateGrowthAssignmentInput)
     }
     const decisionReason = cleanText(input?.decisionReason, "Assignment reason", 1000, 10);
     const db = getDb();
-    const contributor = db.prepare("SELECT status, joined_on, updated_at FROM growth_contributors WHERE id = ?")
-      .get(contributorId) as unknown as { status: string; joined_on: string | null; updated_at: number } | undefined;
+    const contributor = (await db.prepare("SELECT status, joined_on, updated_at FROM growth_contributors WHERE id = ?")
+          .get(contributorId)) as unknown as { status: string; joined_on: string | null; updated_at: number } | undefined;
     if (!contributor) throw new GrowthActionError("Choose an existing growth contributor.");
     if (contributor.status === "paused" || contributor.status === "alumni") {
       throw new GrowthActionError("Paused and alumni contributors cannot receive an active assignment.");
     }
-    if (db.prepare(
-      "SELECT 1 FROM growth_assignments WHERE contributor_id = ? AND status = 'active' AND ends_on IS NULL",
-    ).get(contributorId)) {
+    if ((await db.prepare(
+          "SELECT 1 FROM growth_assignments WHERE contributor_id = ? AND status = 'active' AND ends_on IS NULL",
+        ).get(contributorId))) {
       throw new GrowthActionError("This contributor already owns a current role. Close that assignment before starting another one.");
     }
-    if (db.prepare(
-      "SELECT 1 FROM growth_assignments WHERE contributor_id = ? AND COALESCE(ends_on, '9999-12-31') >= ?",
-    ).get(contributorId, startsOn)) {
+    if ((await db.prepare(
+          "SELECT 1 FROM growth_assignments WHERE contributor_id = ? AND COALESCE(ends_on, '9999-12-31') >= ?",
+        ).get(contributorId, startsOn))) {
       throw new GrowthActionError("This start date overlaps the contributor's existing assignment history.");
     }
-    let scope = resolvedScope(db, input?.regionId, input?.locationId);
+    let scope = (await resolvedScope(db, input?.regionId, input?.locationId));
     let manager: { contributor_id: string; role: AssignmentRole; region_id: string | null; location_id: string | null; starts_on: string } | undefined;
     if (managerAssignmentId) {
-      manager = db.prepare(
-        `SELECT contributor_id, role, region_id, location_id, starts_on
+      manager = (await db.prepare(
+              `SELECT contributor_id, role, region_id, location_id, starts_on
            FROM growth_assignments WHERE id = ? AND status = 'active' AND ends_on IS NULL`,
-      ).get(managerAssignmentId) as unknown as typeof manager;
+            ).get(managerAssignmentId)) as unknown as typeof manager;
       if (!manager) throw new GrowthActionError("Choose a current manager assignment.");
       if (manager.contributor_id === contributorId) throw new GrowthActionError("A contributor cannot manage their own assignment.");
       const allowedManagers: Record<AssignmentRole, AssignmentRole[]> = {
@@ -583,7 +583,7 @@ export async function createGrowthAssignment(input: CreateGrowthAssignmentInput)
       if (manager.location_id && scope.locationId !== manager.location_id) throw new GrowthActionError("The assignment must remain inside the manager's Location.");
     }
     if (scope.locationId && scope.regionId) {
-      const location = db.prepare("SELECT region_id FROM locations WHERE id = ?").get(scope.locationId) as unknown as { region_id: string | null };
+      const location = (await db.prepare("SELECT region_id FROM locations WHERE id = ?").get(scope.locationId)) as unknown as { region_id: string | null };
       if (location.region_id !== scope.regionId) {
         throw new GrowthActionError("Assign the Location to the manager's Region before placing a contributor there.");
       }
@@ -600,22 +600,22 @@ export async function createGrowthAssignment(input: CreateGrowthAssignmentInput)
     }
     const now = Date.now();
     const id = `gas-${randomUUID()}`;
-    transaction(db, () => {
-      if (contributor.status === "candidate") {
-        const promotedAt = nextTimestamp(contributor.updated_at);
-        db.prepare(
-          "UPDATE growth_contributors SET status = 'active', joined_on = COALESCE(joined_on, ?), updated_at = ? WHERE id = ? AND updated_at = ?",
-        ).run(startsOn, promotedAt, contributorId, contributor.updated_at);
-      }
-      db.prepare(
-        `INSERT INTO growth_assignments
+    (await transaction(db, async () => {
+            if (contributor.status === "candidate") {
+              const promotedAt = nextTimestamp(contributor.updated_at);
+              (await db.prepare(
+                          "UPDATE growth_contributors SET status = 'active', joined_on = COALESCE(joined_on, ?), updated_at = ? WHERE id = ? AND updated_at = ?",
+                        ).run(startsOn, promotedAt, contributorId, contributor.updated_at));
+            }
+            (await db.prepare(
+                      `INSERT INTO growth_assignments
           (id, contributor_id, role, manager_assignment_id, region_id, location_id, starts_on, ends_on,
            status, decision_reason, created_by_user_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'active', ?, ?, ?, ?)`,
-      ).run(id, contributorId, input.role, managerAssignmentId, scope.regionId, scope.locationId, startsOn, decisionReason, me.id, now, now);
-      logActivity("growth_assignment", id, "created", `${input.role.replace(/_/g, " ")} assignment started. ${decisionReason}`, me.id);
-      logActivity("growth_contributor", contributorId, "assignment", `${input.role.replace(/_/g, " ")} scope assigned.`, me.id);
-    });
+                    ).run(id, contributorId, input.role, managerAssignmentId, scope.regionId, scope.locationId, startsOn, decisionReason, me.id, now, now));
+            (await logActivity("growth_assignment", id, "created", `${input.role.replace(/_/g, " ")} assignment started. ${decisionReason}`, me.id));
+            (await logActivity("growth_contributor", contributorId, "assignment", `${input.role.replace(/_/g, " ")} scope assigned.`, me.id));
+          }));
     revalidateGrowth();
     return { ok: true, id, updatedAt: now };
   } catch (error) {
@@ -643,54 +643,54 @@ export async function closeGrowthAssignment(input: CloseGrowthAssignmentInput): 
     if (endsOn > canonicalDateInZone()) throw new GrowthActionError("Close an assignment on or after its actual final day, not in the future.");
     const closureReason = cleanText(input?.closureReason, "Closure reason", 1000, 10);
     const db = getDb();
-    const closedAt = transaction(db, () => {
-      const assignment = db.prepare(
-        `SELECT contributor_id, role, starts_on, status, updated_at
+    const closedAt = (await transaction(db, async () => {
+          const assignment = (await db.prepare(
+                  `SELECT contributor_id, role, starts_on, status, updated_at
            FROM growth_assignments WHERE id = ?`,
-      ).get(id) as unknown as {
-        contributor_id: string;
-        role: AssignmentRole;
-        starts_on: string;
-        status: string;
-        updated_at: number;
-      } | undefined;
-      if (!assignment) throw new GrowthActionError("This contributor assignment no longer exists.");
-      if (assignment.status !== "active") throw new GrowthActionError("This assignment is already locked operating history.");
-      if (assignment.updated_at !== expectedUpdatedAt) throw new GrowthActionError("This assignment changed. Refresh before closing it.");
-      if (endsOn < assignment.starts_on) throw new GrowthActionError("The assignment cannot end before it started.");
-      if (db.prepare(
-        `SELECT 1 FROM growth_assignments child
+                ).get(id)) as unknown as {
+            contributor_id: string;
+            role: AssignmentRole;
+            starts_on: string;
+            status: string;
+            updated_at: number;
+          } | undefined;
+          if (!assignment) throw new GrowthActionError("This contributor assignment no longer exists.");
+          if (assignment.status !== "active") throw new GrowthActionError("This assignment is already locked operating history.");
+          if (assignment.updated_at !== expectedUpdatedAt) throw new GrowthActionError("This assignment changed. Refresh before closing it.");
+          if (endsOn < assignment.starts_on) throw new GrowthActionError("The assignment cannot end before it started.");
+          if ((await db.prepare(
+                  `SELECT 1 FROM growth_assignments child
           WHERE child.manager_assignment_id = ?
             AND (child.ends_on IS NULL OR child.ends_on > ?)
           LIMIT 1`,
-      ).get(id, endsOn)) {
-        throw new GrowthActionError("Close every direct report through this date before closing their manager assignment.");
-      }
-      const laterEvidence = db.prepare(
-        `SELECT occurred_on FROM student_acquisition_touchpoints
+                ).get(id, endsOn))) {
+            throw new GrowthActionError("Close every direct report through this date before closing their manager assignment.");
+          }
+          const laterEvidence = (await db.prepare(
+                  `SELECT occurred_on FROM student_acquisition_touchpoints
           WHERE contributor_id = ? AND occurred_on > ? AND occurred_on >= ?
           ORDER BY occurred_on DESC LIMIT 1`,
-      ).get(assignment.contributor_id, endsOn, assignment.starts_on) as unknown as { occurred_on: string } | undefined;
-      if (laterEvidence) {
-        throw new GrowthActionError(`This contributor has evidence on ${laterEvidence.occurred_on}. Choose that date or a later final day.`);
-      }
-      const nextUpdatedAt = nextTimestamp(assignment.updated_at);
-      const updated = db.prepare(
-        `UPDATE growth_assignments
+                ).get(assignment.contributor_id, endsOn, assignment.starts_on)) as unknown as { occurred_on: string } | undefined;
+          if (laterEvidence) {
+            throw new GrowthActionError(`This contributor has evidence on ${laterEvidence.occurred_on}. Choose that date or a later final day.`);
+          }
+          const nextUpdatedAt = nextTimestamp(assignment.updated_at);
+          const updated = (await db.prepare(
+                  `UPDATE growth_assignments
             SET status = ?, ends_on = ?, closed_by_user_id = ?, closure_reason = ?, updated_at = ?
           WHERE id = ? AND status = 'active' AND updated_at = ?`,
-      ).run(input.status, endsOn, me.id, closureReason, nextUpdatedAt, id, assignment.updated_at);
-      if (Number(updated.changes) !== 1) throw new GrowthActionError("This assignment changed. Refresh before closing it.");
-      logActivity(
-        "growth_assignment",
-        id,
-        "closed",
-        `${assignment.role.replace(/_/g, " ")} assignment ${input.status} on ${endsOn}. ${closureReason}`,
-        me.id,
-      );
-      logActivity("growth_contributor", assignment.contributor_id, "assignment_closed", `${input.status} on ${endsOn}. ${closureReason}`, me.id);
-      return nextUpdatedAt;
-    });
+                ).run(input.status, endsOn, me.id, closureReason, nextUpdatedAt, id, assignment.updated_at));
+          if (Number(updated.changes) !== 1) throw new GrowthActionError("This assignment changed. Refresh before closing it.");
+          (await logActivity(
+                    "growth_assignment",
+                    id,
+                    "closed",
+                    `${assignment.role.replace(/_/g, " ")} assignment ${input.status} on ${endsOn}. ${closureReason}`,
+                    me.id,
+                  ));
+          (await logActivity("growth_contributor", assignment.contributor_id, "assignment_closed", `${input.status} on ${endsOn}. ${closureReason}`, me.id));
+          return nextUpdatedAt;
+        }));
     revalidateGrowth();
     return { ok: true, id, updatedAt: closedAt };
   } catch (error) {
@@ -718,53 +718,53 @@ export async function updateGrowthContributorStatus(input: UpdateGrowthContribut
     if (effectiveOn > canonicalDateInZone()) throw new GrowthActionError("A contributor lifecycle change cannot take effect in the future.");
     const reason = cleanText(input?.reason, "Lifecycle reason", 1000, 10);
     const db = getDb();
-    const updatedAt = transaction(db, () => {
-      const contributor = db.prepare(
-        "SELECT status, joined_on, exited_on, updated_at FROM growth_contributors WHERE id = ?",
-      ).get(id) as unknown as {
-        status: "candidate" | "active" | "paused" | "alumni";
-        joined_on: string | null;
-        exited_on: string | null;
-        updated_at: number;
-      } | undefined;
-      if (!contributor) throw new GrowthActionError("This growth contributor no longer exists.");
-      if (contributor.updated_at !== expectedUpdatedAt) throw new GrowthActionError("This contributor changed. Refresh before saving another lifecycle decision.");
-      if (contributor.status === "alumni") throw new GrowthActionError("Alumni status is locked operating history.");
-      if (contributor.status === input.nextStatus) throw new GrowthActionError(`This contributor is already ${input.nextStatus}.`);
-      const allowed: Record<"candidate" | "active" | "paused" | "alumni", Array<UpdateGrowthContributorStatusInput["nextStatus"]>> = {
-        candidate: ["active"],
-        active: ["paused", "alumni"],
-        paused: ["active", "alumni"],
-        alumni: [],
-      };
-      if (!allowed[contributor.status].includes(input.nextStatus)) {
-        throw new GrowthActionError(`A ${contributor.status} contributor cannot move directly to ${input.nextStatus}.`);
-      }
-      if (input.nextStatus !== "active" && db.prepare(
-        "SELECT 1 FROM growth_assignments WHERE contributor_id = ? AND status = 'active' AND ends_on IS NULL",
-      ).get(id)) {
-        throw new GrowthActionError("Close the contributor's current assignment before pausing or moving them to alumni.");
-      }
-      const joinedOn = contributor.joined_on ?? (input.nextStatus === "active" ? effectiveOn : null);
-      if (!joinedOn) throw new GrowthActionError("Activate this candidate before using another lifecycle state.");
-      if (effectiveOn < joinedOn) throw new GrowthActionError("The effective date cannot be before the contributor joined.");
-      const exitedOn = input.nextStatus === "alumni" ? effectiveOn : null;
-      const nextUpdatedAt = nextTimestamp(contributor.updated_at);
-      const updated = db.prepare(
-        `UPDATE growth_contributors
+    const updatedAt = (await transaction(db, async () => {
+          const contributor = (await db.prepare(
+                  "SELECT status, joined_on, exited_on, updated_at FROM growth_contributors WHERE id = ?",
+                ).get(id)) as unknown as {
+            status: "candidate" | "active" | "paused" | "alumni";
+            joined_on: string | null;
+            exited_on: string | null;
+            updated_at: number;
+          } | undefined;
+          if (!contributor) throw new GrowthActionError("This growth contributor no longer exists.");
+          if (contributor.updated_at !== expectedUpdatedAt) throw new GrowthActionError("This contributor changed. Refresh before saving another lifecycle decision.");
+          if (contributor.status === "alumni") throw new GrowthActionError("Alumni status is locked operating history.");
+          if (contributor.status === input.nextStatus) throw new GrowthActionError(`This contributor is already ${input.nextStatus}.`);
+          const allowed: Record<"candidate" | "active" | "paused" | "alumni", Array<UpdateGrowthContributorStatusInput["nextStatus"]>> = {
+            candidate: ["active"],
+            active: ["paused", "alumni"],
+            paused: ["active", "alumni"],
+            alumni: [],
+          };
+          if (!allowed[contributor.status].includes(input.nextStatus)) {
+            throw new GrowthActionError(`A ${contributor.status} contributor cannot move directly to ${input.nextStatus}.`);
+          }
+          if (input.nextStatus !== "active" && (await db.prepare(
+                  "SELECT 1 FROM growth_assignments WHERE contributor_id = ? AND status = 'active' AND ends_on IS NULL",
+                ).get(id))) {
+            throw new GrowthActionError("Close the contributor's current assignment before pausing or moving them to alumni.");
+          }
+          const joinedOn = contributor.joined_on ?? (input.nextStatus === "active" ? effectiveOn : null);
+          if (!joinedOn) throw new GrowthActionError("Activate this candidate before using another lifecycle state.");
+          if (effectiveOn < joinedOn) throw new GrowthActionError("The effective date cannot be before the contributor joined.");
+          const exitedOn = input.nextStatus === "alumni" ? effectiveOn : null;
+          const nextUpdatedAt = nextTimestamp(contributor.updated_at);
+          const updated = (await db.prepare(
+                  `UPDATE growth_contributors
             SET status = ?, joined_on = ?, exited_on = ?, updated_at = ?
           WHERE id = ? AND updated_at = ?`,
-      ).run(input.nextStatus, joinedOn, exitedOn, nextUpdatedAt, id, contributor.updated_at);
-      if (Number(updated.changes) !== 1) throw new GrowthActionError("This contributor changed. Refresh before saving another lifecycle decision.");
-      logActivity(
-        "growth_contributor",
-        id,
-        "status",
-        `${contributor.status} → ${input.nextStatus} effective ${effectiveOn}. ${reason}`,
-        me.id,
-      );
-      return nextUpdatedAt;
-    });
+                ).run(input.nextStatus, joinedOn, exitedOn, nextUpdatedAt, id, contributor.updated_at));
+          if (Number(updated.changes) !== 1) throw new GrowthActionError("This contributor changed. Refresh before saving another lifecycle decision.");
+          (await logActivity(
+                    "growth_contributor",
+                    id,
+                    "status",
+                    `${contributor.status} → ${input.nextStatus} effective ${effectiveOn}. ${reason}`,
+                    me.id,
+                  ));
+          return nextUpdatedAt;
+        }));
     revalidateGrowth();
     return { ok: true, id, updatedAt };
   } catch (error) {
@@ -783,7 +783,7 @@ export interface CreateOperatingGoalInput {
   notes?: string;
 }
 
-function validGoalScope(db: Db, scopeType: GoalScopeType, scopeId: string): boolean {
+async function validGoalScope(db: Db, scopeType: GoalScopeType, scopeId: string): Promise<boolean> {
   const tables: Record<GoalScopeType, string> = {
     organization: "organizations",
     region: "operating_regions",
@@ -792,7 +792,7 @@ function validGoalScope(db: Db, scopeType: GoalScopeType, scopeId: string): bool
     assignment: "growth_assignments",
     program: "programs",
   };
-  return Boolean(db.prepare(`SELECT 1 FROM ${tables[scopeType]} WHERE id = ?`).get(scopeId));
+  return Boolean((await db.prepare(`SELECT 1 FROM ${tables[scopeType]} WHERE id = ?`).get(scopeId)));
 }
 
 export async function createOperatingGoal(input: CreateOperatingGoalInput): Promise<GrowthActionResult> {
@@ -808,19 +808,19 @@ export async function createOperatingGoal(input: CreateOperatingGoalInput): Prom
     const ownerUserId = identifier(input?.ownerUserId, "goal owner");
     const notes = optionalText(input?.notes, "Goal notes", 2000);
     const db = getDb();
-    if (!validGoalScope(db, input.scopeType, scopeId)) throw new GrowthActionError("The selected goal scope no longer exists.");
-    if (!activeStaff(db, ownerUserId)) throw new GrowthActionError("Choose an active staff goal owner.");
+    if (!(await validGoalScope(db, input.scopeType, scopeId))) throw new GrowthActionError("The selected goal scope no longer exists.");
+    if (!(await activeStaff(db, ownerUserId))) throw new GrowthActionError("Choose an active staff goal owner.");
     const id = `gol-${randomUUID()}`;
     const now = Date.now();
-    transaction(db, () => {
-      db.prepare(
-        `INSERT INTO operating_goals
+    (await transaction(db, async () => {
+            (await db.prepare(
+                      `INSERT INTO operating_goals
           (id, scope_type, scope_id, metric, target_value, starts_on, ends_on, owner_user_id,
            status, notes, created_by_user_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
-      ).run(id, input.scopeType, scopeId, input.metric, targetValue, startsOn, endsOn, ownerUserId, notes, me.id, now, now);
-      logActivity("operating_goal", id, "created", `${targetValue} ${input.metric.replace(/_/g, " ")} by ${endsOn}.`, me.id);
-    });
+                    ).run(id, input.scopeType, scopeId, input.metric, targetValue, startsOn, endsOn, ownerUserId, notes, me.id, now, now));
+            (await logActivity("operating_goal", id, "created", `${targetValue} ${input.metric.replace(/_/g, " ")} by ${endsOn}.`, me.id));
+          }));
     revalidateGrowth();
     return { ok: true, id, updatedAt: now };
   } catch (error) {
@@ -845,49 +845,49 @@ export async function closeOperatingGoal(input: CloseOperatingGoalInput): Promis
     }
     const decisionNote = cleanText(input?.decisionNote, input.mode === "cancel" ? "Cancellation reason" : "Goal learning", 2000, 10);
     const db = getDb();
-    const result = transaction(db, () => {
-      const goal = db.prepare(
-        `SELECT scope_type, scope_id, metric, target_value, starts_on, ends_on, status, updated_at
+    const result = (await transaction(db, async () => {
+          const goal = (await db.prepare(
+                  `SELECT scope_type, scope_id, metric, target_value, starts_on, ends_on, status, updated_at
            FROM operating_goals WHERE id = ?`,
-      ).get(id) as unknown as {
-        scope_type: GoalScopeType;
-        scope_id: string;
-        metric: GrowthMetric;
-        target_value: number;
-        starts_on: string;
-        ends_on: string;
-        status: string;
-        updated_at: number;
-      } | undefined;
-      if (!goal) throw new GrowthActionError("This operating goal no longer exists.");
-      if (goal.status !== "active") throw new GrowthActionError("This goal is already locked operating history.");
-      if (goal.updated_at !== expectedUpdatedAt) throw new GrowthActionError("This goal changed. Refresh before recording its result.");
-      const actual = deriveGrowthMetricActual(
-        goal.metric,
-        goal.scope_type,
-        goal.scope_id,
-        goal.starts_on,
-        goal.ends_on,
-      );
-      const status = input.mode === "cancel"
-        ? "cancelled"
-        : (actual >= Number(goal.target_value) ? "achieved" : "missed");
-      const closedAt = nextTimestamp(goal.updated_at);
-      const updated = db.prepare(
-        `UPDATE operating_goals
+                ).get(id)) as unknown as {
+            scope_type: GoalScopeType;
+            scope_id: string;
+            metric: GrowthMetric;
+            target_value: number;
+            starts_on: string;
+            ends_on: string;
+            status: string;
+            updated_at: number;
+          } | undefined;
+          if (!goal) throw new GrowthActionError("This operating goal no longer exists.");
+          if (goal.status !== "active") throw new GrowthActionError("This goal is already locked operating history.");
+          if (goal.updated_at !== expectedUpdatedAt) throw new GrowthActionError("This goal changed. Refresh before recording its result.");
+          const actual = await deriveGrowthMetricActual(
+            goal.metric,
+            goal.scope_type,
+            goal.scope_id,
+            goal.starts_on,
+            goal.ends_on,
+          );
+          const status = input.mode === "cancel"
+            ? "cancelled"
+            : (actual >= Number(goal.target_value) ? "achieved" : "missed");
+          const closedAt = nextTimestamp(goal.updated_at);
+          const updated = (await db.prepare(
+                  `UPDATE operating_goals
             SET status = ?, result_value = ?, closed_at = ?, decision_note = ?, updated_at = ?
           WHERE id = ? AND status = 'active' AND updated_at = ?`,
-      ).run(status, actual, closedAt, decisionNote, closedAt, id, goal.updated_at);
-      if (Number(updated.changes) !== 1) throw new GrowthActionError("This goal changed. Refresh before recording its result.");
-      logActivity(
-        "operating_goal",
-        id,
-        "closed",
-        `${status}; derived result ${actual} of ${Number(goal.target_value)} ${goal.metric.replace(/_/g, " ")}. ${decisionNote}`,
-        me.id,
-      );
-      return { status, actual, closedAt };
-    });
+                ).run(status, actual, closedAt, decisionNote, closedAt, id, goal.updated_at));
+          if (Number(updated.changes) !== 1) throw new GrowthActionError("This goal changed. Refresh before recording its result.");
+          (await logActivity(
+                    "operating_goal",
+                    id,
+                    "closed",
+                    `${status}; derived result ${actual} of ${Number(goal.target_value)} ${goal.metric.replace(/_/g, " ")}. ${decisionNote}`,
+                    me.id,
+                  ));
+          return { status, actual, closedAt };
+        }));
     revalidateGrowth();
     return { ok: true, id, updatedAt: result.closedAt };
   } catch (error) {
@@ -907,7 +907,7 @@ export interface RecordStudentAcquisitionInput {
   occurredAt?: number;
 }
 
-function replaceCurrentAttribution(
+async function replaceCurrentAttribution(
   db: Db,
   studentId: string,
   touchpointId: string,
@@ -915,23 +915,23 @@ function replaceCurrentAttribution(
   evidenceNote: string,
   actorUserId: string,
   now: number,
-): void {
-  const current = db.prepare(
-    "SELECT id, effective_from FROM student_acquisition_attributions WHERE student_id = ? AND effective_to IS NULL",
-  ).get(studentId) as unknown as { id: string; effective_from: number } | undefined;
+): Promise<void> {
+  const current = (await db.prepare(
+      "SELECT id, effective_from FROM student_acquisition_attributions WHERE student_id = ? AND effective_to IS NULL",
+    ).get(studentId)) as unknown as { id: string; effective_from: number } | undefined;
   const effectiveAt = Math.max(now, (current?.effective_from ?? 0) + 1);
   if (current) {
-    const closed = db.prepare(
-      "UPDATE student_acquisition_attributions SET effective_to = ? WHERE id = ? AND effective_to IS NULL",
-    ).run(effectiveAt, current.id);
+    const closed = (await db.prepare(
+          "UPDATE student_acquisition_attributions SET effective_to = ? WHERE id = ? AND effective_to IS NULL",
+        ).run(effectiveAt, current.id));
     if (Number(closed.changes) !== 1) throw new GrowthActionError("This student's attribution changed. Refresh and try again.");
   }
-  db.prepare(
-    `INSERT INTO student_acquisition_attributions
+  (await db.prepare(
+        `INSERT INTO student_acquisition_attributions
       (id, student_id, touchpoint_id, method, evidence_note, effective_from, effective_to,
        decided_by_user_id, decision_source, decision_source_id, created_at)
      VALUES (?, ?, ?, ?, ?, ?, NULL, ?, 'operator', NULL, ?)`,
-  ).run(`saa-${randomUUID()}`, studentId, touchpointId, method, evidenceNote, effectiveAt, actorUserId, now);
+      ).run(`saa-${randomUUID()}`, studentId, touchpointId, method, evidenceNote, effectiveAt, actorUserId, now));
 }
 
 export async function recordStudentAcquisition(input: RecordStudentAcquisitionInput): Promise<GrowthActionResult> {
@@ -948,41 +948,41 @@ export async function recordStudentAcquisition(input: RecordStudentAcquisitionIn
     const occurredAt = input?.occurredAt == null ? Date.now() : positiveInteger(input.occurredAt, "Touchpoint time", Number.MAX_SAFE_INTEGER);
     if (occurredAt > Date.now() + 5 * 60 * 1000) throw new GrowthActionError("A touchpoint cannot be recorded in the future.");
     const db = getDb();
-    const student = db.prepare("SELECT person_id, guardian_person_id FROM students WHERE id = ? AND enrollment_status = 'active'")
-      .get(studentId) as unknown as { person_id: string | null; guardian_person_id: string | null } | undefined;
+    const student = (await db.prepare("SELECT person_id, guardian_person_id FROM students WHERE id = ? AND enrollment_status = 'active'")
+          .get(studentId)) as unknown as { person_id: string | null; guardian_person_id: string | null } | undefined;
     const acquisitionPersonId = student?.person_id ?? student?.guardian_person_id ?? null;
     if (!acquisitionPersonId) throw new GrowthActionError("This Student needs a canonical Student or guardian Person identity before attribution can be recorded.");
-    if (!db.prepare("SELECT 1 FROM growth_channels WHERE id = ? AND status = 'active'").get(channelId)) {
+    if (!(await db.prepare("SELECT 1 FROM growth_channels WHERE id = ? AND status = 'active'").get(channelId))) {
       throw new GrowthActionError("Choose an active acquisition channel.");
     }
-    const calendar = resolveEvidenceCalendar(db, { channelId, campaignId, contributorId, occurredAt });
+    const calendar = (await resolveEvidenceCalendar(db, { channelId, campaignId, contributorId, occurredAt }));
     const id = `sat-${randomUUID()}`;
     const now = Date.now();
-    transaction(db, () => {
-      db.prepare(
-        `INSERT INTO student_acquisition_touchpoints
+    (await transaction(db, async () => {
+            (await db.prepare(
+                      `INSERT INTO student_acquisition_touchpoints
           (id, person_id, student_id, channel_id, campaign_id, contributor_id, touchpoint_type,
            occurred_at, occurred_on, timezone, external_key, detail, recorded_by_user_id,
            voided_at, voided_by_user_id, void_reason, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, ?)`,
-      ).run(
-        id,
-        acquisitionPersonId,
-        studentId,
-        channelId,
-        campaignId,
-        contributorId,
-        input.touchpointType,
-        occurredAt,
-        calendar.occurredOn,
-        calendar.timeZone,
-        detail,
-        me.id,
-        now,
-      );
-      replaceCurrentAttribution(db, studentId, id, input.method, evidenceNote, me.id, now);
-      logActivity("student", studentId, "acquisition", `Acquisition attribution recorded via ${input.touchpointType}. ${evidenceNote}`, me.id);
-    });
+                    ).run(
+                      id,
+                      acquisitionPersonId,
+                      studentId,
+                      channelId,
+                      campaignId,
+                      contributorId,
+                      input.touchpointType,
+                      occurredAt,
+                      calendar.occurredOn,
+                      calendar.timeZone,
+                      detail,
+                      me.id,
+                      now,
+                    ));
+            (await replaceCurrentAttribution(db, studentId, id, input.method, evidenceNote, me.id, now));
+            (await logActivity("student", studentId, "acquisition", `Acquisition attribution recorded via ${input.touchpointType}. ${evidenceNote}`, me.id));
+          }));
     revalidateGrowth();
     revalidatePath(`/app/students/${studentId}`);
     return { ok: true, id, updatedAt: now };
@@ -1010,54 +1010,54 @@ export async function recordStudentReferral(input: RecordStudentReferralInput): 
     const contributorId = optionalIdentifier(input?.contributorId, "contributor");
     const evidenceNote = cleanText(input?.evidenceNote, "Referral evidence", 1000, 10);
     const db = getDb();
-    const referred = db.prepare("SELECT person_id FROM students WHERE id = ? AND enrollment_status = 'active'")
-      .get(referredStudentId) as unknown as { person_id: string | null } | undefined;
+    const referred = (await db.prepare("SELECT person_id FROM students WHERE id = ? AND enrollment_status = 'active'")
+          .get(referredStudentId)) as unknown as { person_id: string | null } | undefined;
     if (!referred?.person_id) throw new GrowthActionError("The referred Student needs a canonical Person identity.");
     if (referred.person_id === referrerPersonId) throw new GrowthActionError("A person cannot refer themselves.");
-    if (!db.prepare("SELECT 1 FROM people WHERE id = ?").get(referrerPersonId)) throw new GrowthActionError("Choose an existing referrer Person.");
-    if (!db.prepare("SELECT 1 FROM growth_channels WHERE id = ? AND category = 'referral' AND status = 'active'").get(channelId)) {
+    if (!(await db.prepare("SELECT 1 FROM people WHERE id = ?").get(referrerPersonId))) throw new GrowthActionError("Choose an existing referrer Person.");
+    if (!(await db.prepare("SELECT 1 FROM growth_channels WHERE id = ? AND category = 'referral' AND status = 'active'").get(channelId))) {
       throw new GrowthActionError("Choose an active referral channel.");
     }
-    if (db.prepare("SELECT 1 FROM student_referrals WHERE referred_person_id = ? AND voided_at IS NULL").get(referred.person_id)) {
+    if ((await db.prepare("SELECT 1 FROM student_referrals WHERE referred_person_id = ? AND voided_at IS NULL").get(referred.person_id))) {
       throw new GrowthActionError("This learner already has a current referral source. Void or reconcile that evidence before replacing it.");
     }
     const referralId = `srf-${randomUUID()}`;
     const touchpointId = `sat-${randomUUID()}`;
     const referralCode = `bow-${randomBytes(8).toString("hex")}`;
     const now = Date.now();
-    const calendar = resolveEvidenceCalendar(db, { channelId, campaignId, contributorId, occurredAt: now });
-    transaction(db, () => {
-      db.prepare(
-        `INSERT INTO student_acquisition_touchpoints
+    const calendar = (await resolveEvidenceCalendar(db, { channelId, campaignId, contributorId, occurredAt: now }));
+    (await transaction(db, async () => {
+            (await db.prepare(
+                      `INSERT INTO student_acquisition_touchpoints
           (id, person_id, student_id, channel_id, campaign_id, contributor_id, touchpoint_type,
            occurred_at, occurred_on, timezone, external_key, detail, recorded_by_user_id,
            voided_at, voided_by_user_id, void_reason, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 'referral', ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, ?)`,
-      ).run(
-        touchpointId,
-        referred.person_id,
-        referredStudentId,
-        channelId,
-        campaignId,
-        contributorId,
-        now,
-        calendar.occurredOn,
-        calendar.timeZone,
-        evidenceNote,
-        me.id,
-        now,
-      );
-      db.prepare(
-        `INSERT INTO student_referrals
+                    ).run(
+                      touchpointId,
+                      referred.person_id,
+                      referredStudentId,
+                      channelId,
+                      campaignId,
+                      contributorId,
+                      now,
+                      calendar.occurredOn,
+                      calendar.timeZone,
+                      evidenceNote,
+                      me.id,
+                      now,
+                    ));
+            (await db.prepare(
+                      `INSERT INTO student_referrals
           (id, referrer_person_id, referred_person_id, referred_student_id, touchpoint_id, campaign_id,
            contributor_id, referral_code, submitted_at, notes, created_by_user_id,
            voided_at, voided_by_user_id, void_reason, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
-      ).run(referralId, referrerPersonId, referred.person_id, referredStudentId, touchpointId, campaignId, contributorId, referralCode, now, evidenceNote, me.id, now);
-      replaceCurrentAttribution(db, referredStudentId, touchpointId, "referral", evidenceNote, me.id, now);
-      logActivity("student", referredStudentId, "referral", `Referral ${referralCode} recorded. Success remains pending until finalized attendance proves participation.`, me.id);
-      logActivity("person", referrerPersonId, "referral", `Referred Student ${referredStudentId}; success is derived from verified participation.`, me.id);
-    });
+                    ).run(referralId, referrerPersonId, referred.person_id, referredStudentId, touchpointId, campaignId, contributorId, referralCode, now, evidenceNote, me.id, now));
+            (await replaceCurrentAttribution(db, referredStudentId, touchpointId, "referral", evidenceNote, me.id, now));
+            (await logActivity("student", referredStudentId, "referral", `Referral ${referralCode} recorded. Success remains pending until finalized attendance proves participation.`, me.id));
+            (await logActivity("person", referrerPersonId, "referral", `Referred Student ${referredStudentId}; success is derived from verified participation.`, me.id));
+          }));
     revalidateGrowth();
     revalidatePath(`/app/students/${referredStudentId}`);
     return { ok: true, id: referralId, updatedAt: now };
@@ -1077,9 +1077,9 @@ export async function confirmClassEnrollment(input: ConfirmClassEnrollmentInput)
     const enrollmentId = identifier(input?.enrollmentId, "Class enrollment");
     if (!isOneOf(CONFIRMATION_SOURCES, input?.source)) throw new GrowthActionError("Choose who confirmed this registration.");
     const db = getDb();
-    const enrollment = db.prepare(
-      "SELECT class_id, student_id, status, enrolled_at, confirmed_at FROM class_enrollments WHERE id = ?",
-    ).get(enrollmentId) as unknown as {
+    const enrollment = (await db.prepare(
+          "SELECT class_id, student_id, status, enrolled_at, confirmed_at FROM class_enrollments WHERE id = ?",
+        ).get(enrollmentId)) as unknown as {
       class_id: string;
       student_id: string;
       status: string;
@@ -1090,15 +1090,15 @@ export async function confirmClassEnrollment(input: ConfirmClassEnrollmentInput)
     if (!["enrolled", "waitlisted"].includes(enrollment.status)) throw new GrowthActionError("Withdrawn enrollment cannot be confirmed.");
     if (enrollment.confirmed_at != null) throw new GrowthActionError("This enrollment already has immutable confirmation evidence.");
     const confirmedAt = Math.max(Date.now(), enrollment.enrolled_at);
-    transaction(db, () => {
-      const result = db.prepare(
-        `UPDATE class_enrollments SET confirmed_at = ?, confirmation_source = ?
+    (await transaction(db, async () => {
+            const result = (await db.prepare(
+                    `UPDATE class_enrollments SET confirmed_at = ?, confirmation_source = ?
           WHERE id = ? AND confirmed_at IS NULL`,
-      ).run(confirmedAt, input.source, enrollmentId);
-      if (Number(result.changes) !== 1) throw new GrowthActionError("This enrollment was confirmed elsewhere. Refresh before continuing.");
-      logActivity("class", enrollment.class_id, "confirmation", `Registration ${enrollmentId} confirmed by ${input.source}.`, me.id);
-      logActivity("student", enrollment.student_id, "confirmation", `Class enrollment ${enrollmentId} explicitly confirmed.`, me.id);
-    });
+                  ).run(confirmedAt, input.source, enrollmentId));
+            if (Number(result.changes) !== 1) throw new GrowthActionError("This enrollment was confirmed elsewhere. Refresh before continuing.");
+            (await logActivity("class", enrollment.class_id, "confirmation", `Registration ${enrollmentId} confirmed by ${input.source}.`, me.id));
+            (await logActivity("student", enrollment.student_id, "confirmation", `Class enrollment ${enrollmentId} explicitly confirmed.`, me.id));
+          }));
     revalidateGrowth();
     revalidatePath(`/app/classes/${enrollment.class_id}`);
     revalidatePath(`/app/students/${enrollment.student_id}`);
@@ -1126,23 +1126,23 @@ export async function recordStudentProgramOutcome(input: RecordStudentProgramOut
     if (occurredOn > canonicalDateInZone()) throw new GrowthActionError("An outcome cannot be recorded in the future.");
     const evidenceNote = cleanText(input?.evidenceNote, "Outcome evidence", 2000, 10);
     const db = getDb();
-    if (!db.prepare(
-      `SELECT 1 FROM class_enrollments ce JOIN classes c ON c.id = ce.class_id
+    if (!(await db.prepare(
+          `SELECT 1 FROM class_enrollments ce JOIN classes c ON c.id = ce.class_id
         WHERE ce.student_id = ? AND c.program_id = ?`,
-    ).get(studentId, programId)) {
+        ).get(studentId, programId))) {
       throw new GrowthActionError("This Student has no enrollment evidence in the selected Program.");
     }
     const id = `spo-${randomUUID()}`;
     const now = Date.now();
-    transaction(db, () => {
-      db.prepare(
-        `INSERT INTO student_program_outcomes
+    (await transaction(db, async () => {
+            (await db.prepare(
+                      `INSERT INTO student_program_outcomes
           (id, student_id, program_id, outcome_type, occurred_on, evidence_note, recorded_by_user_id, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(id, studentId, programId, input.outcomeType, occurredOn, evidenceNote, me.id, now);
-      logActivity("student", studentId, "program_outcome", `${input.outcomeType} · ${programId}. ${evidenceNote}`, me.id);
-      logActivity("program", programId, "student_outcome", `${studentId} · ${input.outcomeType}.`, me.id);
-    });
+                    ).run(id, studentId, programId, input.outcomeType, occurredOn, evidenceNote, me.id, now));
+            (await logActivity("student", studentId, "program_outcome", `${input.outcomeType} · ${programId}. ${evidenceNote}`, me.id));
+            (await logActivity("program", programId, "student_outcome", `${studentId} · ${input.outcomeType}.`, me.id));
+          }));
     revalidateGrowth();
     revalidatePath(`/app/programs/${programId}`);
     revalidatePath(`/app/students/${studentId}`);
@@ -1180,29 +1180,29 @@ export async function createGrowthPlaybook(input: CreateGrowthPlaybookInput): Pr
     const evidence = cleanText(input?.evidence, "Evidence", 3000, 20);
     const adoptionNotes = optionalText(input?.adoptionNotes, "Adoption notes", 3000);
     const db = getDb();
-    if (!activeStaff(db, ownerUserId)) throw new GrowthActionError("Choose an active staff playbook owner.");
-    if (!db.prepare(
-      `SELECT 1 FROM growth_campaigns
+    if (!(await activeStaff(db, ownerUserId))) throw new GrowthActionError("Choose an active staff playbook owner.");
+    if (!(await db.prepare(
+          `SELECT 1 FROM growth_campaigns
         WHERE id = ? AND status = 'completed' AND result_value IS NOT NULL
           AND decision IS NOT NULL AND length(trim(COALESCE(learning,''))) >= 20`,
-    ).get(sourceCampaignId)) {
+        ).get(sourceCampaignId))) {
       throw new GrowthActionError("A playbook needs a completed campaign with a result, decision, and reusable learning.");
     }
     const baseSlug = slugify(title);
     if (baseSlug.length < 3) throw new GrowthActionError("Use a playbook title that can form a readable URL slug.");
     let slug = baseSlug;
-    if (db.prepare("SELECT 1 FROM growth_playbooks WHERE slug = ?").get(slug)) slug = `${baseSlug}-${randomBytes(3).toString("hex")}`;
+    if ((await db.prepare("SELECT 1 FROM growth_playbooks WHERE slug = ?").get(slug))) slug = `${baseSlug}-${randomBytes(3).toString("hex")}`;
     const id = `gpb-${randomUUID()}`;
     const now = Date.now();
-    transaction(db, () => {
-      db.prepare(
-        `INSERT INTO growth_playbooks
+    (await transaction(db, async () => {
+            (await db.prepare(
+                      `INSERT INTO growth_playbooks
           (id, slug, title, status, source_campaign_id, owner_user_id, problem, play,
            evidence, adoption_notes, published_at, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(id, slug, title, input.status, sourceCampaignId, ownerUserId, problem, play, evidence, adoptionNotes, input.status === "active" ? now : null, now, now);
-      logActivity("growth_playbook", id, "created", `${title} promoted from campaign ${sourceCampaignId} as ${input.status}.`, me.id);
-    });
+                    ).run(id, slug, title, input.status, sourceCampaignId, ownerUserId, problem, play, evidence, adoptionNotes, input.status === "active" ? now : null, now, now));
+            (await logActivity("growth_playbook", id, "created", `${title} promoted from campaign ${sourceCampaignId} as ${input.status}.`, me.id));
+          }));
     revalidateGrowth();
     return { ok: true, id, updatedAt: now };
   } catch (error) {

@@ -23,79 +23,79 @@ function usableOrganizationName(value: string): boolean {
   return Boolean(normalized && normalized !== "—" && normalized.toLowerCase() !== "not provided");
 }
 
-function findOrganizationsByName(db: BowDatabase, name: string): { id: string; status: string }[] {
-  return db
-    .prepare(
-      `SELECT id, status
+async function findOrganizationsByName(db: BowDatabase, name: string): Promise<{ id: string; status: string }[]> {
+  return (await db
+      .prepare(
+        `SELECT id, status
          FROM organizations
         WHERE lower(trim(name)) = lower(trim(?))
         ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'prospect' THEN 1 ELSE 2 END, id`,
-    )
-    .all(name) as { id: string; status: string }[];
+      )
+      .all(name)) as { id: string; status: string }[];
 }
 
-function upsertInquiryPerson(db: BowDatabase, identity: InquiryIdentity, now: number): string {
+async function upsertInquiryPerson(db: BowDatabase, identity: InquiryIdentity, now: number): Promise<string> {
   const email = identity.contactEmail.trim().toLowerCase();
-  const existing = db
-    .prepare("SELECT id FROM people WHERE lower(trim(email)) = ? ORDER BY updated_at DESC, id LIMIT 1")
-    .get(email) as { id: string } | undefined;
+  const existing = (await db
+      .prepare("SELECT id FROM people WHERE lower(trim(email)) = ? ORDER BY updated_at DESC, id LIMIT 1")
+      .get(email)) as { id: string } | undefined;
   if (existing) {
-    db.prepare(
-      `UPDATE people
+    (await db.prepare(
+            `UPDATE people
           SET name = CASE WHEN trim(name) = '' THEN ? ELSE name END,
               updated_at = ?
         WHERE id = ?`,
-    ).run(identity.contactName.trim(), now, existing.id);
+          ).run(identity.contactName.trim(), now, existing.id));
     return existing.id;
   }
 
   const personId = `per-${randomUUID().slice(0, 12)}`;
-  db.prepare(
-    "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, '', NULL, ?, ?)",
-  ).run(personId, identity.contactName.trim(), email, now, now);
+  (await db.prepare(
+        "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, '', NULL, ?, ?)",
+      ).run(personId, identity.contactName.trim(), email, now, now));
   return personId;
 }
 
-function connectInquiryContact(
+async function connectInquiryContact(
   db: BowDatabase,
   organizationId: string,
   personId: string,
   now: number,
-): void {
+): Promise<void> {
   const hasPrimary = Boolean(
-    db.prepare(
-      `SELECT 1 FROM organization_people
+    (await db.prepare(
+            `SELECT 1 FROM organization_people
         WHERE organization_id = ? AND active = 1 AND is_primary = 1
         LIMIT 1`,
-    ).get(organizationId),
+          ).get(organizationId)),
   );
   const shouldBePrimary = hasPrimary ? 0 : 1;
 
-  db.prepare(
-    `UPDATE organization_people
+  (await db.prepare(
+        `UPDATE organization_people
         SET active = 1,
             is_primary = CASE WHEN ? = 1 THEN 1 ELSE is_primary END,
             updated_at = ?
       WHERE organization_id = ? AND person_id = ? AND relationship_type = 'inquiry_contact'`,
-  ).run(shouldBePrimary, now, organizationId, personId);
-  db.prepare(
-    `INSERT INTO organization_people
+      ).run(shouldBePrimary, now, organizationId, personId));
+  (await db.prepare(
+        `INSERT INTO organization_people
       (id, organization_id, person_id, relationship_type, is_primary, active, created_at, updated_at)
      SELECT ?, ?, ?, 'inquiry_contact', ?, 1, ?, ?
       WHERE NOT EXISTS (
         SELECT 1 FROM organization_people
          WHERE organization_id = ? AND person_id = ? AND relationship_type = 'inquiry_contact'
       )`,
-  ).run(
-    `orp-${randomUUID().slice(0, 12)}`,
-    organizationId,
-    personId,
-    shouldBePrimary,
-    now,
-    now,
-    organizationId,
-    personId,
-  );
+      ).run(
+        `orp-${randomUUID().slice(0, 12)}`,
+        organizationId,
+        personId,
+        shouldBePrimary,
+        now,
+        now,
+        organizationId,
+        personId,
+      ));
 }
 
 /**
@@ -103,15 +103,15 @@ function connectInquiryContact(
  * topology. The caller must hold a write transaction so name/email matching,
  * inserts, and relationship activation are one race-safe decision.
  */
-export function ensureInquiryTopology(
+export async function ensureInquiryTopology(
   db: BowDatabase,
   identity: InquiryIdentity,
   options: EnsureInquiryTopologyOptions,
-): { organizationId: string | null; sourcePersonId: string; primaryPersonId: string | null } {
+): Promise<{ organizationId: string | null; sourcePersonId: string; primaryPersonId: string | null }> {
   const organizationName = identity.organizationName.trim();
   let organizationId = options.selectedOrganizationId?.trim() || null;
   if (organizationId) {
-    const selected = db.prepare("SELECT status FROM organizations WHERE id = ?").get(organizationId) as
+    const selected = (await db.prepare("SELECT status FROM organizations WHERE id = ?").get(organizationId)) as
       | { status: string }
       | undefined;
     if (!selected || (options.requireOperatingPartner && !["prospect", "active"].includes(selected.status))) {
@@ -120,7 +120,7 @@ export function ensureInquiryTopology(
   }
 
   if (!organizationId && usableOrganizationName(organizationName)) {
-    const matchedOrganizations = findOrganizationsByName(db, organizationName);
+    const matchedOrganizations = (await findOrganizationsByName(db, organizationName));
     const matchedOrganization = matchedOrganizations.length === 1 ? matchedOrganizations[0] : undefined;
     if (
       matchedOrganization
@@ -135,23 +135,23 @@ export function ensureInquiryTopology(
     // still becomes a prospect Organization immediately.
     if (!organizationId && matchedOrganizations.length === 0) {
       organizationId = `org-${randomUUID().slice(0, 12)}`;
-      db.prepare(
-        "INSERT INTO organizations (id, name, type, location, status) VALUES (?, ?, 'partner_inquiry', '', 'prospect')",
-      ).run(organizationId, organizationName.slice(0, 200));
+      (await db.prepare(
+                "INSERT INTO organizations (id, name, type, location, status) VALUES (?, ?, 'partner_inquiry', '', 'prospect')",
+              ).run(organizationId, organizationName.slice(0, 200)));
     }
   }
 
-  const sourcePersonId = upsertInquiryPerson(db, identity, options.now);
-  if (organizationId) connectInquiryContact(db, organizationId, sourcePersonId, options.now);
+  const sourcePersonId = (await upsertInquiryPerson(db, identity, options.now));
+  if (organizationId) (await connectInquiryContact(db, organizationId, sourcePersonId, options.now));
 
   let primaryPersonId = options.selectedPrimaryPersonId?.trim() || null;
   if (primaryPersonId) {
     const relationship = organizationId
-      ? db.prepare(
-        `SELECT 1 FROM organization_people
+      ? (await db.prepare(
+                `SELECT 1 FROM organization_people
           WHERE organization_id = ? AND person_id = ? AND active = 1
           LIMIT 1`,
-      ).get(organizationId, primaryPersonId)
+              ).get(organizationId, primaryPersonId))
       : null;
     if (!relationship) throw new Error("Program contact is no longer connected to the partner.");
   } else if (organizationId) {

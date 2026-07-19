@@ -60,19 +60,19 @@ export default async function RegionDetailPage({ params }: { params: Promise<{ i
   await requireStaff();
   const { id } = await params;
   const db = getDb();
-  const region = db.prepare(
-    `SELECT r.*,
+  const region = (await db.prepare(
+      `SELECT r.*,
             leader.name AS leader_name,
             leader.role AS leader_role,
             leader.status AS leader_status
        FROM operating_regions r
        LEFT JOIN users leader ON leader.id = r.leader_user_id
       WHERE r.id = ?`,
-  ).get(id) as RegionDetailRow | undefined;
+    ).get(id)) as RegionDetailRow | undefined;
   if (!region) notFound();
 
-  const locations = db.prepare(
-    `SELECT l.id, l.name, l.type, l.city, l.state, l.stage, l.timezone,
+  const locations = (await db.prepare(
+      `SELECT l.id, l.name, l.type, l.city, l.state, l.stage, l.timezone,
             leader.name AS leader_name,
             COUNT(DISTINCT p.id) AS program_count,
             COUNT(DISTINCT CASE WHEN p.stage NOT IN ('completed', 'renewed', 'closed') THEN p.id END) AS open_program_count
@@ -85,15 +85,15 @@ export default async function RegionDetailPage({ params }: { params: Promise<{ i
         WHEN 'active' THEN 0 WHEN 'launching' THEN 1 WHEN 'evaluating' THEN 2
         WHEN 'prospect' THEN 3 WHEN 'paused' THEN 4 WHEN 'closed' THEN 5 ELSE 6 END,
         l.name`,
-  ).all(id) as unknown as LocationRow[];
-  const activity = db.prepare(
-    `SELECT a.id, a.kind, a.body, a.created_at, actor.name AS actor_name
+    ).all(id)) as unknown as LocationRow[];
+  const activity = (await db.prepare(
+      `SELECT a.id, a.kind, a.body, a.created_at, actor.name AS actor_name
        FROM crm_activity a
        LEFT JOIN users actor ON actor.id = a.actor_user_id
       WHERE a.entity_type = 'operating_region' AND a.entity_id = ?
       ORDER BY a.created_at DESC, a.id DESC
       LIMIT 50`,
-  ).all(id) as unknown as ActivityRow[];
+    ).all(id)) as unknown as ActivityRow[];
 
   const activeLocations = locations.filter((location) => location.stage === "active").length;
   const openLocations = locations.filter((location) => location.stage !== "closed").length;

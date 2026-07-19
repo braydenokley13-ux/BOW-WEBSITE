@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default async function ProfilePage() {
   const me = await requireRole("student");
-  const data = getProfileData(me.id);
+  const data = (await getProfileData(me.id));
   if (!data) return null;
   return <ProfileView data={data} />;
 }

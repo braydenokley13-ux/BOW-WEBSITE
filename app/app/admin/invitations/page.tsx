@@ -212,7 +212,7 @@ export default function AdminInvitationsPage() {
                     <td style={{ padding: "13px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
                       <button
                         type="button"
-                        onClick={() => token && void copyInvitationLink(token)}
+                        onClick={async () => token && void (await copyInvitationLink(token))}
                         disabled={!token || anyRowBusy}
                         title={token ? "Copy the newly issued link" : "For security, links are shown only when created or resent"}
                         style={{ ...smallBtn, border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", opacity: token && !anyRowBusy ? 1 : 0.5, cursor: token && !anyRowBusy ? "pointer" : "not-allowed" }}
@@ -221,12 +221,12 @@ export default function AdminInvitationsPage() {
                       </button>
                       {(canResend || canRevoke) && (
                         <>
-                          {canResend && <button type="button" disabled={anyRowBusy} onClick={() => void updateInvitation(iv.id, "pending")} style={{ ...smallBtn, border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-ink)", marginLeft: 4, opacity: anyRowBusy ? 0.5 : 1 }}>{rowBusy ? "Working…" : "Resend"}</button>}
+                          {canResend && <button type="button" disabled={anyRowBusy} onClick={async () => void (await updateInvitation(iv.id, "pending"))} style={{ ...smallBtn, border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-ink)", marginLeft: 4, opacity: anyRowBusy ? 0.5 : 1 }}>{rowBusy ? "Working…" : "Resend"}</button>}
                           {canRevoke && (
                             <button
                               type="button"
                               disabled={anyRowBusy}
-                              onClick={() => askConfirm({ title: "Revoke this invitation?", body: `The link to ${iv.email} will stop working immediately.`, confirmLabel: "Revoke Invitation", tone: "negative", onConfirm: () => void updateInvitation(iv.id, "revoked") })}
+                              onClick={() => askConfirm({ title: "Revoke this invitation?", body: `The link to ${iv.email} will stop working immediately.`, confirmLabel: "Revoke Invitation", tone: "negative", onConfirm: async () => void (await updateInvitation(iv.id, "revoked")) })}
                               style={{ ...smallBtn, border: "1px solid var(--bow-negative)", background: "transparent", color: "var(--bow-negative)", marginLeft: 4, opacity: anyRowBusy ? 0.5 : 1 }}
                             >
                               Revoke
@@ -251,7 +251,7 @@ export default function AdminInvitationsPage() {
       </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Create Invitation" dismissible={!formBusy}>
-        <form onSubmit={(event) => void submit(event)}>
+        <form onSubmit={async (event) => void (await submit(event))}>
           <label htmlFor="invitation-email" style={{ ...fieldLabel, marginBottom: 6 }}>Email</label>
           <input
             id="invitation-email"

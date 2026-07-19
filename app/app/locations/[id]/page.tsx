@@ -21,7 +21,7 @@ function placeLabel(city: string | null, state: string | null): string {
 export default async function LocationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireStaff();
   const { id } = await params;
-  const detail = getLocation(id);
+  const detail = (await getLocation(id));
   if (!detail) notFound();
 
   const location = detail.location;

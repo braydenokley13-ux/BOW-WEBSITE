@@ -15,32 +15,32 @@ const valueStyle = { fontFamily: "var(--font-interface)", fontSize: 14, color: "
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export default async function ClassDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const detail = getClassDetail(id);
+  const detail = (await getClassDetail(id));
   if (!detail) notFound();
   const { class: cls, instructors, sessions, enrollments } = detail;
 
   const db = getDb();
-  const curriculum = db.prepare("SELECT title FROM curricula WHERE id = ?").get(cls.curriculumId) as { title: string } | undefined;
-  const org = cls.partnerOrgId ? (db.prepare("SELECT name FROM organizations WHERE id = ?").get(cls.partnerOrgId) as { name: string } | undefined) : null;
+  const curriculum = (await db.prepare("SELECT title FROM curricula WHERE id = ?").get(cls.curriculumId)) as { title: string } | undefined;
+  const org = cls.partnerOrgId ? ((await db.prepare("SELECT name FROM organizations WHERE id = ?").get(cls.partnerOrgId)) as { name: string } | undefined) : null;
 
-  const instructorRows = instructors.map((ci: any) => {
-    const instructorRow = db.prepare("SELECT * FROM instructors WHERE id = ?").get(ci.instructor_id) as any;
-    const personRow = instructorRow ? (db.prepare("SELECT * FROM people WHERE id = ?").get(instructorRow.person_id) as any) : null;
-    return { ...ci, name: personRow ? rowToPerson(personRow).name : ci.instructor_id };
-  });
+  const instructorRows = (await Promise.all(instructors.map(async (ci: any) => {
+      const instructorRow = (await db.prepare("SELECT * FROM instructors WHERE id = ?").get(ci.instructor_id)) as any;
+      const personRow = instructorRow ? ((await db.prepare("SELECT * FROM people WHERE id = ?").get(instructorRow.person_id)) as any) : null;
+      return { ...ci, name: personRow ? rowToPerson(personRow).name : ci.instructor_id };
+    })));
 
   const enrolled = enrollments.filter(
-    (e) =>
+    async (e) =>
       e.status === "enrolled" &&
-      Boolean(db.prepare("SELECT 1 FROM students WHERE id = ? AND enrollment_status = 'active'").get(e.studentId)),
+      Boolean((await db.prepare("SELECT 1 FROM students WHERE id = ? AND enrollment_status = 'active'").get(e.studentId))),
   );
-  const enrolledStudentRows = enrolled.map((e) => {
-    const s = db.prepare("SELECT * FROM students WHERE id = ?").get(e.studentId) as any;
-    return { enrollment: e, name: s?.name ?? e.studentId };
-  });
+  const enrolledStudentRows = (await Promise.all(enrolled.map(async (e) => {
+      const s = (await db.prepare("SELECT * FROM students WHERE id = ?").get(e.studentId)) as any;
+      return { enrollment: e, name: s?.name ?? e.studentId };
+    })));
 
-  const eligibleInstructors = listEligibleInstructors();
-  const allStudents = listStudents();
+  const eligibleInstructors = (await listEligibleInstructors());
+  const allStudents = (await listStudents());
   const enrolledIds = new Set(enrolled.map((e) => e.studentId));
   const studentOptions = allStudents
     .filter((student) => student.enrollmentStatus === "active")
@@ -48,11 +48,11 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
   const historical = cls.status === "completed" || cls.status === "cancelled";
 
   const hasEligibleLead = !!(
-    cls.leadInstructorId && db.prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible' AND stage IN ('eligible','active')").get(cls.leadInstructorId)
+    cls.leadInstructorId && (await db.prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible' AND stage IN ('eligible','active')").get(cls.leadInstructorId))
   );
   const flags = classStatusFlags(cls, hasEligibleLead, enrolled.length);
 
-  const activity = listActivity("class", id);
+  const activity = (await listActivity("class", id));
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>

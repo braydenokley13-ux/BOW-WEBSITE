@@ -254,19 +254,19 @@ export interface LedgerWeek {
 }
 
 /** The last seven days of the record — the window the site's strips talk about. */
-export function summarizeLastWeek(events: LedgerEvent[]): LedgerWeek {
-  return summarizeWindow(events, Date.now() - 7 * 24 * 60 * 60 * 1000);
+export async function summarizeLastWeek(events: LedgerEvent[]): Promise<LedgerWeek> {
+  return (await summarizeWindow(events, Date.now() - 7 * 24 * 60 * 60 * 1000));
 }
 
-export function summarizeWindow(events: LedgerEvent[], sinceMs: number): LedgerWeek {
+export async function summarizeWindow(events: LedgerEvent[], sinceMs: number): Promise<LedgerWeek> {
   const inWindow = events.filter((e) => e.at >= sinceMs);
   const count = (k: LedgerEventKind) => inWindow.filter((e) => e.kind === k).length;
   const top = inWindow.reduce<LedgerEvent | null>((best, e) => (best === null || e.heat > best.heat ? e : best), null);
   return {
-    flips: count("verdict-flip"),
-    opened: count("question-opened"),
-    settled: count("question-settled"),
-    reopened: count("question-reopened"),
+    flips: (await count("verdict-flip")),
+    opened: (await count("question-opened")),
+    settled: (await count("question-settled")),
+    reopened: (await count("question-reopened")),
     top,
   };
 }

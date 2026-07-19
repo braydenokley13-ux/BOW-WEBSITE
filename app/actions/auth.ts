@@ -36,23 +36,23 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
 
   const address = await clientAddressBucket();
   if (address) {
-    const networkLimit = consumeRateLimit("auth-login-network", address, {
-      limit: 40,
-      windowMs: 15 * 60 * 1000,
-      blockMs: 15 * 60 * 1000,
-    });
+    const networkLimit = (await consumeRateLimit("auth-login-network", address, {
+          limit: 40,
+          windowMs: 15 * 60 * 1000,
+          blockMs: 15 * 60 * 1000,
+        }));
     if (!networkLimit.allowed) return { error: "Too many sign-in attempts. Wait a few minutes and try again." };
   }
-  const identityLimit = consumeRateLimit("auth-login-identity", email, {
-    limit: 8,
-    windowMs: 15 * 60 * 1000,
-    blockMs: 15 * 60 * 1000,
-  });
+  const identityLimit = (await consumeRateLimit("auth-login-identity", email, {
+      limit: 8,
+      windowMs: 15 * 60 * 1000,
+      blockMs: 15 * 60 * 1000,
+    }));
   if (!identityLimit.allowed) return { error: "Too many sign-in attempts. Wait a few minutes and try again." };
 
   const db = getDb();
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
+  const user = (await db.prepare("SELECT * FROM users WHERE email = ?").get(email)) as any;
 
   // Same message whether the account is missing or the password is
   // wrong, so we don't leak which emails exist.
@@ -75,7 +75,7 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
     // rechecks both account and organization state under its writer lock.
     return { error: "Sign-in is unavailable for this account or organization. Contact your BOW administrator." };
   }
-  clearRateLimit("auth-login-identity", email);
+  (await clearRateLimit("auth-login-identity", email));
 
   if (user.password_change_required) redirect("/change-password");
 
@@ -84,7 +84,7 @@ export async function signIn(_prev: AuthState, formData: FormData): Promise<Auth
   let dest: string;
   if (next && (next.startsWith("/app") || next === "/dashboard" || next === "/instructor")) {
     dest = next;
-  } else if (user.role === "student" && isEnrolledSelfPaced(user.id)) {
+  } else if (user.role === "student" && (await isEnrolledSelfPaced(user.id))) {
     dest = "/dashboard";
   } else {
     dest = roleHomePath(user.role as Role);
@@ -114,18 +114,18 @@ export async function joinSelfPaced(_prev: AuthState, formData: FormData): Promi
 
   const address = await clientAddressBucket();
   if (address) {
-    const networkLimit = consumeRateLimit("auth-join-network", address, {
-      limit: 20,
-      windowMs: 60 * 60 * 1000,
-      blockMs: 60 * 60 * 1000,
-    });
+    const networkLimit = (await consumeRateLimit("auth-join-network", address, {
+          limit: 20,
+          windowMs: 60 * 60 * 1000,
+          blockMs: 60 * 60 * 1000,
+        }));
     if (!networkLimit.allowed) return { error: "Too many accounts were created from this network. Wait and try again." };
   }
-  const identityLimit = consumeRateLimit("auth-join-identity", email, {
-    limit: 3,
-    windowMs: 24 * 60 * 60 * 1000,
-    blockMs: 24 * 60 * 60 * 1000,
-  });
+  const identityLimit = (await consumeRateLimit("auth-join-identity", email, {
+      limit: 3,
+      windowMs: 24 * 60 * 60 * 1000,
+      blockMs: 24 * 60 * 60 * 1000,
+    }));
   if (!identityLimit.allowed) return { error: "This email has made too many sign-up attempts. Wait and try again." };
 
   const db = getDb();
@@ -135,86 +135,86 @@ export async function joinSelfPaced(_prev: AuthState, formData: FormData): Promi
   // writer lock so one sign-up cannot stall every other operating action.
   const passwordHash = hashPassword(password);
   const now = Date.now();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    if (db.prepare("SELECT 1 FROM users WHERE lower(trim(email)) = ?").get(email)) {
+    if ((await db.prepare("SELECT 1 FROM users WHERE lower(trim(email)) = ?").get(email))) {
       throw new Error("account_exists");
     }
-    if (!db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status = 'active'").get(SELF_PACED_ORG_ID)) {
+    if (!(await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status = 'active'").get(SELF_PACED_ORG_ID))) {
       throw new Error("topology_unavailable");
     }
-    if (!db.prepare("SELECT 1 FROM cohorts WHERE id = ? AND org_id = ? AND status IN ('active','enrolling')").get(SELF_PACED_COHORT_ID, SELF_PACED_ORG_ID)) {
+    if (!(await db.prepare("SELECT 1 FROM cohorts WHERE id = ? AND org_id = ? AND status IN ('active','enrolling')").get(SELF_PACED_COHORT_ID, SELF_PACED_ORG_ID))) {
       throw new Error("topology_unavailable");
     }
-    if (!db.prepare("SELECT 1 FROM classes WHERE id = ?").get(SELF_PACED_COHORT_ID)) {
+    if (!(await db.prepare("SELECT 1 FROM classes WHERE id = ?").get(SELF_PACED_COHORT_ID))) {
       throw new Error("topology_unavailable");
     }
 
-    db.prepare(
-      "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', 'Just now', 'Email + password', ?, ?, ?)",
-    ).run(userId, name, first, email, SELF_PACED_ORG_ID, passwordHash, now, now);
+    (await db.prepare(
+            "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', 'Just now', 'Email + password', ?, ?, ?)",
+          ).run(userId, name, first, email, SELF_PACED_ORG_ID, passwordHash, now, now));
 
-    const matchingPeople = db.prepare(
-      "SELECT id, user_id FROM people WHERE lower(trim(email)) = ? ORDER BY created_at, id",
-    ).all(email) as { id: string; user_id: string | null }[];
+    const matchingPeople = (await db.prepare(
+          "SELECT id, user_id FROM people WHERE lower(trim(email)) = ? ORDER BY created_at, id",
+        ).all(email)) as { id: string; user_id: string | null }[];
     if (matchingPeople.length > 1 || matchingPeople[0]?.user_id) throw new Error("identity_ambiguous");
     const personId = matchingPeople[0]?.id ?? `per-${randomUUID().slice(0, 12)}`;
     if (
       matchingPeople[0]
-      && db.prepare("SELECT 1 FROM instructors WHERE person_id = ? AND stage NOT IN ('rejected','inactive') LIMIT 1").get(personId)
+      && (await db.prepare("SELECT 1 FROM instructors WHERE person_id = ? AND stage NOT IN ('rejected','inactive') LIMIT 1").get(personId))
     ) {
       throw new Error("identity_ambiguous");
     }
     if (matchingPeople[0]) {
-      const claimed = db.prepare(
-        `UPDATE people
+      const claimed = (await db.prepare(
+              `UPDATE people
             SET user_id = ?, name = CASE WHEN trim(name) = '' THEN ? ELSE name END, updated_at = ?
           WHERE id = ? AND user_id IS NULL`,
-      ).run(userId, name, now, personId);
+            ).run(userId, name, now, personId));
       if (claimed.changes !== 1) throw new Error("identity_ambiguous");
     } else {
-      db.prepare(
-        "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?)",
-      ).run(personId, name, email, userId, now, now);
+      (await db.prepare(
+                "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?)",
+              ).run(personId, name, email, userId, now, now));
     }
 
-    const matchingStudents = db.prepare(
-      `SELECT id, user_id, enrollment_status
+    const matchingStudents = (await db.prepare(
+          `SELECT id, user_id, enrollment_status
          FROM students
         WHERE person_id = ? OR lower(trim(email)) = ?
         ORDER BY created_at, id`,
-    ).all(personId, email) as { id: string; user_id: string | null; enrollment_status: string }[];
+        ).all(personId, email)) as { id: string; user_id: string | null; enrollment_status: string }[];
     if (matchingStudents.length > 1 || matchingStudents[0]?.user_id || matchingStudents[0]?.enrollment_status === "inactive") {
       throw new Error("identity_ambiguous");
     }
     const studentId = matchingStudents[0]?.id ?? `stu-${randomUUID().slice(0, 12)}`;
     if (matchingStudents[0]) {
-      const claimed = db.prepare(
-        "UPDATE students SET user_id = ?, person_id = ?, updated_at = ? WHERE id = ? AND user_id IS NULL AND enrollment_status = 'active'",
-      ).run(userId, personId, now, studentId);
+      const claimed = (await db.prepare(
+              "UPDATE students SET user_id = ?, person_id = ?, updated_at = ? WHERE id = ? AND user_id IS NULL AND enrollment_status = 'active'",
+            ).run(userId, personId, now, studentId));
       if (claimed.changes !== 1) throw new Error("identity_ambiguous");
     } else {
-      db.prepare(
-        `INSERT INTO students
+      (await db.prepare(
+                `INSERT INTO students
           (id, name, age, grade, email, guardian_person_id, emergency_notes, enrollment_status,
            form_status, communication_notes, user_id, person_id, created_at, updated_at)
          VALUES (?, ?, NULL, NULL, ?, NULL, NULL, 'active', 'missing', NULL, ?, ?, ?, ?)`,
-      ).run(studentId, name, email, userId, personId, now, now);
+              ).run(studentId, name, email, userId, personId, now, now));
     }
 
-    db.prepare(
-      "INSERT INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last) VALUES (?, ?, 'active', 'not-started', 'Just now', 'none')",
-    ).run(userId, SELF_PACED_COHORT_ID);
-    db.prepare(
-      `INSERT INTO class_enrollments (id, class_id, student_id, status, enrolled_at, withdrawn_at, withdrawal_reason)
+    (await db.prepare(
+            "INSERT INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last) VALUES (?, ?, 'active', 'not-started', 'Just now', 'none')",
+          ).run(userId, SELF_PACED_COHORT_ID));
+    (await db.prepare(
+            `INSERT INTO class_enrollments (id, class_id, student_id, status, enrolled_at, withdrawn_at, withdrawal_reason)
        VALUES (?, ?, ?, 'enrolled', ?, NULL, NULL)
        ON CONFLICT(class_id, student_id) DO UPDATE SET
          status = 'enrolled', withdrawn_at = NULL, withdrawal_reason = NULL`,
-    ).run(`cen-${randomUUID().slice(0, 12)}`, SELF_PACED_COHORT_ID, studentId, now);
-    logActivity("student", studentId, "created", "Self-paced learner account and canonical enrollment created.", userId);
-    db.exec("COMMIT");
+          ).run(`cen-${randomUUID().slice(0, 12)}`, SELF_PACED_COHORT_ID, studentId, now));
+    (await logActivity("student", studentId, "created", "Self-paced learner account and canonical enrollment created.", userId));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "account_exists") return { error: "An account with that email already exists. Try signing in instead." };
     if (code === "identity_ambiguous") return { error: "BOW already has an account or student record for this email. Contact BOW so we can connect it safely." };
@@ -269,25 +269,25 @@ export async function previewInvitation(tokenInput: string): Promise<InvitationP
   const token = String(tokenInput ?? "").trim();
   const address = await clientAddressBucket();
   if (address) {
-    const networkLimit = consumeRateLimit("auth-invitation-preview-network", address, {
-      limit: 60,
-      windowMs: 60 * 60 * 1000,
-      blockMs: 60 * 60 * 1000,
-    });
+    const networkLimit = (await consumeRateLimit("auth-invitation-preview-network", address, {
+          limit: 60,
+          windowMs: 60 * 60 * 1000,
+          blockMs: 60 * 60 * 1000,
+        }));
     if (!networkLimit.allowed) return { ok: false, error: INVITATION_UNAVAILABLE };
   }
   if (!INVITATION_TOKEN_PATTERN.test(token)) return { ok: false, error: INVITATION_UNAVAILABLE };
 
   const db = getDb();
-  const row = db.prepare(
-    `SELECT i.email, i.role, i.org_id, i.cohort_id, i.expires_at,
+  const row = (await db.prepare(
+      `SELECT i.email, i.role, i.org_id, i.cohort_id, i.expires_at,
             o.name AS org_name, c.name AS cohort_name, c.track AS cohort_track,
             c.org_id AS cohort_org_id, c.status AS cohort_status
        FROM invitations i
        JOIN organizations o ON o.id = i.org_id AND o.status = 'active'
        LEFT JOIN cohorts c ON c.id = i.cohort_id
       WHERE i.token_hash = ? AND i.status = 'pending' AND i.expires_at > ?`,
-  ).get(hashOpaqueToken(token), Date.now()) as
+    ).get(hashOpaqueToken(token), Date.now())) as
     | {
         email: string;
         role: string;
@@ -305,11 +305,11 @@ export async function previewInvitation(tokenInput: string): Promise<InvitationP
     return { ok: false, error: INVITATION_UNAVAILABLE };
   }
 
-  const tokenLimit = consumeRateLimit("auth-invitation-preview-token", token, {
-    limit: 30,
-    windowMs: 60 * 60 * 1000,
-    blockMs: 60 * 60 * 1000,
-  });
+  const tokenLimit = (await consumeRateLimit("auth-invitation-preview-token", token, {
+      limit: 30,
+      windowMs: 60 * 60 * 1000,
+      blockMs: 60 * 60 * 1000,
+    }));
   if (!tokenLimit.allowed) return { ok: false, error: INVITATION_UNAVAILABLE };
 
   if (row.role === "student") {
@@ -322,13 +322,13 @@ export async function previewInvitation(tokenInput: string): Promise<InvitationP
       return { ok: false, error: INVITATION_UNAVAILABLE };
     }
   } else {
-    const approvals = db.prepare(
-      `SELECT COUNT(*) AS n
+    const approvals = (await db.prepare(
+          `SELECT COUNT(*) AS n
          FROM people p
          JOIN instructors i ON i.person_id = p.id
         WHERE lower(p.email) = lower(?)
           AND i.stage IN ('accepted','onboarding','training','practice_evaluation','eligible','active')`,
-    ).get(row.email) as { n: number };
+        ).get(row.email)) as { n: number };
     if (row.org_id !== "org-bow" || approvals.n !== 1) {
       return { ok: false, error: INVITATION_UNAVAILABLE };
     }
@@ -370,16 +370,16 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
 
   const address = await clientAddressBucket();
   if (address) {
-    const networkLimit = consumeRateLimit("auth-invitation-network", address, {
-      limit: 30,
-      windowMs: 60 * 60 * 1000,
-      blockMs: 60 * 60 * 1000,
-    });
+    const networkLimit = (await consumeRateLimit("auth-invitation-network", address, {
+          limit: 30,
+          windowMs: 60 * 60 * 1000,
+          blockMs: 60 * 60 * 1000,
+        }));
     if (!networkLimit.allowed) return { error: "Too many invitation attempts. Wait and try again." };
   }
   const db = getDb();
   const tokenHash = hashOpaqueToken(token);
-  const inv = db.prepare("SELECT * FROM invitations WHERE token_hash = ?").get(tokenHash) as
+  const inv = (await db.prepare("SELECT * FROM invitations WHERE token_hash = ?").get(tokenHash)) as
     | {
         id: string;
         email: string;
@@ -394,11 +394,11 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
   if (!inv) return { error: "We couldn't find this invitation." };
   // Random bearer-token guesses should remain read-only instead of growing the
   // persistent limiter table one unique row at a time.
-  const tokenLimit = consumeRateLimit("auth-invitation-token", token, {
-    limit: 6,
-    windowMs: 60 * 60 * 1000,
-    blockMs: 60 * 60 * 1000,
-  });
+  const tokenLimit = (await consumeRateLimit("auth-invitation-token", token, {
+      limit: 6,
+      windowMs: 60 * 60 * 1000,
+      blockMs: 60 * 60 * 1000,
+    }));
   if (!tokenLimit.allowed) return { error: "Too many invitation attempts. Ask for a fresh invitation." };
 
   if (inv.status === "revoked") return { error: "This invitation was revoked." };
@@ -417,11 +417,11 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
   let approvedInstructorPersonId: string | null = null;
   const now = Date.now();
 
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const current = db
-      .prepare("SELECT email, role, org_id, cohort_id, status, expires_at FROM invitations WHERE id = ? AND token_hash = ?")
-      .get(inv.id, tokenHash) as
+    const current = (await db
+          .prepare("SELECT email, role, org_id, cohort_id, status, expires_at FROM invitations WHERE id = ? AND token_hash = ?")
+          .get(inv.id, tokenHash)) as
       | {
           email: string;
           role: string;
@@ -444,13 +444,13 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
     const accountFirst = current.role === "instructor"
       ? (name.split(/\s+/)[0] || name)
       : (first || name.split(/\s+/)[0] || name);
-    const existingUser = db
-      .prepare(
-        `SELECT id, role, org_id, status, password_hash
+    const existingUser = (await db
+          .prepare(
+            `SELECT id, role, org_id, status, password_hash
          FROM users
          WHERE lower(email) = lower(?)`,
-      )
-      .get(email) as
+          )
+          .get(email)) as
       | { id: string; role: string; org_id: string; status: string; password_hash: string | null }
       | undefined;
     const claimablePlaceholder =
@@ -459,12 +459,12 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
       existingUser.role === current.role &&
       existingUser.org_id === current.org_id;
     if (existingUser && !claimablePlaceholder) throw new Error("account_exists");
-    if (!db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status = 'active'").get(current.org_id)) {
+    if (!(await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status = 'active'").get(current.org_id))) {
       throw new Error("organization_missing");
     }
     if (current.role === "student") {
       const cohort = current.cohort_id
-        ? (db.prepare("SELECT org_id, status FROM cohorts WHERE id = ?").get(current.cohort_id) as
+        ? ((await db.prepare("SELECT org_id, status FROM cohorts WHERE id = ?").get(current.cohort_id)) as
             | { org_id: string; status: string }
             | undefined)
         : undefined;
@@ -472,15 +472,15 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
         throw new Error("cohort_missing");
       }
     } else {
-      const pipelineRows = db.prepare(
-        `SELECT p.id AS person_id, p.user_id, i.stage
+      const pipelineRows = (await db.prepare(
+              `SELECT p.id AS person_id, p.user_id, i.stage
            FROM people p
            JOIN instructors i ON i.person_id = p.id
           WHERE lower(p.email) = lower(?)
             AND i.stage IN ('accepted','onboarding','training','practice_evaluation','eligible','active')
           ORDER BY i.updated_at DESC
           LIMIT 2`,
-      ).all(email) as { person_id: string; user_id: string | null; stage: string }[];
+            ).all(email)) as { person_id: string; user_id: string | null; stage: string }[];
       if (
         current.org_id !== "org-bow"
         || pipelineRows.length !== 1
@@ -492,26 +492,26 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
 
     if (existingUser) {
       userId = existingUser.id;
-      const claimed = db
-        .prepare(
-          `UPDATE users
+      const claimed = (await db
+              .prepare(
+                `UPDATE users
            SET name = ?, first = ?, grade = ?, status = 'active', last = 'Just now',
                signin = 'Email + password', password_hash = ?, last_active_at = ?,
                created_at = COALESCE(created_at, ?)
            WHERE id = ? AND status = 'invited' AND password_hash IS NULL
              AND role = ? AND org_id = ?`,
-        )
-        .run(name, accountFirst, grade || null, passwordHash, now, now, userId, current.role, current.org_id);
+              )
+              .run(name, accountFirst, grade || null, passwordHash, now, now, userId, current.role, current.org_id));
       if (claimed.changes !== 1) throw new Error("account_exists");
     } else {
-      db.prepare(
-        "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'Just now', 'Email + password', ?, ?, ?)",
-      ).run(userId, name, accountFirst, email, current.role, current.org_id, grade || null, passwordHash, now, now);
+      (await db.prepare(
+                "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'Just now', 'Email + password', ?, ?, ?)",
+              ).run(userId, name, accountFirst, email, current.role, current.org_id, grade || null, passwordHash, now, now));
     }
 
     if (current.role === "student" && current.cohort_id) {
-      db.prepare(
-        `INSERT INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last)
+      (await db.prepare(
+                `INSERT INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last)
          VALUES (?, ?, 'active', 'not-started', 'Just now', 'none')
          ON CONFLICT(user_id, cohort_id) DO UPDATE SET
            enroll = 'active',
@@ -520,37 +520,37 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
              ELSE enrollments.lesson_status
            END,
            last = 'Just now'`,
-      ).run(userId, current.cohort_id);
+              ).run(userId, current.cohort_id));
     }
 
-    const accepted = db
-      .prepare("UPDATE invitations SET status = 'accepted' WHERE id = ? AND token_hash = ? AND status = 'pending' AND expires_at > ?")
-      .run(inv.id, tokenHash, now);
+    const accepted = (await db
+          .prepare("UPDATE invitations SET status = 'accepted' WHERE id = ? AND token_hash = ? AND status = 'pending' AND expires_at > ?")
+          .run(inv.id, tokenHash, now));
     if (accepted.changes !== 1) throw new Error("invitation_unavailable");
-    db.prepare(
-      "UPDATE invitations SET status = 'revoked' WHERE id != ? AND lower(email) = lower(?) AND status = 'pending'",
-    ).run(inv.id, email);
+    (await db.prepare(
+            "UPDATE invitations SET status = 'revoked' WHERE id != ? AND lower(email) = lower(?) AND status = 'pending'",
+          ).run(inv.id, email));
 
     // Connect an accepted instructor to an existing hiring record only when
     // the email matches and the Person has not already been claimed.
     if (current.role === "instructor") {
-      const person = db.prepare("SELECT user_id FROM people WHERE id = ?").get(approvedInstructorPersonId) as
+      const person = (await db.prepare("SELECT user_id FROM people WHERE id = ?").get(approvedInstructorPersonId)) as
         | { user_id: string | null }
         | undefined;
       if (!person || (person.user_id !== null && person.user_id !== userId)) {
         throw new Error("instructor_approval_missing");
       }
       if (person.user_id === null) {
-        const linked = db.prepare(
-          "UPDATE people SET user_id = ?, updated_at = ? WHERE id = ? AND user_id IS NULL",
-        ).run(userId, now, approvedInstructorPersonId);
+        const linked = (await db.prepare(
+                  "UPDATE people SET user_id = ?, updated_at = ? WHERE id = ? AND user_id IS NULL",
+                ).run(userId, now, approvedInstructorPersonId));
         if (linked.changes !== 1) throw new Error("instructor_approval_missing");
       }
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the original failure.
     }
@@ -628,76 +628,76 @@ export async function requestPasswordReset(
 
   const address = await clientAddressBucket();
   if (address) {
-    const networkLimit = consumeRateLimit("auth-password-reset-request-network", address, {
-      limit: 10,
-      windowMs: 60 * 60 * 1000,
-      blockMs: 60 * 60 * 1000,
-    });
-    if (!networkLimit.allowed) return passwordResetRequestResponse(startedAt);
+    const networkLimit = (await consumeRateLimit("auth-password-reset-request-network", address, {
+          limit: 10,
+          windowMs: 60 * 60 * 1000,
+          blockMs: 60 * 60 * 1000,
+        }));
+    if (!networkLimit.allowed) return (await passwordResetRequestResponse(startedAt));
   }
   if (email.length > 320 || !/^\S+@\S+\.\S+$/.test(email)) {
-    return passwordResetRequestResponse(startedAt);
+    return (await passwordResetRequestResponse(startedAt));
   }
 
   const db = getDb();
-  const user = db
-    .prepare(
-      `SELECT u.id, u.email
+  const user = (await db
+      .prepare(
+        `SELECT u.id, u.email
          FROM users u
          JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
         WHERE lower(u.email) = lower(?) AND u.status = 'active'`,
-    )
-    .get(email) as { id: string; email: string } | undefined;
-  if (!user) return passwordResetRequestResponse(startedAt);
+      )
+      .get(email)) as { id: string; email: string } | undefined;
+  if (!user) return (await passwordResetRequestResponse(startedAt));
 
   // Only real identities need a durable per-identity bucket. Recording every
   // random address would let unauthenticated traffic grow the limiter table and
   // is unnecessary now that the public response has a timing floor.
-  const identityLimit = consumeRateLimit("auth-password-reset-request-identity", email, {
-    limit: 3,
-    windowMs: 60 * 60 * 1000,
-    blockMs: 60 * 60 * 1000,
-  });
-  if (!identityLimit.allowed) return passwordResetRequestResponse(startedAt);
+  const identityLimit = (await consumeRateLimit("auth-password-reset-request-identity", email, {
+      limit: 3,
+      windowMs: 60 * 60 * 1000,
+      blockMs: 60 * 60 * 1000,
+    }));
+  if (!identityLimit.allowed) return (await passwordResetRequestResponse(startedAt));
 
   let tokenId: string | null = null;
   try {
     const publicOrigin = publicAppOrigin();
     const revealLinks = process.env.NODE_ENV !== "production" && process.env.BOW_REVEAL_RESET_LINKS === "true";
     const linkOrigin = publicOrigin ?? (revealLinks ? developmentAppOrigin() : null);
-    if (!linkOrigin) return passwordResetRequestResponse(startedAt);
+    if (!linkOrigin) return (await passwordResetRequestResponse(startedAt));
 
     const token = randomBytes(32).toString("base64url");
     const tokenHash = hashOpaqueToken(token);
     const issuedTokenId = `prt-${randomUUID()}`;
     tokenId = issuedTokenId;
     const now = Date.now();
-    db.exec("BEGIN IMMEDIATE");
+    (await db.exec("BEGIN IMMEDIATE"));
     try {
-      const accountStillEligible = db.prepare(
-        `SELECT 1
+      const accountStillEligible = (await db.prepare(
+              `SELECT 1
            FROM users u
            JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
           WHERE u.id = ? AND u.status = 'active'`,
-      ).get(user.id);
+            ).get(user.id));
       if (!accountStillEligible) throw new Error("reset_unavailable");
       // A new request supersedes every older link for this account. Keeping the
       // invalidation and insert in one write transaction guarantees at most one
       // live reset credential even when requests arrive concurrently.
-      db.prepare(
-        "UPDATE password_reset_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
-      ).run(now, user.id);
-      db.prepare(
-        `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, consumed_at, created_at)
+      (await db.prepare(
+                "UPDATE password_reset_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
+              ).run(now, user.id));
+      (await db.prepare(
+                `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, consumed_at, created_at)
          VALUES (?, ?, ?, ?, NULL, ?)`,
-      ).run(issuedTokenId, user.id, tokenHash, now + PASSWORD_RESET_TTL_MS, now);
-      db.prepare(
-        "DELETE FROM password_reset_tokens WHERE (consumed_at IS NOT NULL OR expires_at <= ?) AND created_at < ?",
-      ).run(now, now - 7 * 24 * 60 * 60 * 1000);
-      db.exec("COMMIT");
+              ).run(issuedTokenId, user.id, tokenHash, now + PASSWORD_RESET_TTL_MS, now));
+      (await db.prepare(
+                "DELETE FROM password_reset_tokens WHERE (consumed_at IS NOT NULL OR expires_at <= ?) AND created_at < ?",
+              ).run(now, now - 7 * 24 * 60 * 60 * 1000));
+      (await db.exec("COMMIT"));
     } catch (error) {
       try {
-        db.exec("ROLLBACK");
+        (await db.exec("ROLLBACK"));
       } catch {
         // Preserve the issuance failure.
       }
@@ -709,7 +709,7 @@ export async function requestPasswordReset(
     // reset form and immediately cleans the visible URL after hydration.
     const resetUrl = `${linkOrigin}/reset-password#token=${encodeURIComponent(token)}`;
     if (revealLinks) {
-      return passwordResetRequestResponse(startedAt, { resetUrl });
+      return (await passwordResetRequestResponse(startedAt, { resetUrl }));
     }
 
     // Next.js 16.2 supports after() for Server Functions on this repository's
@@ -719,13 +719,13 @@ export async function requestPasswordReset(
       let delivered = false;
       try {
         const deliveryDb = getDb();
-        const stillActive = deliveryDb.prepare(
-          `SELECT 1
+        const stillActive = (await deliveryDb.prepare(
+                  `SELECT 1
              FROM password_reset_tokens prt
              JOIN users u ON u.id = prt.user_id AND u.status = 'active'
              JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
             WHERE prt.id = ? AND prt.consumed_at IS NULL AND prt.expires_at > ?`,
-        ).get(issuedTokenId, Date.now());
+                ).get(issuedTokenId, Date.now()));
         // A newer request may have superseded this token while the response was
         // finishing. Do not send a link that is already known to be stale.
         if (!stillActive) return;
@@ -744,22 +744,22 @@ export async function requestPasswordReset(
         try {
           // A secret that never reached its owner should not remain a valid
           // bearer credential. A newer request may already have consumed it.
-          getDb().prepare("DELETE FROM password_reset_tokens WHERE id = ? AND consumed_at IS NULL").run(issuedTokenId);
+          (await getDb().prepare("DELETE FROM password_reset_tokens WHERE id = ? AND consumed_at IS NULL").run(issuedTokenId));
         } catch {
           // Delivery already failed; keep the post-response task contained.
         }
       }
     });
-    return passwordResetRequestResponse(startedAt);
+    return (await passwordResetRequestResponse(startedAt));
   } catch {
     if (tokenId) {
       try {
-        db.prepare("DELETE FROM password_reset_tokens WHERE id = ? AND consumed_at IS NULL").run(tokenId);
+        (await db.prepare("DELETE FROM password_reset_tokens WHERE id = ? AND consumed_at IS NULL").run(tokenId));
       } catch {
         // Keep the enumeration-safe response even if the database is unavailable.
       }
     }
-    return passwordResetRequestResponse(startedAt);
+    return (await passwordResetRequestResponse(startedAt));
   }
 }
 
@@ -773,11 +773,11 @@ export async function resetPassword(
 
   const address = await clientAddressBucket();
   if (address) {
-    const networkLimit = consumeRateLimit("auth-password-reset-network", address, {
-      limit: 30,
-      windowMs: 60 * 60 * 1000,
-      blockMs: 60 * 60 * 1000,
-    });
+    const networkLimit = (await consumeRateLimit("auth-password-reset-network", address, {
+          limit: 30,
+          windowMs: 60 * 60 * 1000,
+          blockMs: 60 * 60 * 1000,
+        }));
     if (!networkLimit.allowed) return { error: "Too many reset attempts. Wait a few minutes and request a new link." };
   }
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
@@ -794,25 +794,25 @@ export async function resetPassword(
   const db = getDb();
   const tokenHash = hashOpaqueToken(token);
   const now = Date.now();
-  const candidate = db
-    .prepare(
-      `SELECT prt.id, prt.user_id, u.password_hash
+  const candidate = (await db
+      .prepare(
+        `SELECT prt.id, prt.user_id, u.password_hash
          FROM password_reset_tokens prt
          JOIN users u ON u.id = prt.user_id
          JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
         WHERE prt.token_hash = ? AND prt.consumed_at IS NULL AND prt.expires_at > ? AND u.status = 'active'`,
-    )
-    .get(tokenHash, now) as { id: string; user_id: string; password_hash: string | null } | undefined;
+      )
+      .get(tokenHash, now)) as { id: string; user_id: string; password_hash: string | null } | undefined;
   if (!candidate) return { error: "This password-reset link is invalid or has expired. Request a new one." };
 
   // Do not persist one limiter row for every random 43-character guess. Once a
   // live bearer token is proven to exist, its own bucket protects the expensive
   // password-verification and hashing work below.
-  const tokenLimit = consumeRateLimit("auth-password-reset-token", token, {
-    limit: 6,
-    windowMs: 60 * 60 * 1000,
-    blockMs: 60 * 60 * 1000,
-  });
+  const tokenLimit = (await consumeRateLimit("auth-password-reset-token", token, {
+      limit: 6,
+      windowMs: 60 * 60 * 1000,
+      blockMs: 60 * 60 * 1000,
+    }));
   if (!tokenLimit.allowed) return { error: "Too many reset attempts. Request a new password-reset link." };
 
   if (verifyPassword(password, candidate.password_hash)) {
@@ -821,47 +821,47 @@ export async function resetPassword(
 
   const passwordHash = hashPassword(password);
   let resetEmail: string | null = null;
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const current = db
-      .prepare(
-        `SELECT prt.id, prt.user_id, u.role, u.email, u.password_hash
+    const current = (await db
+          .prepare(
+            `SELECT prt.id, prt.user_id, u.role, u.email, u.password_hash
            FROM password_reset_tokens prt
            JOIN users u ON u.id = prt.user_id
            JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
           WHERE prt.id = ? AND prt.token_hash = ? AND prt.consumed_at IS NULL
             AND prt.expires_at > ? AND u.status = 'active'`,
-      )
-      .get(candidate.id, tokenHash, Date.now()) as
+          )
+          .get(candidate.id, tokenHash, Date.now())) as
       | { id: string; user_id: string; role: string; email: string; password_hash: string | null }
       | undefined;
     if (!current || current.user_id !== candidate.user_id || current.password_hash !== candidate.password_hash) {
       throw new Error("reset_unavailable");
     }
     const consumedAt = Date.now();
-    const consumed = db
-      .prepare("UPDATE password_reset_tokens SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL")
-      .run(consumedAt, current.id);
-    const updated = db
-      .prepare(
-        `UPDATE users
+    const consumed = (await db
+          .prepare("UPDATE password_reset_tokens SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL")
+          .run(consumedAt, current.id));
+    const updated = (await db
+          .prepare(
+            `UPDATE users
             SET password_hash = ?, password_change_required = 0, signin = 'Email + password'
           WHERE id = ? AND status = 'active' AND password_hash IS ?`,
-      )
-      .run(passwordHash, current.user_id, current.password_hash);
+          )
+          .run(passwordHash, current.user_id, current.password_hash));
     if (consumed.changes !== 1 || updated.changes !== 1) throw new Error("reset_unavailable");
 
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(current.user_id);
-    db.prepare(
-      "UPDATE password_reset_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
-    ).run(consumedAt, current.user_id);
-    db.prepare("INSERT INTO activity (id, icon, text, when_label, role) VALUES (?, 'lock', ?, 'Just now', ?)")
-      .run(`act-${randomUUID()}`, "Account security: password reset completed and prior sessions revoked.", current.role);
+    (await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(current.user_id));
+    (await db.prepare(
+            "UPDATE password_reset_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
+          ).run(consumedAt, current.user_id));
+    (await db.prepare("INSERT INTO activity (id, icon, text, when_label, role) VALUES (?, 'lock', ?, 'Just now', ?)")
+            .run(`act-${randomUUID()}`, "Account security: password reset completed and prior sessions revoked.", current.role));
     resetEmail = current.email.trim().toLowerCase();
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the safe public result below if rollback is already complete.
     }
@@ -869,12 +869,12 @@ export async function resetPassword(
   }
 
   try {
-    clearRateLimit("auth-password-reset-token", token);
+    (await clearRateLimit("auth-password-reset-token", token));
     if (resetEmail) {
       // Proof of control over the reset token is enough to release stale
       // identity throttles so the owner can sign in with the new password.
-      clearRateLimit("auth-password-reset-request-identity", resetEmail);
-      clearRateLimit("auth-login-identity", resetEmail);
+      (await clearRateLimit("auth-password-reset-request-identity", resetEmail));
+      (await clearRateLimit("auth-login-identity", resetEmail));
     }
   } catch {
     // The credential change is already committed. Throttle cleanup is
@@ -904,9 +904,9 @@ export async function changePassword(_prev: PasswordState, formData: FormData): 
   if (next !== confirm) return { error: "New password and confirmation don't match." };
 
   const db = getDb();
-  const row = db
-    .prepare("SELECT password_hash, password_change_required FROM users WHERE id = ?")
-    .get(me.id) as { password_hash: string | null; password_change_required: number } | undefined;
+  const row = (await db
+      .prepare("SELECT password_hash, password_change_required FROM users WHERE id = ?")
+      .get(me.id)) as { password_hash: string | null; password_change_required: number } | undefined;
   if (!row) return { error: "Your account is no longer available. Sign in again." };
 
   // The database is the authority for the stronger bootstrap-password policy.
@@ -930,10 +930,10 @@ export async function changePassword(_prev: PasswordState, formData: FormData): 
   let committedRequirement = row.password_change_required;
   let committedChangeWasRequired = passwordChangeWasRequired;
   try {
-    db.exec("BEGIN IMMEDIATE");
-    const locked = db
-      .prepare("SELECT password_hash, password_change_required, status FROM users WHERE id = ?")
-      .get(me.id) as
+    (await db.exec("BEGIN IMMEDIATE"));
+    const locked = (await db
+          .prepare("SELECT password_hash, password_change_required, status FROM users WHERE id = ?")
+          .get(me.id)) as
       | { password_hash: string | null; password_change_required: number; status: string }
       | undefined;
     if (!locked || locked.status !== "active") throw new Error("account_unavailable");
@@ -946,9 +946,9 @@ export async function changePassword(_prev: PasswordState, formData: FormData): 
     const lockedMinimumLength = committedChangeWasRequired ? 12 : 8;
     if (next.length < lockedMinimumLength) throw new Error(`password_policy:${lockedMinimumLength}`);
 
-    const updated = db
-      .prepare(
-        `UPDATE users
+    const updated = (await db
+          .prepare(
+            `UPDATE users
          SET password_hash = ?,
              password_change_required = CASE
                WHEN COALESCE(password_change_required, 0) != 0 AND ? = 0 THEN 1
@@ -956,22 +956,22 @@ export async function changePassword(_prev: PasswordState, formData: FormData): 
              END
          WHERE id = ? AND status = 'active' AND password_hash IS ?
          RETURNING password_change_required`,
-      )
-      .get(passwordHash, strongerPolicyPassed ? 1 : 0, me.id, locked.password_hash) as
+          )
+          .get(passwordHash, strongerPolicyPassed ? 1 : 0, me.id, locked.password_hash)) as
       | { password_change_required: number }
       | undefined;
     if (!updated) throw new Error("password_changed");
 
     const committedAt = Date.now();
-    db.prepare(
-      "UPDATE password_reset_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
-    ).run(committedAt, me.id);
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(me.id);
+    (await db.prepare(
+            "UPDATE password_reset_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
+          ).run(committedAt, me.id));
+    (await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(me.id));
     committedRequirement = updated.password_change_required;
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      if (db.isTransaction) db.exec("ROLLBACK");
+      if (db.isTransaction) (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the safe public error selected below.
     }

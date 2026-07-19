@@ -54,24 +54,24 @@ function rowToPartnerOrg(r: any): PartnerOrg {
 }
 
 /** A single partner org by its public slug, or null when it doesn't exist. */
-export function getPartnerBySlug(slug: string): PartnerOrg | null {
-  const row = getDb().prepare("SELECT * FROM partner_orgs WHERE slug = ?").get(slug) as any;
+export async function getPartnerBySlug(slug: string): Promise<PartnerOrg | null> {
+  const row = (await getDb().prepare("SELECT * FROM partner_orgs WHERE slug = ?").get(slug)) as any;
   return row ? rowToPartnerOrg(row) : null;
 }
 
 /** All partner orgs, newest first — for the admin "Partners" tab. */
-export function getAllPartnerOrgs(): PartnerOrg[] {
-  const rows = getDb()
-    .prepare("SELECT * FROM partner_orgs ORDER BY created_at DESC, name ASC")
-    .all() as any[];
+export async function getAllPartnerOrgs(): Promise<PartnerOrg[]> {
+  const rows = (await getDb()
+      .prepare("SELECT * FROM partner_orgs ORDER BY created_at DESC, name ASC")
+      .all()) as any[];
   return rows.map(rowToPartnerOrg);
 }
 
 /** Every demo request, newest first — for the admin "Partners" tab. */
-export function getDemoRequests(): DemoRequest[] {
-  const rows = getDb()
-    .prepare("SELECT * FROM demo_requests ORDER BY created_at DESC")
-    .all() as any[];
+export async function getDemoRequests(): Promise<DemoRequest[]> {
+  const rows = (await getDb()
+      .prepare("SELECT * FROM demo_requests ORDER BY created_at DESC")
+      .all()) as any[];
   return rows.map((r) => {
     const createdAt = Number(r.created_at) || 0;
     return {
@@ -87,10 +87,10 @@ export function getDemoRequests(): DemoRequest[] {
 }
 
 /** Headline counts for the admin overview. */
-export function getPartnerCounts(): { orgs: number; demoRequests: number } {
+export async function getPartnerCounts(): Promise<{ orgs: number; demoRequests: number }> {
   const db = getDb();
-  const orgs = (db.prepare("SELECT COUNT(*) AS n FROM partner_orgs").get() as { n: number }).n;
-  const demoRequests = (db.prepare("SELECT COUNT(*) AS n FROM demo_requests").get() as { n: number }).n;
+  const orgs = ((await db.prepare("SELECT COUNT(*) AS n FROM partner_orgs").get()) as { n: number }).n;
+  const demoRequests = ((await db.prepare("SELECT COUNT(*) AS n FROM demo_requests").get()) as { n: number }).n;
   return { orgs: Number(orgs) || 0, demoRequests: Number(demoRequests) || 0 };
 }
 

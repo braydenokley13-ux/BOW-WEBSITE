@@ -52,8 +52,8 @@ export default async function RegionsPage({
   await requireStaff();
   const requested = (await searchParams).view;
   const view: View = VIEWS.some((item) => item.value === requested) ? (requested as View) : "operating";
-  const regions = getDb().prepare(
-    `SELECT r.*,
+  const regions = (await getDb().prepare(
+      `SELECT r.*,
             leader.name AS leader_name,
             COUNT(DISTINCT l.id) AS location_count,
             COUNT(DISTINCT CASE WHEN l.stage = 'active' THEN l.id END) AS active_location_count,
@@ -65,7 +65,7 @@ export default async function RegionsPage({
       GROUP BY r.id
       ORDER BY CASE r.stage WHEN 'active' THEN 0 WHEN 'paused' THEN 1 WHEN 'closed' THEN 2 ELSE 3 END,
                r.name`,
-  ).all() as unknown as RegionSummaryRow[];
+    ).all()) as unknown as RegionSummaryRow[];
   const visible = regions.filter((region) => matchesView(region, view));
   const activeCount = regions.filter((region) => region.stage === "active").length;
   const pausedCount = regions.filter((region) => region.stage === "paused").length;

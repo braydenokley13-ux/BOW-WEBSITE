@@ -38,16 +38,16 @@ export interface RecordVisitResult extends StreakState {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** Read a student's current XP total. */
-export function getUserXp(studentId: string): number {
-  const r = getDb().prepare("SELECT xp FROM users WHERE id = ?").get(studentId) as any;
+export async function getUserXp(studentId: string): Promise<number> {
+  const r = (await getDb().prepare("SELECT xp FROM users WHERE id = ?").get(studentId)) as any;
   return Number(r?.xp) || 0;
 }
 
 /** Read a student's streak state. */
-export function getStreak(studentId: string): StreakState {
-  const r = getDb()
-    .prepare("SELECT current_streak, longest_streak, last_active_date FROM users WHERE id = ?")
-    .get(studentId) as any;
+export async function getStreak(studentId: string): Promise<StreakState> {
+  const r = (await getDb()
+      .prepare("SELECT current_streak, longest_streak, last_active_date FROM users WHERE id = ?")
+      .get(studentId)) as any;
   return {
     current: Number(r?.current_streak) || 0,
     longest: Number(r?.longest_streak) || 0,
@@ -62,9 +62,9 @@ export function getStreak(studentId: string): StreakState {
  *  - older or never → reset to 1.
  * `longest_streak` is always kept at the max seen.
  */
-export function recordDailyVisit(studentId: string, now: number = Date.now()): RecordVisitResult {
+export async function recordDailyVisit(studentId: string, now: number = Date.now()): Promise<RecordVisitResult> {
   const db = getDb();
-  const before = getStreak(studentId);
+  const before = (await getStreak(studentId));
   const today = utcIso(now);
   const yesterday = utcIso(now - DAY_MS);
 
@@ -75,21 +75,21 @@ export function recordDailyVisit(studentId: string, now: number = Date.now()): R
 
   const current = before.lastActiveDate === yesterday ? before.current + 1 : 1;
   const longest = Math.max(before.longest, current);
-  db.prepare(
-    "UPDATE users SET current_streak = ?, longest_streak = ?, last_active_date = ? WHERE id = ?",
-  ).run(current, longest, today, studentId);
+  (await db.prepare(
+        "UPDATE users SET current_streak = ?, longest_streak = ?, last_active_date = ? WHERE id = ?",
+      ).run(current, longest, today, studentId));
 
   const milestone = (STREAK_MILESTONES as readonly number[]).includes(current) ? current : null;
   return { current, longest, lastActiveDate: today, advanced: true, milestone };
 }
 
 /** The top students by current streak (admin overview). */
-export function getStreakLeaders(limit = 3): { id: string; name: string; current: number }[] {
-  const rows = getDb()
-    .prepare(
-      "SELECT id, name, current_streak FROM users WHERE role = 'student' AND COALESCE(current_streak, 0) > 0 ORDER BY current_streak DESC, name ASC LIMIT ?",
-    )
-    .all(limit) as any[];
+export async function getStreakLeaders(limit = 3): Promise<{ id: string; name: string; current: number }[]> {
+  const rows = (await getDb()
+      .prepare(
+        "SELECT id, name, current_streak FROM users WHERE role = 'student' AND COALESCE(current_streak, 0) > 0 ORDER BY current_streak DESC, name ASC LIMIT ?",
+      )
+      .all(limit)) as any[];
   return rows.map((r) => ({ id: r.id, name: r.name, current: Number(r.current_streak) || 0 }));
 }
 

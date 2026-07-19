@@ -15,21 +15,21 @@ const valueStyle = { fontFamily: "var(--font-interface)", fontSize: 14, color: "
 export default async function TrainingSessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
-  const now = Number((db.prepare("SELECT unixepoch('now') * 1000 AS now").get() as { now: number }).now);
-  const row = db.prepare("SELECT * FROM training_sessions WHERE id = ?").get(id) as any;
+  const now = Number(((await db.prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
+  const row = (await db.prepare("SELECT * FROM training_sessions WHERE id = ?").get(id)) as any;
   if (!row) notFound();
   const session = rowToTrainingSession(row);
   const facilitator = session.facilitatorUserId
-    ? db.prepare("SELECT name FROM users WHERE id = ?").get(session.facilitatorUserId) as { name: string } | undefined
+    ? (await db.prepare("SELECT name FROM users WHERE id = ?").get(session.facilitatorUserId)) as { name: string } | undefined
     : undefined;
 
   const registered = new Set(
-    (db.prepare("SELECT instructor_id FROM training_session_registrations WHERE session_id = ?").all(id) as { instructor_id: string }[]).map(
+    ((await db.prepare("SELECT instructor_id FROM training_session_registrations WHERE session_id = ?").all(id)) as { instructor_id: string }[]).map(
       (r) => r.instructor_id,
     ),
   );
   const attendance = new Map(
-    (db.prepare("SELECT instructor_id, attended, recorded_at FROM training_session_attendance WHERE session_id = ?").all(id) as {
+    ((await db.prepare("SELECT instructor_id, attended, recorded_at FROM training_session_attendance WHERE session_id = ?").all(id)) as {
       instructor_id: string;
       attended: number;
       recorded_at: number;
@@ -38,14 +38,14 @@ export default async function TrainingSessionDetailPage({ params }: { params: Pr
 
   // Instructors relevant to this session: registered, plus anyone still in
   // onboarding/training/practice_evaluation who could register.
-  const candidateRows = db
-    .prepare("SELECT * FROM instructors WHERE stage IN ('onboarding','training','practice_evaluation') OR id IN (SELECT instructor_id FROM training_session_registrations WHERE session_id = ?)")
-    .all(id) as any[];
-  const instructors: (Instructor & { person: Person | null })[] = candidateRows.map((r) => {
-    const instructor = rowToInstructor(r);
-    const personRow = db.prepare("SELECT * FROM people WHERE id = ?").get(instructor.personId) as any;
-    return { ...instructor, person: personRow ? rowToPerson(personRow) : null };
-  });
+  const candidateRows = (await db
+      .prepare("SELECT * FROM instructors WHERE stage IN ('onboarding','training','practice_evaluation') OR id IN (SELECT instructor_id FROM training_session_registrations WHERE session_id = ?)")
+      .all(id)) as any[];
+  const instructors: (Instructor & { person: Person | null })[] = (await Promise.all(candidateRows.map(async (r) => {
+      const instructor = rowToInstructor(r);
+      const personRow = (await db.prepare("SELECT * FROM people WHERE id = ?").get(instructor.personId)) as any;
+      return { ...instructor, person: personRow ? rowToPerson(personRow) : null };
+    })));
 
   const attendedCount = [...attendance.values()].filter((evidence) => evidence.attended).length;
   const attendanceEvidenceVersion = Math.max(0, ...[...attendance.values()].map((evidence) => evidence.recordedAt));
@@ -87,13 +87,13 @@ export default async function TrainingSessionDetailPage({ params }: { params: Pr
           key={`${id}:${registered.size}:${attendanceEvidenceVersion}`}
           sessionId={id}
           canRecordAttendance={session.scheduledAt <= now}
-          instructors={instructors.map((i) => ({
-            id: i.id,
-            name: i.person?.name ?? i.id,
-            registered: registered.has(i.id),
-            attended: attendance.get(i.id)?.attended ?? null,
-            recordedAt: attendance.get(i.id)?.recordedAt ?? null,
-          }))}
+          instructors={(await Promise.all(instructors.map(async (i) => ({
+                      id: i.id,
+                      name: i.person?.name ?? i.id,
+                      registered: registered.has(i.id),
+                      attended: (await attendance.get(i.id))?.attended ?? null,
+                      recordedAt: (await attendance.get(i.id))?.recordedAt ?? null,
+                    }))))}
         />
       </div>
 

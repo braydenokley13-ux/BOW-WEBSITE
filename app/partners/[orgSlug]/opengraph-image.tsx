@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 /** A dynamic 1200×630 OG card for LinkedIn / email previews of a partner page. */
 export default async function Image({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  const org = getPartnerBySlug(orgSlug);
+  const org = (await getPartnerBySlug(orgSlug));
 
   const name = org?.name ?? "BOW Sports Capital";
   const headline = org?.customHeadline ?? "The front office for the next generation";

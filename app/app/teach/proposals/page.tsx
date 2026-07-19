@@ -13,7 +13,7 @@ const STATUS_BADGE: Record<string, "positive" | "warning" | "negative" | "neutra
 
 export default async function TeachProposalsPage() {
   const { instructor } = await requireActiveInstructorSelf();
-  const proposals = listClassProposalsForInstructor(instructor.id);
+  const proposals = (await listClassProposalsForInstructor(instructor.id));
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>

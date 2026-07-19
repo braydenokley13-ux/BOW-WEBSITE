@@ -93,9 +93,8 @@ discussion posts×5 (capped at 50) + weekly-challenge completions×25.
 The front office (`/app`) runs on a real, self-contained backend — no external
 service required:
 
-- **Database** — SQLite via Node's built-in `node:sqlite` driver. The file lives
-  at `data/bow.db` (gitignored) and is created and seeded from `lib/account.ts`
-  on first boot, so the app comes up with the prototype's data already loaded.
+- **Database** — Supabase Postgres. Vercel runtime traffic uses the pooled
+  `POSTGRES_URL`; one-time migration work uses `POSTGRES_URL_NON_POOLING`.
 - **Passwords** — hashed with scrypt (`node:crypto`); see `lib/password.ts`.
 - **Sessions** — random opaque tokens stored in an HttpOnly cookie; only their
   SHA-256 digests are stored in the database (`lib/session.ts`). Validated
@@ -163,18 +162,19 @@ existing database, every active credential is checked once and startup refuses t
 continue if any account uses the historical public demo password. Production mode
 never seeds demo identities or demo-authored content.
 
-### Production topology
+### SQLite → Supabase migration
 
-The current persistence adapter is SQLite. It is safe only when every application
-request reaches one deployment with one durable filesystem. Set `BOW_DATABASE_PATH`
-to an absolute path on that durable volume and include the database plus its WAL/SHM
-files in the backup plan.
+1. Connect a new Supabase resource to the Vercel project.
+2. Pull Vercel's variables locally, or place the direct/session connection in
+   `POSTGRES_URL_NON_POOLING` inside `.env.local`.
+3. Run `npm run db:migrate:supabase`. The importer reads `data/bow.db`, creates
+   the Postgres tables/indexes/foreign keys, copies every row, enables RLS, and
+   verifies the row count of every table.
+4. Deploy with the pooled `POSTGRES_URL` supplied by the integration.
 
-Do **not** deploy this SQLite adapter to Vercel Functions or another ephemeral,
-horizontally scaled serverless runtime. Production startup intentionally fails on
-Vercel because separate function instances cannot share this database safely and
-their local files are not durable. A Vercel deployment requires replacing the
-persistence adapter with managed Postgres first.
+The importer refuses to write over existing BOW tables. `--force` exists only
+for intentionally replacing a test import. To migrate a different SQLite file,
+run `npm run db:migrate:supabase -- --source=/absolute/path/to/bow.db`.
 
 Editorial mirrors require two separate stores: `BLOB_READ_WRITE_TOKEN` for the
 public, published-only article payloads and `ARTICLE_PRIVATE_BLOB_READ_WRITE_TOKEN`

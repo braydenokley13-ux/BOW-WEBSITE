@@ -15,6 +15,6 @@ import { requireRole } from "@/lib/dal";
  */
 export async function completeOnboarding(): Promise<void> {
   const me = await requireRole("student");
-  getDb().prepare("UPDATE users SET onboarding_completed = 1 WHERE id = ?").run(me.id);
+  (await getDb().prepare("UPDATE users SET onboarding_completed = 1 WHERE id = ?").run(me.id));
   redirect("/dashboard");
 }

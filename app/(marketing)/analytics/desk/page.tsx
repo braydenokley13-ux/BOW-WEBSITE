@@ -166,13 +166,13 @@ function AssignmentCard({ assignment, liveQuestionId }: { assignment: DeskAssign
   );
 }
 
-export default function ResearchDeskPage() {
-  const docket = getOpenDocket();
+export default async function ResearchDeskPage() {
+  const docket = (await getOpenDocket());
   const signals = [...docket].sort((a, b) => b.heat - a.heat).slice(0, 5);
-  const ledgerEvents = getLedgerEventsSync();
+  const ledgerEvents = (await getLedgerEventsSync());
   const recentEvents = [...ledgerEvents].sort((a, b) => b.at - a.at).slice(0, 4);
-  const week = summarizeLastWeek(ledgerEvents);
-  const published = getPublishedArticles().slice(0, 4);
+  const week = (await summarizeLastWeek(ledgerEvents));
+  const published = (await getPublishedArticles()).slice(0, 4);
   const grouped = groupByStatus(DESK_ASSIGNMENTS);
   const counts = deskCounts(DESK_ASSIGNMENTS);
   const resolved = new Map(DESK_ASSIGNMENTS.map((a) => [a.id, resolveSignalQuestion(a, docket)?.id ?? null]));

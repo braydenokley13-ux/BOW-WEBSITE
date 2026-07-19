@@ -19,8 +19,8 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
-export default function GlossaryPage() {
-  const terms = getGlossaryTerms();
+export default async function GlossaryPage() {
+  const terms = (await getGlossaryTerms());
 
   return (
     <div data-screen-label="Glossary">

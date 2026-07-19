@@ -12,17 +12,17 @@ const valueStyle = { fontFamily: "var(--font-interface)", fontSize: 14, color: "
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export default async function StudentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const detail = getStudentDetail(id);
+  const detail = (await getStudentDetail(id));
   if (!detail) notFound();
   const { student, guardian, enrollments } = detail;
 
   const db = getDb();
-  const classRows = enrollments.map((e) => {
-    const cls = db.prepare("SELECT * FROM classes WHERE id = ?").get(e.classId) as any;
-    return { enrollment: e, title: cls?.title ?? e.classId, status: cls?.status ?? "—" };
-  });
+  const classRows = (await Promise.all(enrollments.map(async (e) => {
+      const cls = (await db.prepare("SELECT * FROM classes WHERE id = ?").get(e.classId)) as any;
+      return { enrollment: e, title: cls?.title ?? e.classId, status: cls?.status ?? "—" };
+    })));
 
-  const attendance = getStudentAttendanceHistory(id);
+  const attendance = (await getStudentAttendanceHistory(id));
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>

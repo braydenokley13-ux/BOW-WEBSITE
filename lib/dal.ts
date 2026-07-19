@@ -16,7 +16,7 @@ import type { AppData, Role, User } from "@/lib/account";
 import { getInstructorByUserId, type Instructor } from "@/lib/hiring";
 
 export const getCurrentUser = cache(async (): Promise<User | null> => {
-  return getSessionUser();
+  return (await getSessionUser());
 });
 
 export async function requireUser(): Promise<User> {
@@ -34,11 +34,11 @@ export async function requireRole(...roles: Role[]): Promise<User> {
 
 /** Staff = admin or growth — the two roles that run BOW HQ. */
 export async function requireStaff(): Promise<User> {
-  return requireRole("admin", "growth");
+  return (await requireRole("admin", "growth"));
 }
 
 export async function requireAdmin(): Promise<User> {
-  return requireRole("admin");
+  return (await requireRole("admin"));
 }
 
 /**
@@ -51,13 +51,13 @@ export async function requireAdmin(): Promise<User> {
 export async function requireDiscussionMember(): Promise<User> {
   const user = await requireUser();
   const db = getDb();
-  const activeOrganization = db.prepare(
-    "SELECT 1 FROM organizations WHERE id = ? AND status = 'active'",
-  ).get(user.orgId);
+  const activeOrganization = (await db.prepare(
+      "SELECT 1 FROM organizations WHERE id = ? AND status = 'active'",
+    ).get(user.orgId));
   if (!activeOrganization) redirect("/app");
   if (user.role === "student") {
-    const approved = db.prepare(
-      `SELECT 1
+    const approved = (await db.prepare(
+          `SELECT 1
          FROM invitations i
         WHERE i.status = 'accepted' AND i.role = 'student'
           AND i.org_id = ? AND lower(trim(i.email)) = lower(trim(?))
@@ -66,11 +66,11 @@ export async function requireDiscussionMember(): Promise<User> {
              WHERE e.user_id = ? AND e.enroll = 'active'
           )
         LIMIT 1`,
-    ).get(user.orgId, user.email, user.id);
+        ).get(user.orgId, user.email, user.id));
     if (!approved) redirect("/app/student?community=invitation-required");
   }
   if (user.role === "instructor") {
-    const instructor = getInstructorByUserId(user.id);
+    const instructor = (await getInstructorByUserId(user.id));
     if (!instructor || instructor.stage !== "active" || instructor.eligibilityStatus !== "eligible") {
       redirect("/app/teach");
     }
@@ -88,7 +88,7 @@ export async function requireTeachingUser(): Promise<User> {
   const user = await requireRole("instructor", "admin");
   if (user.role === "admin") return user;
 
-  const instructor = getInstructorByUserId(user.id);
+  const instructor = (await getInstructorByUserId(user.id));
   if (!instructor) redirect("/app/settings");
   if (instructor.stage !== "active" || instructor.eligibilityStatus !== "eligible") {
     if (!["inactive", "rejected"].includes(instructor.stage)) redirect("/app/teach");
@@ -106,7 +106,7 @@ export async function requireTeachingUser(): Promise<User> {
  */
 export async function requireInstructorSelf(): Promise<{ user: User; instructor: Instructor }> {
   const user = await requireRole("instructor");
-  const instructor = getInstructorByUserId(user.id);
+  const instructor = (await getInstructorByUserId(user.id));
   if (!instructor || instructor.stage === "inactive" || instructor.stage === "rejected") redirect("/app");
   return { user, instructor };
 }

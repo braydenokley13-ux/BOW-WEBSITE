@@ -14,10 +14,10 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const player = getAnalyticsPlayer(slug);
+  const player = (await getAnalyticsPlayer(slug));
   if (!player) return { title: "Player Not Found — BOW Analytics" };
-  const allPlayers = getAnalyticsPlayers();
-  const history = getPlayerSeasonHistory(slug);
+  const allPlayers = (await getAnalyticsPlayers());
+  const history = (await getPlayerSeasonHistory(slug));
   const memo = buildPlayerMemo(player, allPlayers, DEFAULT_ASSUMPTIONS, history);
   const title = `${player.name} — Investment Memo | BOW Sports Capital Analytics`;
   const description = `${player.name} (${player.team}): ${memo.verdict.headline}. Value thesis, upside/downside cases, risk factors, and a ${ACTION_LABELS[memo.recommendation.action].toLowerCase()} recommendation — built live from the model's apron-adjusted surplus value.`;
@@ -31,12 +31,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function PlayerPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const player = getAnalyticsPlayer(slug);
+  const player = (await getAnalyticsPlayer(slug));
   if (!player) notFound();
 
-  const allPlayers = getAnalyticsPlayers();
-  const coverage = getArticlesMentioningPlayer(player.slug, 3);
-  const history = getPlayerSeasonHistory(player.slug);
+  const allPlayers = (await getAnalyticsPlayers());
+  const coverage = (await getArticlesMentioningPlayer(player.slug, 3));
+  const history = (await getPlayerSeasonHistory(player.slug));
 
   return (
     <div data-screen-label="Player Breakdown">

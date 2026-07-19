@@ -189,8 +189,8 @@ export const CONCEPT_MAP: ConceptMapEntry[] = [
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** All concept-map entries, ordered (DB first, falling back to the seed). */
-export function getConceptMap(): ConceptMapEntry[] {
-  const rows = getDb().prepare("SELECT * FROM concept_map ORDER BY ordinal ASC").all() as any[];
+export async function getConceptMap(): Promise<ConceptMapEntry[]> {
+  const rows = (await getDb().prepare("SELECT * FROM concept_map ORDER BY ordinal ASC").all()) as any[];
   if (rows.length === 0) return [...CONCEPT_MAP].sort((a, b) => a.ordinal - b.ordinal);
   return rows.map((r) => ({
     id: r.id,

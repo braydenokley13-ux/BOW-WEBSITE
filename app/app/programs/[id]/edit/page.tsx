@@ -6,9 +6,9 @@ import { getProgram, getProgramFormOptions } from "@/lib/operations";
 export default async function EditProgramPage({ params }: { params: Promise<{ id: string }> }) {
   await requireStaff();
   const { id } = await params;
-  const detail = getProgram(id);
+  const detail = (await getProgram(id));
   if (!detail) notFound();
-  const options = getProgramFormOptions();
+  const options = (await getProgramFormOptions());
 
   return (
     <main className="ops-page">

@@ -110,36 +110,36 @@ const BOW_ORG_ID = "org-bow";
 const TERMINAL_CANONICAL_CLASS_STATUSES = new Set(["completed", "cancelled"]);
 const HISTORICAL_CANONICAL_PROGRAM_STAGES = new Set(["completed", "renewal_review", "renewed", "closed"]);
 
-function withLegacyTransaction<T>(db: LegacyDb, work: () => T): T {
+async function withLegacyTransaction<T>(db: LegacyDb, work: () => T): Promise<T> {
   // Serialize standalone writers. A nested caller already owns the writer
   // lock, so use a savepoint only in that case.
   const nested = db.isTransaction;
-  db.exec(nested ? "SAVEPOINT legacy_lms_action" : "BEGIN IMMEDIATE");
+  (await db.exec(nested ? "SAVEPOINT legacy_lms_action" : "BEGIN IMMEDIATE"));
   try {
     const result = work();
-    db.exec(nested ? "RELEASE SAVEPOINT legacy_lms_action" : "COMMIT");
+    (await db.exec(nested ? "RELEASE SAVEPOINT legacy_lms_action" : "COMMIT"));
     return result;
   } catch (error) {
     if (nested) {
-      db.exec("ROLLBACK TO SAVEPOINT legacy_lms_action");
-      db.exec("RELEASE SAVEPOINT legacy_lms_action");
+      (await db.exec("ROLLBACK TO SAVEPOINT legacy_lms_action"));
+      (await db.exec("RELEASE SAVEPOINT legacy_lms_action"));
     } else if (db.isTransaction) {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     }
     throw error;
   }
 }
 
-function requireLegacyCohort(db: LegacyDb, cohortId: string, requireActiveOrganization = true): LegacyCohortRow {
-  const cohort = db
-    .prepare(
-      `SELECT c.id, c.org_id, c.track, c.instructor_id, c.current_lesson_id, c.status,
+async function requireLegacyCohort(db: LegacyDb, cohortId: string, requireActiveOrganization = true): Promise<LegacyCohortRow> {
+  const cohort = (await db
+      .prepare(
+        `SELECT c.id, c.org_id, c.track, c.instructor_id, c.current_lesson_id, c.status,
               o.status AS org_status
          FROM cohorts c
          LEFT JOIN organizations o ON o.id = c.org_id
         WHERE c.id = ?`,
-    )
-    .get(cohortId) as LegacyCohortRow | undefined;
+      )
+      .get(cohortId)) as LegacyCohortRow | undefined;
   if (!cohort) throw new Error("Cohort not found.");
   if (!cohort.org_status) throw new Error("The cohort organization no longer exists.");
   if (requireActiveOrganization && cohort.org_status !== "active") {
@@ -154,7 +154,7 @@ function requireCohortCurriculum(cohort: LegacyCohortRow): ReturnType<typeof ord
   return curriculum;
 }
 
-function requireLegacyUser(
+async function requireLegacyUser(
   db: LegacyDb,
   userId: string,
   options: {
@@ -162,16 +162,16 @@ function requireLegacyUser(
     statuses: readonly string[];
     requireActiveOrganization?: boolean;
   },
-): LegacyUserRow {
-  const user = db
-    .prepare(
-      `SELECT u.id, u.name, u.email, u.role, u.status, u.org_id,
+): Promise<LegacyUserRow> {
+  const user = (await db
+      .prepare(
+        `SELECT u.id, u.name, u.email, u.role, u.status, u.org_id,
               o.status AS org_status
          FROM users u
          LEFT JOIN organizations o ON o.id = u.org_id
         WHERE u.id = ?`,
-    )
-    .get(userId) as LegacyUserRow | undefined;
+      )
+      .get(userId)) as LegacyUserRow | undefined;
   if (!user) throw new Error("User not found.");
   if (!LEGACY_USER_ROLES.has(user.role)) throw new Error("The user has an invalid role.");
   if (options.role && user.role !== options.role) {
@@ -185,20 +185,20 @@ function requireLegacyUser(
   return user;
 }
 
-function requireCanonicalTeachingIdentity(db: LegacyDb, userId: string, recompute: boolean): string {
-  requireLegacyUser(db, userId, { role: "instructor", statuses: ["active"] });
-  const profiles = db.prepare(
-    `SELECT i.id, i.stage, i.eligibility_status
+async function requireCanonicalTeachingIdentity(db: LegacyDb, userId: string, recompute: boolean): Promise<string> {
+  (await requireLegacyUser(db, userId, { role: "instructor", statuses: ["active"] }));
+  const profiles = (await db.prepare(
+      `SELECT i.id, i.stage, i.eligibility_status
        FROM people p
        JOIN instructors i ON i.person_id = p.id
       WHERE p.user_id = ? AND i.stage NOT IN ('rejected','inactive')
       ORDER BY i.created_at DESC, i.id DESC`,
-  ).all(userId) as { id: string; stage: string; eligibility_status: string }[];
+    ).all(userId)) as { id: string; stage: string; eligibility_status: string }[];
   if (profiles.length !== 1) {
     throw new Error("This account must have exactly one current instructor dossier before it can teach.");
   }
-  if (recompute) recomputeInstructorStatuses(profiles[0].id);
-  const current = db.prepare("SELECT stage, eligibility_status FROM instructors WHERE id = ?").get(profiles[0].id) as
+  if (recompute) (await recomputeInstructorStatuses(profiles[0].id));
+  const current = (await db.prepare("SELECT stage, eligibility_status FROM instructors WHERE id = ?").get(profiles[0].id)) as
     | { stage: string; eligibility_status: string }
     | undefined;
   if (!current || current.stage !== "active" || current.eligibility_status !== "eligible") {
@@ -207,19 +207,19 @@ function requireCanonicalTeachingIdentity(db: LegacyDb, userId: string, recomput
   return profiles[0].id;
 }
 
-function requireCanonicalCohortProjection(
+async function requireCanonicalCohortProjection(
   db: LegacyDb,
   cohort: LegacyCohortRow,
-): CanonicalCohortProjectionRow {
-  const projection = db.prepare(
-    `SELECT c.id AS class_id, c.status AS class_status,
+): Promise<CanonicalCohortProjectionRow> {
+  const projection = (await db.prepare(
+      `SELECT c.id AS class_id, c.status AS class_status,
             c.partner_org_id AS class_partner_org_id, c.capacity,
             c.lead_instructor_id, p.id AS program_id, p.stage AS program_stage,
             p.partner_org_id AS program_partner_org_id, p.source_type, p.source_id
        FROM classes c
        JOIN programs p ON p.id = c.program_id
       WHERE c.id = ?`,
-  ).get(cohort.id) as CanonicalCohortProjectionRow | undefined;
+    ).get(cohort.id)) as CanonicalCohortProjectionRow | undefined;
   if (!projection) {
     throw new Error(
       "This Cohort is missing its canonical Program and Class projection. Ask operations to repair it before making this change.",
@@ -254,10 +254,10 @@ function assertCanonicalCohortCanChange(
   }
 }
 
-function requireCanonicalStudentIdentity(db: LegacyDb, userId: string): CanonicalStudentRow {
-  const students = db.prepare(
-    "SELECT id, enrollment_status FROM students WHERE user_id = ? ORDER BY created_at DESC, id DESC",
-  ).all(userId) as unknown as CanonicalStudentRow[];
+async function requireCanonicalStudentIdentity(db: LegacyDb, userId: string): Promise<CanonicalStudentRow> {
+  const students = (await db.prepare(
+      "SELECT id, enrollment_status FROM students WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+    ).all(userId)) as unknown as CanonicalStudentRow[];
   if (students.length !== 1 || students[0].enrollment_status !== "active") {
     throw new Error(
       "This account must be linked to exactly one active canonical Student record before Cohort enrollment can change.",
@@ -266,238 +266,238 @@ function requireCanonicalStudentIdentity(db: LegacyDb, userId: string): Canonica
   return students[0];
 }
 
-function createCanonicalCohortProjection(
+async function createCanonicalCohortProjection(
   db: LegacyDb,
   cohort: LegacyCohortRow,
   name: string,
   ownerUserId: string,
   now: number,
-): CanonicalCohortProjectionRow {
-  const curricula = db.prepare(
-    "SELECT id FROM curricula WHERE title = 'Legacy LMS Program' ORDER BY created_at, id",
-  ).all() as { id: string }[];
+): Promise<CanonicalCohortProjectionRow> {
+  const curricula = (await db.prepare(
+      "SELECT id FROM curricula WHERE title = 'Legacy LMS Program' ORDER BY created_at, id",
+    ).all()) as { id: string }[];
   if (curricula.length !== 1) {
     throw new Error(
       "The legacy curriculum bridge is not configured uniquely. Ask operations to repair it before creating a Cohort.",
     );
   }
-  if (db.prepare("SELECT 1 FROM classes WHERE id = ?").get(cohort.id)) {
+  if ((await db.prepare("SELECT 1 FROM classes WHERE id = ?").get(cohort.id))) {
     throw new Error("A canonical Class already uses this Cohort identifier.");
   }
-  if (db.prepare("SELECT 1 FROM programs WHERE source_type = 'legacy_class' AND source_id = ?").get(cohort.id)) {
+  if ((await db.prepare("SELECT 1 FROM programs WHERE source_type = 'legacy_class' AND source_id = ?").get(cohort.id))) {
     throw new Error("A canonical Program already projects this Cohort.");
   }
 
   const programId = `prg-${cohort.id}`;
-  if (db.prepare("SELECT 1 FROM programs WHERE id = ?").get(programId)) {
+  if ((await db.prepare("SELECT 1 FROM programs WHERE id = ?").get(programId))) {
     throw new Error("A canonical Program identifier collision prevented this Cohort from being created safely.");
   }
   const curriculumId = curricula[0].id;
-  db.prepare(
-    `INSERT INTO programs
+  (await db.prepare(
+        `INSERT INTO programs
       (id, name, partner_org_id, curriculum_id, audience, delivery_format, stage,
        capacity, minimum_enrollment, owner_user_id, partner_confirmed, materials_status,
        renewal_status, source_type, source_id, notes, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, 'in_person', 'planning', 20, 1, ?, 0, 'not_ready',
              'not_due', 'legacy_class', ?, ?, ?, ?)`,
-  ).run(
-    programId,
-    name,
-    cohort.org_id,
-    curriculumId,
-    `BOW Track ${cohort.track}`,
-    ownerUserId,
-    cohort.id,
-    `Created atomically from legacy Cohort ${cohort.id}; the Class remains the delivery record.`,
-    now,
-    now,
-  );
-  db.prepare(
-    `INSERT INTO classes
+      ).run(
+        programId,
+        name,
+        cohort.org_id,
+        curriculumId,
+        `BOW Track ${cohort.track}`,
+        ownerUserId,
+        cohort.id,
+        `Created atomically from legacy Cohort ${cohort.id}; the Class remains the delivery record.`,
+        now,
+        now,
+      ));
+  (await db.prepare(
+        `INSERT INTO classes
       (id, title, curriculum_id, partner_org_id, location, online_format,
        start_date, end_date, recurrence, age_range, capacity, minimum_enrollment,
        lead_instructor_id, program_id, status, internal_notes, created_at, updated_at)
      VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, 20, 1,
              NULL, ?, 'planning', ?, ?, ?)`,
-  ).run(
-    cohort.id,
-    name,
-    curriculumId,
-    cohort.org_id,
-    programId,
-    `Created atomically from LMS Cohort ${cohort.id}.`,
-    now,
-    now,
-  );
-  logActivity("program", programId, "created", `Created with legacy Cohort ${cohort.id}.`, ownerUserId);
-  logActivity("class", cohort.id, "created", `Created with legacy Cohort ${cohort.id}.`, ownerUserId);
-  return requireCanonicalCohortProjection(db, cohort);
+      ).run(
+        cohort.id,
+        name,
+        curriculumId,
+        cohort.org_id,
+        programId,
+        `Created atomically from LMS Cohort ${cohort.id}.`,
+        now,
+        now,
+      ));
+  (await logActivity("program", programId, "created", `Created with legacy Cohort ${cohort.id}.`, ownerUserId));
+  (await logActivity("class", cohort.id, "created", `Created with legacy Cohort ${cohort.id}.`, ownerUserId));
+  return (await requireCanonicalCohortProjection(db, cohort));
 }
 
-function mirrorLegacyInstructorAssignment(
+async function mirrorLegacyInstructorAssignment(
   db: LegacyDb,
   cohort: LegacyCohortRow,
   projection: CanonicalCohortProjectionRow,
   canonicalInstructorId: string | null,
   actorUserId: string,
   now: number,
-): void {
+): Promise<void> {
   assertCanonicalCohortCanChange(projection, "staffing");
-  const currentLeads = db.prepare(
-    `SELECT id, instructor_id, role
+  const currentLeads = (await db.prepare(
+      `SELECT id, instructor_id, role
        FROM class_instructors
       WHERE class_id = ? AND role = 'lead' AND removed_at IS NULL
       ORDER BY added_at, id`,
-  ).all(projection.class_id) as { id: string; instructor_id: string; role: string }[];
+    ).all(projection.class_id)) as { id: string; instructor_id: string; role: string }[];
 
   for (const currentLead of currentLeads) {
     if (currentLead.instructor_id === canonicalInstructorId) continue;
     const removalReason = canonicalInstructorId
       ? `Replaced through legacy Cohort ${cohort.id} staffing.`
       : `Cleared through legacy Cohort ${cohort.id} staffing.`;
-    const removalDecision = recordClassStaffingDecision(db, {
-      classId: projection.class_id,
-      instructorId: currentLead.instructor_id,
-      assignmentId: currentLead.id,
-      action: "removed",
-      role: "lead",
-      reason: removalReason,
-      actorUserId,
-      decidedAt: now,
-      programId: projection.program_id,
-    });
-    const removed = db.prepare(
-      `UPDATE class_instructors
+    const removalDecision = (await recordClassStaffingDecision(db, {
+          classId: projection.class_id,
+          instructorId: currentLead.instructor_id,
+          assignmentId: currentLead.id,
+          action: "removed",
+          role: "lead",
+          reason: removalReason,
+          actorUserId,
+          decidedAt: now,
+          programId: projection.program_id,
+        }));
+    const removed = (await db.prepare(
+          `UPDATE class_instructors
           SET removed_at = ?, removal_reason = ?, removed_by = ?,
               removal_decision_id = ?, removal_decision_fingerprint = ?
         WHERE id = ? AND removed_at IS NULL`,
-    ).run(
-      now,
-      removalReason,
-      actorUserId,
-      removalDecision.decisionId,
-      removalDecision.fingerprint,
-      currentLead.id,
-    );
+        ).run(
+          now,
+          removalReason,
+          actorUserId,
+          removalDecision.decisionId,
+          removalDecision.fingerprint,
+          currentLead.id,
+        ));
     if (removed.changes !== 1) {
       throw new Error("The canonical instructor assignment changed before the Cohort staffing update completed.");
     }
-    logActivity("class", projection.class_id, "staffing", removalReason, actorUserId);
+    (await logActivity("class", projection.class_id, "staffing", removalReason, actorUserId));
   }
 
   if (!canonicalInstructorId) {
-    db.prepare("UPDATE classes SET lead_instructor_id = NULL, updated_at = ? WHERE id = ?")
-      .run(now, projection.class_id);
+    (await db.prepare("UPDATE classes SET lead_instructor_id = NULL, updated_at = ? WHERE id = ?")
+            .run(now, projection.class_id));
     return;
   }
 
-  const existing = db.prepare(
-    `SELECT id, role
+  const existing = (await db.prepare(
+      `SELECT id, role
        FROM class_instructors
       WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL`,
-  ).get(projection.class_id, canonicalInstructorId) as { id: string; role: string } | undefined;
+    ).get(projection.class_id, canonicalInstructorId)) as { id: string; role: string } | undefined;
   const alreadyMirrored = existing?.role === "lead" && projection.lead_instructor_id === canonicalInstructorId;
   if (!alreadyMirrored) {
     const assignmentId = existing?.id ?? `cin-${randomUUID().slice(0, 10)}`;
     const assignmentReason = `Assigned through legacy Cohort ${cohort.id} staffing.`;
-    const assignmentDecision = recordClassStaffingDecision(db, {
-      classId: projection.class_id,
-      instructorId: canonicalInstructorId,
-      assignmentId,
-      action: existing && existing.role !== "lead" ? "role_changed" : "assigned",
-      role: "lead",
-      reason: assignmentReason,
-      actorUserId,
-      decidedAt: now,
-      programId: projection.program_id,
-    });
+    const assignmentDecision = (await recordClassStaffingDecision(db, {
+          classId: projection.class_id,
+          instructorId: canonicalInstructorId,
+          assignmentId,
+          action: existing && existing.role !== "lead" ? "role_changed" : "assigned",
+          role: "lead",
+          reason: assignmentReason,
+          actorUserId,
+          decidedAt: now,
+          programId: projection.program_id,
+        }));
     if (existing) {
-      const updated = db.prepare(
-        `UPDATE class_instructors
+      const updated = (await db.prepare(
+              `UPDATE class_instructors
             SET role = 'lead', decision_reason = ?, assigned_by = ?, decision_id = ?,
                 decision_fingerprint = ?, decision_at = ?
           WHERE id = ? AND removed_at IS NULL`,
-      ).run(
-        assignmentReason,
-        actorUserId,
-        assignmentDecision.decisionId,
-        assignmentDecision.fingerprint,
-        now,
-        existing.id,
-      );
+            ).run(
+              assignmentReason,
+              actorUserId,
+              assignmentDecision.decisionId,
+              assignmentDecision.fingerprint,
+              now,
+              existing.id,
+            ));
       if (updated.changes !== 1) {
         throw new Error("The canonical instructor assignment changed before the Cohort staffing update completed.");
       }
     } else {
-      db.prepare(
-        `INSERT INTO class_instructors
+      (await db.prepare(
+                `INSERT INTO class_instructors
           (id, class_id, instructor_id, role, decision_reason, assigned_by,
            decision_id, decision_fingerprint, decision_at, added_at)
          VALUES (?, ?, ?, 'lead', ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        assignmentId,
-        projection.class_id,
-        canonicalInstructorId,
-        assignmentReason,
-        actorUserId,
-        assignmentDecision.decisionId,
-        assignmentDecision.fingerprint,
-        now,
-        now,
-      );
+              ).run(
+                assignmentId,
+                projection.class_id,
+                canonicalInstructorId,
+                assignmentReason,
+                actorUserId,
+                assignmentDecision.decisionId,
+                assignmentDecision.fingerprint,
+                now,
+                now,
+              ));
     }
-    logActivity("class", projection.class_id, "staffing", assignmentReason, actorUserId);
+    (await logActivity("class", projection.class_id, "staffing", assignmentReason, actorUserId));
   }
-  db.prepare("UPDATE classes SET lead_instructor_id = ?, updated_at = ? WHERE id = ?")
-    .run(canonicalInstructorId, now, projection.class_id);
+  (await db.prepare("UPDATE classes SET lead_instructor_id = ?, updated_at = ? WHERE id = ?")
+        .run(canonicalInstructorId, now, projection.class_id));
 }
 
-function enrollCanonicalStudent(
+async function enrollCanonicalStudent(
   db: LegacyDb,
   projection: CanonicalCohortProjectionRow,
   studentId: string,
   actorUserId: string,
   now: number,
-): void {
+): Promise<void> {
   assertCanonicalCohortCanChange(projection, "enrollment");
-  const rows = db.prepare(
-    "SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?",
-  ).all(projection.class_id, studentId) as unknown as CanonicalEnrollmentRow[];
+  const rows = (await db.prepare(
+      "SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?",
+    ).all(projection.class_id, studentId)) as unknown as CanonicalEnrollmentRow[];
   if (rows.length > 1) {
     throw new Error("Duplicate canonical enrollment rows must be reconciled before this Cohort can change.");
   }
   const existing = rows[0];
   if (existing?.status !== "enrolled" && projection.capacity && projection.capacity > 0) {
-    const count = db.prepare(
-      `SELECT COUNT(*) AS n
+    const count = (await db.prepare(
+          `SELECT COUNT(*) AS n
          FROM class_enrollments ce
          JOIN students s ON s.id = ce.student_id
         WHERE ce.class_id = ? AND ce.status = 'enrolled' AND s.enrollment_status = 'active'`,
-    ).get(projection.class_id) as { n: number };
+        ).get(projection.class_id)) as { n: number };
     if (count.n >= projection.capacity) throw new Error("This Cohort is full.");
   }
 
   let enrollmentId = existing?.id;
   if (!existing) {
     enrollmentId = `cen-${randomUUID().slice(0, 10)}`;
-    db.prepare(
-      `INSERT INTO class_enrollments
+    (await db.prepare(
+            `INSERT INTO class_enrollments
         (id, class_id, student_id, status, enrolled_at, withdrawn_at, withdrawal_reason)
        VALUES (?, ?, ?, 'enrolled', ?, NULL, NULL)`,
-    ).run(enrollmentId, projection.class_id, studentId, now);
+          ).run(enrollmentId, projection.class_id, studentId, now));
   } else if (existing.status !== "enrolled") {
-    const updated = db.prepare(
-      `UPDATE class_enrollments
+    const updated = (await db.prepare(
+          `UPDATE class_enrollments
           SET status = 'enrolled', enrolled_at = ?, withdrawn_at = NULL, withdrawal_reason = NULL
         WHERE id = ? AND status <> 'enrolled'`,
-    ).run(now, existing.id);
+        ).run(now, existing.id));
     if (updated.changes !== 1) {
       throw new Error("The canonical enrollment changed before the Cohort update completed.");
     }
   }
   if (!enrollmentId) throw new Error("The canonical enrollment could not be created.");
-  const rostered = db.prepare(
-    `INSERT INTO class_session_roster (id, session_id, student_id, enrollment_id, rostered_at)
+  const rostered = (await db.prepare(
+      `INSERT INTO class_session_roster (id, session_id, student_id, enrollment_id, rostered_at)
      SELECT 'csr-' || lower(hex(randomblob(16))), cs.id, ?, ?, ?
        FROM class_sessions cs
       WHERE cs.class_id = ? AND cs.session_date > ?
@@ -505,24 +505,24 @@ function enrollCanonicalStudent(
           SELECT 1 FROM class_session_roster csr
            WHERE csr.session_id = cs.id AND csr.student_id = ?
         )`,
-  ).run(studentId, enrollmentId, now, projection.class_id, now, studentId);
+    ).run(studentId, enrollmentId, now, projection.class_id, now, studentId));
   if (!existing || existing.status !== "enrolled" || rostered.changes > 0) {
-    logActivity("class", projection.class_id, "note", "Student enrolled through the legacy Cohort bridge; future rosters updated.", actorUserId);
+    (await logActivity("class", projection.class_id, "note", "Student enrolled through the legacy Cohort bridge; future rosters updated.", actorUserId));
   }
 }
 
-function withdrawCanonicalStudent(
+async function withdrawCanonicalStudent(
   db: LegacyDb,
   projection: CanonicalCohortProjectionRow,
   studentId: string,
   actorUserId: string,
   reason: string,
   now: number,
-): void {
+): Promise<void> {
   assertCanonicalCohortCanChange(projection, "enrollment");
-  const rows = db.prepare(
-    "SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?",
-  ).all(projection.class_id, studentId) as unknown as CanonicalEnrollmentRow[];
+  const rows = (await db.prepare(
+      "SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?",
+    ).all(projection.class_id, studentId)) as unknown as CanonicalEnrollmentRow[];
   if (rows.length > 1) {
     throw new Error("Duplicate canonical enrollment rows must be reconciled before this Cohort can change.");
   }
@@ -532,16 +532,16 @@ function withdrawCanonicalStudent(
       "This legacy enrollment is not linked to a current canonical Class enrollment. Ask operations to reconcile it before continuing.",
     );
   }
-  const withdrawn = db.prepare(
-    `UPDATE class_enrollments
+  const withdrawn = (await db.prepare(
+      `UPDATE class_enrollments
         SET status = 'withdrawn', withdrawn_at = ?, withdrawal_reason = ?
       WHERE id = ? AND status = 'enrolled'`,
-  ).run(now, reason, existing.id);
+    ).run(now, reason, existing.id));
   if (withdrawn.changes !== 1) {
     throw new Error("The canonical enrollment changed before the Cohort update completed.");
   }
-  db.prepare(
-    `DELETE FROM class_session_roster
+  (await db.prepare(
+        `DELETE FROM class_session_roster
       WHERE student_id = ?
         AND session_id IN (
           SELECT id FROM class_sessions WHERE class_id = ? AND session_date > ?
@@ -555,33 +555,33 @@ function withdrawCanonicalStudent(
           SELECT 1 FROM class_session_reports report
            WHERE report.session_id = class_session_roster.session_id AND report.completed = 1
         )`,
-  ).run(studentId, projection.class_id, now);
-  logActivity("class", projection.class_id, "note", `Student withdrawn through the legacy Cohort bridge. ${reason}`, actorUserId);
+      ).run(studentId, projection.class_id, now));
+  (await logActivity("class", projection.class_id, "note", `Student withdrawn through the legacy Cohort bridge. ${reason}`, actorUserId));
 }
 
-function requireStudentMembership(
+async function requireStudentMembership(
   db: LegacyDb,
   cohort: LegacyCohortRow,
   studentId: string,
   options: { userStatuses: readonly string[]; enrollmentStates: readonly string[] },
-): { user: LegacyUserRow; enrollment: LegacyEnrollmentRow } {
-  const user = requireLegacyUser(db, studentId, { role: "student", statuses: options.userStatuses });
+): Promise<{ user: LegacyUserRow; enrollment: LegacyEnrollmentRow }> {
+  const user = (await requireLegacyUser(db, studentId, { role: "student", statuses: options.userStatuses }));
   if (user.org_id !== cohort.org_id) {
     throw new Error("The student does not belong to this cohort's organization.");
   }
-  const enrollment = db
-    .prepare("SELECT enroll FROM enrollments WHERE user_id = ? AND cohort_id = ?")
-    .get(studentId, cohort.id) as LegacyEnrollmentRow | undefined;
+  const enrollment = (await db
+      .prepare("SELECT enroll FROM enrollments WHERE user_id = ? AND cohort_id = ?")
+      .get(studentId, cohort.id)) as LegacyEnrollmentRow | undefined;
   if (!enrollment || !options.enrollmentStates.includes(enrollment.enroll)) {
     throw new Error("The student is not an eligible member of this cohort.");
   }
   return { user, enrollment };
 }
 
-function requireSelfModule(db: LegacyDb, moduleId: string): SelfModuleRow {
-  const moduleRow = db
-    .prepare("SELECT id, COALESCE(track, '101') AS track, ordinal FROM self_modules WHERE id = ?")
-    .get(moduleId) as SelfModuleRow | undefined;
+async function requireSelfModule(db: LegacyDb, moduleId: string): Promise<SelfModuleRow> {
+  const moduleRow = (await db
+      .prepare("SELECT id, COALESCE(track, '101') AS track, ordinal FROM self_modules WHERE id = ?")
+      .get(moduleId)) as SelfModuleRow | undefined;
   if (!moduleRow || !moduleRow.track || !Number.isInteger(Number(moduleRow.ordinal))) {
     throw new Error("Module not found in the self-paced curriculum.");
   }
@@ -593,25 +593,25 @@ function requireSelfModule(db: LegacyDb, moduleId: string): SelfModuleRow {
  * any cohort. Throws so the mutation aborts instead of silently no-op'ing —
  * this should never trigger from the UI, only from a forged request.
  */
-function assertCohortOwnership(
+async function assertCohortOwnership(
   me: { id: string; role: string },
   cohortId: string,
   db: LegacyDb = getDb(),
-): LegacyCohortRow {
-  const cohort = requireLegacyCohort(db, cohortId);
+): Promise<LegacyCohortRow> {
+  const cohort = (await requireLegacyCohort(db, cohortId));
   if (me.role === "admin") return cohort;
-  const actor = requireLegacyUser(db, me.id, { role: "instructor", statuses: ["active"] });
-  const canonicalInstructorId = requireCanonicalTeachingIdentity(db, actor.id, false);
+  const actor = (await requireLegacyUser(db, me.id, { role: "instructor", statuses: ["active"] }));
+  const canonicalInstructorId = (await requireCanonicalTeachingIdentity(db, actor.id, false));
   if (cohort.instructor_id !== actor.id) {
     throw new Error("You are not assigned to this cohort.");
   }
-  const projection = requireCanonicalCohortProjection(db, cohort);
-  const currentLead = db.prepare(
-    `SELECT ci.id
+  const projection = (await requireCanonicalCohortProjection(db, cohort));
+  const currentLead = (await db.prepare(
+      `SELECT ci.id
        FROM class_instructors ci
       WHERE ci.class_id = ? AND ci.instructor_id = ?
         AND ci.role = 'lead' AND ci.removed_at IS NULL`,
-  ).get(projection.class_id, canonicalInstructorId) as { id: string } | undefined;
+    ).get(projection.class_id, canonicalInstructorId)) as { id: string } | undefined;
   if (!currentLead || projection.lead_instructor_id !== canonicalInstructorId) {
     throw new Error(
       "Your legacy Cohort assignment is no longer current in the canonical Class. Open the Class workspace or ask operations to reconcile staffing.",
@@ -626,45 +626,45 @@ export async function suspendUser(userId: string): Promise<void> {
   const me = await requireRole("admin");
   if (userId === me.id) throw new Error("You cannot suspend your own account.");
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    requireLegacyUser(db, userId, { statuses: ["active"], requireActiveOrganization: false });
-    const result = db.prepare("UPDATE users SET status = 'suspended' WHERE id = ? AND status = 'active'").run(userId);
-    if (result.changes !== 1) throw new Error("The account could not be suspended.");
-    // Kill every live session in the same transaction so access cannot outlive
-    // a successfully committed suspension.
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
-    // A reset credential issued before suspension must never become usable
-    // again merely because an administrator later restores the account.
-    db.prepare(
-      "UPDATE password_reset_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
-    ).run(Date.now(), userId);
-    db.prepare(
-      `UPDATE profile_sharing_consents
+  (await withLegacyTransaction(db, async () => {
+        (await requireLegacyUser(db, userId, { statuses: ["active"], requireActiveOrganization: false }));
+        const result = (await db.prepare("UPDATE users SET status = 'suspended' WHERE id = ? AND status = 'active'").run(userId));
+        if (result.changes !== 1) throw new Error("The account could not be suspended.");
+        // Kill every live session in the same transaction so access cannot outlive
+        // a successfully committed suspension.
+        (await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId));
+        // A reset credential issued before suspension must never become usable
+        // again merely because an administrator later restores the account.
+        (await db.prepare(
+                "UPDATE password_reset_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
+              ).run(Date.now(), userId));
+        (await db.prepare(
+                `UPDATE profile_sharing_consents
           SET revoked_by_user_id = ?, revoked_at = ?, discoverable = 0
         WHERE student_user_id = ? AND revoked_at IS NULL`,
-    ).run(me.id, Date.now(), userId);
+              ).run(me.id, Date.now(), userId));
 
-    const linkedInstructor = db.prepare(
-      `SELECT i.id, i.stage
+        const linkedInstructor = (await db.prepare(
+              `SELECT i.id, i.stage
          FROM people p JOIN instructors i ON i.person_id = p.id
         WHERE p.user_id = ? AND i.stage IN ('eligible','active')
         ORDER BY i.updated_at DESC LIMIT 1`,
-    ).get(userId) as { id: string; stage: string } | undefined;
-    if (linkedInstructor) {
-      const now = Date.now();
-      const deactivated = db.prepare(
-        "UPDATE instructors SET stage = 'inactive', updated_at = ? WHERE id = ? AND stage = ?",
-      ).run(now, linkedInstructor.id, linkedInstructor.stage);
-      if (deactivated.changes !== 1) throw new Error("The linked instructor changed during suspension.");
-      const affected = db.prepare(
-        `SELECT COUNT(*) AS n
+            ).get(userId)) as { id: string; stage: string } | undefined;
+        if (linkedInstructor) {
+          const now = Date.now();
+          const deactivated = (await db.prepare(
+                  "UPDATE instructors SET stage = 'inactive', updated_at = ? WHERE id = ? AND stage = ?",
+                ).run(now, linkedInstructor.id, linkedInstructor.stage));
+          if (deactivated.changes !== 1) throw new Error("The linked instructor changed during suspension.");
+          const affected = (await db.prepare(
+                  `SELECT COUNT(*) AS n
            FROM class_instructors ci JOIN classes c ON c.id = ci.class_id
           WHERE ci.instructor_id = ? AND ci.removed_at IS NULL
             AND c.status NOT IN ('completed','cancelled')`,
-      ).get(linkedInstructor.id) as { n: number };
-      if (affected.n > 0) {
-        db.prepare(
-          `INSERT INTO tasks
+                ).get(linkedInstructor.id)) as { n: number };
+          if (affected.n > 0) {
+            (await db.prepare(
+                        `INSERT INTO tasks
             (id, title, owner_user_id, due_at, status, kind, priority, context, recommended_action,
              entity_type, entity_id, handoff_to_founder, created_at, updated_at)
            SELECT ?, ?, ?, ?, 'open', 'issue', 'urgent', ?, ?, 'instructor', ?, 0, ?, ?
@@ -673,22 +673,22 @@ export async function suspendUser(userId: string): Promise<void> {
                WHERE entity_type = 'instructor' AND entity_id = ? AND status = 'open'
                  AND kind = 'issue' AND recommended_action = 'Assign replacement coverage and confirm every affected Program remains ready.'
             )`,
-        ).run(
-          `wrk-${randomUUID().slice(0, 10)}`,
-          `Replace suspended instructor across ${affected.n} Class${affected.n === 1 ? "" : "es"}`,
-          me.id,
-          now,
-          "The linked account was suspended and teaching access was revoked.",
-          "Assign replacement coverage and confirm every affected Program remains ready.",
-          linkedInstructor.id,
-          now,
-          now,
-          linkedInstructor.id,
-        );
-      }
-      logActivity("instructor", linkedInstructor.id, "stage_change", "Teaching access revoked because the linked account was suspended.", me.id);
-    }
-  });
+                      ).run(
+                        `wrk-${randomUUID().slice(0, 10)}`,
+                        `Replace suspended instructor across ${affected.n} Class${affected.n === 1 ? "" : "es"}`,
+                        me.id,
+                        now,
+                        "The linked account was suspended and teaching access was revoked.",
+                        "Assign replacement coverage and confirm every affected Program remains ready.",
+                        linkedInstructor.id,
+                        now,
+                        now,
+                        linkedInstructor.id,
+                      ));
+          }
+          (await logActivity("instructor", linkedInstructor.id, "stage_change", "Teaching access revoked because the linked account was suspended.", me.id));
+        }
+      }));
   refreshApp();
   revalidatePath("/profile", "layout");
 }
@@ -696,19 +696,19 @@ export async function suspendUser(userId: string): Promise<void> {
 export async function restoreUser(userId: string): Promise<void> {
   await requireRole("admin");
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const user = requireLegacyUser(db, userId, { statuses: ["suspended"] });
+    const user = (await requireLegacyUser(db, userId, { statuses: ["suspended"] }));
     if (user.email.endsWith("@deleted.invalid")) {
       throw new Error("An anonymized account cannot be restored.");
     }
-    const result = db.prepare(
-      "UPDATE users SET status = 'active' WHERE id = ? AND status = 'suspended' AND email NOT LIKE '%@deleted.invalid'",
-    ).run(userId);
+    const result = (await db.prepare(
+          "UPDATE users SET status = 'active' WHERE id = ? AND status = 'suspended' AND email NOT LIKE '%@deleted.invalid'",
+        ).run(userId));
     if (result.changes !== 1) throw new Error("The account could not be restored.");
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     throw error;
   }
   refreshApp();
@@ -738,21 +738,21 @@ export async function setInvitationStatus(
       year: "numeric",
     });
     const token = randomBytes(32).toString("base64url");
-    db.exec("BEGIN IMMEDIATE");
+    (await db.exec("BEGIN IMMEDIATE"));
     try {
-      const invitation = db
-        .prepare("SELECT email, role, org_id, cohort_id, status FROM invitations WHERE id = ?")
-        .get(id) as
+      const invitation = (await db
+              .prepare("SELECT email, role, org_id, cohort_id, status FROM invitations WHERE id = ?")
+              .get(id)) as
         | { email: string; role: string; org_id: string; cohort_id: string | null; status: string }
         | undefined;
       if (!invitation || invitation.status === "accepted") throw new Error("Accepted invitations cannot be resent.");
       if (invitation.role !== "student" && invitation.role !== "instructor") throw new Error("This invitation has an invalid role.");
-      if (!db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status = 'active'").get(invitation.org_id)) {
+      if (!(await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status = 'active'").get(invitation.org_id))) {
         throw new Error("The invitation organization is no longer active.");
       }
       if (invitation.role === "student") {
         const cohort = invitation.cohort_id
-          ? (db.prepare("SELECT org_id, status FROM cohorts WHERE id = ?").get(invitation.cohort_id) as
+          ? ((await db.prepare("SELECT org_id, status FROM cohorts WHERE id = ?").get(invitation.cohort_id)) as
               | { org_id: string; status: string }
               | undefined)
           : undefined;
@@ -760,14 +760,14 @@ export async function setInvitationStatus(
           throw new Error("The invitation cohort is no longer available.");
         }
       } else {
-        const pipeline = db.prepare(
-          `SELECT i.stage
+        const pipeline = (await db.prepare(
+                  `SELECT i.stage
              FROM people p
              JOIN instructors i ON i.person_id = p.id
             WHERE lower(p.email) = lower(?)
             ORDER BY i.updated_at DESC
             LIMIT 1`,
-        ).get(invitation.email) as { stage: string } | undefined;
+                ).get(invitation.email)) as { stage: string } | undefined;
         if (
           invitation.org_id !== BOW_ORG_ID
           || !pipeline
@@ -776,9 +776,9 @@ export async function setInvitationStatus(
           throw new Error("Instructor invitations must come from an approved BOW hiring record.");
         }
       }
-      const existing = db
-        .prepare("SELECT role, org_id, status, password_hash FROM users WHERE lower(email) = lower(?)")
-        .get(invitation.email) as
+      const existing = (await db
+              .prepare("SELECT role, org_id, status, password_hash FROM users WHERE lower(email) = lower(?)")
+              .get(invitation.email)) as
         | { role: string; org_id: string; status: string; password_hash: string | null }
         | undefined;
       if (
@@ -793,14 +793,14 @@ export async function setInvitationStatus(
         throw new Error("That email already has an active or incompatible account.");
       }
 
-      db.prepare(
-        "UPDATE invitations SET status = 'revoked' WHERE id != ? AND lower(email) = lower(?) AND status = 'pending'",
-      ).run(id, invitation.email);
-      const result = db
-        .prepare("UPDATE invitations SET status = 'pending', token = ?, token_hash = ?, expires = ?, expires_at = ? WHERE id = ? AND status != 'accepted'")
-        .run(`retired:${randomUUID()}`, hashOpaqueToken(token), expires, expiresAt, id);
+      (await db.prepare(
+                "UPDATE invitations SET status = 'revoked' WHERE id != ? AND lower(email) = lower(?) AND status = 'pending'",
+              ).run(id, invitation.email));
+      const result = (await db
+              .prepare("UPDATE invitations SET status = 'pending', token = ?, token_hash = ?, expires = ?, expires_at = ? WHERE id = ? AND status != 'accepted'")
+              .run(`retired:${randomUUID()}`, hashOpaqueToken(token), expires, expiresAt, id));
       if (result.changes !== 1) throw new Error("Accepted invitations cannot be resent.");
-      db.exec("COMMIT");
+      (await db.exec("COMMIT"));
       revealedToken = token;
       deliveryInput = {
         invitationId: id,
@@ -809,11 +809,11 @@ export async function setInvitationStatus(
         role: invitation.role,
       };
     } catch (error) {
-      if (db.isTransaction) db.exec("ROLLBACK");
+      if (db.isTransaction) (await db.exec("ROLLBACK"));
       throw error;
     }
   } else if (status === "revoked") {
-    const result = db.prepare("UPDATE invitations SET status = 'revoked' WHERE id = ? AND status != 'accepted'").run(id);
+    const result = (await db.prepare("UPDATE invitations SET status = 'revoked' WHERE id = ? AND status != 'accepted'").run(id));
     if (result.changes !== 1) throw new Error("The invitation could not be revoked.");
   } else {
     throw new Error("Invitation status can only be changed by resending or revoking it.");
@@ -840,17 +840,17 @@ export async function createInvitation(
     throw new Error("Invite instructors from their approved hiring record so onboarding and eligibility stay connected.");
   }
   const db = getDb();
-  let created: ReturnType<typeof createInvitationInternal>;
-  db.exec("BEGIN IMMEDIATE");
+  let created: Awaited<ReturnType<typeof createInvitationInternal>>;
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     // createInvitationInternal uses a nested SAVEPOINT. Taking the writer lock
     // first makes its active Organization/Cohort checks and credential insert
     // one serializable decision, so a concurrent partner pause cannot revoke
     // access and then be followed by a newly inserted invitation.
-    created = createInvitationInternal(input);
-    db.exec("COMMIT");
+    created = (await createInvitationInternal(input));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     throw error;
   }
   const invitationDelivery = queueInvitationDelivery({
@@ -871,7 +871,7 @@ export async function setInquiryStatus(id: string, status: InquiryStatus): Promi
   if (!["new", "reviewing", "contacted", "converted_to_program", "closed", "spam"].includes(status)) {
     throw new Error("Invalid inquiry status.");
   }
-  const row = getDb().prepare("SELECT status FROM inquiries WHERE id = ?").get(id) as
+  const row = (await getDb().prepare("SELECT status FROM inquiries WHERE id = ?").get(id)) as
     | { status: InquiryStatus }
     | undefined;
   if (!row) throw new Error("Inquiry not found.");
@@ -898,15 +898,15 @@ export interface NewInquiryInput {
  * insert path.
  */
 export async function createInquiry(input: NewInquiryInput): Promise<{ ok: boolean; error?: string }> {
-  return submitPublicInquiry({
-    requestKey: input.requestKey ?? "",
-    source: input.source ?? "get_involved",
-    name: input.name,
-    email: input.email,
-    type: input.type,
-    orgName: input.orgName,
-    summary: input.summary,
-  });
+  return (await submitPublicInquiry({
+      requestKey: input.requestKey ?? "",
+      source: input.source ?? "get_involved",
+      name: input.name,
+      email: input.email,
+      type: input.type,
+      orgName: input.orgName,
+      summary: input.summary,
+    }));
 }
 
 /* ---------------- Sessions / cohorts (instructor + admin) ---------------- */
@@ -921,16 +921,16 @@ export async function setAttendance(
     throw new Error("Invalid attendance state.");
   }
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    const cohort = assertCohortOwnership(me, cohortId, db);
-    requireStudentMembership(db, cohort, userId, { userStatuses: ["active"], enrollmentStates: ["active"] });
-    const written = db
-      .prepare(
-        "INSERT INTO attendance (cohort_id, user_id, state) VALUES (?, ?, ?) ON CONFLICT(cohort_id, user_id) DO UPDATE SET state = excluded.state",
-      )
-      .run(cohortId, userId, state);
-    if (written.changes !== 1) throw new Error("Attendance changed before it could be saved.");
-  });
+  (await withLegacyTransaction(db, async () => {
+        const cohort = (await assertCohortOwnership(me, cohortId, db));
+        (await requireStudentMembership(db, cohort, userId, { userStatuses: ["active"], enrollmentStates: ["active"] }));
+        const written = (await db
+              .prepare(
+                "INSERT INTO attendance (cohort_id, user_id, state) VALUES (?, ?, ?) ON CONFLICT(cohort_id, user_id) DO UPDATE SET state = excluded.state",
+              )
+              .run(cohortId, userId, state));
+        if (written.changes !== 1) throw new Error("Attendance changed before it could be saved.");
+      }));
   refreshApp();
 }
 
@@ -941,27 +941,27 @@ export async function advanceCohortLesson(cohortId: string, nextLessonId: string
     throw new Error("Choose the next lesson.");
   }
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    const cohort = assertCohortOwnership(me, cohortId, db);
-    if (cohort.status === "completed") throw new Error("Completed cohorts cannot advance lessons.");
+  (await withLegacyTransaction(db, async () => {
+        const cohort = (await assertCohortOwnership(me, cohortId, db));
+        if (cohort.status === "completed") throw new Error("Completed cohorts cannot advance lessons.");
 
-    const curriculum = requireCohortCurriculum(cohort);
-    const currentIndex = cohort.current_lesson_id
-      ? curriculum.findIndex((lesson) => lesson.id === cohort.current_lesson_id)
-      : -1;
-    if (cohort.current_lesson_id && currentIndex === -1) {
-      throw new Error("The cohort's current lesson does not belong to its curriculum track.");
-    }
-    const expected = curriculum[currentIndex + 1] ?? null;
-    if (!expected || expected.id !== nextLessonId) {
-      throw new Error("Cohorts can only advance to the next lesson in their curriculum track.");
-    }
+        const curriculum = requireCohortCurriculum(cohort);
+        const currentIndex = cohort.current_lesson_id
+          ? curriculum.findIndex((lesson) => lesson.id === cohort.current_lesson_id)
+          : -1;
+        if (cohort.current_lesson_id && currentIndex === -1) {
+          throw new Error("The cohort's current lesson does not belong to its curriculum track.");
+        }
+        const expected = curriculum[currentIndex + 1] ?? null;
+        if (!expected || expected.id !== nextLessonId) {
+          throw new Error("Cohorts can only advance to the next lesson in their curriculum track.");
+        }
 
-    const updated = db
-      .prepare("UPDATE cohorts SET current_lesson_id = ? WHERE id = ? AND current_lesson_id IS ?")
-      .run(nextLessonId, cohortId, cohort.current_lesson_id);
-    if (updated.changes !== 1) throw new Error("The cohort changed before the next lesson could be opened.");
-  });
+        const updated = (await db
+              .prepare("UPDATE cohorts SET current_lesson_id = ? WHERE id = ? AND current_lesson_id IS ?")
+              .run(nextLessonId, cohortId, cohort.current_lesson_id));
+        if (updated.changes !== 1) throw new Error("The cohort changed before the next lesson could be opened.");
+      }));
   refreshApp();
 }
 
@@ -983,24 +983,24 @@ export async function createCohort(input: NewCohortInput): Promise<void> {
 
   const id = `coh-${randomUUID().slice(0, 8)}`;
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    const now = Date.now();
-    const organization = db.prepare("SELECT status FROM organizations WHERE id = ?").get(input.orgId) as
-      | { status: string }
-      | undefined;
-    if (!organization || organization.status !== "active") throw new Error("Choose an active organization.");
-    const canonicalInstructorId = input.instructorId
-      ? requireCanonicalTeachingIdentity(db, input.instructorId, true)
-      : null;
-    db.prepare(
-      "INSERT INTO cohorts (id, name, org_id, track, instructor_id, current_lesson_id, status, format, schedule, start, end_date, cap, next_session) VALUES (?, ?, ?, ?, ?, NULL, 'draft', '—', '—', '—', '—', 20, '—')",
-    ).run(id, name, input.orgId, input.track, input.instructorId ?? null);
-    const cohort = requireLegacyCohort(db, id);
-    const projection = createCanonicalCohortProjection(db, cohort, name, me.id, now);
-    if (canonicalInstructorId) {
-      mirrorLegacyInstructorAssignment(db, cohort, projection, canonicalInstructorId, me.id, now);
-    }
-  });
+  (await withLegacyTransaction(db, async () => {
+        const now = Date.now();
+        const organization = (await db.prepare("SELECT status FROM organizations WHERE id = ?").get(input.orgId)) as
+          | { status: string }
+          | undefined;
+        if (!organization || organization.status !== "active") throw new Error("Choose an active organization.");
+        const canonicalInstructorId = input.instructorId
+          ? (await requireCanonicalTeachingIdentity(db, input.instructorId, true))
+          : null;
+        (await db.prepare(
+                "INSERT INTO cohorts (id, name, org_id, track, instructor_id, current_lesson_id, status, format, schedule, start, end_date, cap, next_session) VALUES (?, ?, ?, ?, ?, NULL, 'draft', '—', '—', '—', '—', 20, '—')",
+              ).run(id, name, input.orgId, input.track, input.instructorId ?? null));
+        const cohort = (await requireLegacyCohort(db, id));
+        const projection = (await createCanonicalCohortProjection(db, cohort, name, me.id, now));
+        if (canonicalInstructorId) {
+          (await mirrorLegacyInstructorAssignment(db, cohort, projection, canonicalInstructorId, me.id, now));
+        }
+      }));
   refreshApp();
   revalidatePath("/admin");
 }
@@ -1023,24 +1023,24 @@ export async function updateUserRole(userId: string, role: RoleToggle): Promise<
   if (role !== "student" && role !== "instructor") return { ok: false, error: "invalid" };
 
   const db = getDb();
-  const result = withLegacyTransaction(db, (): UpdateRoleResult => {
-    const u = db
-      .prepare(
-        `SELECT u.role, u.status, o.status AS org_status
+  const result = (await withLegacyTransaction(db, async (): Promise<UpdateRoleResult> => {
+      const u = (await db
+            .prepare(
+              `SELECT u.role, u.status, o.status AS org_status
            FROM users u
            LEFT JOIN organizations o ON o.id = u.org_id
           WHERE u.id = ?`,
-      )
-      .get(userId) as { role: string; status: string; org_status: string | null } | undefined;
-    if (!u) return { ok: false, error: "not-found" };
-    if (u.role === "admin") return { ok: false, error: "admin" };
-    if (!LEGACY_USER_ROLES.has(u.role) || !["student", "instructor"].includes(u.role)) {
+            )
+            .get(userId)) as { role: string; status: string; org_status: string | null } | undefined;
+      if (!u) return { ok: false, error: "not-found" };
+      if (u.role === "admin") return { ok: false, error: "admin" };
+      if (!LEGACY_USER_ROLES.has(u.role) || !["student", "instructor"].includes(u.role)) {
+        return { ok: false, error: "invalid" };
+      }
+      if (u.status !== "active" || u.org_status !== "active") return { ok: false, error: "invalid" };
+      if (u.role === role) return { ok: true };
       return { ok: false, error: "invalid" };
-    }
-    if (u.status !== "active" || u.org_status !== "active") return { ok: false, error: "invalid" };
-    if (u.role === role) return { ok: true };
-    return { ok: false, error: "invalid" };
-  });
+    }));
   if (!result.ok) return result;
   refreshApp();
   revalidatePath("/admin");
@@ -1050,75 +1050,75 @@ export async function updateUserRole(userId: string, role: RoleToggle): Promise<
 export async function assignInstructor(cohortId: string, instructorId: string | null): Promise<void> {
   const me = await requireRole("admin");
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    const cohort = requireLegacyCohort(db, cohortId);
-    const projection = requireCanonicalCohortProjection(db, cohort);
-    let canonicalInstructorId: string | null = null;
-    if (instructorId) {
-      requireCohortCurriculum(cohort);
-      canonicalInstructorId = requireCanonicalTeachingIdentity(db, instructorId, true);
-    }
-    mirrorLegacyInstructorAssignment(
-      db,
-      cohort,
-      projection,
-      canonicalInstructorId,
-      me.id,
-      Date.now(),
-    );
-    const result = db.prepare("UPDATE cohorts SET instructor_id = ? WHERE id = ?").run(instructorId, cohortId);
-    if (result.changes !== 1) throw new Error("The instructor assignment could not be saved.");
-  });
+  (await withLegacyTransaction(db, async () => {
+        const cohort = (await requireLegacyCohort(db, cohortId));
+        const projection = (await requireCanonicalCohortProjection(db, cohort));
+        let canonicalInstructorId: string | null = null;
+        if (instructorId) {
+          requireCohortCurriculum(cohort);
+          canonicalInstructorId = (await requireCanonicalTeachingIdentity(db, instructorId, true));
+        }
+        (await mirrorLegacyInstructorAssignment(
+                db,
+                cohort,
+                projection,
+                canonicalInstructorId,
+                me.id,
+                Date.now(),
+              ));
+        const result = (await db.prepare("UPDATE cohorts SET instructor_id = ? WHERE id = ?").run(instructorId, cohortId));
+        if (result.changes !== 1) throw new Error("The instructor assignment could not be saved.");
+      }));
   refreshApp();
 }
 
 export async function assignStudent(cohortId: string, userId: string): Promise<void> {
   const me = await requireRole("admin");
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    const cohort = requireLegacyCohort(db, cohortId);
-    if (cohort.status === "completed") throw new Error("Students cannot be assigned to a completed cohort.");
-    requireCohortCurriculum(cohort);
-    const student = requireLegacyUser(db, userId, { role: "student", statuses: ["active"] });
-    if (student.org_id !== cohort.org_id) {
-      throw new Error("The student and cohort must belong to the same organization.");
-    }
-    const projection = requireCanonicalCohortProjection(db, cohort);
-    const canonicalStudent = requireCanonicalStudentIdentity(db, userId);
-    enrollCanonicalStudent(db, projection, canonicalStudent.id, me.id, Date.now());
-    db.prepare(
-      `INSERT INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last)
+  (await withLegacyTransaction(db, async () => {
+        const cohort = (await requireLegacyCohort(db, cohortId));
+        if (cohort.status === "completed") throw new Error("Students cannot be assigned to a completed cohort.");
+        requireCohortCurriculum(cohort);
+        const student = (await requireLegacyUser(db, userId, { role: "student", statuses: ["active"] }));
+        if (student.org_id !== cohort.org_id) {
+          throw new Error("The student and cohort must belong to the same organization.");
+        }
+        const projection = (await requireCanonicalCohortProjection(db, cohort));
+        const canonicalStudent = (await requireCanonicalStudentIdentity(db, userId));
+        (await enrollCanonicalStudent(db, projection, canonicalStudent.id, me.id, Date.now()));
+        (await db.prepare(
+                `INSERT INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last)
        VALUES (?, ?, 'active', 'not-started', 'Just now', 'none')
        ON CONFLICT(user_id, cohort_id) DO UPDATE SET enroll = 'active'`,
-    ).run(userId, cohortId);
-  });
+              ).run(userId, cohortId));
+      }));
   refreshApp();
 }
 
 export async function removeStudent(cohortId: string, userId: string): Promise<void> {
   const me = await requireRole("admin");
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    const cohort = requireLegacyCohort(db, cohortId);
-    requireStudentMembership(db, cohort, userId, {
-      userStatuses: ["active", "suspended"],
-      enrollmentStates: ["active", "suspended"],
-    });
-    const projection = requireCanonicalCohortProjection(db, cohort);
-    const canonicalStudent = requireCanonicalStudentIdentity(db, userId);
-    withdrawCanonicalStudent(
-      db,
-      projection,
-      canonicalStudent.id,
-      me.id,
-      "Removed from the legacy Cohort by an administrator.",
-      Date.now(),
-    );
-    const result = db
-      .prepare("UPDATE enrollments SET enroll = 'inactive' WHERE user_id = ? AND cohort_id = ? AND enroll IN ('active', 'suspended')")
-      .run(userId, cohortId);
-    if (result.changes !== 1) throw new Error("The student could not be removed from this cohort.");
-  });
+  (await withLegacyTransaction(db, async () => {
+        const cohort = (await requireLegacyCohort(db, cohortId));
+        (await requireStudentMembership(db, cohort, userId, {
+                userStatuses: ["active", "suspended"],
+                enrollmentStates: ["active", "suspended"],
+              }));
+        const projection = (await requireCanonicalCohortProjection(db, cohort));
+        const canonicalStudent = (await requireCanonicalStudentIdentity(db, userId));
+        (await withdrawCanonicalStudent(
+                db,
+                projection,
+                canonicalStudent.id,
+                me.id,
+                "Removed from the legacy Cohort by an administrator.",
+                Date.now(),
+              ));
+        const result = (await db
+              .prepare("UPDATE enrollments SET enroll = 'inactive' WHERE user_id = ? AND cohort_id = ? AND enroll IN ('active', 'suspended')")
+              .run(userId, cohortId));
+        if (result.changes !== 1) throw new Error("The student could not be removed from this cohort.");
+      }));
   refreshApp();
 }
 
@@ -1126,43 +1126,43 @@ export async function transferStudent(userId: string, fromCohortId: string, toCo
   const me = await requireRole("admin");
   if (fromCohortId === toCohortId) return;
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    const fromCohort = requireLegacyCohort(db, fromCohortId);
-    const toCohort = requireLegacyCohort(db, toCohortId);
-    if (toCohort.status === "completed") throw new Error("Students cannot be transferred to a completed cohort.");
-    requireCohortCurriculum(toCohort);
-    const { user } = requireStudentMembership(db, fromCohort, userId, {
-      userStatuses: ["active"],
-      enrollmentStates: ["active"],
-    });
-    if (user.org_id !== toCohort.org_id) {
-      throw new Error("A transfer target must belong to the student's organization.");
-    }
+  (await withLegacyTransaction(db, async () => {
+        const fromCohort = (await requireLegacyCohort(db, fromCohortId));
+        const toCohort = (await requireLegacyCohort(db, toCohortId));
+        if (toCohort.status === "completed") throw new Error("Students cannot be transferred to a completed cohort.");
+        requireCohortCurriculum(toCohort);
+        const { user } = (await requireStudentMembership(db, fromCohort, userId, {
+              userStatuses: ["active"],
+              enrollmentStates: ["active"],
+            }));
+        if (user.org_id !== toCohort.org_id) {
+          throw new Error("A transfer target must belong to the student's organization.");
+        }
 
-    const fromProjection = requireCanonicalCohortProjection(db, fromCohort);
-    const toProjection = requireCanonicalCohortProjection(db, toCohort);
-    const canonicalStudent = requireCanonicalStudentIdentity(db, userId);
-    const now = Date.now();
-    withdrawCanonicalStudent(
-      db,
-      fromProjection,
-      canonicalStudent.id,
-      me.id,
-      `Transferred to legacy Cohort ${toCohortId}.`,
-      now,
-    );
-    enrollCanonicalStudent(db, toProjection, canonicalStudent.id, me.id, now);
+        const fromProjection = (await requireCanonicalCohortProjection(db, fromCohort));
+        const toProjection = (await requireCanonicalCohortProjection(db, toCohort));
+        const canonicalStudent = (await requireCanonicalStudentIdentity(db, userId));
+        const now = Date.now();
+        (await withdrawCanonicalStudent(
+                db,
+                fromProjection,
+                canonicalStudent.id,
+                me.id,
+                `Transferred to legacy Cohort ${toCohortId}.`,
+                now,
+              ));
+        (await enrollCanonicalStudent(db, toProjection, canonicalStudent.id, me.id, now));
 
-    const removed = db
-      .prepare("UPDATE enrollments SET enroll = 'inactive' WHERE user_id = ? AND cohort_id = ? AND enroll = 'active'")
-      .run(userId, fromCohortId);
-    if (removed.changes !== 1) throw new Error("The source enrollment changed before the transfer completed.");
-    db.prepare(
-      `INSERT INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last)
+        const removed = (await db
+              .prepare("UPDATE enrollments SET enroll = 'inactive' WHERE user_id = ? AND cohort_id = ? AND enroll = 'active'")
+              .run(userId, fromCohortId));
+        if (removed.changes !== 1) throw new Error("The source enrollment changed before the transfer completed.");
+        (await db.prepare(
+                `INSERT INTO enrollments (user_id, cohort_id, enroll, lesson_status, last, att_last)
        VALUES (?, ?, 'active', 'not-started', 'Just now', 'none')
        ON CONFLICT(user_id, cohort_id) DO UPDATE SET enroll = 'active'`,
-    ).run(userId, toCohortId);
-  });
+              ).run(userId, toCohortId));
+      }));
   refreshApp();
 }
 
@@ -1184,26 +1184,26 @@ export async function createOrganization(input: NewOrganizationInput): Promise<v
   if (location.length > 200) throw new Error("Organization location must be 200 characters or fewer.");
   const id = `org-${randomUUID().slice(0, 8)}`;
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    if (db.prepare("SELECT 1 FROM organizations WHERE lower(trim(name)) = lower(trim(?))").get(name)) {
+    if ((await db.prepare("SELECT 1 FROM organizations WHERE lower(trim(name)) = lower(trim(?))").get(name))) {
       throw new Error("An organization with that name already exists. Open its Partner record instead of creating a duplicate.");
     }
     // A newly entered partner is a prospect until staff explicitly accepts
     // the relationship. This keeps account, invitation, and delivery access
     // behind the same lifecycle decision used by public demand intake.
-    db.prepare("INSERT INTO organizations (id, name, type, location, status) VALUES (?, ?, ?, ?, 'prospect')")
-      .run(id, name, input.type, location || "—");
-    logActivity(
-      "organization",
-      id,
-      "created",
-      "Partner organization created as a prospect; activation is required before access or delivery begins.",
-      me.id,
-    );
-    db.exec("COMMIT");
+    (await db.prepare("INSERT INTO organizations (id, name, type, location, status) VALUES (?, ?, ?, ?, 'prospect')")
+            .run(id, name, input.type, location || "—"));
+    (await logActivity(
+            "organization",
+            id,
+            "created",
+            "Partner organization created as a prospect; activation is required before access or delivery begins.",
+            me.id,
+          ));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     throw error;
   }
   refreshApp();
@@ -1222,12 +1222,12 @@ export async function addSessionNote(cohortId: string, scope: string, text: stri
   const id = `note-${randomUUID().slice(0, 8)}`;
   const db = getDb();
   const now = Date.now();
-  withLegacyTransaction(db, () => {
-    assertCohortOwnership(me, cohortId, db);
-    db.prepare(
-      "INSERT INTO session_notes (id, cohort_id, author_id, scope, text, created_at, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).run(id, cohortId, me.id, cleanScope, body, fmtDate(new Date(now)), now);
-  });
+  (await withLegacyTransaction(db, async () => {
+        (await assertCohortOwnership(me, cohortId, db));
+        (await db.prepare(
+                "INSERT INTO session_notes (id, cohort_id, author_id, scope, text, created_at, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?)",
+              ).run(id, cohortId, me.id, cleanScope, body, fmtDate(new Date(now)), now));
+      }));
   refreshApp();
 }
 
@@ -1249,11 +1249,11 @@ interface StudentFrontier {
  * lesson (instructor manual unlock) and the student's own self-paced unlock.
  * Auto-unlock is the default path; instructor advancement still works as a floor.
  */
-function studentFrontier(uid: string, lessonId?: string): StudentFrontier | null {
+async function studentFrontier(uid: string, lessonId?: string): Promise<StudentFrontier | null> {
   const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT e.user_id, e.cohort_id, e.unlocked_lesson_id,
+  const rows = (await db
+      .prepare(
+        `SELECT e.user_id, e.cohort_id, e.unlocked_lesson_id,
               c.track, c.current_lesson_id, c.org_id AS cohort_org_id, c.status AS cohort_status,
               u.role AS user_role, u.status AS user_status, u.org_id AS user_org_id,
               o.status AS org_status
@@ -1263,8 +1263,8 @@ function studentFrontier(uid: string, lessonId?: string): StudentFrontier | null
          LEFT JOIN organizations o ON o.id = c.org_id
         WHERE e.user_id = ? AND e.enroll = 'active'
         ORDER BY e.cohort_id ASC`,
-    )
-    .all(uid) as any[];
+      )
+      .all(uid)) as any[];
 
   const candidates: StudentFrontier[] = [];
   for (const row of rows) {
@@ -1305,11 +1305,11 @@ function studentFrontier(uid: string, lessonId?: string): StudentFrontier | null
   return candidates[0] ?? null;
 }
 
-function assertAccessible(uid: string, lessonId: string): void {
+async function assertAccessible(uid: string, lessonId: string): Promise<void> {
   if (typeof lessonId !== "string" || !lessonId.trim() || lessonId.length > 200) {
     throw new Error("Choose a valid lesson.");
   }
-  const f = studentFrontier(uid, lessonId);
+  const f = (await studentFrontier(uid, lessonId));
   if (!f) throw new Error("This lesson is not available to your active enrollment.");
   const lessonIdx = f.ordered.findIndex((l) => l.id === lessonId);
   if (lessonIdx === -1 || f.frontierIdx === -1 || lessonIdx > f.frontierIdx) {
@@ -1318,24 +1318,24 @@ function assertAccessible(uid: string, lessonId: string): void {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-function touchProgress(uid: string, lessonId: string) {
+async function touchProgress(uid: string, lessonId: string) {
   // Ensure a row exists and is at least in-progress.
   const db = getDb();
-  const written = db.prepare(
-    "INSERT INTO lesson_progress (user_id, lesson_id, status, started_at) VALUES (?, ?, 'in-progress', ?) ON CONFLICT(user_id, lesson_id) DO UPDATE SET status = CASE WHEN lesson_progress.status = 'not-started' THEN 'in-progress' ELSE lesson_progress.status END, started_at = COALESCE(lesson_progress.started_at, excluded.started_at)",
-  ).run(uid, lessonId, fmtDateTime(new Date()));
+  const written = (await db.prepare(
+      "INSERT INTO lesson_progress (user_id, lesson_id, status, started_at) VALUES (?, ?, 'in-progress', ?) ON CONFLICT(user_id, lesson_id) DO UPDATE SET status = CASE WHEN lesson_progress.status = 'not-started' THEN 'in-progress' ELSE lesson_progress.status END, started_at = COALESCE(lesson_progress.started_at, excluded.started_at)",
+    ).run(uid, lessonId, fmtDateTime(new Date())));
   if (written.changes !== 1) throw new Error("Lesson progress changed before it could be saved.");
-  touchActive(uid);
+  (await touchActive(uid));
 }
 
 /** Record a real "last active" timestamp for the instructor monitoring view. */
-function touchActive(uid: string) {
-  getDb().prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(Date.now(), uid);
+async function touchActive(uid: string) {
+  (await getDb().prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(Date.now(), uid));
 }
 
-function progressDetail(uid: string, lessonId: string): LessonProgressDetail | null {
+async function progressDetail(uid: string, lessonId: string): Promise<LessonProgressDetail | null> {
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const p = getDb().prepare("SELECT * FROM lesson_progress WHERE user_id = ? AND lesson_id = ?").get(uid, lessonId) as any;
+  const p = (await getDb().prepare("SELECT * FROM lesson_progress WHERE user_id = ? AND lesson_id = ?").get(uid, lessonId)) as any;
   if (!p) return null;
   return {
     status: p.status,
@@ -1351,13 +1351,13 @@ function progressDetail(uid: string, lessonId: string): LessonProgressDetail | n
 export async function startLesson(lessonId: string): Promise<void> {
   const me = await requireRole("student");
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    assertAccessible(me.id, lessonId);
-    if (progressDetail(me.id, lessonId)?.status === "completed") {
-      throw new Error("This lesson is already complete.");
-    }
-    touchProgress(me.id, lessonId);
-  });
+  (await withLegacyTransaction(db, async () => {
+        assertAccessible(me.id, lessonId);
+        if ((await progressDetail(me.id, lessonId))?.status === "completed") {
+          throw new Error("This lesson is already complete.");
+        }
+        (await touchProgress(me.id, lessonId));
+      }));
   refreshApp();
 }
 
@@ -1365,17 +1365,17 @@ export async function setSimulationDone(lessonId: string, done: boolean): Promis
   const me = await requireRole("student");
   if (typeof done !== "boolean") throw new Error("Choose a valid simulation status.");
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    assertAccessible(me.id, lessonId);
-    if (!done && progressDetail(me.id, lessonId)?.status === "completed") {
-      throw new Error("A completed lesson cannot have its simulation reopened.");
-    }
-    touchProgress(me.id, lessonId);
-    const updated = db
-      .prepare("UPDATE lesson_progress SET simulation_done = ? WHERE user_id = ? AND lesson_id = ?")
-      .run(done ? 1 : 0, me.id, lessonId);
-    if (updated.changes !== 1) throw new Error("Simulation progress changed before it could be saved.");
-  });
+  (await withLegacyTransaction(db, async () => {
+        assertAccessible(me.id, lessonId);
+        if (!done && (await progressDetail(me.id, lessonId))?.status === "completed") {
+          throw new Error("A completed lesson cannot have its simulation reopened.");
+        }
+        (await touchProgress(me.id, lessonId));
+        const updated = (await db
+              .prepare("UPDATE lesson_progress SET simulation_done = ? WHERE user_id = ? AND lesson_id = ?")
+              .run(done ? 1 : 0, me.id, lessonId));
+        if (updated.changes !== 1) throw new Error("Simulation progress changed before it could be saved.");
+      }));
   refreshApp();
 }
 
@@ -1384,17 +1384,17 @@ export async function saveReflection(lessonId: string, text: string): Promise<vo
   if (typeof text !== "string" || text.length > 20_000) throw new Error("Keep the reflection under 20,000 characters.");
   const reflection = text.trim();
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    assertAccessible(me.id, lessonId);
-    if (!reflection && progressDetail(me.id, lessonId)?.status === "completed") {
-      throw new Error("A completed lesson must keep its reflection evidence.");
-    }
-    touchProgress(me.id, lessonId);
-    const updated = db
-      .prepare("UPDATE lesson_progress SET reflection = ? WHERE user_id = ? AND lesson_id = ?")
-      .run(reflection, me.id, lessonId);
-    if (updated.changes !== 1) throw new Error("The reflection changed before it could be saved.");
-  });
+  (await withLegacyTransaction(db, async () => {
+        assertAccessible(me.id, lessonId);
+        if (!reflection && (await progressDetail(me.id, lessonId))?.status === "completed") {
+          throw new Error("A completed lesson must keep its reflection evidence.");
+        }
+        (await touchProgress(me.id, lessonId));
+        const updated = (await db
+              .prepare("UPDATE lesson_progress SET reflection = ? WHERE user_id = ? AND lesson_id = ?")
+              .run(reflection, me.id, lessonId));
+        if (updated.changes !== 1) throw new Error("The reflection changed before it could be saved.");
+      }));
   refreshApp();
 }
 
@@ -1402,38 +1402,38 @@ export async function setChallengeDone(lessonId: string, done: boolean): Promise
   const me = await requireRole("student");
   if (typeof done !== "boolean") throw new Error("Choose a valid challenge status.");
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    assertAccessible(me.id, lessonId);
-    if (!done && progressDetail(me.id, lessonId)?.status === "completed") {
-      throw new Error("A completed lesson cannot have its challenge reopened.");
-    }
-    touchProgress(me.id, lessonId);
-    const updated = db
-      .prepare("UPDATE lesson_progress SET challenge_done = ? WHERE user_id = ? AND lesson_id = ?")
-      .run(done ? 1 : 0, me.id, lessonId);
-    if (updated.changes !== 1) throw new Error("Challenge progress changed before it could be saved.");
-  });
+  (await withLegacyTransaction(db, async () => {
+        assertAccessible(me.id, lessonId);
+        if (!done && (await progressDetail(me.id, lessonId))?.status === "completed") {
+          throw new Error("A completed lesson cannot have its challenge reopened.");
+        }
+        (await touchProgress(me.id, lessonId));
+        const updated = (await db
+              .prepare("UPDATE lesson_progress SET challenge_done = ? WHERE user_id = ? AND lesson_id = ?")
+              .run(done ? 1 : 0, me.id, lessonId));
+        if (updated.changes !== 1) throw new Error("Challenge progress changed before it could be saved.");
+      }));
   refreshApp();
 }
 
 export async function completeLesson(lessonId: string): Promise<void> {
   const me = await requireRole("student");
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    assertAccessible(me.id, lessonId);
-    const detail = progressDetail(me.id, lessonId);
-    if (!detail?.simulationDone || !detail.reflection.trim() || !detail.challengeDone) {
-      throw new Error("Finish the case, reflection, and real-world challenge before completing this lesson.");
-    }
-    touchActive(me.id);
-    const now = fmtDateTime(new Date());
-    const updated = db
-      .prepare(
-        "UPDATE lesson_progress SET status = 'completed', started_at = COALESCE(started_at, ?), completed_at = COALESCE(completed_at, ?) WHERE user_id = ? AND lesson_id = ?",
-      )
-      .run(now, now, me.id, lessonId);
-    if (updated.changes !== 1) throw new Error("Lesson progress changed before completion could be recorded.");
-  });
+  (await withLegacyTransaction(db, async () => {
+        assertAccessible(me.id, lessonId);
+        const detail = (await progressDetail(me.id, lessonId));
+        if (!detail?.simulationDone || !detail.reflection.trim() || !detail.challengeDone) {
+          throw new Error("Finish the case, reflection, and real-world challenge before completing this lesson.");
+        }
+        (await touchActive(me.id));
+        const now = fmtDateTime(new Date());
+        const updated = (await db
+              .prepare(
+                "UPDATE lesson_progress SET status = 'completed', started_at = COALESCE(started_at, ?), completed_at = COALESCE(completed_at, ?) WHERE user_id = ? AND lesson_id = ?",
+              )
+              .run(now, now, me.id, lessonId));
+        if (updated.changes !== 1) throw new Error("Lesson progress changed before completion could be recorded.");
+      }));
   refreshApp();
 }
 
@@ -1448,15 +1448,15 @@ export async function setPodcastProgress(lessonId: string, progress: number): Pr
   if (typeof progress !== "number" || !Number.isFinite(progress)) throw new Error("Choose valid podcast progress.");
   const clamped = Math.max(0, Math.min(1, progress));
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    assertAccessible(me.id, lessonId);
-    touchProgress(me.id, lessonId);
-    // Never let a stored value go backwards (e.g. a scrub to the start).
-    const updated = db
-      .prepare("UPDATE lesson_progress SET podcast_progress = MAX(podcast_progress, ?) WHERE user_id = ? AND lesson_id = ?")
-      .run(clamped, me.id, lessonId);
-    if (updated.changes !== 1) throw new Error("Podcast progress changed before it could be saved.");
-  });
+  (await withLegacyTransaction(db, async () => {
+        assertAccessible(me.id, lessonId);
+        (await touchProgress(me.id, lessonId));
+        // Never let a stored value go backwards (e.g. a scrub to the start).
+        const updated = (await db
+              .prepare("UPDATE lesson_progress SET podcast_progress = MAX(podcast_progress, ?) WHERE user_id = ? AND lesson_id = ?")
+              .run(clamped, me.id, lessonId));
+        if (updated.changes !== 1) throw new Error("Podcast progress changed before it could be saved.");
+      }));
   refreshApp();
 }
 
@@ -1479,8 +1479,8 @@ export interface UnlockResult {
  */
 export async function checkAndUnlockNextLesson(lessonId: string): Promise<UnlockResult> {
   const me = await requireRole("student");
-  touchActive(me.id);
-  const f = studentFrontier(me.id, lessonId);
+  (await touchActive(me.id));
+  const f = (await studentFrontier(me.id, lessonId));
   if (!f) return { unlocked: false, nextLessonId: null, conditionsMet: false };
 
   const lessonIdx = f.ordered.findIndex((l) => l.id === lessonId);
@@ -1488,7 +1488,7 @@ export async function checkAndUnlockNextLesson(lessonId: string): Promise<Unlock
     return { unlocked: false, nextLessonId: null, conditionsMet: false };
   }
 
-  const detail = progressDetail(me.id, lessonId);
+  const detail = (await progressDetail(me.id, lessonId));
   const check = unlockChecklist(detail);
   if (!check.allMet) return { unlocked: false, nextLessonId: null, conditionsMet: false };
 
@@ -1497,25 +1497,25 @@ export async function checkAndUnlockNextLesson(lessonId: string): Promise<Unlock
   const nextIdx = lessonIdx + 1;
   const newlyUnlocked = !!next && nextIdx > f.frontierIdx;
 
-  withLegacyTransaction(db, () => {
-    // The three core conditions are satisfied — lock in completion.
-    const now = fmtDateTime(new Date());
-    db.prepare(
-      "INSERT INTO lesson_progress (user_id, lesson_id, status, started_at, completed_at) VALUES (?, ?, 'completed', ?, ?) ON CONFLICT(user_id, lesson_id) DO UPDATE SET status = 'completed', started_at = COALESCE(lesson_progress.started_at, excluded.started_at), completed_at = COALESCE(lesson_progress.completed_at, excluded.completed_at)",
-    ).run(me.id, lessonId, now, now);
+  (await withLegacyTransaction(db, async () => {
+        // The three core conditions are satisfied — lock in completion.
+        const now = fmtDateTime(new Date());
+        (await db.prepare(
+                "INSERT INTO lesson_progress (user_id, lesson_id, status, started_at, completed_at) VALUES (?, ?, 'completed', ?, ?) ON CONFLICT(user_id, lesson_id) DO UPDATE SET status = 'completed', started_at = COALESCE(lesson_progress.started_at, excluded.started_at), completed_at = COALESCE(lesson_progress.completed_at, excluded.completed_at)",
+              ).run(me.id, lessonId, now, now));
 
-    if (next) {
-      const selfIdx = f.ordered.findIndex((l) => l.id === f.enr.unlocked_lesson_id);
-      if (nextIdx > selfIdx) {
-        const updated = db
-          .prepare(
-            "UPDATE enrollments SET unlocked_lesson_id = ? WHERE user_id = ? AND cohort_id = ? AND enroll = 'active'",
-          )
-          .run(next.id, me.id, f.cohort.id);
-        if (updated.changes !== 1) throw new Error("The active enrollment changed before the lesson unlocked.");
-      }
-    }
-  });
+        if (next) {
+          const selfIdx = f.ordered.findIndex((l) => l.id === f.enr.unlocked_lesson_id);
+          if (nextIdx > selfIdx) {
+            const updated = (await db
+                      .prepare(
+                        "UPDATE enrollments SET unlocked_lesson_id = ? WHERE user_id = ? AND cohort_id = ? AND enroll = 'active'",
+                      )
+                      .run(next.id, me.id, f.cohort.id));
+            if (updated.changes !== 1) throw new Error("The active enrollment changed before the lesson unlocked.");
+          }
+        }
+      }));
 
   refreshApp();
   return { unlocked: newlyUnlocked, nextLessonId: next ? next.id : null, conditionsMet: true };
@@ -1525,13 +1525,13 @@ export async function checkAndUnlockNextLesson(lessonId: string): Promise<Unlock
 
 export async function requestAccountDeletion(): Promise<void> {
   const me = await requireRole("student", "instructor", "admin", "growth");
-  getDb().prepare("UPDATE users SET deletion_requested = 1 WHERE id = ?").run(me.id);
+  (await getDb().prepare("UPDATE users SET deletion_requested = 1 WHERE id = ?").run(me.id));
   refreshApp();
 }
 
 export async function dismissDeletionRequest(userId: string): Promise<void> {
   await requireRole("admin");
-  getDb().prepare("UPDATE users SET deletion_requested = 0 WHERE id = ?").run(userId);
+  (await getDb().prepare("UPDATE users SET deletion_requested = 0 WHERE id = ?").run(userId));
   refreshApp();
 }
 
@@ -1549,18 +1549,18 @@ export async function fulfillDeletionRequest(userId: string): Promise<void> {
 
   const db = getDb();
   const now = Date.now();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     // Re-check the actor after taking the write lock. The page-level role gate
     // and requireRole() are not sufficient authorization for a Server Action.
-    const actor = db
-      .prepare("SELECT 1 FROM users WHERE id = ? AND role = 'admin' AND status = 'active'")
-      .get(me.id);
+    const actor = (await db
+          .prepare("SELECT 1 FROM users WHERE id = ? AND role = 'admin' AND status = 'active'")
+          .get(me.id));
     if (!actor) throw new Error("Administrator access changed before the request could be fulfilled.");
 
-    const target = db
-      .prepare("SELECT id, email, deletion_requested FROM users WHERE id = ?")
-      .get(targetId) as { id: string; email: string; deletion_requested: number } | undefined;
+    const target = (await db
+          .prepare("SELECT id, email, deletion_requested FROM users WHERE id = ?")
+          .get(targetId)) as { id: string; email: string; deletion_requested: number } | undefined;
     if (!target || target.deletion_requested !== 1) {
       throw new Error("This account does not have an active deletion request.");
     }
@@ -1569,66 +1569,66 @@ export async function fulfillDeletionRequest(userId: string): Promise<void> {
     // A v2 database should already make these links agree. Fail closed instead
     // of anonymizing a Person that belongs to a different user if legacy data
     // somehow violates that identity boundary.
-    const conflictingStudentPerson = db.prepare(
-      `SELECT s.id
+    const conflictingStudentPerson = (await db.prepare(
+          `SELECT s.id
          FROM students s
          JOIN people p ON p.id = s.person_id
         WHERE s.user_id = ? AND p.user_id IS NOT NULL AND p.user_id <> ?
         LIMIT 1`,
-    ).get(targetId, targetId);
+        ).get(targetId, targetId));
     if (conflictingStudentPerson) {
       throw new Error("The account's canonical identity links need administrator review before deletion can be fulfilled.");
     }
 
-    const invitationRows = db
-      .prepare("SELECT id, email, status FROM invitations WHERE lower(trim(email)) = lower(trim(?)) ORDER BY id")
-      .all(target.email) as { id: string; email: string; status: string }[];
+    const invitationRows = (await db
+          .prepare("SELECT id, email, status FROM invitations WHERE lower(trim(email)) = lower(trim(?)) ORDER BY id")
+          .all(target.email)) as { id: string; email: string; status: string }[];
     let revokedPendingInvitations = 0;
     for (const invitation of invitationRows) {
       const nextStatus = invitation.status === "pending" ? "revoked" : invitation.status;
       const rotatedCredential = randomBytes(32).toString("base64url");
-      const updated = db.prepare(
-        `UPDATE invitations
+      const updated = (await db.prepare(
+              `UPDATE invitations
             SET email = ?, status = ?, token = ?, token_hash = ?
           WHERE id = ? AND email = ? AND status = ?`,
-      ).run(
-        `deleted+${randomUUID()}@deleted.invalid`,
-        nextStatus,
-        `retired:${randomUUID()}`,
-        hashOpaqueToken(rotatedCredential),
-        invitation.id,
-        invitation.email,
-        invitation.status,
-      );
+            ).run(
+              `deleted+${randomUUID()}@deleted.invalid`,
+              nextStatus,
+              `retired:${randomUUID()}`,
+              hashOpaqueToken(rotatedCredential),
+              invitation.id,
+              invitation.email,
+              invitation.status,
+            ));
       if (updated.changes !== 1) throw new Error("An invitation changed before deletion could be fulfilled.");
       if (invitation.status === "pending") revokedPendingInvitations += 1;
     }
 
-    const consentRows = db
-      .prepare("SELECT id, revoked_at FROM profile_sharing_consents WHERE student_user_id = ? ORDER BY id")
-      .all(targetId) as { id: string; revoked_at: number | null }[];
+    const consentRows = (await db
+          .prepare("SELECT id, revoked_at FROM profile_sharing_consents WHERE student_user_id = ? ORDER BY id")
+          .all(targetId)) as { id: string; revoked_at: number | null }[];
     let revokedActiveConsents = 0;
     for (const consent of consentRows) {
-      const updated = db.prepare(
-        `UPDATE profile_sharing_consents
+      const updated = (await db.prepare(
+              `UPDATE profile_sharing_consents
             SET public_slug = ?, guardian_name = 'Removed', guardian_email = ?,
                 revoked_by_user_id = CASE WHEN revoked_at IS NULL THEN ? ELSE revoked_by_user_id END,
                 revoked_at = COALESCE(revoked_at, ?), discoverable = 0, notes = NULL
           WHERE id = ? AND student_user_id = ?`,
-      ).run(
-        randomBytes(32).toString("base64url"),
-        `deleted+${randomUUID()}@deleted.invalid`,
-        me.id,
-        now,
-        consent.id,
-        targetId,
-      );
+            ).run(
+              randomBytes(32).toString("base64url"),
+              `deleted+${randomUUID()}@deleted.invalid`,
+              me.id,
+              now,
+              consent.id,
+              targetId,
+            ));
       if (updated.changes !== 1) throw new Error("A profile-sharing consent changed before deletion could be fulfilled.");
       if (consent.revoked_at == null) revokedActiveConsents += 1;
     }
 
-    const personRows = db.prepare(
-      `SELECT DISTINCT p.id
+    const personRows = (await db.prepare(
+          `SELECT DISTINCT p.id
          FROM people p
         WHERE p.user_id = ?
            OR p.id IN (
@@ -1636,83 +1636,83 @@ export async function fulfillDeletionRequest(userId: string): Promise<void> {
               WHERE s.user_id = ? AND s.person_id IS NOT NULL
            )
         ORDER BY p.id`,
-    ).all(targetId, targetId) as { id: string }[];
+        ).all(targetId, targetId)) as { id: string }[];
     for (const person of personRows) {
-      const updated = db.prepare(
-        `UPDATE people
+      const updated = (await db.prepare(
+              `UPDATE people
             SET name = 'Deleted account', email = ?, phone = '', updated_at = ?
           WHERE id = ? AND (user_id IS NULL OR user_id = ?)`,
-      ).run(`deleted+${randomUUID()}@deleted.invalid`, now, person.id, targetId);
+            ).run(`deleted+${randomUUID()}@deleted.invalid`, now, person.id, targetId));
       if (updated.changes !== 1) throw new Error("A canonical Person changed before deletion could be fulfilled.");
     }
 
-    const studentRows = db
-      .prepare("SELECT id FROM students WHERE user_id = ? ORDER BY id")
-      .all(targetId) as { id: string }[];
+    const studentRows = (await db
+          .prepare("SELECT id FROM students WHERE user_id = ? ORDER BY id")
+          .all(targetId)) as { id: string }[];
     for (const student of studentRows) {
-      const updated = db.prepare(
-        `UPDATE students
+      const updated = (await db.prepare(
+              `UPDATE students
             SET name = 'Deleted account', age = NULL, grade = NULL, email = NULL,
                 guardian_person_id = NULL, emergency_notes = NULL,
                 enrollment_status = 'inactive', form_status = 'missing',
                 communication_notes = NULL, updated_at = ?
           WHERE id = ? AND user_id = ?`,
-      ).run(now, student.id, targetId);
+            ).run(now, student.id, targetId));
       if (updated.changes !== 1) throw new Error("A canonical Student changed before deletion could be fulfilled.");
     }
 
-    const deactivatedLegacyEnrollments = db.prepare(
-      `UPDATE enrollments
+    const deactivatedLegacyEnrollments = (await db.prepare(
+          `UPDATE enrollments
           SET enroll = 'inactive'
         WHERE user_id = ? AND enroll IN ('active', 'invited', 'suspended')`,
-    ).run(targetId).changes;
-    const withdrawnClassEnrollments = db.prepare(
-      `UPDATE class_enrollments
+        ).run(targetId)).changes;
+    const withdrawnClassEnrollments = (await db.prepare(
+          `UPDATE class_enrollments
           SET status = 'withdrawn', withdrawn_at = ?,
               withdrawal_reason = 'Account deletion request fulfilled.'
         WHERE student_id IN (SELECT id FROM students WHERE user_id = ?)
           AND status IN ('enrolled', 'waitlisted')`,
-    ).run(now, targetId).changes;
+        ).run(now, targetId)).changes;
 
     let deactivatedInstructors = 0;
     let removedAvailabilityRows = 0;
     let removedFutureTrainingRegistrations = 0;
     let coverageTasksOpened = 0;
     for (const person of personRows) {
-      const instructorRows = db
-        .prepare("SELECT id FROM instructors WHERE person_id = ? ORDER BY id")
-        .all(person.id) as { id: string }[];
+      const instructorRows = (await db
+              .prepare("SELECT id FROM instructors WHERE person_id = ? ORDER BY id")
+              .all(person.id)) as { id: string }[];
       for (const instructor of instructorRows) {
-        deactivatedInstructors += Number(db.prepare(
-          `UPDATE instructors
+        deactivatedInstructors += Number((await db.prepare(
+                      `UPDATE instructors
               SET stage = CASE WHEN stage = 'rejected' THEN stage ELSE 'inactive' END,
                   answers = '{}', interview_notes = NULL, development_focus = NULL,
                   updated_at = ?
             WHERE id = ? AND person_id = ?`,
-        ).run(now, instructor.id, person.id).changes);
-        removedAvailabilityRows += Number(db
-          .prepare("DELETE FROM instructor_availability WHERE instructor_id = ?")
-          .run(instructor.id).changes);
-        removedFutureTrainingRegistrations += Number(db.prepare(
-          `DELETE FROM training_session_registrations
+                    ).run(now, instructor.id, person.id)).changes);
+        removedAvailabilityRows += Number((await db
+                      .prepare("DELETE FROM instructor_availability WHERE instructor_id = ?")
+                      .run(instructor.id)).changes);
+        removedFutureTrainingRegistrations += Number((await db.prepare(
+                      `DELETE FROM training_session_registrations
             WHERE instructor_id = ?
               AND EXISTS (
                 SELECT 1 FROM training_sessions ts
                  WHERE ts.id = training_session_registrations.session_id
                    AND ts.scheduled_at >= ?
               )`,
-        ).run(instructor.id, now).changes);
+                    ).run(instructor.id, now)).changes);
 
-        const affectedClasses = db.prepare(
-          `SELECT COUNT(*) AS n
+        const affectedClasses = (await db.prepare(
+                  `SELECT COUNT(*) AS n
              FROM class_instructors ci
              JOIN classes c ON c.id = ci.class_id
             WHERE ci.instructor_id = ? AND ci.removed_at IS NULL
               AND c.status NOT IN ('completed', 'cancelled')`,
-        ).get(instructor.id) as { n: number };
+                ).get(instructor.id)) as { n: number };
         if (affectedClasses.n > 0) {
-          coverageTasksOpened += Number(db.prepare(
-            `INSERT INTO tasks
+          coverageTasksOpened += Number((await db.prepare(
+                          `INSERT INTO tasks
               (id, title, owner_user_id, due_at, status, kind, priority, context,
                recommended_action, entity_type, entity_id, handoff_to_founder,
                created_at, updated_at)
@@ -1723,18 +1723,18 @@ export async function fulfillDeletionRequest(userId: string): Promise<void> {
                    AND kind = 'issue'
                    AND recommended_action = 'Assign replacement coverage and confirm every affected Program remains ready.'
               )`,
-          ).run(
-            `wrk-${randomUUID().slice(0, 10)}`,
-            `Replace inactive instructor across ${affectedClasses.n} Class${affectedClasses.n === 1 ? "" : "es"}`,
-            me.id,
-            now,
-            "The linked account deletion was fulfilled and teaching access was revoked.",
-            "Assign replacement coverage and confirm every affected Program remains ready.",
-            instructor.id,
-            now,
-            now,
-            instructor.id,
-          ).changes);
+                        ).run(
+                          `wrk-${randomUUID().slice(0, 10)}`,
+                          `Replace inactive instructor across ${affectedClasses.n} Class${affectedClasses.n === 1 ? "" : "es"}`,
+                          me.id,
+                          now,
+                          "The linked account deletion was fulfilled and teaching access was revoked.",
+                          "Assign replacement coverage and confirm every affected Program remains ready.",
+                          instructor.id,
+                          now,
+                          now,
+                          instructor.id,
+                        )).changes);
         }
       }
     }
@@ -1742,8 +1742,8 @@ export async function fulfillDeletionRequest(userId: string): Promise<void> {
     // Keep the stable ownership/contact references for audit continuity, but
     // make the required human reassignment explicit instead of leaving a
     // Program silently owned by an anonymized account or contact.
-    const affectedPrograms = db.prepare(
-      `SELECT id, name,
+    const affectedPrograms = (await db.prepare(
+          `SELECT id, name,
               CASE WHEN owner_user_id = ? THEN 1 ELSE 0 END AS needs_owner,
               CASE WHEN primary_contact_person_id IN (
                 SELECT p.id
@@ -1769,7 +1769,7 @@ export async function fulfillDeletionRequest(userId: string): Promise<void> {
             )
           )
         ORDER BY id`,
-    ).all(targetId, targetId, targetId, targetId, targetId, targetId) as {
+        ).all(targetId, targetId, targetId, targetId, targetId, targetId)) as {
       id: string;
       name: string;
       needs_owner: number;
@@ -1782,8 +1782,8 @@ export async function fulfillDeletionRequest(userId: string): Promise<void> {
         program.needs_contact ? "partner contact" : null,
       ].filter((value): value is string => value != null);
       const recommendedAction = "Assign active accountable people and reconfirm Program readiness after the account deletion.";
-      reassignmentTasksOpened += Number(db.prepare(
-        `INSERT INTO tasks
+      reassignmentTasksOpened += Number((await db.prepare(
+                  `INSERT INTO tasks
           (id, title, owner_user_id, due_at, status, kind, priority, context,
            recommended_action, entity_type, entity_id, handoff_to_founder,
            created_at, updated_at)
@@ -1793,69 +1793,69 @@ export async function fulfillDeletionRequest(userId: string): Promise<void> {
              WHERE entity_type = 'program' AND entity_id = ? AND status = 'open'
                AND kind = 'issue' AND recommended_action = ?
           )`,
-      ).run(
-        `wrk-${randomUUID().slice(0, 10)}`,
-        `Reassign ${missingRoles.join(" and ")} for ${program.name}`,
-        me.id,
-        now,
-        `Account deletion removed an accountable ${missingRoles.join(" and ")} from this Program.`,
-        recommendedAction,
-        program.id,
-        now,
-        now,
-        program.id,
-        recommendedAction,
-      ).changes);
+                ).run(
+                  `wrk-${randomUUID().slice(0, 10)}`,
+                  `Reassign ${missingRoles.join(" and ")} for ${program.name}`,
+                  me.id,
+                  now,
+                  `Account deletion removed an accountable ${missingRoles.join(" and ")} from this Program.`,
+                  recommendedAction,
+                  program.id,
+                  now,
+                  now,
+                  program.id,
+                  recommendedAction,
+                )).changes);
     }
 
     // Remove ephemeral, private account state while keeping attendance,
     // completed learning, delivery reports, certificates, and authored records.
-    const revokedSessions = db.prepare("DELETE FROM sessions WHERE user_id = ?").run(targetId).changes;
-    const removedResetCredentials = db
-      .prepare("DELETE FROM password_reset_tokens WHERE user_id = ?")
-      .run(targetId).changes;
-    const removedNotifications = db.prepare("DELETE FROM notifications WHERE user_id = ?").run(targetId).changes;
-    const anonymizedArticleBylines = db.prepare(
-      "UPDATE articles SET author = 'Deleted account', updated_at = ? WHERE author_user_id = ? AND author <> 'Deleted account'",
-    ).run(now, targetId).changes;
-    const anonymizedNoteScopes = db.prepare(
-      "UPDATE session_notes SET scope = 'Student · Deleted account' WHERE student_id = ? AND scope <> 'Student · Deleted account'",
-    ).run(targetId).changes;
-    const anonymizedFeedbackBylines = db.prepare(
-      "UPDATE instructor_feedback SET author_name = 'Deleted account' WHERE submitted_by_user_id = ? AND author_name IS NOT NULL",
-    ).run(targetId).changes;
+    const revokedSessions = (await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(targetId)).changes;
+    const removedResetCredentials = (await db
+          .prepare("DELETE FROM password_reset_tokens WHERE user_id = ?")
+          .run(targetId)).changes;
+    const removedNotifications = (await db.prepare("DELETE FROM notifications WHERE user_id = ?").run(targetId)).changes;
+    const anonymizedArticleBylines = (await db.prepare(
+          "UPDATE articles SET author = 'Deleted account', updated_at = ? WHERE author_user_id = ? AND author <> 'Deleted account'",
+        ).run(now, targetId)).changes;
+    const anonymizedNoteScopes = (await db.prepare(
+          "UPDATE session_notes SET scope = 'Student · Deleted account' WHERE student_id = ? AND scope <> 'Student · Deleted account'",
+        ).run(targetId)).changes;
+    const anonymizedFeedbackBylines = (await db.prepare(
+          "UPDATE instructor_feedback SET author_name = 'Deleted account' WHERE submitted_by_user_id = ? AND author_name IS NOT NULL",
+        ).run(targetId)).changes;
 
     // Universal Work must never remain assigned to an account whose access is
     // being removed. Preserve completed ownership history, but hand every open
     // item to the fulfilling administrator with an explicit audit event.
-    const ownedOpenWork = db.prepare(
-      "SELECT id, updated_at FROM tasks WHERE owner_user_id = ? AND status = 'open' ORDER BY id",
-    ).all(targetId) as { id: string; updated_at: number }[];
+    const ownedOpenWork = (await db.prepare(
+          "SELECT id, updated_at FROM tasks WHERE owner_user_id = ? AND status = 'open' ORDER BY id",
+        ).all(targetId)) as { id: string; updated_at: number }[];
     for (const task of ownedOpenWork) {
-      const reassigned = db.prepare(
-        `UPDATE tasks SET owner_user_id = ?, updated_at = ?
+      const reassigned = (await db.prepare(
+              `UPDATE tasks SET owner_user_id = ?, updated_at = ?
           WHERE id = ? AND owner_user_id = ? AND status = 'open' AND updated_at = ?`,
-      ).run(me.id, now, task.id, targetId, task.updated_at);
+            ).run(me.id, now, task.id, targetId, task.updated_at));
       if (reassigned.changes !== 1) throw new Error("Owned Work changed before deletion could be fulfilled.");
-      logActivity(
-        "task",
-        task.id,
-        "owner_changed",
-        "Open Work reassigned to the fulfilling administrator because its prior owner's account was deleted.",
-        me.id,
-      );
+      (await logActivity(
+                "task",
+                task.id,
+                "owner_changed",
+                "Open Work reassigned to the fulfilling administrator because its prior owner's account was deleted.",
+                me.id,
+              ));
     }
 
     const anonymousEmail = `deleted+${randomUUID()}@deleted.invalid`;
-    const accountUpdate = db.prepare(
-      `UPDATE users
+    const accountUpdate = (await db.prepare(
+          `UPDATE users
           SET name = 'Deleted account', first = 'Deleted', email = ?, grade = NULL,
               status = 'suspended', last = '—', signin = 'Unavailable',
               password_hash = NULL, deletion_requested = 0, last_active_at = NULL,
               onboarding_completed = 0, password_change_required = 0,
               last_active_date = NULL
         WHERE id = ? AND email = ? AND deletion_requested = 1`,
-    ).run(anonymousEmail, targetId, target.email);
+        ).run(anonymousEmail, targetId, target.email));
     if (accountUpdate.changes !== 1) {
       throw new Error("The deletion request changed before it could be fulfilled.");
     }
@@ -1912,27 +1912,27 @@ export async function fulfillDeletionRequest(userId: string): Promise<void> {
       decidedAt: now,
       metadata: auditMetadata,
     }));
-    db.prepare(
-      `INSERT INTO operational_decisions
+    (await db.prepare(
+            `INSERT INTO operational_decisions
         (id, entity_type, entity_id, decision_type, decision, reason, fingerprint,
          decided_by_user_id, decided_at, metadata)
        VALUES (?, 'user', ?, 'account_deletion_fulfillment', ?, ?, ?, ?, ?, ?)`,
-    ).run(auditId, targetId, auditDecision, auditReason, auditFingerprint, me.id, now, auditMetadata);
-    db.prepare(
-      `INSERT INTO crm_activity
+          ).run(auditId, targetId, auditDecision, auditReason, auditFingerprint, me.id, now, auditMetadata));
+    (await db.prepare(
+            `INSERT INTO crm_activity
         (id, entity_type, entity_id, kind, body, actor_user_id, created_at)
        VALUES (?, 'user', ?, 'account_deletion_fulfilled', ?, ?, ?)`,
-    ).run(
-      `pfx-${randomUUID().slice(0, 8)}`,
-      targetId,
-      "Account deletion request fulfilled. Personal identity and live access were removed; anonymized delivery history was preserved.",
-      me.id,
-      now,
-    );
+          ).run(
+            `pfx-${randomUUID().slice(0, 8)}`,
+            targetId,
+            "Account deletion request fulfilled. Personal identity and live access were removed; anonymized delivery history was preserved.",
+            me.id,
+            now,
+          ));
 
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     throw error;
   }
 
@@ -1962,50 +1962,50 @@ function refreshInstructor() {
  * uses a deterministic id, so this is safe to call after any progress change —
  * a given notification is created exactly once.
  */
-function notifyModuleProgress(userId: string) {
+async function notifyModuleProgress(userId: string) {
   for (const track of [TRACK_101, TRACK_201]) {
-    const views = getSelfModuleViews(userId, track);
+    const views = (await getSelfModuleViews(userId, track));
     for (const v of views) {
       const label = track === TRACK_201 ? `201-${v.module.ordinal}` : String(v.module.ordinal);
       if (v.completed) {
-        createNotification({
-          id: `ntf-quiz-${userId}-${v.module.id}`,
-          userId,
-          type: "quiz_available",
-          title: "New quiz questions available.",
-          body: `Quiz questions for ${v.module.title} are ready.`,
-          link: "/dashboard",
-        });
+        (await createNotification({
+                    id: `ntf-quiz-${userId}-${v.module.id}`,
+                    userId,
+                    type: "quiz_available",
+                    title: "New quiz questions available.",
+                    body: `Quiz questions for ${v.module.title} are ready.`,
+                    link: "/dashboard",
+                  }));
       }
       // The always-open first module of Track 101 isn't an "unlock" event.
       const alwaysOpen = track === TRACK_101 && v.module.ordinal === 1;
       if (v.unlocked && !alwaysOpen) {
-        createNotification({
-          id: `ntf-unlock-${userId}-${v.module.id}`,
-          userId,
-          type: "module_unlocked",
-          title: `Module ${label} unlocked.`,
-          body: `You can now start ${v.module.title}.`,
-          link: "/dashboard",
-        });
+        (await createNotification({
+                    id: `ntf-unlock-${userId}-${v.module.id}`,
+                    userId,
+                    type: "module_unlocked",
+                    title: `Module ${label} unlocked.`,
+                    body: `You can now start ${v.module.title}.`,
+                    link: "/dashboard",
+                  }));
       }
     }
   }
 }
 
 /** Fire a `rank_up` notification if the student's rank tier increased. Idempotent. */
-function notifyRankChange(userId: string, beforeKey: string) {
-  const after = rankForStudent(userId);
+async function notifyRankChange(userId: string, beforeKey: string) {
+  const after = (await rankForStudent(userId));
   if (after.key === beforeKey) return;
   const next = nextRankName(after.key);
-  createNotification({
-    id: `ntf-rank-${userId}-${after.key}`,
-    userId,
-    type: "rank_up",
-    title: `You ranked up to ${after.name}!`,
-    body: next ? `Keep going — ${next} is next.` : "You've reached the top rank. Incredible work.",
-    link: "/profile",
-  });
+  (await createNotification({
+        id: `ntf-rank-${userId}-${after.key}`,
+        userId,
+        type: "rank_up",
+        title: `You ranked up to ${after.name}!`,
+        body: next ? `Keep going — ${next} is next.` : "You've reached the top rank. Incredible work.",
+        link: "/profile",
+      }));
 }
 
 /* ---------------- Module progression (student) ---------------- */
@@ -2017,19 +2017,19 @@ function notifyRankChange(userId: string, beforeKey: string) {
  */
 export async function markSelfModuleComplete(moduleId: string): Promise<void> {
   const me = await requireRole("student");
-  if (!isSelfModuleUnlocked(me.id, moduleId)) return;
-  const track = trackForModule(moduleId);
-  const rankBefore = rankForStudent(me.id).key;
+  if (!(await isSelfModuleUnlocked(me.id, moduleId))) return;
+  const track = (await trackForModule(moduleId));
+  const rankBefore = (await rankForStudent(me.id)).key;
   const now = Date.now();
-  getDb()
-    .prepare(
-      "INSERT INTO self_progress (student_id, module_id, completed, completed_at, updated_at, track) VALUES (?, ?, 1, ?, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET completed = 1, completed_at = COALESCE(self_progress.completed_at, excluded.completed_at), updated_at = excluded.updated_at, track = excluded.track",
-    )
-    .run(me.id, moduleId, now, now, track);
-  touchActive(me.id);
+  (await getDb()
+        .prepare(
+          "INSERT INTO self_progress (student_id, module_id, completed, completed_at, updated_at, track) VALUES (?, ?, 1, ?, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET completed = 1, completed_at = COALESCE(self_progress.completed_at, excluded.completed_at), updated_at = excluded.updated_at, track = excluded.track",
+        )
+        .run(me.id, moduleId, now, now, track));
+  (await touchActive(me.id));
   // Completing a module unlocks its quiz and (if the reflection is in) the next module.
-  notifyModuleProgress(me.id);
-  notifyRankChange(me.id, rankBefore);
+  (await notifyModuleProgress(me.id));
+  (await notifyRankChange(me.id, rankBefore));
   refreshDashboard();
 }
 
@@ -2041,18 +2041,18 @@ export async function markSelfModuleComplete(moduleId: string): Promise<void> {
  */
 export async function saveSelfReflection(moduleId: string, text: string): Promise<void> {
   const me = await requireRole("student");
-  if (!isSelfModuleUnlocked(me.id, moduleId)) return;
+  if (!(await isSelfModuleUnlocked(me.id, moduleId))) return;
   const clean = text.trim();
   const words = reflectionWordCount(clean);
-  const track = trackForModule(moduleId);
-  getDb()
-    .prepare(
-      "INSERT INTO self_progress (student_id, module_id, reflection, reflection_words, updated_at, track) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET reflection = excluded.reflection, reflection_words = excluded.reflection_words, updated_at = excluded.updated_at, track = excluded.track",
-    )
-    .run(me.id, moduleId, clean, words, Date.now(), track);
-  touchActive(me.id);
+  const track = (await trackForModule(moduleId));
+  (await getDb()
+        .prepare(
+          "INSERT INTO self_progress (student_id, module_id, reflection, reflection_words, updated_at, track) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET reflection = excluded.reflection, reflection_words = excluded.reflection_words, updated_at = excluded.updated_at, track = excluded.track",
+        )
+        .run(me.id, moduleId, clean, words, Date.now(), track));
+  (await touchActive(me.id));
   // A passing reflection on a completed module unlocks the next one.
-  notifyModuleProgress(me.id);
+  (await notifyModuleProgress(me.id));
   refreshDashboard();
 }
 
@@ -2079,28 +2079,28 @@ export interface CertificateResult {
 export async function generateCertificate(track: string = CERT_TRACK): Promise<CertificateResult> {
   const me = await requireRole("student");
   const certTrack = track === CERT_TRACK_201 ? CERT_TRACK_201 : CERT_TRACK;
-  if (!hasCompletedAllModules(me.id, certTrack)) return { ok: false };
+  if (!(await hasCompletedAllModules(me.id, certTrack))) return { ok: false };
 
-  const rankBefore = rankForStudent(me.id).key;
-  const cert = issueCertificate(me.id, certTrack);
+  const rankBefore = (await rankForStudent(me.id)).key;
+  const cert = (await issueCertificate(me.id, certTrack));
   const dateLabel = new Date(cert.issuedAt).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
   });
   const html = buildCertificateHtml({ name: me.name, dateLabel, certId: cert.id, trackTitle: certTrackTitle(certTrack) });
-  touchActive(me.id);
-  createNotification({
-    id: `ntf-cert-${me.id}-${certTrack}`,
-    userId: me.id,
-    type: "certificate_earned",
-    title: "Certificate earned!",
-    body: `You completed Track ${certTrack}. Download your certificate.`,
-    link: "/dashboard",
-  });
+  (await touchActive(me.id));
+  (await createNotification({
+        id: `ntf-cert-${me.id}-${certTrack}`,
+        userId: me.id,
+        type: "certificate_earned",
+        title: "Certificate earned!",
+        body: `You completed Track ${certTrack}. Download your certificate.`,
+        link: "/dashboard",
+      }));
   // Earning the Track 101 certificate unlocks Track 201 — surface the unlock + any rank-up.
-  notifyModuleProgress(me.id);
-  notifyRankChange(me.id, rankBefore);
+  (await notifyModuleProgress(me.id));
+  (await notifyRankChange(me.id, rankBefore));
   return { ok: true, html, filename: certificateFilename(me.name, certTrack), certId: cert.id };
 }
 
@@ -2128,13 +2128,13 @@ export async function submitDailyDecision(storyId: string, response: string): Pr
 
   const db = getDb();
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const story = db.prepare("SELECT * FROM feed_stories WHERE id = ?").get(storyId) as any;
+  const story = (await db.prepare("SELECT * FROM feed_stories WHERE id = ?").get(storyId)) as any;
   if (!story) return { ok: false };
 
-  db.prepare(
-    "INSERT OR IGNORE INTO self_feed_responses (id, student_id, story_id, response, created_at) VALUES (?, ?, ?, ?, ?)",
-  ).run(`sfr-${randomUUID().slice(0, 12)}`, me.id, storyId, text, Date.now());
-  touchActive(me.id);
+  (await db.prepare(
+        "INSERT OR IGNORE INTO self_feed_responses (id, student_id, story_id, response, created_at) VALUES (?, ?, ?, ?, ?)",
+      ).run(`sfr-${randomUUID().slice(0, 12)}`, me.id, storyId, text, Date.now()));
+  (await touchActive(me.id));
   refreshDashboard();
   return { ok: true, outcome: story.outcome, explanation: story.explanation, concept: story.concept };
 }
@@ -2160,13 +2160,13 @@ export async function submitDailyScenario(scenarioId: string, response: string):
 
   const db = getDb();
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const scenario = db.prepare("SELECT * FROM daily_scenarios WHERE id = ?").get(scenarioId) as any;
+  const scenario = (await db.prepare("SELECT * FROM daily_scenarios WHERE id = ?").get(scenarioId)) as any;
   if (!scenario) return { ok: false };
 
-  db.prepare(
-    "INSERT OR IGNORE INTO scenario_responses (id, student_id, scenario_id, response_text, submitted_at) VALUES (?, ?, ?, ?, ?)",
-  ).run(`scnr-${randomUUID().slice(0, 12)}`, me.id, scenarioId, text, Date.now());
-  touchActive(me.id);
+  (await db.prepare(
+        "INSERT OR IGNORE INTO scenario_responses (id, student_id, scenario_id, response_text, submitted_at) VALUES (?, ?, ?, ?, ?)",
+      ).run(`scnr-${randomUUID().slice(0, 12)}`, me.id, scenarioId, text, Date.now()));
+  (await touchActive(me.id));
   refreshDashboard();
   return { ok: true, explanation: scenario.explanation, concept: scenario.concept };
 }
@@ -2198,13 +2198,13 @@ export async function submitQuizResponse(
   const me = await requireRole("student");
   const db = getDb();
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const q = db.prepare("SELECT * FROM quiz_questions WHERE id = ?").get(questionId) as any;
+  const q = (await db.prepare("SELECT * FROM quiz_questions WHERE id = ?").get(questionId)) as any;
   if (!q) return { ok: false };
 
   // Gate: the question's module (in its track) must be completed by this student.
   const qTrack = q.track ?? TRACK_101;
   const moduleOrdinal = Number(q.module_unlock);
-  const view = getSelfModuleViews(me.id, qTrack).find((v) => v.module.ordinal === moduleOrdinal);
+  const view = (await getSelfModuleViews(me.id, qTrack)).find((v) => v.module.ordinal === moduleOrdinal);
   if (!view?.completed) return { ok: false };
 
   const now = Date.now();
@@ -2213,20 +2213,20 @@ export async function submitQuizResponse(
     if (!["A", "B", "C", "D"].includes(choice)) return { ok: false };
     const correct = String(q.correct_answer ?? "").toUpperCase();
     const isCorrect = choice === correct;
-    db.prepare(
-      "INSERT OR IGNORE INTO quiz_responses (id, student_id, question_id, response_text, selected_choice, is_correct, submitted_at) VALUES (?, ?, ?, NULL, ?, ?, ?)",
-    ).run(`qr-${randomUUID().slice(0, 12)}`, me.id, questionId, choice, isCorrect ? 1 : 0, now);
-    touchActive(me.id);
+    (await db.prepare(
+            "INSERT OR IGNORE INTO quiz_responses (id, student_id, question_id, response_text, selected_choice, is_correct, submitted_at) VALUES (?, ?, ?, NULL, ?, ?, ?)",
+          ).run(`qr-${randomUUID().slice(0, 12)}`, me.id, questionId, choice, isCorrect ? 1 : 0, now));
+    (await touchActive(me.id));
     refreshDashboard();
     return { ok: true, isCorrect, correctAnswer: q.correct_answer ?? null, explanation: q.explanation };
   }
 
   const text = String(responseText ?? "").trim();
   if (!text) return { ok: false };
-  db.prepare(
-    "INSERT OR IGNORE INTO quiz_responses (id, student_id, question_id, response_text, selected_choice, is_correct, submitted_at) VALUES (?, ?, ?, ?, NULL, NULL, ?)",
-  ).run(`qr-${randomUUID().slice(0, 12)}`, me.id, questionId, text, now);
-  touchActive(me.id);
+  (await db.prepare(
+        "INSERT OR IGNORE INTO quiz_responses (id, student_id, question_id, response_text, selected_choice, is_correct, submitted_at) VALUES (?, ?, ?, ?, NULL, NULL, ?)",
+      ).run(`qr-${randomUUID().slice(0, 12)}`, me.id, questionId, text, now));
+  (await touchActive(me.id));
   refreshDashboard();
   return { ok: true, isCorrect: null, correctAnswer: null, explanation: q.explanation };
 }
@@ -2247,17 +2247,17 @@ function streakMilestoneBody(milestone: number): string {
  * notification (3/7/14/30/60) when one is hit. Shared by the standalone
  * server action and the Daily Question submission. Idempotent within a day.
  */
-function runDailyVisit(userId: string): RecordVisitResult {
-  const r = applyDailyVisitStreak(userId);
+async function runDailyVisit(userId: string): Promise<RecordVisitResult> {
+  const r = await applyDailyVisitStreak(userId);
   if (r.advanced && r.milestone) {
-    createNotification({
-      id: `ntf-streak-${userId}-${r.milestone}`,
-      userId,
-      type: "streak_milestone",
-      title: `${r.milestone}-day streak! 🔥`,
-      body: streakMilestoneBody(r.milestone),
-      link: "/dashboard",
-    });
+    (await createNotification({
+            id: `ntf-streak-${userId}-${r.milestone}`,
+            userId,
+            type: "streak_milestone",
+            title: `${r.milestone}-day streak! 🔥`,
+            body: streakMilestoneBody(r.milestone),
+            link: "/dashboard",
+          }));
   }
   return r;
 }
@@ -2275,7 +2275,7 @@ export interface DailyVisitResult {
  */
 export async function recordDailyVisit(): Promise<DailyVisitResult> {
   const me = await requireRole("student");
-  const r = runDailyVisit(me.id);
+  const r = (await runDailyVisit(me.id));
   refreshDashboard();
   return { current: r.current, longest: r.longest, milestone: r.milestone };
 }
@@ -2335,7 +2335,7 @@ export async function submitDailyResponse(
   selectedChoice: string,
 ): Promise<DailyQuestionResult> {
   const me = await requireRole("student");
-  const q = getDailyQuestionById(questionId);
+  const q = (await getDailyQuestionById(questionId));
   if (!q) return { ok: false };
 
   // MC stores an uppercase letter; math/fr store the trimmed typed answer.
@@ -2345,23 +2345,23 @@ export async function submitDailyResponse(
 
   const db = getDb();
   const isCorrect = gradeAnswer(q, submitted);
-  const result = db
-    .prepare(
-      "INSERT OR IGNORE INTO daily_responses (id, student_id, question_id, selected_choice, is_correct, responded_at) VALUES (?, ?, ?, ?, ?, ?)",
-    )
-    .run(`dr-${randomUUID().slice(0, 12)}`, me.id, questionId, submitted, isCorrect ? 1 : 0, Date.now());
+  const result = (await db
+      .prepare(
+        "INSERT OR IGNORE INTO daily_responses (id, student_id, question_id, selected_choice, is_correct, responded_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(`dr-${randomUUID().slice(0, 12)}`, me.id, questionId, submitted, isCorrect ? 1 : 0, Date.now()));
   const alreadyAnswered = Number(result.changes) === 0;
 
   // Authoritative stored answer (in case they had already answered today).
-  const stored = db
-    .prepare("SELECT selected_choice, is_correct FROM daily_responses WHERE student_id = ? AND question_id = ?")
-    .get(me.id, questionId) as { selected_choice?: string; is_correct?: number } | undefined;
+  const stored = (await db
+      .prepare("SELECT selected_choice, is_correct FROM daily_responses WHERE student_id = ? AND question_id = ?")
+      .get(me.id, questionId)) as { selected_choice?: string; is_correct?: number } | undefined;
   const storedChoice = String(stored?.selected_choice ?? submitted);
   const storedCorrect = Number(stored?.is_correct) === 1;
 
-  touchActive(me.id);
+  (await touchActive(me.id));
   // Answering the Daily Question is the daily visit — update the streak.
-  const visit = runDailyVisit(me.id);
+  const visit = (await runDailyVisit(me.id));
 
   // ---- XP + badges (only the first answer of the day banks streak/points XP) ----
   let xpEarned = 0;
@@ -2369,11 +2369,11 @@ export async function submitDailyResponse(
   if (visit.advanced && visit.current > 0 && visit.current % 7 === 0) xpEarned += STREAK_BONUS_XP;
 
   // Award badges AFTER the response + streak are recorded so stats are current.
-  const newBadges = checkAndAwardBadges(me.id);
+  const newBadges = (await checkAndAwardBadges(me.id));
   xpEarned += newBadges.reduce((sum, b) => sum + b.xpReward, 0);
 
-  if (xpEarned > 0) db.prepare("UPDATE users SET xp = COALESCE(xp, 0) + ? WHERE id = ?").run(xpEarned, me.id);
-  const totalXp = (db.prepare("SELECT xp FROM users WHERE id = ?").get(me.id) as { xp?: number } | undefined)?.xp ?? 0;
+  if (xpEarned > 0) (await db.prepare("UPDATE users SET xp = COALESCE(xp, 0) + ? WHERE id = ?").run(xpEarned, me.id));
+  const totalXp = ((await db.prepare("SELECT xp FROM users WHERE id = ?").get(me.id)) as { xp?: number } | undefined)?.xp ?? 0;
 
   refreshDashboard();
 
@@ -2413,10 +2413,10 @@ export interface PlayerCardResult {
  */
 export async function generatePlayerCard(): Promise<PlayerCardResult> {
   const me = await requireRole("student");
-  const data = getPlayerCardData(me.id);
+  const data = (await getPlayerCardData(me.id));
   if (!data) return { ok: false };
-  recordPlayerCard(me.id, data.positionLabel);
-  touchActive(me.id);
+  (await recordPlayerCard(me.id, data.positionLabel));
+  (await touchActive(me.id));
   return { ok: true, html: buildPlayerCardHtml(data), filename: playerCardFilename(data.name), positionLabel: data.positionLabel };
 }
 
@@ -2430,13 +2430,13 @@ export async function generatePlayerCard(): Promise<PlayerCardResult> {
 export async function instructorUnlockModule(studentId: string, moduleId: string): Promise<void> {
   const me = await requireRole("instructor", "admin");
   const db = getDb();
-  const cohort = assertCohortOwnership(me, SELF_PACED_COHORT_ID, db);
-  requireStudentMembership(db, cohort, studentId, { userStatuses: ["active"], enrollmentStates: ["active"] });
-  const selfModule = requireSelfModule(db, moduleId);
+  const cohort = (await assertCohortOwnership(me, SELF_PACED_COHORT_ID, db));
+  (await requireStudentMembership(db, cohort, studentId, { userStatuses: ["active"], enrollmentStates: ["active"] }));
+  const selfModule = (await requireSelfModule(db, moduleId));
   const now = Date.now();
-  db.prepare(
-    "INSERT INTO self_progress (student_id, module_id, instructor_unlocked, updated_at, track) VALUES (?, ?, 1, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET instructor_unlocked = 1, updated_at = excluded.updated_at, track = excluded.track",
-  ).run(studentId, moduleId, now, selfModule.track);
+  (await db.prepare(
+        "INSERT INTO self_progress (student_id, module_id, instructor_unlocked, updated_at, track) VALUES (?, ?, 1, ?, ?) ON CONFLICT(student_id, module_id) DO UPDATE SET instructor_unlocked = 1, updated_at = excluded.updated_at, track = excluded.track",
+      ).run(studentId, moduleId, now, selfModule.track));
   refreshInstructor();
 }
 
@@ -2444,12 +2444,12 @@ export async function instructorUnlockModule(studentId: string, moduleId: string
 export async function instructorRelockModule(studentId: string, moduleId: string): Promise<void> {
   const me = await requireRole("instructor", "admin");
   const db = getDb();
-  const cohort = assertCohortOwnership(me, SELF_PACED_COHORT_ID, db);
-  requireStudentMembership(db, cohort, studentId, { userStatuses: ["active"], enrollmentStates: ["active"] });
-  const selfModule = requireSelfModule(db, moduleId);
-  db.prepare(
-    "UPDATE self_progress SET instructor_unlocked = 0, updated_at = ?, track = ? WHERE student_id = ? AND module_id = ?",
-  ).run(Date.now(), selfModule.track, studentId, moduleId);
+  const cohort = (await assertCohortOwnership(me, SELF_PACED_COHORT_ID, db));
+  (await requireStudentMembership(db, cohort, studentId, { userStatuses: ["active"], enrollmentStates: ["active"] }));
+  const selfModule = (await requireSelfModule(db, moduleId));
+  (await db.prepare(
+        "UPDATE self_progress SET instructor_unlocked = 0, updated_at = ?, track = ? WHERE student_id = ? AND module_id = ?",
+      ).run(Date.now(), selfModule.track, studentId, moduleId));
   refreshInstructor();
 }
 
@@ -2464,25 +2464,25 @@ export async function saveStudentNote(studentId: string, note: string): Promise<
   const db = getDb();
   const id = `note-${randomUUID().slice(0, 8)}`;
   const now = Date.now();
-  withLegacyTransaction(db, () => {
-    const cohort = assertCohortOwnership(me, SELF_PACED_COHORT_ID, db);
-    const { user: student } = requireStudentMembership(db, cohort, studentId, {
-      userStatuses: ["active"],
-      enrollmentStates: ["active"],
-    });
-    db.prepare(
-      "INSERT INTO session_notes (id, cohort_id, author_id, student_id, scope, text, created_at, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run(
-      id,
-      SELF_PACED_COHORT_ID,
-      me.id,
-      studentId,
-      `Student · ${student.name}`.slice(0, 200),
-      body,
-      fmtDate(new Date(now)),
-      now,
-    );
-  });
+  (await withLegacyTransaction(db, async () => {
+        const cohort = (await assertCohortOwnership(me, SELF_PACED_COHORT_ID, db));
+        const { user: student } = (await requireStudentMembership(db, cohort, studentId, {
+              userStatuses: ["active"],
+              enrollmentStates: ["active"],
+            }));
+        (await db.prepare(
+                "INSERT INTO session_notes (id, cohort_id, author_id, student_id, scope, text, created_at, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+              ).run(
+                id,
+                SELF_PACED_COHORT_ID,
+                me.id,
+                studentId,
+                `Student · ${student.name}`.slice(0, 200),
+                body,
+                fmtDate(new Date(now)),
+                now,
+              ));
+      }));
   refreshInstructor();
 }
 
@@ -2495,16 +2495,16 @@ export async function setSessionAttendance(studentId: string, sessionNo: number,
   }
   if (typeof present !== "boolean") throw new Error("Invalid attendance value.");
   const db = getDb();
-  withLegacyTransaction(db, () => {
-    const cohort = assertCohortOwnership(me, SELF_PACED_COHORT_ID, db);
-    requireStudentMembership(db, cohort, studentId, { userStatuses: ["active"], enrollmentStates: ["active"] });
-    const written = db
-      .prepare(
-        "INSERT INTO self_attendance (cohort_id, student_id, session_no, present) VALUES (?, ?, ?, ?) ON CONFLICT(cohort_id, student_id, session_no) DO UPDATE SET present = excluded.present",
-      )
-      .run(SELF_PACED_COHORT_ID, studentId, sessionNo, present ? 1 : 0);
-    if (written.changes !== 1) throw new Error("Session attendance changed before it could be saved.");
-  });
+  (await withLegacyTransaction(db, async () => {
+        const cohort = (await assertCohortOwnership(me, SELF_PACED_COHORT_ID, db));
+        (await requireStudentMembership(db, cohort, studentId, { userStatuses: ["active"], enrollmentStates: ["active"] }));
+        const written = (await db
+              .prepare(
+                "INSERT INTO self_attendance (cohort_id, student_id, session_no, present) VALUES (?, ?, ?, ?) ON CONFLICT(cohort_id, student_id, session_no) DO UPDATE SET present = excluded.present",
+              )
+              .run(SELF_PACED_COHORT_ID, studentId, sessionNo, present ? 1 : 0));
+        if (written.changes !== 1) throw new Error("Session attendance changed before it could be saved.");
+      }));
   refreshInstructor();
 }
 

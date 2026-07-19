@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function NewsPage() {
-  const items = getActiveNewsItems();
+  const items = (await getActiveNewsItems());
   const me = await getCurrentUser();
   const isStudent = me?.role === "student";
 

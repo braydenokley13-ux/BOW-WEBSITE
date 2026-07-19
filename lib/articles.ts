@@ -169,10 +169,10 @@ function rowToRevision(r: any): ArticleRevision {
 }
 
 /** Published pieces, pinned first then newest, optionally filtered. */
-export function getPublishedArticles(filter?: { category?: string; tag?: string }): Article[] {
-  const rows = articlesDb()
-    .prepare("SELECT * FROM articles WHERE status = 'published' ORDER BY featured DESC, published_at DESC")
-    .all() as any[];
+export async function getPublishedArticles(filter?: { category?: string; tag?: string }): Promise<Article[]> {
+  const rows = (await articlesDb()
+      .prepare("SELECT * FROM articles WHERE status = 'published' ORDER BY featured DESC, published_at DESC")
+      .all()) as any[];
   let list = rows.map(rowToArticle);
   if (filter?.category) list = list.filter((a) => a.category === filter.category);
   if (filter?.tag) {
@@ -182,14 +182,14 @@ export function getPublishedArticles(filter?: { category?: string; tag?: string 
   return list;
 }
 
-export function getPublishedArticleBySlug(slug: string): Article | null {
-  const row = articlesDb().prepare("SELECT * FROM articles WHERE slug = ? AND status = 'published'").get(slug) as any;
+export async function getPublishedArticleBySlug(slug: string): Promise<Article | null> {
+  const row = (await articlesDb().prepare("SELECT * FROM articles WHERE slug = ? AND status = 'published'").get(slug)) as any;
   return row ? rowToArticle(row) : null;
 }
 
 /** Related pieces: shared category or tag overlap, newest first. */
-export function getRelatedArticles(article: Article, limit = 3): Article[] {
-  const all = getPublishedArticles().filter((a) => a.id !== article.id);
+export async function getRelatedArticles(article: Article, limit = 3): Promise<Article[]> {
+  const all = (await getPublishedArticles()).filter((a) => a.id !== article.id);
   const scored = all
     .map((a) => {
       let score = 0;
@@ -209,26 +209,26 @@ export function getRelatedArticles(article: Article, limit = 3): Article[] {
 }
 
 /** Published pieces whose body mentions a player slug (for player-page coverage). */
-export function getArticlesMentioningPlayer(slug: string, limit = 4): Article[] {
-  const rows = articlesDb()
-    .prepare("SELECT * FROM articles WHERE status = 'published' AND body LIKE ? ORDER BY published_at DESC LIMIT ?")
-    .all(`%${slug}%`, limit) as any[];
+export async function getArticlesMentioningPlayer(slug: string, limit = 4): Promise<Article[]> {
+  const rows = (await articlesDb()
+      .prepare("SELECT * FROM articles WHERE status = 'published' AND body LIKE ? ORDER BY published_at DESC LIMIT ?")
+      .all(`%${slug}%`, limit)) as any[];
   return rows.map(rowToArticle);
 }
 
 /** Every distinct tag across published pieces, most-used first. */
-export function getPublishedTags(limit = 12): string[] {
+export async function getPublishedTags(limit = 12): Promise<string[]> {
   const counts = new Map<string, number>();
-  for (const a of getPublishedArticles()) {
+  for (const a of (await getPublishedArticles())) {
     for (const t of a.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
   }
   return [...counts.entries()].sort((x, y) => y[1] - x[1]).slice(0, limit).map(([t]) => t);
 }
 
 /** Fire-and-forget read counter (article page render). */
-export function bumpViewCount(id: string): void {
+export async function bumpViewCount(id: string): Promise<void> {
   try {
-    articlesDb().prepare("UPDATE articles SET view_count = view_count + 1 WHERE id = ?").run(id);
+    (await articlesDb().prepare("UPDATE articles SET view_count = view_count + 1 WHERE id = ?").run(id));
   } catch {
     /* a lost count is not worth failing a page render */
   }
@@ -237,34 +237,34 @@ export function bumpViewCount(id: string): void {
 /* ---------------- reader-authored papers ---------------- */
 
 /** Published research papers, newest first (the publication's papers rail). */
-export function getPublishedPapers(limit = 24): Article[] {
-  const rows = articlesDb()
-    .prepare("SELECT * FROM articles WHERE status = 'published' AND kind = 'paper' ORDER BY published_at DESC LIMIT ?")
-    .all(limit) as any[];
+export async function getPublishedPapers(limit = 24): Promise<Article[]> {
+  const rows = (await articlesDb()
+      .prepare("SELECT * FROM articles WHERE status = 'published' AND kind = 'paper' ORDER BY published_at DESC LIMIT ?")
+      .all(limit)) as any[];
   return rows.map(rowToArticle);
 }
 
 /** Published papers by one author account (for the public profile). */
-export function getPublishedPapersByAuthor(userId: string): Article[] {
-  const rows = articlesDb()
-    .prepare("SELECT * FROM articles WHERE status = 'published' AND kind = 'paper' AND author_user_id = ? ORDER BY published_at DESC")
-    .all(userId) as any[];
+export async function getPublishedPapersByAuthor(userId: string): Promise<Article[]> {
+  const rows = (await articlesDb()
+      .prepare("SELECT * FROM articles WHERE status = 'published' AND kind = 'paper' AND author_user_id = ? ORDER BY published_at DESC")
+      .all(userId)) as any[];
   return rows.map(rowToArticle);
 }
 
 /** Papers waiting for editorial review, oldest submission first. */
-export function getSubmittedPapers(): Article[] {
-  const rows = articlesDb()
-    .prepare("SELECT * FROM articles WHERE status = 'submitted' ORDER BY created_at ASC")
-    .all() as any[];
+export async function getSubmittedPapers(): Promise<Article[]> {
+  const rows = (await articlesDb()
+      .prepare("SELECT * FROM articles WHERE status = 'submitted' ORDER BY created_at ASC")
+      .all()) as any[];
   return rows.map(rowToArticle);
 }
 
 /** How many papers a reader currently has sitting in the review queue. */
-export function countOpenSubmissions(userId: string): number {
-  const row = articlesDb()
-    .prepare("SELECT COUNT(*) AS n FROM articles WHERE status = 'submitted' AND author_user_id = ?")
-    .get(userId) as any;
+export async function countOpenSubmissions(userId: string): Promise<number> {
+  const row = (await articlesDb()
+      .prepare("SELECT COUNT(*) AS n FROM articles WHERE status = 'submitted' AND author_user_id = ?")
+      .get(userId)) as any;
   return Number(row?.n) || 0;
 }
 
@@ -341,16 +341,16 @@ function isPublicArticleMirror(value: unknown): value is PublicArticleMirrorV1 {
   );
 }
 
-function localUpdatedAt(db: any, articleId: string): number | null {
-  const row = db.prepare("SELECT updated_at FROM articles WHERE id = ?").get(articleId) as { updated_at?: number } | undefined;
+async function localUpdatedAt(db: any, articleId: string): Promise<number | null> {
+  const row = (await db.prepare("SELECT updated_at FROM articles WHERE id = ?").get(articleId)) as { updated_at?: number } | undefined;
   return row ? Number(row.updated_at) || 0 : null;
 }
 
-function upsertPrivateArticle(db: any, article: Article): void {
-  const local = localUpdatedAt(db, article.id);
+async function upsertPrivateArticle(db: any, article: Article): Promise<void> {
+  const local = (await localUpdatedAt(db, article.id));
   if (local !== null && local >= article.updatedAt) return;
-  db.prepare(
-    `INSERT INTO articles (id, slug, title, dek, body, status, kind, author, author_user_id, category, tags, cover_image, featured, view_count, meta_title, meta_description, published_at, created_at, updated_at)
+  (await db.prepare(
+        `INSERT INTO articles (id, slug, title, dek, body, status, kind, author, author_user_id, category, tags, cover_image, featured, view_count, meta_title, meta_description, published_at, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        slug=excluded.slug, title=excluded.title, dek=excluded.dek, body=excluded.body,
@@ -359,20 +359,20 @@ function upsertPrivateArticle(db: any, article: Article): void {
        cover_image=excluded.cover_image, featured=excluded.featured, view_count=excluded.view_count,
        meta_title=excluded.meta_title, meta_description=excluded.meta_description,
        published_at=excluded.published_at, created_at=excluded.created_at, updated_at=excluded.updated_at`,
-  ).run(
-    article.id, article.slug, article.title, article.dek, article.body, article.status,
-    article.kind, article.author, article.authorUserId, article.category, article.tags.join(","),
-    article.coverImage, article.featured ? 1 : 0, article.viewCount, article.metaTitle,
-    article.metaDescription, article.publishedAt, article.createdAt, article.updatedAt,
-  );
+      ).run(
+        article.id, article.slug, article.title, article.dek, article.body, article.status,
+        article.kind, article.author, article.authorUserId, article.category, article.tags.join(","),
+        article.coverImage, article.featured ? 1 : 0, article.viewCount, article.metaTitle,
+        article.metaDescription, article.publishedAt, article.createdAt, article.updatedAt,
+      ));
 }
 
-function upsertPublicArticle(db: any, mirror: PublicArticleMirrorV1): void {
+async function upsertPublicArticle(db: any, mirror: PublicArticleMirrorV1): Promise<void> {
   const a = mirror.article;
-  const local = localUpdatedAt(db, a.id);
+  const local = (await localUpdatedAt(db, a.id));
   if (local !== null && local >= a.updatedAt) return;
-  db.prepare(
-    `INSERT INTO articles (id, slug, title, dek, body, status, kind, author, author_user_id, category, tags, cover_image, featured, view_count, meta_title, meta_description, published_at, created_at, updated_at)
+  (await db.prepare(
+        `INSERT INTO articles (id, slug, title, dek, body, status, kind, author, author_user_id, category, tags, cover_image, featured, view_count, meta_title, meta_description, published_at, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, 'published', ?, 'BOW Front Office', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        slug=excluded.slug, title=excluded.title, dek=excluded.dek, body=excluded.body,
@@ -380,11 +380,11 @@ function upsertPublicArticle(db: any, mirror: PublicArticleMirrorV1): void {
        cover_image=excluded.cover_image, featured=excluded.featured, view_count=excluded.view_count,
        meta_title=excluded.meta_title, meta_description=excluded.meta_description,
        published_at=excluded.published_at, updated_at=excluded.updated_at`,
-  ).run(
-    a.id, a.slug, a.title, a.dek, a.body, a.kind, a.category, a.tags.join(","),
-    a.coverImage, a.featured ? 1 : 0, a.viewCount, a.metaTitle, a.metaDescription,
-    a.publishedAt, a.publishedAt, a.updatedAt,
-  );
+      ).run(
+        a.id, a.slug, a.title, a.dek, a.body, a.kind, a.category, a.tags.join(","),
+        a.coverImage, a.featured ? 1 : 0, a.viewCount, a.metaTitle, a.metaDescription,
+        a.publishedAt, a.publishedAt, a.updatedAt,
+      ));
 }
 
 async function purgeLegacyPublicArticleMirrors(): Promise<void> {
@@ -445,7 +445,7 @@ export async function rehydrateArticlesFromMirror(): Promise<void> {
             console.warn(`[articles] ignored invalid private mirror payload at ${entry.pathname}`);
             continue;
           }
-          upsertPrivateArticle(db, payload.article);
+          (await upsertPrivateArticle(db, payload.article));
         }
       }
     }
@@ -464,7 +464,7 @@ export async function rehydrateArticlesFromMirror(): Promise<void> {
             console.warn(`[articles] ignored invalid public mirror payload at ${entry.pathname}`);
             continue;
           }
-          upsertPublicArticle(db, payload);
+          (await upsertPublicArticle(db, payload));
         }
       }
     }
@@ -475,20 +475,20 @@ export async function rehydrateArticlesFromMirror(): Promise<void> {
 
 /* ---------------- admin reads ---------------- */
 
-export function getAllArticlesAdmin(): Article[] {
-  const rows = articlesDb().prepare("SELECT * FROM articles ORDER BY updated_at DESC").all() as any[];
+export async function getAllArticlesAdmin(): Promise<Article[]> {
+  const rows = (await articlesDb().prepare("SELECT * FROM articles ORDER BY updated_at DESC").all()) as any[];
   return rows.map(rowToArticle);
 }
 
-export function getArticleByIdAdmin(id: string): Article | null {
-  const row = articlesDb().prepare("SELECT * FROM articles WHERE id = ?").get(id) as any;
+export async function getArticleByIdAdmin(id: string): Promise<Article | null> {
+  const row = (await articlesDb().prepare("SELECT * FROM articles WHERE id = ?").get(id)) as any;
   return row ? rowToArticle(row) : null;
 }
 
-export function getArticleRevisions(articleId: string, limit = 20): ArticleRevision[] {
-  const rows = articlesDb()
-    .prepare("SELECT * FROM article_revisions WHERE article_id = ? ORDER BY saved_at DESC LIMIT ?")
-    .all(articleId, limit) as any[];
+export async function getArticleRevisions(articleId: string, limit = 20): Promise<ArticleRevision[]> {
+  const rows = (await articlesDb()
+      .prepare("SELECT * FROM article_revisions WHERE article_id = ? ORDER BY saved_at DESC LIMIT ?")
+      .all(articleId, limit)) as any[];
   return rows.map(rowToRevision);
 }
 

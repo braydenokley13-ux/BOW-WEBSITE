@@ -17,32 +17,32 @@ export default async function StaffSessionDetailPage({ params }: { params: Promi
   const { id, sid } = await params;
 
   const db = getDb();
-  const session = db.prepare(
-    "SELECT session_date, timezone, location FROM class_sessions WHERE id = ? AND class_id = ?",
-  ).get(sid, id) as { session_date: number; timezone: string | null; location: string | null } | undefined;
+  const session = (await db.prepare(
+      "SELECT session_date, timezone, location FROM class_sessions WHERE id = ? AND class_id = ?",
+    ).get(sid, id)) as { session_date: number; timezone: string | null; location: string | null } | undefined;
   if (!session) notFound();
 
-  const cls = db.prepare(
-    `SELECT c.title, c.schedule_timezone, curriculum.title AS curriculum_title
+  const cls = (await db.prepare(
+      `SELECT c.title, c.schedule_timezone, curriculum.title AS curriculum_title
        FROM classes c
        LEFT JOIN curricula curriculum ON curriculum.id = c.curriculum_id
       WHERE c.id = ?`,
-  ).get(id) as
+    ).get(id)) as
     | { title: string; schedule_timezone: string | null; curriculum_title: string | null }
     | undefined;
 
-  const roster = db
-    .prepare(
-      `SELECT csr.student_id, s.name
+  const roster = (await db
+      .prepare(
+        `SELECT csr.student_id, s.name
        FROM class_session_roster csr
        LEFT JOIN students s ON s.id = csr.student_id
        WHERE csr.session_id = ?
        ORDER BY s.name, csr.student_id`,
-    )
-    .all(sid) as { student_id: string; name: string | null }[];
-  const attendanceRows = db
-    .prepare("SELECT student_id, present, status, note, recorded_at FROM attendance_records WHERE session_id = ?")
-    .all(sid) as { student_id: string; present: number; status: string | null; note: string | null; recorded_at: number }[];
+      )
+      .all(sid)) as { student_id: string; name: string | null }[];
+  const attendanceRows = (await db
+      .prepare("SELECT student_id, present, status, note, recorded_at FROM attendance_records WHERE session_id = ?")
+      .all(sid)) as { student_id: string; present: number; status: string | null; note: string | null; recorded_at: number }[];
   const attendanceMap = new Map(attendanceRows.map((row) => [row.student_id, row]));
 
   const students = roster.map((student) => ({
@@ -55,10 +55,10 @@ export default async function StaffSessionDetailPage({ params }: { params: Promi
     recordedAt: attendanceMap.get(student.student_id)?.recorded_at ?? null,
   }));
 
-  const report = db.prepare(
-    `SELECT notes, flagged, flag_reason, completed, reported_at, lesson_id, lesson_snapshot
+  const report = (await db.prepare(
+      `SELECT notes, flagged, flag_reason, completed, reported_at, lesson_id, lesson_snapshot
        FROM class_session_reports WHERE session_id = ?`,
-  ).get(sid) as {
+    ).get(sid)) as {
     notes: string | null;
     flagged: number;
     flag_reason: string | null;

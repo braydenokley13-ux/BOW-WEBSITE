@@ -1,8 +1,8 @@
 import { Badge, Button, SectionHeader } from "@/components/ds";
 import { listCurricula } from "@/lib/hiring";
 
-export default function CurriculumPage() {
-  const curricula = listCurricula();
+export default async function CurriculumPage() {
+  const curricula = (await listCurricula());
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
       <SectionHeader kicker="BOW HQ" title="Curriculum" action={{ label: "New Curriculum", href: "/app/curriculum/new" }} level={1} />

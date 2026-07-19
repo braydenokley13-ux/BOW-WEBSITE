@@ -20,27 +20,27 @@ import FrontOfficeLab from "@/components/selfpaced/FrontOfficeLab";
 export default async function DashboardPage() {
   const me = await requireRole("student");
   // Make sure this week's challenge has surfaced a notification (idempotent).
-  ensureWeeklyChallengeNotification(me.id);
+  (await ensureWeeklyChallengeNotification(me.id));
 
   // Everything is read live from SQLite — no static data.
   const track101 = {
-    modules: getSelfModuleViews(me.id, TRACK_101),
-    quizSections: getQuizModuleSections(me.id, TRACK_101),
-    certificateEarned: hasCertificate(me.id, TRACK_101),
+    modules: (await getSelfModuleViews(me.id, TRACK_101)),
+    quizSections: (await getQuizModuleSections(me.id, TRACK_101)),
+    certificateEarned: (await hasCertificate(me.id, TRACK_101)),
   };
   const track201 = {
-    modules: getSelfModuleViews(me.id, TRACK_201),
-    quizSections: getQuizModuleSections(me.id, TRACK_201),
-    certificateEarned: hasCertificate(me.id, TRACK_201),
+    modules: (await getSelfModuleViews(me.id, TRACK_201)),
+    quizSections: (await getQuizModuleSections(me.id, TRACK_201)),
+    certificateEarned: (await hasCertificate(me.id, TRACK_201)),
   };
 
-  const streak = getStreak(me.id);
-  const rank = rankForStudent(me.id);
+  const streak = (await getStreak(me.id));
+  const rank = (await rankForStudent(me.id));
 
   // Front Office Lab: the same live model the research desk runs, on one
   // real contract. Biggest cap hit on the tracked list = the deal every
   // student has an instinct about, which is what the exercise needs.
-  const labPlayers = getAnalyticsPlayers();
+  const labPlayers = (await getAnalyticsPlayers());
   const labPlayer = labPlayers.reduce<(typeof labPlayers)[number] | null>(
     (best, p) => (best === null || p.capHit > best.capHit ? p : best),
     null,
@@ -52,18 +52,18 @@ export default async function DashboardPage() {
       firstName={me.first}
       track101={track101}
       track201={track201}
-      dailyQuestion={getDailyQuestionView(me.id)}
+      dailyQuestion={(await getDailyQuestionView(me.id))}
       streak={{ current: streak.current, longest: streak.longest, label: streakLabel(streak.current) }}
-      xp={getUserXp(me.id)}
+      xp={(await getUserXp(me.id))}
       rankName={rank.name}
       rankKey={rank.key}
-      activeScenario={getActiveScenario(me.id)}
-      scenarioArchive={getScenarioArchive(me.id)}
-      weeklyCurrent={getCurrentWeeklyChallenge(me.id)}
-      weeklyPast={getPastWeeklyChallenges(me.id)}
-      notifications={getNotifications(me.id, 10)}
-      unreadCount={getUnreadCount(me.id)}
-      alsoInCohortClass={isEnrolledInCohortClass(me.id)}
+      activeScenario={(await getActiveScenario(me.id))}
+      scenarioArchive={(await getScenarioArchive(me.id))}
+      weeklyCurrent={(await getCurrentWeeklyChallenge(me.id))}
+      weeklyPast={(await getPastWeeklyChallenges(me.id))}
+      notifications={(await getNotifications(me.id, 10))}
+      unreadCount={(await getUnreadCount(me.id))}
+      alsoInCohortClass={(await isEnrolledInCohortClass(me.id))}
       />
       {labPlayer && (
         <div style={{ padding: "0 clamp(16px,4vw,32px) clamp(28px,4vw,48px)" }}>

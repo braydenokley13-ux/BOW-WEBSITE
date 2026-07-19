@@ -100,7 +100,7 @@ export interface AdminData {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const countOf = (sql: string): number => Number((getDb().prepare(sql).get() as any)?.n) || 0;
+const countOf = async (sql: string): Promise<number> => Number(((await getDb().prepare(sql).get()) as any)?.n) || 0;
 
 const fmtDate = (ts: number | null): string =>
   ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
@@ -119,53 +119,53 @@ function relative(ts: number | null): string {
   return fmtDate(ts);
 }
 
-export function getAdminData(adminId: string): AdminData {
+export async function getAdminData(adminId: string): Promise<AdminData> {
   const db = getDb();
-  const modules = getSelfModules();
+  const modules = (await getSelfModules());
   const titleOf = (ordinal: number) => modules.find((m) => m.ordinal === ordinal)?.title ?? `Module ${ordinal}`;
 
   const overview: AdminOverview = {
-    totalStudents: countOf("SELECT COUNT(*) AS n FROM users WHERE role = 'student' AND status != 'invited'"),
-    totalInstructors: countOf("SELECT COUNT(*) AS n FROM users WHERE role = 'instructor'"),
-    totalCohorts: countOf("SELECT COUNT(*) AS n FROM cohorts"),
-    modulesCompleted: countOf("SELECT COUNT(*) AS n FROM self_progress WHERE completed = 1"),
-    quizResponses: countOf("SELECT COUNT(*) AS n FROM quiz_responses"),
-    scenarioResponses: countOf("SELECT COUNT(*) AS n FROM scenario_responses"),
-    simulationsStarted: countOf("SELECT COUNT(*) AS n FROM simulations"),
-    simulationsCompleted: countOf("SELECT COUNT(*) AS n FROM simulations WHERE completed = 1"),
-    certificatesIssued: countOf("SELECT COUNT(*) AS n FROM certificates"),
-    discussionPosts: countOf("SELECT COUNT(*) AS n FROM discussion_posts"),
-    weeklyCompletions: countOf("SELECT COUNT(*) AS n FROM weekly_completions"),
-    partnerPages: countOf("SELECT COUNT(*) AS n FROM partner_orgs"),
-    demoRequests: countOf("SELECT COUNT(*) AS n FROM demo_requests"),
-    dailyAnswersToday: countDailyAnswersToday(),
-    glossaryTerms: countGlossaryTerms(),
-    streakLeaders: getStreakLeaders(3).map((s) => ({ name: s.name, current: s.current })),
+    totalStudents: (await countOf("SELECT COUNT(*) AS n FROM users WHERE role = 'student' AND status != 'invited'")),
+    totalInstructors: (await countOf("SELECT COUNT(*) AS n FROM users WHERE role = 'instructor'")),
+    totalCohorts: (await countOf("SELECT COUNT(*) AS n FROM cohorts")),
+    modulesCompleted: (await countOf("SELECT COUNT(*) AS n FROM self_progress WHERE completed = 1")),
+    quizResponses: (await countOf("SELECT COUNT(*) AS n FROM quiz_responses")),
+    scenarioResponses: (await countOf("SELECT COUNT(*) AS n FROM scenario_responses")),
+    simulationsStarted: (await countOf("SELECT COUNT(*) AS n FROM simulations")),
+    simulationsCompleted: (await countOf("SELECT COUNT(*) AS n FROM simulations WHERE completed = 1")),
+    certificatesIssued: (await countOf("SELECT COUNT(*) AS n FROM certificates")),
+    discussionPosts: (await countOf("SELECT COUNT(*) AS n FROM discussion_posts")),
+    weeklyCompletions: (await countOf("SELECT COUNT(*) AS n FROM weekly_completions")),
+    partnerPages: (await countOf("SELECT COUNT(*) AS n FROM partner_orgs")),
+    demoRequests: (await countOf("SELECT COUNT(*) AS n FROM demo_requests")),
+    dailyAnswersToday: (await countDailyAnswersToday()),
+    glossaryTerms: (await countGlossaryTerms()),
+    streakLeaders: (await getStreakLeaders(3)).map((s) => ({ name: s.name, current: s.current })),
   };
 
   // Cohort management: student count + avg module completion rate.
-  const cohortRows = db.prepare("SELECT c.id, c.name, u.name AS instructor FROM cohorts c LEFT JOIN users u ON u.id = c.instructor_id ORDER BY c.name ASC").all() as any[];
+  const cohortRows = (await db.prepare("SELECT c.id, c.name, u.name AS instructor FROM cohorts c LEFT JOIN users u ON u.id = c.instructor_id ORDER BY c.name ASC").all()) as any[];
   const totalModules = Math.max(1, modules.length);
-  const cohorts: AdminCohortRow[] = cohortRows.map((c) => {
-    const studentCount = Number(
-      (db.prepare("SELECT COUNT(*) AS n FROM enrollments e JOIN users u ON u.id = e.user_id WHERE e.cohort_id = ? AND e.enroll = 'active' AND u.role = 'student'").get(c.id) as any)?.n,
-    ) || 0;
-    const completed = Number(
-      (db.prepare(
-        "SELECT COUNT(*) AS n FROM self_progress sp WHERE sp.completed = 1 AND sp.student_id IN (SELECT e.user_id FROM enrollments e JOIN users u ON u.id = e.user_id WHERE e.cohort_id = ? AND e.enroll = 'active' AND u.role = 'student')",
-      ).get(c.id) as any)?.n,
-    ) || 0;
-    return {
-      id: c.id,
-      name: c.name,
-      instructorName: c.instructor ?? "Unassigned",
-      studentCount,
-      avgModuleCompletionPct: studentCount > 0 ? Math.round((completed / (studentCount * totalModules)) * 100) : 0,
-    };
-  });
+  const cohorts: AdminCohortRow[] = (await Promise.all(cohortRows.map(async (c) => {
+      const studentCount = Number(
+        ((await db.prepare("SELECT COUNT(*) AS n FROM enrollments e JOIN users u ON u.id = e.user_id WHERE e.cohort_id = ? AND e.enroll = 'active' AND u.role = 'student'").get(c.id)) as any)?.n,
+      ) || 0;
+      const completed = Number(
+        ((await db.prepare(
+                  "SELECT COUNT(*) AS n FROM self_progress sp WHERE sp.completed = 1 AND sp.student_id IN (SELECT e.user_id FROM enrollments e JOIN users u ON u.id = e.user_id WHERE e.cohort_id = ? AND e.enroll = 'active' AND u.role = 'student')",
+                ).get(c.id)) as any)?.n,
+      ) || 0;
+      return {
+        id: c.id,
+        name: c.name,
+        instructorName: c.instructor ?? "Unassigned",
+        studentCount,
+        avgModuleCompletionPct: studentCount > 0 ? Math.round((completed / (studentCount * totalModules)) * 100) : 0,
+      };
+    })));
 
   // User management.
-  const users: AdminUserRow[] = (db.prepare("SELECT id, name, email, role, created_at, last_active_at FROM users ORDER BY role ASC, name ASC").all() as any[]).map((u) => ({
+  const users: AdminUserRow[] = ((await db.prepare("SELECT id, name, email, role, created_at, last_active_at FROM users ORDER BY role ASC, name ASC").all()) as any[]).map((u) => ({
     id: u.id,
     name: u.name,
     email: u.email,
@@ -176,45 +176,45 @@ export function getAdminData(adminId: string): AdminData {
   }));
 
   // Content overview.
-  const quizByModule = (db.prepare("SELECT module_unlock AS ordinal, COUNT(*) AS n FROM quiz_questions GROUP BY module_unlock ORDER BY module_unlock ASC").all() as any[]).map((r) => ({
+  const quizByModule = ((await db.prepare("SELECT module_unlock AS ordinal, COUNT(*) AS n FROM quiz_questions GROUP BY module_unlock ORDER BY module_unlock ASC").all()) as any[]).map((r) => ({
     ordinal: Number(r.ordinal),
     title: titleOf(Number(r.ordinal)),
     count: Number(r.n),
   }));
-  const quizResponsesByModule = (db.prepare(
-    "SELECT q.module_unlock AS ordinal, COUNT(r.id) AS n FROM quiz_responses r JOIN quiz_questions q ON q.id = r.question_id GROUP BY q.module_unlock ORDER BY q.module_unlock ASC",
-  ).all() as any[]).map((r) => ({ ordinal: Number(r.ordinal), title: titleOf(Number(r.ordinal)), count: Number(r.n) }));
-  const responsesPerScenario = (db.prepare(
-    "SELECT s.concept, s.ordinal, COUNT(r.id) AS n FROM daily_scenarios s LEFT JOIN scenario_responses r ON r.scenario_id = s.id GROUP BY s.id ORDER BY s.ordinal ASC",
-  ).all() as any[]).map((r) => ({ concept: r.concept, ordinal: Number(r.ordinal), count: Number(r.n) }));
+  const quizResponsesByModule = ((await db.prepare(
+      "SELECT q.module_unlock AS ordinal, COUNT(r.id) AS n FROM quiz_responses r JOIN quiz_questions q ON q.id = r.question_id GROUP BY q.module_unlock ORDER BY q.module_unlock ASC",
+    ).all()) as any[]).map((r) => ({ ordinal: Number(r.ordinal), title: titleOf(Number(r.ordinal)), count: Number(r.n) }));
+  const responsesPerScenario = ((await db.prepare(
+      "SELECT s.concept, s.ordinal, COUNT(r.id) AS n FROM daily_scenarios s LEFT JOIN scenario_responses r ON r.scenario_id = s.id GROUP BY s.id ORDER BY s.ordinal ASC",
+    ).all()) as any[]).map((r) => ({ concept: r.concept, ordinal: Number(r.ordinal), count: Number(r.n) }));
 
   const content: AdminContent = {
-    scenarioCount: countOf("SELECT COUNT(*) AS n FROM daily_scenarios"),
+    scenarioCount: (await countOf("SELECT COUNT(*) AS n FROM daily_scenarios")),
     quizByModule,
     responsesPerScenario,
     quizResponsesByModule,
   };
 
   // Platform health: recency lists.
-  const recentStudents = (db.prepare("SELECT name, last_active_at FROM users WHERE role = 'student' AND last_active_at IS NOT NULL ORDER BY last_active_at DESC LIMIT 5").all() as any[]).map((r) => ({
+  const recentStudents = ((await db.prepare("SELECT name, last_active_at FROM users WHERE role = 'student' AND last_active_at IS NOT NULL ORDER BY last_active_at DESC LIMIT 5").all()) as any[]).map((r) => ({
     name: r.name,
     when: relative(Number(r.last_active_at)),
   }));
-  const recentModules = (db.prepare(
-    "SELECT u.name AS name, sm.title AS title, sp.completed_at AS at FROM self_progress sp JOIN users u ON u.id = sp.student_id JOIN self_modules sm ON sm.id = sp.module_id WHERE sp.completed = 1 AND sp.completed_at IS NOT NULL ORDER BY sp.completed_at DESC LIMIT 5",
-  ).all() as any[]).map((r) => ({ name: r.name, moduleTitle: r.title, when: relative(Number(r.at)) }));
-  const recentCertificates = (db.prepare(
-    "SELECT u.name AS name, c.issued_at AS at FROM certificates c JOIN users u ON u.id = c.student_id ORDER BY c.issued_at DESC LIMIT 5",
-  ).all() as any[]).map((r) => ({ name: r.name, when: relative(Number(r.at)) }));
+  const recentModules = ((await db.prepare(
+      "SELECT u.name AS name, sm.title AS title, sp.completed_at AS at FROM self_progress sp JOIN users u ON u.id = sp.student_id JOIN self_modules sm ON sm.id = sp.module_id WHERE sp.completed = 1 AND sp.completed_at IS NOT NULL ORDER BY sp.completed_at DESC LIMIT 5",
+    ).all()) as any[]).map((r) => ({ name: r.name, moduleTitle: r.title, when: relative(Number(r.at)) }));
+  const recentCertificates = ((await db.prepare(
+      "SELECT u.name AS name, c.issued_at AS at FROM certificates c JOIN users u ON u.id = c.student_id ORDER BY c.issued_at DESC LIMIT 5",
+    ).all()) as any[]).map((r) => ({ name: r.name, when: relative(Number(r.at)) }));
 
-  const instructors = (db.prepare("SELECT id, name FROM users WHERE role = 'instructor' ORDER BY name ASC").all() as any[]).map((r) => ({ id: r.id, name: r.name }));
+  const instructors = ((await db.prepare("SELECT id, name FROM users WHERE role = 'instructor' ORDER BY name ASC").all()) as any[]).map((r) => ({ id: r.id, name: r.name }));
 
   const contentMgmt: AdminContentMgmt = {
-    dailyQuestions: getDailyQuestionsAdmin(),
-    newsItems: getAllNewsItems(),
-    newsSubmissions: getPendingNewsSubmissions(),
-    testimonials: getAllTestimonials(),
-    glossary: getGlossaryTerms(),
+    dailyQuestions: (await getDailyQuestionsAdmin()),
+    newsItems: (await getAllNewsItems()),
+    newsSubmissions: (await getPendingNewsSubmissions()),
+    testimonials: (await getAllTestimonials()),
+    glossary: (await getGlossaryTerms()),
   };
 
   return {
@@ -225,7 +225,7 @@ export function getAdminData(adminId: string): AdminData {
     contentMgmt,
     health: { recentStudents, recentModules, recentCertificates },
     instructors,
-    partners: { orgs: getAllPartnerOrgs(), demoRequests: getDemoRequests() },
+    partners: { orgs: (await getAllPartnerOrgs()), demoRequests: (await getDemoRequests()) },
   };
 }
 

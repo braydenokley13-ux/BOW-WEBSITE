@@ -153,16 +153,16 @@ function validateInput(input: RegionInput): ValidationResult {
   };
 }
 
-function beginTransaction<T>(work: () => T): T {
+async function beginTransaction<T>(work: () => T): Promise<T> {
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     const result = work();
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
     return result;
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the original write failure.
     }
@@ -170,8 +170,8 @@ function beginTransaction<T>(work: () => T): T {
   }
 }
 
-function assertUniqueIdentity(regionId: string, name: string, code: string): void {
-  const rows = getDb().prepare("SELECT id, name, code FROM operating_regions WHERE id <> ?").all(regionId) as {
+async function assertUniqueIdentity(regionId: string, name: string, code: string): Promise<void> {
+  const rows = (await getDb().prepare("SELECT id, name, code FROM operating_regions WHERE id <> ?").all(regionId)) as {
     id: string;
     name: string;
     code: string;
@@ -182,12 +182,12 @@ function assertUniqueIdentity(regionId: string, name: string, code: string): voi
   if (rows.some((row) => normalizeCode(row.code) === codeKey)) throw new Error("duplicate_code");
 }
 
-function assertEligibleLeader(leaderUserId: string | null, stage: RegionStage): void {
+async function assertEligibleLeader(leaderUserId: string | null, stage: RegionStage): Promise<void> {
   if (!leaderUserId) {
     if (stage === "active") throw new Error("leader_required");
     return;
   }
-  const leader = getDb().prepare("SELECT role, status FROM users WHERE id = ?").get(leaderUserId) as
+  const leader = (await getDb().prepare("SELECT role, status FROM users WHERE id = ?").get(leaderUserId)) as
     | { role: string; status: string }
     | undefined;
   if (!leader || leader.status !== "active" || !["admin", "growth"].includes(leader.role)) {
@@ -195,9 +195,9 @@ function assertEligibleLeader(leaderUserId: string | null, stage: RegionStage): 
   }
 }
 
-function firstCloseBlocker(regionId: string): string | null {
-  const location = getDb().prepare(
-    `SELECT name, stage
+async function firstCloseBlocker(regionId: string): Promise<string | null> {
+  const location = (await getDb().prepare(
+      `SELECT name, stage
        FROM locations
       WHERE region_id = ? AND stage <> 'closed'
       ORDER BY CASE stage
@@ -209,7 +209,7 @@ function firstCloseBlocker(regionId: string): string | null {
         ELSE 5 END,
         name
       LIMIT 1`,
-  ).get(regionId) as { name: string; stage: string } | undefined;
+    ).get(regionId)) as { name: string; stage: string } | undefined;
   if (!location) return null;
   return `Resolve or close Location ${location.name} (${location.stage.replace(/_/g, " ")}) before closing this Region.`;
 }
@@ -244,15 +244,15 @@ function revalidateRegion(regionId?: string): void {
 export async function getRegionFormOptions(): Promise<RegionFormOptions> {
   await requireStaff();
   return {
-    staff: getDb().prepare(
-      "SELECT id, name, role FROM users WHERE status = 'active' AND role IN ('admin', 'growth') ORDER BY name, id",
-    ).all() as RegionFormOptions["staff"],
+    staff: (await getDb().prepare(
+            "SELECT id, name, role FROM users WHERE status = 'active' AND role IN ('admin', 'growth') ORDER BY name, id",
+          ).all()) as RegionFormOptions["staff"],
   };
 }
 
 export async function createRegion(input: RegionInput): Promise<RegionActionResult> {
   const me = await requireStaff();
-  const validated = validateInput(input);
+  const validated = (await validateInput(input));
   if (!validated.ok) return { ok: false, error: validated.error };
   const value = validated.value;
   if (value.stage !== "active") return { ok: false, error: "A new Region begins active with an accountable leader." };
@@ -260,16 +260,16 @@ export async function createRegion(input: RegionInput): Promise<RegionActionResu
   const id = `reg-${randomUUID()}`;
   const now = Date.now();
   try {
-    beginTransaction(() => {
-      assertUniqueIdentity(id, value.name, value.code);
-      assertEligibleLeader(value.leaderUserId, value.stage);
-      getDb().prepare(
-        `INSERT INTO operating_regions
+    (await beginTransaction(async () => {
+            (await assertUniqueIdentity(id, value.name, value.code));
+            (await assertEligibleLeader(value.leaderUserId, value.stage));
+            (await getDb().prepare(
+                      `INSERT INTO operating_regions
           (id, name, code, leader_user_id, timezone, stage, notes, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
-      ).run(id, value.name, value.code, value.leaderUserId, value.timezone, value.notes, now, now);
-      logActivity("operating_region", id, "created", `Operating Region ${value.name} (${value.code}) created as active.`, me.id);
-    });
+                    ).run(id, value.name, value.code, value.leaderUserId, value.timezone, value.notes, now, now));
+            (await logActivity("operating_region", id, "created", `Operating Region ${value.name} (${value.code}) created as active.`, me.id));
+          }));
   } catch (error) {
     return actionError(error);
   }
@@ -290,75 +290,75 @@ export async function updateRegion(
   if (!Number.isSafeInteger(expectedUpdatedAt) || expectedUpdatedAt < 1 || !REGION_STAGES.includes(expectedStage)) {
     return { ok: false, error: "Refresh this Region before saving changes." };
   }
-  const validated = validateInput(input);
+  const validated = (await validateInput(input));
   if (!validated.ok) return { ok: false, error: validated.error };
   const value = validated.value;
 
   try {
-    beginTransaction(() => {
-      const db = getDb();
-      const current = db.prepare("SELECT * FROM operating_regions WHERE id = ?").get(regionId) as RegionRow | undefined;
-      if (!current) throw new Error("region_missing");
-      if (current.stage === "closed") throw new Error("region_closed");
-      if (current.updated_at !== expectedUpdatedAt || current.stage !== expectedStage) throw new Error("region_changed");
-      if (!REGION_STAGES.includes(current.stage as RegionStage)) throw new Error("region_changed");
+    (await beginTransaction(async () => {
+            const db = getDb();
+            const current = (await db.prepare("SELECT * FROM operating_regions WHERE id = ?").get(regionId)) as RegionRow | undefined;
+            if (!current) throw new Error("region_missing");
+            if (current.stage === "closed") throw new Error("region_closed");
+            if (current.updated_at !== expectedUpdatedAt || current.stage !== expectedStage) throw new Error("region_changed");
+            if (!REGION_STAGES.includes(current.stage as RegionStage)) throw new Error("region_changed");
 
-      const currentStage = current.stage as RegionStage;
-      if (value.stage !== currentStage) {
-        if (!ALLOWED_TRANSITIONS[currentStage].includes(value.stage)) throw new Error("transition_not_allowed");
-        if (!value.transitionReason || value.transitionReason.length < 8) throw new Error("transition_reason_required");
-        if (value.stage === "closed") {
-          const blocker = firstCloseBlocker(regionId);
-          if (blocker) throw new Error(`close_blocked:${blocker}`);
-        }
-      }
+            const currentStage = current.stage as RegionStage;
+            if (value.stage !== currentStage) {
+              if (!ALLOWED_TRANSITIONS[currentStage].includes(value.stage)) throw new Error("transition_not_allowed");
+              if (!value.transitionReason || value.transitionReason.length < 8) throw new Error("transition_reason_required");
+              if (value.stage === "closed") {
+                const blocker = (await firstCloseBlocker(regionId));
+                if (blocker) throw new Error(`close_blocked:${blocker}`);
+              }
+            }
 
-      assertUniqueIdentity(regionId, value.name, value.code);
-      assertEligibleLeader(value.leaderUserId, value.stage);
+            (await assertUniqueIdentity(regionId, value.name, value.code));
+            (await assertEligibleLeader(value.leaderUserId, value.stage));
 
-      const nextUpdatedAt = Math.max(Date.now(), current.updated_at + 1);
-      const updated = db.prepare(
-        `UPDATE operating_regions
+            const nextUpdatedAt = Math.max(Date.now(), current.updated_at + 1);
+            const updated = (await db.prepare(
+                    `UPDATE operating_regions
             SET name = ?, code = ?, leader_user_id = ?, timezone = ?, stage = ?, notes = ?, updated_at = ?
           WHERE id = ? AND updated_at = ? AND stage = ?`,
-      ).run(
-        value.name,
-        value.code,
-        value.leaderUserId,
-        value.timezone,
-        value.stage,
-        value.notes,
-        nextUpdatedAt,
-        regionId,
-        current.updated_at,
-        current.stage,
-      );
-      if (updated.changes !== 1) throw new Error("region_changed");
+                  ).run(
+                    value.name,
+                    value.code,
+                    value.leaderUserId,
+                    value.timezone,
+                    value.stage,
+                    value.notes,
+                    nextUpdatedAt,
+                    regionId,
+                    current.updated_at,
+                    current.stage,
+                  ));
+            if (updated.changes !== 1) throw new Error("region_changed");
 
-      if (current.name !== value.name) {
-        db.prepare("UPDATE locations SET region = ?, updated_at = ? WHERE region_id = ?").run(value.name, nextUpdatedAt, regionId);
-      }
+            if (current.name !== value.name) {
+              (await db.prepare("UPDATE locations SET region = ?, updated_at = ? WHERE region_id = ?").run(value.name, nextUpdatedAt, regionId));
+            }
 
-      if (value.stage !== currentStage) {
-        logActivity(
-          "operating_region",
-          regionId,
-          "stage_change",
-          `Region moved from ${currentStage} to ${value.stage}. ${value.transitionReason}`,
-          me.id,
-        );
-      }
+            if (value.stage !== currentStage) {
+              (await logActivity(
+                          "operating_region",
+                          regionId,
+                          "stage_change",
+                          `Region moved from ${currentStage} to ${value.stage}. ${value.transitionReason}`,
+                          me.id,
+                        ));
+            }
 
-      const changed: string[] = [];
-      if (current.name !== value.name) changed.push("name");
-      if (current.code !== value.code) changed.push("code");
-      if (current.leader_user_id !== value.leaderUserId) changed.push("regional leader");
-      if ((current.timezone ?? "") !== value.timezone) changed.push("timezone");
-      if ((current.notes ?? "") !== (value.notes ?? "")) changed.push("operating notes");
-      if (changed.length > 0) {
-        logActivity("operating_region", regionId, "plan_updated", `Region plan updated. Changed: ${changed.join(", ")}.`, me.id);
-      }
-    });
+            const changed: string[] = [];
+            if (current.name !== value.name) changed.push("name");
+            if (current.code !== value.code) changed.push("code");
+            if (current.leader_user_id !== value.leaderUserId) changed.push("regional leader");
+            if ((current.timezone ?? "") !== value.timezone) changed.push("timezone");
+            if ((current.notes ?? "") !== (value.notes ?? "")) changed.push("operating notes");
+            if (changed.length > 0) {
+              (await logActivity("operating_region", regionId, "plan_updated", `Region plan updated. Changed: ${changed.join(", ")}.`, me.id));
+            }
+          }));
   } catch (error) {
     return actionError(error);
   }

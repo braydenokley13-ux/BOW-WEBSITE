@@ -50,13 +50,13 @@ export interface CreateNotificationInput {
 }
 
 /** Persist a notification. With a fixed `id`, repeat calls are no-ops. */
-export function createNotification(input: CreateNotificationInput): void {
+export async function createNotification(input: CreateNotificationInput): Promise<void> {
   const id = input.id ?? `ntf-${randomUUID().slice(0, 12)}`;
-  getDb()
-    .prepare(
-      "INSERT OR IGNORE INTO notifications (id, user_id, type, title, body, read, link, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
-    )
-    .run(id, input.userId, input.type, input.title, input.body, input.link ?? null, Date.now());
+  (await getDb()
+        .prepare(
+          "INSERT OR IGNORE INTO notifications (id, user_id, type, title, body, read, link, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+        )
+        .run(id, input.userId, input.type, input.title, input.body, input.link ?? null, Date.now()));
 }
 
 /** Relative "time ago" label from an epoch-ms timestamp. */
@@ -78,10 +78,10 @@ function timeAgo(ts: number): string {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** The most recent notifications for a user (default 10), newest first. */
-export function getNotifications(userId: string, limit = 10): NotificationView[] {
-  const rows = getDb()
-    .prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?")
-    .all(userId, limit) as any[];
+export async function getNotifications(userId: string, limit = 10): Promise<NotificationView[]> {
+  const rows = (await getDb()
+      .prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?")
+      .all(userId, limit)) as any[];
   return rows.map((r) => ({
     id: r.id,
     type: r.type,
@@ -95,10 +95,10 @@ export function getNotifications(userId: string, limit = 10): NotificationView[]
 }
 
 /** The number of unread notifications for a user. */
-export function getUnreadCount(userId: string): number {
-  const row = getDb()
-    .prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read = 0")
-    .get(userId) as any;
+export async function getUnreadCount(userId: string): Promise<number> {
+  const row = (await getDb()
+      .prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read = 0")
+      .get(userId)) as any;
   return Number(row?.n) || 0;
 }
 

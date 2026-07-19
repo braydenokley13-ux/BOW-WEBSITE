@@ -69,8 +69,8 @@ function BadgeCard({ badge }: { badge: BadgeView }) {
 
 export default async function BadgesPage() {
   const me = await requireRole("student");
-  const showcase = getBadgeShowcase(me.id);
-  const totalXp = getUserXp(me.id);
+  const showcase = (await getBadgeShowcase(me.id));
+  const totalXp = (await getUserXp(me.id));
 
   return (
     <div className="bow-front-office" style={{ background: "var(--bow-ink)", color: "#fff", minHeight: "100vh", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>

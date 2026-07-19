@@ -265,8 +265,8 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** All glossary terms, ordered alphabetically (DB first, falling back to seed). */
-export function getGlossaryTerms(): GlossaryTerm[] {
-  const rows = getDb().prepare("SELECT * FROM glossary_terms ORDER BY term ASC").all() as any[];
+export async function getGlossaryTerms(): Promise<GlossaryTerm[]> {
+  const rows = (await getDb().prepare("SELECT * FROM glossary_terms ORDER BY term ASC").all()) as any[];
   if (rows.length === 0) return [...GLOSSARY_TERMS].sort((a, b) => a.term.localeCompare(b.term));
   return rows.map((r) => ({
     id: r.id,
@@ -281,8 +281,8 @@ export function getGlossaryTerms(): GlossaryTerm[] {
 }
 
 /** Total glossary terms (admin overview). */
-export function countGlossaryTerms(): number {
-  const row = getDb().prepare("SELECT COUNT(*) AS n FROM glossary_terms").get() as any;
+export async function countGlossaryTerms(): Promise<number> {
+  const row = (await getDb().prepare("SELECT COUNT(*) AS n FROM glossary_terms").get()) as any;
   return Number(row?.n) || 0;
 }
 

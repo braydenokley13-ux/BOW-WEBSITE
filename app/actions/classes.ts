@@ -38,16 +38,16 @@ const CLASS_TRANSITIONS: Record<ClassStatus, ClassStatus[]> = {
 };
 const HISTORICAL_PROGRAM_STAGES = new Set(["completed", "renewal_review", "renewed", "closed"]);
 
-function inImmediateTransaction<T>(operation: () => T): T {
+async function inImmediateTransaction<T>(operation: () => T): Promise<T> {
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     const result = operation();
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
     return result;
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the original error.
     }
@@ -56,15 +56,15 @@ function inImmediateTransaction<T>(operation: () => T): T {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function getClassRow(id: string): any {
-  return getDb().prepare("SELECT * FROM classes WHERE id = ?").get(id) as any;
+async function getClassRow(id: string): Promise<any> {
+  return (await getDb().prepare("SELECT * FROM classes WHERE id = ?").get(id)) as any;
 }
 
 /** True if `instructorId` is lead or additional on `classId`. */
-function isClassMember(classId: string, instructorId: string): boolean {
-  const row = getDb()
-    .prepare("SELECT 1 FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL")
-    .get(classId, instructorId);
+async function isClassMember(classId: string, instructorId: string): Promise<boolean> {
+  const row = (await getDb()
+      .prepare("SELECT 1 FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL")
+      .get(classId, instructorId));
   return !!row;
 }
 
@@ -100,11 +100,11 @@ export async function createClass(input: CreateClassInput): Promise<ActionResult
   if (partnerOrgId && partnerOrgId.length > 120) return { ok: false, error: "Choose a valid partner organization." };
 
   const db = getDb();
-  const curriculum = db.prepare("SELECT 1 FROM curricula WHERE id = ?").get(curriculumId);
+  const curriculum = (await db.prepare("SELECT 1 FROM curricula WHERE id = ?").get(curriculumId));
   if (!curriculum) return { ok: false, error: "Curriculum not found." };
 
   if (partnerOrgId) {
-    const org = db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(partnerOrgId);
+    const org = (await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(partnerOrgId));
     if (!org) return { ok: false, error: "Only prospect or active partners can receive a new Class plan." };
   }
 
@@ -157,72 +157,72 @@ export async function createClass(input: CreateClassInput): Promise<ActionResult
   const onlineFormat = (input.onlineFormat ?? "").trim().slice(0, 60) || null;
   const deliveryFormat = onlineFormat?.toLowerCase().includes("hybrid") ? "hybrid" : onlineFormat ? "online" : "in_person";
   try {
-    inImmediateTransaction(() => {
-    if (
-      partnerOrgId
-      && !db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(partnerOrgId)
-    ) {
-      throw new Error("partner_unavailable");
-    }
-    db.prepare(
-      `INSERT INTO programs
+    (await inImmediateTransaction(async () => {
+          if (
+            partnerOrgId
+            && !(await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(partnerOrgId))
+          ) {
+            throw new Error("partner_unavailable");
+          }
+          (await db.prepare(
+                    `INSERT INTO programs
         (id, request_key, name, partner_org_id, curriculum_id, audience, delivery_format, stage,
          start_date, end_date, schedule_label, schedule_day, schedule_start_time, schedule_end_time,
          schedule_timezone, capacity, minimum_enrollment, owner_user_id, source_type, notes, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'planning', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?, ?)`,
-    ).run(
-      programId,
-      `manual-class:${id}`,
-      title.slice(0, 200),
-      partnerOrgId,
-      curriculumId,
-      audience,
-      deliveryFormat,
-      startDate,
-      endDate,
-      recurrence,
-      scheduleDay,
-      scheduleStartTime,
-      scheduleEndTime,
-      scheduleTimezone,
-      capacity,
-      minimumEnrollment,
-      me.id,
-      notes,
-      now,
-      now,
-    );
-    db.prepare(
-      `INSERT INTO classes
+                  ).run(
+                    programId,
+                    `manual-class:${id}`,
+                    title.slice(0, 200),
+                    partnerOrgId,
+                    curriculumId,
+                    audience,
+                    deliveryFormat,
+                    startDate,
+                    endDate,
+                    recurrence,
+                    scheduleDay,
+                    scheduleStartTime,
+                    scheduleEndTime,
+                    scheduleTimezone,
+                    capacity,
+                    minimumEnrollment,
+                    me.id,
+                    notes,
+                    now,
+                    now,
+                  ));
+          (await db.prepare(
+                    `INSERT INTO classes
         (id, title, curriculum_id, partner_org_id, location, online_format, start_date, end_date,
          recurrence, schedule_day, schedule_start_time, schedule_end_time, age_range, capacity,
          schedule_timezone, minimum_enrollment, lead_instructor_id, program_id, status, internal_notes, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'planning', ?, ?, ?)`,
-    ).run(
-      id,
-      title.slice(0, 200),
-      curriculumId,
-      partnerOrgId,
-      (input.location ?? "").trim().slice(0, 200) || null,
-      onlineFormat,
-      startDate,
-      endDate,
-      recurrence,
-      scheduleDay,
-      scheduleStartTime,
-      scheduleEndTime,
-      audience,
-      capacity,
-      scheduleTimezone,
-      minimumEnrollment,
-      programId,
-      notes,
-      now,
-      now,
-    );
-    logActivity("program", programId, "created", `Program created with delivery Class "${title}".`, me.id);
-    logActivity("class", id, "note", `Class "${title}" created inside Program ${programId}.`, me.id);
-    });
+                  ).run(
+                    id,
+                    title.slice(0, 200),
+                    curriculumId,
+                    partnerOrgId,
+                    (input.location ?? "").trim().slice(0, 200) || null,
+                    onlineFormat,
+                    startDate,
+                    endDate,
+                    recurrence,
+                    scheduleDay,
+                    scheduleStartTime,
+                    scheduleEndTime,
+                    audience,
+                    capacity,
+                    scheduleTimezone,
+                    minimumEnrollment,
+                    programId,
+                    notes,
+                    now,
+                    now,
+                  ));
+          (await logActivity("program", programId, "created", `Program created with delivery Class "${title}".`, me.id));
+          (await logActivity("class", id, "note", `Class "${title}" created inside Program ${programId}.`, me.id));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "partner_unavailable") {
       return { ok: false, error: "The partner was paused, closed, or changed while this Class was being created." };
@@ -257,7 +257,7 @@ export interface UpdateClassPatch {
 export async function updateClass(id: string, patch: UpdateClassPatch): Promise<ActionResult> {
   await requireStaff();
   const db = getDb();
-  const row = getClassRow(id);
+  const row = (await getClassRow(id));
   if (!row) return { ok: false, error: "Not found." };
   if (!["planning", "staffing"].includes(row.status)) {
     return { ok: false, error: "Ready, active, paused, and historical Classes require an audited correction workflow." };
@@ -279,7 +279,7 @@ export async function updateClass(id: string, patch: UpdateClassPatch): Promise<
   }
   if (patch.partnerOrgId !== undefined) {
     if (patch.partnerOrgId) {
-      const org = db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(patch.partnerOrgId);
+      const org = (await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(patch.partnerOrgId));
       if (!org) return { ok: false, error: "Only prospect or active partners can receive Class work." };
     }
     sets.push("partner_org_id = ?");
@@ -339,12 +339,12 @@ export async function updateClass(id: string, patch: UpdateClassPatch): Promise<
       return { ok: false, error: "Class capacity must be at least 1." };
     }
     const enrolledCount = (
-      db.prepare(
-        `SELECT COUNT(*) AS n
+      (await db.prepare(
+                `SELECT COUNT(*) AS n
            FROM class_enrollments ce
            JOIN students s ON s.id = ce.student_id
           WHERE ce.class_id = ? AND ce.status = 'enrolled' AND s.enrollment_status = 'active'`,
-      ).get(id) as { n: number }
+              ).get(id)) as { n: number }
     ).n;
     if (patch.capacity !== null && patch.capacity < enrolledCount) {
       return { ok: false, error: `Capacity cannot be lower than the ${enrolledCount} currently enrolled students.` };
@@ -401,35 +401,35 @@ export async function updateClass(id: string, patch: UpdateClassPatch): Promise<
   sets.push("updated_at = ?");
   vals.push(Date.now());
   try {
-    inImmediateTransaction(() => {
-      const live = getClassRow(id);
-      if (!live || live.status !== row.status || live.updated_at !== row.updated_at) throw new Error("class_changed");
-      if (live.program_id && (patch.partnerOrgId !== undefined || patch.location !== undefined || patch.onlineFormat !== undefined)) {
-        throw new Error("program_owned");
-      }
-      if (
-        patch.partnerOrgId
-        && !db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(patch.partnerOrgId)
-      ) {
-        throw new Error("partner_unavailable");
-      }
-      const liveEnrollmentCount = (
-        db.prepare(
-          `SELECT COUNT(*) AS n
+    (await inImmediateTransaction(async () => {
+            const live = (await getClassRow(id));
+            if (!live || live.status !== row.status || live.updated_at !== row.updated_at) throw new Error("class_changed");
+            if (live.program_id && (patch.partnerOrgId !== undefined || patch.location !== undefined || patch.onlineFormat !== undefined)) {
+              throw new Error("program_owned");
+            }
+            if (
+              patch.partnerOrgId
+              && !(await db.prepare("SELECT 1 FROM organizations WHERE id = ? AND status IN ('prospect','active')").get(patch.partnerOrgId))
+            ) {
+              throw new Error("partner_unavailable");
+            }
+            const liveEnrollmentCount = (
+              (await db.prepare(
+                          `SELECT COUNT(*) AS n
              FROM class_enrollments ce
              JOIN students s ON s.id = ce.student_id
             WHERE ce.class_id = ? AND ce.status = 'enrolled' AND s.enrollment_status = 'active'`,
-        ).get(id) as { n: number }
-      ).n;
-      const requestedCapacity = patch.capacity !== undefined ? patch.capacity : live.capacity;
-      const requestedMinimum = patch.minimumEnrollment !== undefined ? patch.minimumEnrollment : live.minimum_enrollment;
-      if (requestedCapacity !== null && requestedCapacity < liveEnrollmentCount) throw new Error("capacity_changed");
-      if (requestedCapacity !== null && requestedMinimum > requestedCapacity) throw new Error("capacity_changed");
-      const updated = db.prepare(
-        `UPDATE classes SET ${sets.join(", ")} WHERE id = ? AND status = ? AND updated_at = ?`,
-      ).run(...(vals as []), id, row.status, row.updated_at);
-      if (updated.changes !== 1) throw new Error("class_changed");
-    });
+                        ).get(id)) as { n: number }
+            ).n;
+            const requestedCapacity = patch.capacity !== undefined ? patch.capacity : live.capacity;
+            const requestedMinimum = patch.minimumEnrollment !== undefined ? patch.minimumEnrollment : live.minimum_enrollment;
+            if (requestedCapacity !== null && requestedCapacity < liveEnrollmentCount) throw new Error("capacity_changed");
+            if (requestedCapacity !== null && requestedMinimum > requestedCapacity) throw new Error("capacity_changed");
+            const updated = (await db.prepare(
+                    `UPDATE classes SET ${sets.join(", ")} WHERE id = ? AND status = ? AND updated_at = ?`,
+                  ).run(...(vals as []), id, row.status, row.updated_at));
+            if (updated.changes !== 1) throw new Error("class_changed");
+          }));
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "program_owned") return { ok: false, error: "This Class was connected to a Program. Edit shared source facts from the Program plan." };
@@ -448,7 +448,7 @@ export async function updateClass(id: string, patch: UpdateClassPatch): Promise<
 export async function updateClassStatus(id: string, status: string, reason?: string): Promise<ActionResult> {
   const me = await requireStaff();
   if (!STATUSES.has(status as ClassStatus)) return { ok: false, error: "Invalid status." };
-  const row = getClassRow(id);
+  const row = (await getClassRow(id));
   if (!row) return { ok: false, error: "Not found." };
   const currentStatus = row.status as ClassStatus;
   const nextStatus = status as ClassStatus;
@@ -465,7 +465,7 @@ export async function updateClassStatus(id: string, status: string, reason?: str
   }
 
   if (row.program_id) {
-    const program = getDb().prepare("SELECT stage FROM programs WHERE id = ?").get(row.program_id) as { stage: string } | undefined;
+    const program = (await getDb().prepare("SELECT stage FROM programs WHERE id = ?").get(row.program_id)) as { stage: string } | undefined;
     if (!program) return { ok: false, error: "The linked Program no longer exists." };
     if (HISTORICAL_PROGRAM_STAGES.has(program.stage)) return { ok: false, error: "Historical Program delivery is frozen." };
     if (nextStatus === "ready_to_launch" && program.stage !== "ready_to_launch") {
@@ -483,25 +483,25 @@ export async function updateClassStatus(id: string, status: string, reason?: str
   }
 
   try {
-    inImmediateTransaction(() => {
-      const now = Date.now();
-      const liveClass = getClassRow(id);
-      if (!liveClass || liveClass.status !== currentStatus || liveClass.program_id !== row.program_id) {
-        throw new Error("stale_class_status");
-      }
-      if (liveClass.program_id) {
-        const liveProgram = getDb().prepare("SELECT stage FROM programs WHERE id = ?").get(liveClass.program_id) as
-          | { stage: string }
-          | undefined;
-        if (!liveProgram || HISTORICAL_PROGRAM_STAGES.has(liveProgram.stage)) throw new Error("program_changed");
-        if (nextStatus === "ready_to_launch" && liveProgram.stage !== "ready_to_launch") throw new Error("program_changed");
-        if (nextStatus === "active" && liveProgram.stage !== "active") throw new Error("program_changed");
-        if (nextStatus === "completed" && !["active", "paused"].includes(liveProgram.stage)) throw new Error("program_changed");
-        if (nextStatus === "staffing" && liveProgram.stage === "active") throw new Error("program_changed");
-      }
-      if (nextStatus === "completed") {
-        const sessionSummary = getDb().prepare(
-          `SELECT
+    (await inImmediateTransaction(async () => {
+            const now = Date.now();
+            const liveClass = (await getClassRow(id));
+            if (!liveClass || liveClass.status !== currentStatus || liveClass.program_id !== row.program_id) {
+              throw new Error("stale_class_status");
+            }
+            if (liveClass.program_id) {
+              const liveProgram = (await getDb().prepare("SELECT stage FROM programs WHERE id = ?").get(liveClass.program_id)) as
+                | { stage: string }
+                | undefined;
+              if (!liveProgram || HISTORICAL_PROGRAM_STAGES.has(liveProgram.stage)) throw new Error("program_changed");
+              if (nextStatus === "ready_to_launch" && liveProgram.stage !== "ready_to_launch") throw new Error("program_changed");
+              if (nextStatus === "active" && liveProgram.stage !== "active") throw new Error("program_changed");
+              if (nextStatus === "completed" && !["active", "paused"].includes(liveProgram.stage)) throw new Error("program_changed");
+              if (nextStatus === "staffing" && liveProgram.stage === "active") throw new Error("program_changed");
+            }
+            if (nextStatus === "completed") {
+              const sessionSummary = (await getDb().prepare(
+                        `SELECT
              COUNT(*) AS total,
              SUM(CASE WHEN cs.session_date > ? THEN 1 ELSE 0 END) AS future_count,
              SUM(CASE WHEN NOT EXISTS (
@@ -510,32 +510,32 @@ export async function updateClassStatus(id: string, status: string, reason?: str
              ) THEN 1 ELSE 0 END) AS unfinished_count
            FROM class_sessions cs
           WHERE cs.class_id = ?`,
-        ).get(now, id) as { total: number; future_count: number | null; unfinished_count: number | null };
-        if (
-          sessionSummary.total < 1
-          || Number(sessionSummary.future_count) > 0
-          || Number(sessionSummary.unfinished_count) > 0
-        ) {
-          throw new Error("delivery_evidence_incomplete");
-        }
-      }
-      const updated = getDb()
-        .prepare("UPDATE classes SET status = ?, updated_at = ? WHERE id = ? AND status = ?")
-        .run(nextStatus, now, id, currentStatus);
-      if (updated.changes !== 1) throw new Error("stale_class_status");
-      getDb().prepare(
-        `INSERT INTO class_status_events
+                      ).get(now, id)) as { total: number; future_count: number | null; unfinished_count: number | null };
+              if (
+                sessionSummary.total < 1
+                || Number(sessionSummary.future_count) > 0
+                || Number(sessionSummary.unfinished_count) > 0
+              ) {
+                throw new Error("delivery_evidence_incomplete");
+              }
+            }
+            const updated = (await getDb()
+                    .prepare("UPDATE classes SET status = ?, updated_at = ? WHERE id = ? AND status = ?")
+                    .run(nextStatus, now, id, currentStatus));
+            if (updated.changes !== 1) throw new Error("stale_class_status");
+            (await getDb().prepare(
+                      `INSERT INTO class_status_events
           (id, class_id, from_status, to_status, reason, actor_user_id, source, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 'class_action', ?)`,
-      ).run(`cse-${randomUUID()}`, id, currentStatus, nextStatus, cleanReason || null, me.id, now);
-      logActivity(
-        "class",
-        id,
-        "stage_change",
-        `Class moved from ${currentStatus.replace(/_/g, " ")} to ${nextStatus.replace(/_/g, " ")}.${cleanReason ? ` ${cleanReason}` : ""}`,
-        me.id,
-      );
-    });
+                    ).run(`cse-${randomUUID()}`, id, currentStatus, nextStatus, cleanReason || null, me.id, now));
+            (await logActivity(
+                      "class",
+                      id,
+                      "stage_change",
+                      `Class moved from ${currentStatus.replace(/_/g, " ")} to ${nextStatus.replace(/_/g, " ")}.${cleanReason ? ` ${cleanReason}` : ""}`,
+                      me.id,
+                    ));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "stale_class_status") {
       return { ok: false, error: "This Class changed while the decision was being recorded. Refresh and try again." };
@@ -562,12 +562,12 @@ export async function assignInstructorToClass(classId: string, instructorId: str
   const me = await requireStaff();
   if (!ROLES.has(role)) return { ok: false, error: "Invalid role." };
   const db = getDb();
-  const cls = getClassRow(classId);
+  const cls = (await getClassRow(classId));
   if (!cls) return { ok: false, error: "Class not found." };
   if (cls.program_id) return { ok: false, error: "Assign instructors from the Program so qualifications and workload are checked." };
   if (!["planning", "staffing"].includes(cls.status)) return { ok: false, error: "Staffing is frozen after launch readiness." };
 
-  const instructor = db.prepare("SELECT id, stage, eligibility_status FROM instructors WHERE id = ?").get(instructorId) as
+  const instructor = (await db.prepare("SELECT id, stage, eligibility_status FROM instructors WHERE id = ?").get(instructorId)) as
     | { id: string; stage: string; eligibility_status: string }
     | undefined;
   if (!instructor) return { ok: false, error: "Instructor not found." };
@@ -576,83 +576,83 @@ export async function assignInstructorToClass(classId: string, instructorId: str
   }
 
   try {
-    inImmediateTransaction(() => {
-      const now = Date.now();
-      recomputeInstructorStatuses(instructorId);
-      const currentClass = getClassRow(classId);
-      const currentInstructor = db.prepare("SELECT stage, eligibility_status FROM instructors WHERE id = ?").get(instructorId) as
-        | { stage: string; eligibility_status: string }
-        | undefined;
-      if (!currentClass || currentClass.program_id || !["planning", "staffing"].includes(currentClass.status)) {
-        throw new Error("staffing_frozen");
-      }
-      if (!currentInstructor || !["eligible", "active"].includes(currentInstructor.stage) || currentInstructor.eligibility_status !== "eligible") {
-        throw new Error("staffing_frozen");
-      }
-      const existing = db
-        .prepare("SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL")
-        .get(classId, instructorId) as { id: string; role: string } | undefined;
-      const recordedReason = "Assigned through standalone Class staffing.";
+    (await inImmediateTransaction(async () => {
+            const now = Date.now();
+            (await recomputeInstructorStatuses(instructorId));
+            const currentClass = (await getClassRow(classId));
+            const currentInstructor = (await db.prepare("SELECT stage, eligibility_status FROM instructors WHERE id = ?").get(instructorId)) as
+              | { stage: string; eligibility_status: string }
+              | undefined;
+            if (!currentClass || currentClass.program_id || !["planning", "staffing"].includes(currentClass.status)) {
+              throw new Error("staffing_frozen");
+            }
+            if (!currentInstructor || !["eligible", "active"].includes(currentInstructor.stage) || currentInstructor.eligibility_status !== "eligible") {
+              throw new Error("staffing_frozen");
+            }
+            const existing = (await db
+                    .prepare("SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL")
+                    .get(classId, instructorId)) as { id: string; role: string } | undefined;
+            const recordedReason = "Assigned through standalone Class staffing.";
 
-      if (role === "lead") {
-        const displacedLeads = db.prepare(
-          "SELECT id, instructor_id FROM class_instructors WHERE class_id = ? AND role = 'lead' AND removed_at IS NULL AND instructor_id <> ?",
-        ).all(classId, instructorId) as { id: string; instructor_id: string }[];
-        for (const displaced of displacedLeads) {
-          const demotionReason = `Lead assignment replaced by instructor ${instructorId}.`;
-          const decision = recordClassStaffingDecision(db, {
-            classId,
-            instructorId: displaced.instructor_id,
-            assignmentId: displaced.id,
-            action: "role_changed",
-            role: "additional",
-            reason: demotionReason,
-            actorUserId: me.id,
-            decidedAt: now,
-          });
-          db.prepare(
-            `UPDATE class_instructors
+            if (role === "lead") {
+              const displacedLeads = (await db.prepare(
+                        "SELECT id, instructor_id FROM class_instructors WHERE class_id = ? AND role = 'lead' AND removed_at IS NULL AND instructor_id <> ?",
+                      ).all(classId, instructorId)) as { id: string; instructor_id: string }[];
+              for (const displaced of displacedLeads) {
+                const demotionReason = `Lead assignment replaced by instructor ${instructorId}.`;
+                const decision = (await recordClassStaffingDecision(db, {
+                            classId,
+                            instructorId: displaced.instructor_id,
+                            assignmentId: displaced.id,
+                            action: "role_changed",
+                            role: "additional",
+                            reason: demotionReason,
+                            actorUserId: me.id,
+                            decidedAt: now,
+                          }));
+                (await db.prepare(
+                              `UPDATE class_instructors
                 SET role = 'additional', decision_reason = ?, assigned_by = ?, decision_id = ?,
                     decision_fingerprint = ?, decision_at = ?
               WHERE id = ? AND removed_at IS NULL`,
-          ).run(demotionReason, me.id, decision.decisionId, decision.fingerprint, now, displaced.id);
-        }
-      }
+                            ).run(demotionReason, me.id, decision.decisionId, decision.fingerprint, now, displaced.id));
+              }
+            }
 
-      const assignmentId = existing?.id ?? `pfx-${randomUUID().slice(0, 8)}`;
-      const decision = recordClassStaffingDecision(db, {
-        classId,
-        instructorId,
-        assignmentId,
-        action: existing && existing.role !== role ? "role_changed" : "assigned",
-        role: role as "lead" | "additional",
-        reason: recordedReason,
-        actorUserId: me.id,
-        decidedAt: now,
-      });
-      if (existing) {
-        db.prepare(
-          `UPDATE class_instructors
+            const assignmentId = existing?.id ?? `pfx-${randomUUID().slice(0, 8)}`;
+            const decision = (await recordClassStaffingDecision(db, {
+                    classId,
+                    instructorId,
+                    assignmentId,
+                    action: existing && existing.role !== role ? "role_changed" : "assigned",
+                    role: role as "lead" | "additional",
+                    reason: recordedReason,
+                    actorUserId: me.id,
+                    decidedAt: now,
+                  }));
+            if (existing) {
+              (await db.prepare(
+                          `UPDATE class_instructors
               SET role = ?, decision_reason = ?, assigned_by = ?, decision_id = ?,
                   decision_fingerprint = ?, decision_at = ?
             WHERE id = ? AND removed_at IS NULL`,
-        ).run(role, recordedReason, me.id, decision.decisionId, decision.fingerprint, now, existing.id);
-      } else {
-        db.prepare(
-          `INSERT INTO class_instructors
+                        ).run(role, recordedReason, me.id, decision.decisionId, decision.fingerprint, now, existing.id));
+            } else {
+              (await db.prepare(
+                          `INSERT INTO class_instructors
             (id, class_id, instructor_id, role, decision_reason, assigned_by,
              decision_id, decision_fingerprint, decision_at, added_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(assignmentId, classId, instructorId, role, recordedReason, me.id, decision.decisionId, decision.fingerprint, now, now);
-      }
-      if (role === "lead") {
-        db.prepare("UPDATE classes SET lead_instructor_id = ?, updated_at = ? WHERE id = ?").run(instructorId, now, classId);
-      } else if (currentClass.lead_instructor_id === instructorId) {
-        db.prepare("UPDATE classes SET lead_instructor_id = NULL, updated_at = ? WHERE id = ? AND lead_instructor_id = ?")
-          .run(now, classId, instructorId);
-      }
-      logActivity("class", classId, "note", `Instructor assigned (${role}). ${recordedReason}`, me.id);
-    });
+                        ).run(assignmentId, classId, instructorId, role, recordedReason, me.id, decision.decisionId, decision.fingerprint, now, now));
+            }
+            if (role === "lead") {
+              (await db.prepare("UPDATE classes SET lead_instructor_id = ?, updated_at = ? WHERE id = ?").run(instructorId, now, classId));
+            } else if (currentClass.lead_instructor_id === instructorId) {
+              (await db.prepare("UPDATE classes SET lead_instructor_id = NULL, updated_at = ? WHERE id = ? AND lead_instructor_id = ?")
+                          .run(now, classId, instructorId));
+            }
+            (await logActivity("class", classId, "note", `Instructor assigned (${role}). ${recordedReason}`, me.id));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "staffing_frozen") {
       return { ok: false, error: "Staffing changed while this assignment was being recorded. Refresh and try again." };
@@ -669,57 +669,57 @@ export async function assignInstructorToClass(classId: string, instructorId: str
 export async function removeInstructorFromClass(classId: string, instructorId: string, reason?: string): Promise<ActionResult> {
   const me = await requireStaff();
   const db = getDb();
-  const cls = getClassRow(classId);
+  const cls = (await getClassRow(classId));
   if (!cls) return { ok: false, error: "Not found." };
   if (cls.program_id) return { ok: false, error: "Remove Program instructors from the Program launch room." };
   if (!["planning", "staffing"].includes(cls.status)) return { ok: false, error: "Staffing is frozen after launch readiness." };
   const recordedReason = (reason ?? "").trim().slice(0, 1000);
   if (recordedReason.length < 3) return { ok: false, error: "Record why this instructor is being removed." };
 
-  const assignment = db.prepare(
-    "SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL",
-  ).get(classId, instructorId) as { id: string; role: string } | undefined;
+  const assignment = (await db.prepare(
+      "SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL",
+    ).get(classId, instructorId)) as { id: string; role: string } | undefined;
   if (!assignment) return { ok: false, error: "Instructor is not assigned to this Class." };
   try {
-    inImmediateTransaction(() => {
-      const now = Date.now();
-      const liveClass = getClassRow(classId);
-      const liveAssignment = db.prepare(
-        "SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL",
-      ).get(classId, instructorId) as { id: string; role: string } | undefined;
-      if (!liveClass || liveClass.program_id || !["planning", "staffing"].includes(liveClass.status) || !liveAssignment) {
-        throw new Error("staffing_changed");
-      }
-      const removalDecision = recordClassStaffingDecision(db, {
-        classId,
-        instructorId,
-        assignmentId: liveAssignment.id,
-        action: "removed",
-        role: liveAssignment.role === "lead" ? "lead" : "additional",
-        reason: recordedReason,
-        actorUserId: me.id,
-        decidedAt: now,
-      });
-      const removed = db.prepare(
-        `UPDATE class_instructors
+    (await inImmediateTransaction(async () => {
+            const now = Date.now();
+            const liveClass = (await getClassRow(classId));
+            const liveAssignment = (await db.prepare(
+                    "SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL",
+                  ).get(classId, instructorId)) as { id: string; role: string } | undefined;
+            if (!liveClass || liveClass.program_id || !["planning", "staffing"].includes(liveClass.status) || !liveAssignment) {
+              throw new Error("staffing_changed");
+            }
+            const removalDecision = (await recordClassStaffingDecision(db, {
+                    classId,
+                    instructorId,
+                    assignmentId: liveAssignment.id,
+                    action: "removed",
+                    role: liveAssignment.role === "lead" ? "lead" : "additional",
+                    reason: recordedReason,
+                    actorUserId: me.id,
+                    decidedAt: now,
+                  }));
+            const removed = (await db.prepare(
+                    `UPDATE class_instructors
             SET removed_at = ?, removal_reason = ?, removed_by = ?,
                 removal_decision_id = ?, removal_decision_fingerprint = ?
           WHERE id = ? AND removed_at IS NULL`,
-      ).run(
-        now,
-        recordedReason,
-        me.id,
-        removalDecision.decisionId,
-        removalDecision.fingerprint,
-        liveAssignment.id,
-      );
-      if (removed.changes !== 1) throw new Error("staffing_changed");
-      if (liveClass.lead_instructor_id === instructorId) {
-        db.prepare("UPDATE classes SET lead_instructor_id = NULL, updated_at = ? WHERE id = ? AND lead_instructor_id = ?")
-          .run(now, classId, instructorId);
-      }
-      logActivity("class", classId, "note", `Instructor removed. ${recordedReason}`, me.id);
-    });
+                  ).run(
+                    now,
+                    recordedReason,
+                    me.id,
+                    removalDecision.decisionId,
+                    removalDecision.fingerprint,
+                    liveAssignment.id,
+                  ));
+            if (removed.changes !== 1) throw new Error("staffing_changed");
+            if (liveClass.lead_instructor_id === instructorId) {
+              (await db.prepare("UPDATE classes SET lead_instructor_id = NULL, updated_at = ? WHERE id = ? AND lead_instructor_id = ?")
+                          .run(now, classId, instructorId));
+            }
+            (await logActivity("class", classId, "note", `Instructor removed. ${recordedReason}`, me.id));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "staffing_changed") {
       return { ok: false, error: "Staffing changed while this removal was being recorded. Refresh and try again." };
@@ -752,13 +752,13 @@ export async function createClassSession(classId: string, input: CreateSessionIn
   ) {
     return { ok: false, error: "The session schedule contains invalid fields." };
   }
-  const cls = getClassRow(classId);
+  const cls = (await getClassRow(classId));
   if (!cls) return { ok: false, error: "Class not found." };
 
   let actorInstructorId: string | null = null;
   if (me.role === "instructor") {
     const { instructor } = await requireActiveInstructorSelf();
-    if (!isClassMember(classId, instructor.id)) return { ok: false, error: "forbidden" };
+    if (!(await isClassMember(classId, instructor.id))) return { ok: false, error: "forbidden" };
     actorInstructorId = instructor.id;
   }
 
@@ -784,56 +784,56 @@ export async function createClassSession(classId: string, input: CreateSessionIn
   const id = `pfx-${randomUUID().slice(0, 8)}`;
   const db = getDb();
   try {
-    inImmediateTransaction(() => {
-      const currentClass = getClassRow(classId);
-      if (!currentClass || TERMINAL_CLASS_STATUSES.has(currentClass.status as ClassStatus)) throw new Error("class_history_frozen");
-      if (actorInstructorId) {
-        const activeMembership = db.prepare(
-          `SELECT 1
+    (await inImmediateTransaction(async () => {
+            const currentClass = (await getClassRow(classId));
+            if (!currentClass || TERMINAL_CLASS_STATUSES.has(currentClass.status as ClassStatus)) throw new Error("class_history_frozen");
+            if (actorInstructorId) {
+              const activeMembership = (await db.prepare(
+                        `SELECT 1
              FROM class_instructors ci
              JOIN instructors i ON i.id = ci.instructor_id
             WHERE ci.class_id = ? AND ci.instructor_id = ?
               AND ci.removed_at IS NULL
               AND i.stage IN ('eligible', 'active') AND i.eligibility_status = 'eligible'
             LIMIT 1`,
-        ).get(classId, actorInstructorId);
-        if (!activeMembership) throw new Error("membership_revoked");
-      }
-      if (currentClass.schedule_timezone && currentClass.schedule_timezone !== resolved.timeZone) throw new Error("timezone_changed");
-      if (currentClass.start_date && sessionDay < currentClass.start_date) throw new Error("schedule_changed");
-      if (currentClass.end_date && sessionDay > currentClass.end_date) throw new Error("schedule_changed");
-      if (currentClass.program_id) {
-        const program = db.prepare("SELECT stage, schedule_timezone FROM programs WHERE id = ?").get(currentClass.program_id) as
-          | { stage: string; schedule_timezone: string | null }
-          | undefined;
-        if (!program || HISTORICAL_PROGRAM_STAGES.has(program.stage)) throw new Error("class_history_frozen");
-        if (program.schedule_timezone && program.schedule_timezone !== resolved.timeZone) throw new Error("timezone_changed");
-      }
-      if (!currentClass.schedule_timezone) {
-        db.prepare("UPDATE classes SET schedule_timezone = ?, updated_at = ? WHERE id = ? AND schedule_timezone IS NULL")
-          .run(resolved.timeZone, now, classId);
-        if (currentClass.program_id) {
-          db.prepare("UPDATE programs SET schedule_timezone = COALESCE(schedule_timezone, ?), updated_at = ? WHERE id = ?")
-            .run(resolved.timeZone, now, currentClass.program_id);
-        }
-      }
-      if (db.prepare("SELECT 1 FROM class_sessions WHERE class_id = ? AND session_date = ?").get(classId, resolved.epoch)) {
-        throw new Error("duplicate_session");
-      }
-      const location = (input.location ?? "").trim();
-      if (location.length > 200) throw new Error("location_too_long");
-      db.prepare(
-        "INSERT INTO class_sessions (id, class_id, session_date, session_on, timezone, location, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).run(id, classId, resolved.epoch, resolved.localDate, resolved.timeZone, location || null, now);
-      db.prepare(
-        `INSERT INTO class_session_roster (id, session_id, student_id, enrollment_id, rostered_at)
+                      ).get(classId, actorInstructorId));
+              if (!activeMembership) throw new Error("membership_revoked");
+            }
+            if (currentClass.schedule_timezone && currentClass.schedule_timezone !== resolved.timeZone) throw new Error("timezone_changed");
+            if (currentClass.start_date && sessionDay < currentClass.start_date) throw new Error("schedule_changed");
+            if (currentClass.end_date && sessionDay > currentClass.end_date) throw new Error("schedule_changed");
+            if (currentClass.program_id) {
+              const program = (await db.prepare("SELECT stage, schedule_timezone FROM programs WHERE id = ?").get(currentClass.program_id)) as
+                | { stage: string; schedule_timezone: string | null }
+                | undefined;
+              if (!program || HISTORICAL_PROGRAM_STAGES.has(program.stage)) throw new Error("class_history_frozen");
+              if (program.schedule_timezone && program.schedule_timezone !== resolved.timeZone) throw new Error("timezone_changed");
+            }
+            if (!currentClass.schedule_timezone) {
+              (await db.prepare("UPDATE classes SET schedule_timezone = ?, updated_at = ? WHERE id = ? AND schedule_timezone IS NULL")
+                          .run(resolved.timeZone, now, classId));
+              if (currentClass.program_id) {
+                (await db.prepare("UPDATE programs SET schedule_timezone = COALESCE(schedule_timezone, ?), updated_at = ? WHERE id = ?")
+                              .run(resolved.timeZone, now, currentClass.program_id));
+              }
+            }
+            if ((await db.prepare("SELECT 1 FROM class_sessions WHERE class_id = ? AND session_date = ?").get(classId, resolved.epoch))) {
+              throw new Error("duplicate_session");
+            }
+            const location = (input.location ?? "").trim();
+            if (location.length > 200) throw new Error("location_too_long");
+            (await db.prepare(
+                      "INSERT INTO class_sessions (id, class_id, session_date, session_on, timezone, location, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ).run(id, classId, resolved.epoch, resolved.localDate, resolved.timeZone, location || null, now));
+            (await db.prepare(
+                      `INSERT INTO class_session_roster (id, session_id, student_id, enrollment_id, rostered_at)
          SELECT 'csr-' || lower(hex(randomblob(16))), ?, ce.student_id, ce.id, ?
          FROM class_enrollments ce
          JOIN students s ON s.id = ce.student_id
          WHERE ce.class_id = ? AND ce.status = 'enrolled' AND s.enrollment_status = 'active'`,
-      ).run(id, now, classId);
-      logActivity("class", classId, "note", "Session scheduled and roster snapshot created.", me.id);
-    });
+                    ).run(id, now, classId));
+            (await logActivity("class", classId, "note", "Session scheduled and roster snapshot created.", me.id));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "duplicate_session") return { ok: false, error: "A session already exists at that time." };
     if (error instanceof Error && error.message === "class_history_frozen") return { ok: false, error: "Historical Classes cannot receive new sessions." };
@@ -849,8 +849,8 @@ export async function createClassSession(classId: string, input: CreateSessionIn
 }
 
 /** Resolves a session's class id; used by membership checks below. */
-function getSessionClassId(sessionId: string): string | null {
-  const row = getDb().prepare("SELECT class_id FROM class_sessions WHERE id = ?").get(sessionId) as { class_id: string } | undefined;
+async function getSessionClassId(sessionId: string): Promise<string | null> {
+  const row = (await getDb().prepare("SELECT class_id FROM class_sessions WHERE id = ?").get(sessionId)) as { class_id: string } | undefined;
   return row?.class_id ?? null;
 }
 
@@ -862,12 +862,12 @@ export interface SessionReportInput {
   expectedReportedAt: number | null;
 }
 
-function verifiedLegacyLessonSnapshot(
+async function verifiedLegacyLessonSnapshot(
   db: ReturnType<typeof getDb>,
   classId: string,
-): { lessonId: string; snapshot: string } | null {
-  const projection = db.prepare(
-    `SELECT cohort.track, cohort.current_lesson_id
+): Promise<{ lessonId: string; snapshot: string } | null> {
+  const projection = (await db.prepare(
+      `SELECT cohort.track, cohort.current_lesson_id
        FROM classes c
        JOIN programs p ON p.id = c.program_id
        JOIN cohorts cohort ON cohort.id = p.source_id
@@ -877,7 +877,7 @@ function verifiedLegacyLessonSnapshot(
         AND cohort.id = c.id
         AND cohort.org_id IS c.partner_org_id
         AND p.partner_org_id IS c.partner_org_id`,
-  ).get(classId) as { track: string; current_lesson_id: string | null } | undefined;
+    ).get(classId)) as { track: string; current_lesson_id: string | null } | undefined;
   if (!projection?.current_lesson_id) return null;
   const lesson = getLessonById(projection.current_lesson_id);
   if (!lesson || lesson.track !== projection.track) return null;
@@ -895,14 +895,14 @@ export async function submitSessionReport(
   input: SessionReportInput,
 ): Promise<ActionResult & { reportedAt?: number }> {
   const me = await requireRole("admin", "growth", "instructor");
-  const classId = getSessionClassId(sessionId);
+  const classId = (await getSessionClassId(sessionId));
   if (!classId) return { ok: false, error: "Session not found." };
 
   let actorId = me.id;
   let actorInstructorId: string | null = null;
   if (me.role === "instructor") {
     const { instructor } = await requireActiveInstructorSelf();
-    if (!isClassMember(classId, instructor.id)) return { ok: false, error: "forbidden" };
+    if (!(await isClassMember(classId, instructor.id))) return { ok: false, error: "forbidden" };
     actorId = me.id;
     actorInstructorId = instructor.id;
   }
@@ -931,19 +931,19 @@ export async function submitSessionReport(
   const now = Date.now();
   let savedReportedAt: number | undefined;
   try {
-    inImmediateTransaction(() => {
-      const delivery = db.prepare(
-        `SELECT cs.class_id, cs.session_date, c.status
+    (await inImmediateTransaction(async () => {
+            const delivery = (await db.prepare(
+                    `SELECT cs.class_id, cs.session_date, c.status
            FROM class_sessions cs
            JOIN classes c ON c.id = cs.class_id
           WHERE cs.id = ?`,
-      ).get(sessionId) as { class_id: string; session_date: number; status: ClassStatus } | undefined;
-      if (!delivery || delivery.class_id !== classId) throw new Error("session_changed");
-      if (!["active", "paused"].includes(delivery.status)) throw new Error("delivery_not_active");
-      if (delivery.session_date > now) throw new Error("session_not_started");
-      if (actorInstructorId) {
-        const activeMembership = db.prepare(
-          `SELECT 1
+                  ).get(sessionId)) as { class_id: string; session_date: number; status: ClassStatus } | undefined;
+            if (!delivery || delivery.class_id !== classId) throw new Error("session_changed");
+            if (!["active", "paused"].includes(delivery.status)) throw new Error("delivery_not_active");
+            if (delivery.session_date > now) throw new Error("session_not_started");
+            if (actorInstructorId) {
+              const activeMembership = (await db.prepare(
+                        `SELECT 1
              FROM class_instructors ci
              JOIN instructors i ON i.id = ci.instructor_id
             WHERE ci.class_id = ? AND ci.instructor_id = ?
@@ -951,92 +951,92 @@ export async function submitSessionReport(
               AND i.stage IN ('eligible', 'active')
               AND i.eligibility_status = 'eligible'
             LIMIT 1`,
-        ).get(classId, actorInstructorId);
-        if (!activeMembership) throw new Error("membership_revoked");
-      }
-      const reports = db.prepare(
-        "SELECT id, completed, reported_at, lesson_id, lesson_snapshot FROM class_session_reports WHERE session_id = ?",
-      ).all(sessionId) as {
-        id: string;
-        completed: number;
-        reported_at: number;
-        lesson_id: string | null;
-        lesson_snapshot: string | null;
-      }[];
-      if (reports.length > 1) throw new Error("report_invariant");
-      const existing = reports[0];
-      if (existing?.completed === 1) throw new Error("report_finalized");
-      if (
-        (existing && input.expectedReportedAt !== existing.reported_at)
-        || (!existing && input.expectedReportedAt !== null)
-      ) {
-        throw new Error("report_stale");
-      }
-      if (input.completed) {
-        const rosterCount = db.prepare(
-          "SELECT COUNT(*) AS n FROM class_session_roster WHERE session_id = ?",
-        ).get(sessionId) as { n: number };
-        if (rosterCount.n === 0) throw new Error("roster_missing");
-        const missingAttendance = db.prepare(
-          `SELECT COUNT(*) AS n
+                      ).get(classId, actorInstructorId));
+              if (!activeMembership) throw new Error("membership_revoked");
+            }
+            const reports = (await db.prepare(
+                    "SELECT id, completed, reported_at, lesson_id, lesson_snapshot FROM class_session_reports WHERE session_id = ?",
+                  ).all(sessionId)) as {
+              id: string;
+              completed: number;
+              reported_at: number;
+              lesson_id: string | null;
+              lesson_snapshot: string | null;
+            }[];
+            if (reports.length > 1) throw new Error("report_invariant");
+            const existing = reports[0];
+            if (existing?.completed === 1) throw new Error("report_finalized");
+            if (
+              (existing && input.expectedReportedAt !== existing.reported_at)
+              || (!existing && input.expectedReportedAt !== null)
+            ) {
+              throw new Error("report_stale");
+            }
+            if (input.completed) {
+              const rosterCount = (await db.prepare(
+                        "SELECT COUNT(*) AS n FROM class_session_roster WHERE session_id = ?",
+                      ).get(sessionId)) as { n: number };
+              if (rosterCount.n === 0) throw new Error("roster_missing");
+              const missingAttendance = (await db.prepare(
+                        `SELECT COUNT(*) AS n
            FROM class_session_roster csr
            LEFT JOIN attendance_records ar
              ON ar.session_id = csr.session_id AND ar.student_id = csr.student_id
            WHERE csr.session_id = ? AND ar.id IS NULL`,
-        ).get(sessionId) as { n: number };
-        if (missingAttendance.n > 0) throw new Error("attendance_incomplete");
-      }
-      const lessonEvidence = input.completed ? verifiedLegacyLessonSnapshot(db, classId) : null;
-      const lessonId = input.completed ? lessonEvidence?.lessonId ?? null : existing?.lesson_id ?? null;
-      const lessonSnapshot = input.completed ? lessonEvidence?.snapshot ?? null : existing?.lesson_snapshot ?? null;
-      if (existing) {
-        const recordedAt = Math.max(now, existing.reported_at + 1);
-        const updated = db.prepare(
-          `UPDATE class_session_reports
+                      ).get(sessionId)) as { n: number };
+              if (missingAttendance.n > 0) throw new Error("attendance_incomplete");
+            }
+            const lessonEvidence = input.completed ? (await verifiedLegacyLessonSnapshot(db, classId)) : null;
+            const lessonId = input.completed ? lessonEvidence?.lessonId ?? null : existing?.lesson_id ?? null;
+            const lessonSnapshot = input.completed ? lessonEvidence?.snapshot ?? null : existing?.lesson_snapshot ?? null;
+            if (existing) {
+              const recordedAt = Math.max(now, existing.reported_at + 1);
+              const updated = (await db.prepare(
+                        `UPDATE class_session_reports
               SET notes = ?, flagged = ?, flag_reason = ?, completed = ?, reported_by = ?, reported_at = ?,
                   lesson_id = ?, lesson_snapshot = ?
             WHERE id = ? AND completed = 0 AND reported_at = ?`,
-        ).run(
-          notes || null,
-          input.flagged ? 1 : 0,
-          flagReason || null,
-          input.completed ? 1 : 0,
-          actorId,
-          recordedAt,
-          lessonId,
-          lessonSnapshot,
-          existing.id,
-          existing.reported_at,
-        );
-        if (updated.changes !== 1) throw new Error("report_stale");
-        savedReportedAt = recordedAt;
-      } else {
-        db.prepare(
-          `INSERT INTO class_session_reports
+                      ).run(
+                        notes || null,
+                        input.flagged ? 1 : 0,
+                        flagReason || null,
+                        input.completed ? 1 : 0,
+                        actorId,
+                        recordedAt,
+                        lessonId,
+                        lessonSnapshot,
+                        existing.id,
+                        existing.reported_at,
+                      ));
+              if (updated.changes !== 1) throw new Error("report_stale");
+              savedReportedAt = recordedAt;
+            } else {
+              (await db.prepare(
+                          `INSERT INTO class_session_reports
             (id, session_id, notes, flagged, flag_reason, completed, reported_by, reported_at, lesson_id, lesson_snapshot)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          `pfx-${randomUUID().slice(0, 8)}`,
-          sessionId,
-          notes || null,
-          input.flagged ? 1 : 0,
-          flagReason || null,
-          input.completed ? 1 : 0,
-          actorId,
-          now,
-          lessonId,
-          lessonSnapshot,
-        );
-        savedReportedAt = now;
-      }
-      logActivity(
-        "class",
-        classId,
-        "note",
-        `Session report submitted${input.flagged ? " (flagged)" : ""}${input.completed ? " and finalized" : ""}${lessonId ? ` with lesson snapshot ${lessonId}` : ""}.`,
-        actorId,
-      );
-    });
+                        ).run(
+                          `pfx-${randomUUID().slice(0, 8)}`,
+                          sessionId,
+                          notes || null,
+                          input.flagged ? 1 : 0,
+                          flagReason || null,
+                          input.completed ? 1 : 0,
+                          actorId,
+                          now,
+                          lessonId,
+                          lessonSnapshot,
+                        ));
+              savedReportedAt = now;
+            }
+            (await logActivity(
+                      "class",
+                      classId,
+                      "note",
+                      `Session report submitted${input.flagged ? " (flagged)" : ""}${input.completed ? " and finalized" : ""}${lessonId ? ` with lesson snapshot ${lessonId}` : ""}.`,
+                      actorId,
+                    ));
+          }));
   } catch (error) {
     if (error instanceof Error && error.message === "session_changed") return { ok: false, error: "This session changed while the report was being saved. Refresh and try again." };
     if (error instanceof Error && error.message === "delivery_not_active") return { ok: false, error: "Reports can be submitted only while Class delivery is active or paused." };
@@ -1068,14 +1068,14 @@ export async function recordAttendance(
   records: AttendanceInput[],
 ): Promise<ActionResult & { recordedAtByStudent?: Record<string, number> }> {
   const me = await requireRole("admin", "growth", "instructor");
-  const classId = getSessionClassId(sessionId);
+  const classId = (await getSessionClassId(sessionId));
   if (!classId) return { ok: false, error: "Session not found." };
 
   let actorId = me.id;
   let actorInstructorId: string | null = null;
   if (me.role === "instructor") {
     const { instructor } = await requireActiveInstructorSelf();
-    if (!isClassMember(classId, instructor.id)) return { ok: false, error: "forbidden" };
+    if (!(await isClassMember(classId, instructor.id))) return { ok: false, error: "forbidden" };
     actorId = me.id;
     actorInstructorId = instructor.id;
   }
@@ -1108,19 +1108,19 @@ export async function recordAttendance(
   const now = Date.now();
   const recordedAtByStudent: Record<string, number> = {};
   try {
-    inImmediateTransaction(() => {
-      const delivery = db.prepare(
-        `SELECT cs.class_id, cs.session_date, c.status
+    (await inImmediateTransaction(async () => {
+            const delivery = (await db.prepare(
+                    `SELECT cs.class_id, cs.session_date, c.status
            FROM class_sessions cs
            JOIN classes c ON c.id = cs.class_id
           WHERE cs.id = ?`,
-      ).get(sessionId) as { class_id: string; session_date: number; status: ClassStatus } | undefined;
-      if (!delivery || delivery.class_id !== classId) throw new Error("session_changed");
-      if (!["active", "paused"].includes(delivery.status)) throw new Error("attendance_window_closed");
-      if (Number(delivery.session_date) > now) throw new Error("session_not_started");
-      if (actorInstructorId) {
-        const activeMembership = db.prepare(
-          `SELECT 1
+                  ).get(sessionId)) as { class_id: string; session_date: number; status: ClassStatus } | undefined;
+            if (!delivery || delivery.class_id !== classId) throw new Error("session_changed");
+            if (!["active", "paused"].includes(delivery.status)) throw new Error("attendance_window_closed");
+            if (Number(delivery.session_date) > now) throw new Error("session_not_started");
+            if (actorInstructorId) {
+              const activeMembership = (await db.prepare(
+                        `SELECT 1
              FROM class_instructors ci
              JOIN instructors i ON i.id = ci.instructor_id
             WHERE ci.class_id = ? AND ci.instructor_id = ?
@@ -1128,73 +1128,73 @@ export async function recordAttendance(
               AND i.stage IN ('eligible', 'active')
               AND i.eligibility_status = 'eligible'
             LIMIT 1`,
-        ).get(classId, actorInstructorId);
-        if (!activeMembership) throw new Error("membership_revoked");
-      }
-      const report = db.prepare("SELECT completed FROM class_session_reports WHERE session_id = ?").get(sessionId) as
-        | { completed: number }
-        | undefined;
-      if (report?.completed === 1) throw new Error("session_finalized");
-      const roster = new Set(
-        (
-          db.prepare("SELECT student_id FROM class_session_roster WHERE session_id = ?").all(sessionId) as { student_id: string }[]
-        ).map((row) => row.student_id),
-      );
-      if (roster.size === 0) throw new Error("roster_missing");
-      if (studentIds.some((studentId) => !roster.has(studentId))) throw new Error("student_not_rostered");
+                      ).get(classId, actorInstructorId));
+              if (!activeMembership) throw new Error("membership_revoked");
+            }
+            const report = (await db.prepare("SELECT completed FROM class_session_reports WHERE session_id = ?").get(sessionId)) as
+              | { completed: number }
+              | undefined;
+            if (report?.completed === 1) throw new Error("session_finalized");
+            const roster = new Set(
+              (
+                (await db.prepare("SELECT student_id FROM class_session_roster WHERE session_id = ?").all(sessionId)) as { student_id: string }[]
+              ).map((row) => row.student_id),
+            );
+            if (roster.size === 0) throw new Error("roster_missing");
+            if (studentIds.some((studentId) => !roster.has(studentId))) throw new Error("student_not_rostered");
 
-      for (let index = 0; index < records.length; index += 1) {
-        const rec = records[index];
-        const studentId = studentIds[index];
-        const existingRows = db
-          .prepare("SELECT id, recorded_at FROM attendance_records WHERE session_id = ? AND student_id = ?")
-          .all(sessionId, studentId) as { id: string; recorded_at: number }[];
-        if (existingRows.length > 1) throw new Error("attendance_invariant");
-        const existing = existingRows[0];
-        if (
-          (existing && rec.expectedRecordedAt !== existing.recorded_at)
-          || (!existing && rec.expectedRecordedAt !== null)
-        ) {
-          throw new Error("attendance_stale");
-        }
-        const note = (rec.note ?? "").trim() || null;
-        const present = rec.status === "present" || rec.status === "late" ? 1 : 0;
-        if (existing) {
-          const recordedAt = Math.max(now, existing.recorded_at + 1);
-          const updated = db.prepare(
-            `UPDATE attendance_records
+            for (let index = 0; index < records.length; index += 1) {
+              const rec = records[index];
+              const studentId = studentIds[index];
+              const existingRows = (await db
+                        .prepare("SELECT id, recorded_at FROM attendance_records WHERE session_id = ? AND student_id = ?")
+                        .all(sessionId, studentId)) as { id: string; recorded_at: number }[];
+              if (existingRows.length > 1) throw new Error("attendance_invariant");
+              const existing = existingRows[0];
+              if (
+                (existing && rec.expectedRecordedAt !== existing.recorded_at)
+                || (!existing && rec.expectedRecordedAt !== null)
+              ) {
+                throw new Error("attendance_stale");
+              }
+              const note = (rec.note ?? "").trim() || null;
+              const present = rec.status === "present" || rec.status === "late" ? 1 : 0;
+              if (existing) {
+                const recordedAt = Math.max(now, existing.recorded_at + 1);
+                const updated = (await db.prepare(
+                            `UPDATE attendance_records
                 SET present = ?, status = ?, note = ?, recorded_by = ?, recorded_at = ?
               WHERE id = ? AND recorded_at = ?`,
-          ).run(
-            present,
-            rec.status,
-            note,
-            actorId,
-            recordedAt,
-            existing.id,
-            existing.recorded_at,
-          );
-          if (updated.changes !== 1) throw new Error("attendance_stale");
-          recordedAtByStudent[studentId] = recordedAt;
-        } else {
-          db.prepare(
-            `INSERT INTO attendance_records
+                          ).run(
+                            present,
+                            rec.status,
+                            note,
+                            actorId,
+                            recordedAt,
+                            existing.id,
+                            existing.recorded_at,
+                          ));
+                if (updated.changes !== 1) throw new Error("attendance_stale");
+                recordedAtByStudent[studentId] = recordedAt;
+              } else {
+                (await db.prepare(
+                              `INSERT INTO attendance_records
               (id, session_id, student_id, present, status, note, recorded_by, recorded_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          ).run(`pfx-${randomUUID().slice(0, 8)}`, sessionId, studentId, present, rec.status, note, actorId, now);
-          recordedAtByStudent[studentId] = now;
-        }
-      }
-      const statusCounts: Record<AttendanceStatus, number> = { present: 0, absent: 0, late: 0, excused: 0 };
-      for (const record of records) statusCounts[record.status] += 1;
-      logActivity(
-        "class",
-        classId,
-        "note",
-        `Attendance recorded for ${records.length} student${records.length === 1 ? "" : "s"}: ${statusCounts.present} present, ${statusCounts.late} late, ${statusCounts.absent} absent, ${statusCounts.excused} excused.`,
-        actorId,
-      );
-    });
+                            ).run(`pfx-${randomUUID().slice(0, 8)}`, sessionId, studentId, present, rec.status, note, actorId, now));
+                recordedAtByStudent[studentId] = now;
+              }
+            }
+            const statusCounts: Record<AttendanceStatus, number> = { present: 0, absent: 0, late: 0, excused: 0 };
+            for (const record of records) statusCounts[record.status] += 1;
+            (await logActivity(
+                      "class",
+                      classId,
+                      "note",
+                      `Attendance recorded for ${records.length} student${records.length === 1 ? "" : "s"}: ${statusCounts.present} present, ${statusCounts.late} late, ${statusCounts.absent} absent, ${statusCounts.excused} excused.`,
+                      actorId,
+                    ));
+          }));
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "session_changed") return { ok: false, error: "This session changed while attendance was being saved. Refresh and try again." };
@@ -1236,25 +1236,25 @@ export async function createClassProposal(instructorId: string, input: ProposalI
 
   const id = `pfx-${randomUUID().slice(0, 8)}`;
   const now = Date.now();
-  getDb()
-    .prepare(
-      `INSERT INTO class_proposals
+  (await getDb()
+        .prepare(
+          `INSERT INTO class_proposals
         (id, instructor_id, title, age_group, curriculum_topic, format, schedule, description, resources, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
-    )
-    .run(
-      id,
-      instructorId,
-      title.slice(0, 200),
-      (input.ageGroup ?? "").trim().slice(0, 60) || null,
-      (input.curriculumTopic ?? "").trim().slice(0, 200) || null,
-      (input.format ?? "").trim().slice(0, 60) || null,
-      (input.schedule ?? "").trim().slice(0, 200) || null,
-      (input.description ?? "").trim().slice(0, 4000) || null,
-      (input.resources ?? "").trim().slice(0, 2000) || null,
-      now,
-      now,
-    );
+        )
+        .run(
+          id,
+          instructorId,
+          title.slice(0, 200),
+          (input.ageGroup ?? "").trim().slice(0, 60) || null,
+          (input.curriculumTopic ?? "").trim().slice(0, 200) || null,
+          (input.format ?? "").trim().slice(0, 60) || null,
+          (input.schedule ?? "").trim().slice(0, 200) || null,
+          (input.description ?? "").trim().slice(0, 4000) || null,
+          (input.resources ?? "").trim().slice(0, 2000) || null,
+          now,
+          now,
+        ));
 
   revalidatePath("/app/teach");
   return { ok: true, id };
@@ -1263,13 +1263,13 @@ export async function createClassProposal(instructorId: string, input: ProposalI
 export async function submitClassProposal(id: string): Promise<ActionResult> {
   const { instructor } = await requireActiveInstructorSelf();
   const db = getDb();
-  const row = db.prepare("SELECT * FROM class_proposals WHERE id = ?").get(id) as { id: string; instructor_id: string; status: string } | undefined;
+  const row = (await db.prepare("SELECT * FROM class_proposals WHERE id = ?").get(id)) as { id: string; instructor_id: string; status: string } | undefined;
   if (!row) return { ok: false, error: "Not found." };
   if (row.instructor_id !== instructor.id) return { ok: false, error: "forbidden" };
   if (row.status !== "draft") return { ok: false, error: `Can't submit from status "${row.status}".` };
 
-  db.prepare("UPDATE class_proposals SET status = 'submitted', updated_at = ? WHERE id = ?").run(Date.now(), id);
-  logActivity("class_proposal", id, "stage_change", "Proposal submitted.", instructor.id);
+  (await db.prepare("UPDATE class_proposals SET status = 'submitted', updated_at = ? WHERE id = ?").run(Date.now(), id));
+  (await logActivity("class_proposal", id, "stage_change", "Proposal submitted.", instructor.id));
 
   revalidatePath("/app/teach");
   revalidatePath("/app/tasks");
@@ -1280,31 +1280,31 @@ export async function decideClassProposal(id: string, decision: "approved" | "de
   const me = await requireStaff();
   if (decision !== "approved" && decision !== "declined") return { ok: false, error: "Invalid decision." };
   const db = getDb();
-  const row = db.prepare("SELECT * FROM class_proposals WHERE id = ?").get(id) as { id: string; status: string } | undefined;
+  const row = (await db.prepare("SELECT * FROM class_proposals WHERE id = ?").get(id)) as { id: string; status: string } | undefined;
   if (!row) return { ok: false, error: "Not found." };
   if (row.status !== "submitted") return { ok: false, error: `Can't decide from status "${row.status}".` };
 
-  db.prepare("UPDATE class_proposals SET status = ?, updated_at = ? WHERE id = ?").run(decision, Date.now(), id);
-  logActivity("class_proposal", id, "stage_change", `Proposal ${decision}.${note ? ` ${note.slice(0, 500)}` : ""}`, me.id);
+  (await db.prepare("UPDATE class_proposals SET status = ?, updated_at = ? WHERE id = ?").run(decision, Date.now(), id));
+  (await logActivity("class_proposal", id, "stage_change", `Proposal ${decision}.${note ? ` ${note.slice(0, 500)}` : ""}`, me.id));
 
-  const proposal = db.prepare("SELECT instructor_id, title FROM class_proposals WHERE id = ?").get(id) as
+  const proposal = (await db.prepare("SELECT instructor_id, title FROM class_proposals WHERE id = ?").get(id)) as
     | { instructor_id: string; title: string }
     | undefined;
   if (proposal) {
-    const instructorRow = db.prepare("SELECT person_id FROM instructors WHERE id = ?").get(proposal.instructor_id) as
+    const instructorRow = (await db.prepare("SELECT person_id FROM instructors WHERE id = ?").get(proposal.instructor_id)) as
       | { person_id: string }
       | undefined;
     const person = instructorRow
-      ? (db.prepare("SELECT user_id FROM people WHERE id = ?").get(instructorRow.person_id) as { user_id: string | null } | undefined)
+      ? ((await db.prepare("SELECT user_id FROM people WHERE id = ?").get(instructorRow.person_id)) as { user_id: string | null } | undefined)
       : undefined;
     if (person?.user_id) {
-      createNotification({
-        userId: person.user_id,
-        type: "class_ops",
-        title: `Proposal ${decision}`,
-        body: `Your class proposal "${proposal.title}" was ${decision}.${note ? ` ${note.slice(0, 200)}` : ""}`,
-        link: "/app/teach/proposals",
-      });
+      (await createNotification({
+                userId: person.user_id,
+                type: "class_ops",
+                title: `Proposal ${decision}`,
+                body: `Your class proposal "${proposal.title}" was ${decision}.${note ? ` ${note.slice(0, 200)}` : ""}`,
+                link: "/app/teach/proposals",
+              }));
     }
   }
 
@@ -1320,7 +1320,7 @@ export async function convertProposalToClass(
 ): Promise<ActionResult & { classId?: string; programId?: string }> {
   const me = await requireStaff();
   const db = getDb();
-  const row = db.prepare("SELECT * FROM class_proposals WHERE id = ?").get(id) as
+  const row = (await db.prepare("SELECT * FROM class_proposals WHERE id = ?").get(id)) as
     | {
         id: string;
         instructor_id: string;
@@ -1338,7 +1338,7 @@ export async function convertProposalToClass(
   if (!row) return { ok: false, error: "Not found." };
   if (row.status !== "approved") return { ok: false, error: "Only an approved proposal can become a Program." };
   if (row.converted_class_id) {
-    const existing = db.prepare("SELECT program_id FROM classes WHERE id = ?").get(row.converted_class_id) as
+    const existing = (await db.prepare("SELECT program_id FROM classes WHERE id = ?").get(row.converted_class_id)) as
       | { program_id: string | null }
       | undefined;
     return { ok: true, classId: row.converted_class_id, programId: existing?.program_id ?? undefined };
@@ -1347,62 +1347,62 @@ export async function convertProposalToClass(
   let classId = `pfx-${randomUUID().slice(0, 8)}`;
   let programId = `prg-${randomUUID()}`;
   try {
-    inImmediateTransaction(() => {
-      const current = db.prepare("SELECT * FROM class_proposals WHERE id = ?").get(id) as typeof row;
-      if (!current) throw new Error("proposal_missing");
-      if (current.converted_class_id) {
-        classId = current.converted_class_id;
-        const existing = db.prepare("SELECT program_id FROM classes WHERE id = ?").get(classId) as { program_id: string | null } | undefined;
-        if (!existing?.program_id) throw new Error("converted_program_missing");
-        programId = existing.program_id;
-        return;
-      }
-      if (current.status !== "approved") throw new Error("proposal_not_approved");
+    (await inImmediateTransaction(async () => {
+            const current = (await db.prepare("SELECT * FROM class_proposals WHERE id = ?").get(id)) as typeof row;
+            if (!current) throw new Error("proposal_missing");
+            if (current.converted_class_id) {
+              classId = current.converted_class_id;
+              const existing = (await db.prepare("SELECT program_id FROM classes WHERE id = ?").get(classId)) as { program_id: string | null } | undefined;
+              if (!existing?.program_id) throw new Error("converted_program_missing");
+              programId = existing.program_id;
+              return;
+            }
+            if (current.status !== "approved") throw new Error("proposal_not_approved");
 
-      let curId = (curriculumId ?? "").trim();
-      const now = Date.now();
-      if (!curId) {
-        curId = `crc-${randomUUID()}`;
-        db.prepare(
-          "INSERT INTO curricula (id, title, description, age_range, published, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
-        ).run(
-          curId,
-          `${current.title} (proposal draft)`,
-          current.curriculum_topic || "Draft curriculum created from an approved instructor proposal.",
-          current.age_group,
-          now,
-          now,
-        );
-      } else if (!db.prepare("SELECT 1 FROM curricula WHERE id = ?").get(curId)) {
-        throw new Error("curriculum_missing");
-      }
+            let curId = (curriculumId ?? "").trim();
+            const now = Date.now();
+            if (!curId) {
+              curId = `crc-${randomUUID()}`;
+              (await db.prepare(
+                          "INSERT INTO curricula (id, title, description, age_range, published, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
+                        ).run(
+                          curId,
+                          `${current.title} (proposal draft)`,
+                          current.curriculum_topic || "Draft curriculum created from an approved instructor proposal.",
+                          current.age_group,
+                          now,
+                          now,
+                        ));
+            } else if (!(await db.prepare("SELECT 1 FROM curricula WHERE id = ?").get(curId))) {
+              throw new Error("curriculum_missing");
+            }
 
-      const formatLabel = (current.format ?? "").trim().slice(0, 60) || null;
-      const formatLower = formatLabel?.toLowerCase() ?? "";
-      const deliveryFormat = formatLower.includes("hybrid") ? "hybrid" : formatLower.includes("online") ? "online" : "in_person";
-      const notes = [current.description, current.resources ? `Resources: ${current.resources}` : null].filter(Boolean).join("\n\n").slice(0, 5000) || null;
+            const formatLabel = (current.format ?? "").trim().slice(0, 60) || null;
+            const formatLower = formatLabel?.toLowerCase() ?? "";
+            const deliveryFormat = formatLower.includes("hybrid") ? "hybrid" : formatLower.includes("online") ? "online" : "in_person";
+            const notes = [current.description, current.resources ? `Resources: ${current.resources}` : null].filter(Boolean).join("\n\n").slice(0, 5000) || null;
 
-      db.prepare(
-        `INSERT INTO programs
+            (await db.prepare(
+                      `INSERT INTO programs
           (id, request_key, name, curriculum_id, audience, delivery_format, stage, schedule_label,
            owner_user_id, source_type, source_id, notes, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, 'planning', ?, ?, 'class_proposal', ?, ?, ?, ?)`,
-      ).run(programId, `class-proposal:${id}`, current.title, curId, current.age_group, deliveryFormat, current.schedule, me.id, id, notes, now, now);
-      db.prepare(
-        `INSERT INTO classes
+                    ).run(programId, `class-proposal:${id}`, current.title, curId, current.age_group, deliveryFormat, current.schedule, me.id, id, notes, now, now));
+            (await db.prepare(
+                      `INSERT INTO classes
           (id, title, curriculum_id, partner_org_id, location, online_format, start_date, end_date,
            recurrence, age_range, capacity, minimum_enrollment, lead_instructor_id, program_id,
            status, internal_notes, created_at, updated_at)
          VALUES (?, ?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, NULL, 1, NULL, ?, 'planning', ?, ?, ?)`,
-      ).run(classId, current.title, curId, formatLabel, current.schedule, current.age_group, programId, `Created from approved proposal ${id}.`, now, now);
-      const claimed = db.prepare(
-        "UPDATE class_proposals SET converted_class_id = ?, updated_at = ? WHERE id = ? AND status = 'approved' AND converted_class_id IS NULL",
-      ).run(classId, now, id);
-      if (claimed.changes !== 1) throw new Error("proposal_claimed");
-      logActivity("class_proposal", id, "converted", `Converted to Program ${programId} and Class ${classId}.`, me.id);
-      logActivity("program", programId, "created", `Created from approved Class proposal ${id}.`, me.id);
-      logActivity("class", classId, "note", `Created inside Program ${programId} from proposal ${id}.`, me.id);
-    });
+                    ).run(classId, current.title, curId, formatLabel, current.schedule, current.age_group, programId, `Created from approved proposal ${id}.`, now, now));
+            const claimed = (await db.prepare(
+                    "UPDATE class_proposals SET converted_class_id = ?, updated_at = ? WHERE id = ? AND status = 'approved' AND converted_class_id IS NULL",
+                  ).run(classId, now, id));
+            if (claimed.changes !== 1) throw new Error("proposal_claimed");
+            (await logActivity("class_proposal", id, "converted", `Converted to Program ${programId} and Class ${classId}.`, me.id));
+            (await logActivity("program", programId, "created", `Created from approved Class proposal ${id}.`, me.id));
+            (await logActivity("class", classId, "note", `Created inside Program ${programId} from proposal ${id}.`, me.id));
+          }));
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "proposal_missing") return { ok: false, error: "Proposal not found." };

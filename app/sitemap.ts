@@ -34,7 +34,7 @@ const ROUTES = [
   "/sign-in",
 ];
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   const staticEntries: MetadataRoute.Sitemap = ROUTES.map((path) => ({
     url: `${SITE.url}${path}`,
@@ -49,20 +49,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.6,
   }));
   // Public partner / school landing pages — shared in outreach, so index them.
-  const partnerEntries: MetadataRoute.Sitemap = getAllPartnerOrgs().map((p) => ({
+  const partnerEntries: MetadataRoute.Sitemap = (await getAllPartnerOrgs()).map((p) => ({
     url: `${SITE.url}/partners/${p.slug}`,
     lastModified: now,
     changeFrequency: "monthly",
     priority: 0.5,
   }));
   // Analytics: player breakdown pages + every published article.
-  const playerEntries: MetadataRoute.Sitemap = getAnalyticsPlayers().map((p) => ({
+  const playerEntries: MetadataRoute.Sitemap = (await getAnalyticsPlayers()).map((p) => ({
     url: `${SITE.url}/analytics/players/${p.slug}`,
     lastModified: now,
     changeFrequency: "weekly",
     priority: 0.5,
   }));
-  const articleEntries: MetadataRoute.Sitemap = getPublishedArticles().map((a) => ({
+  const articleEntries: MetadataRoute.Sitemap = (await getPublishedArticles()).map((a) => ({
     url: `${SITE.url}/analytics/articles/${a.slug}`,
     lastModified: new Date(a.updatedAt || a.publishedAt || Date.now()),
     changeFrequency: "weekly",
@@ -70,7 +70,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   }));
   // One entry per team that actually has tracked players — no point
   // indexing a cap-sheet page that would just 404.
-  const teamsWithPlayers = new Set(getAnalyticsPlayers().map((p) => p.team));
+  const teamsWithPlayers = new Set((await getAnalyticsPlayers()).map((p) => p.team));
   const teamEntries: MetadataRoute.Sitemap = [...teamsWithPlayers].map((team) => ({
     url: `${SITE.url}/analytics/teams/${teamSlug(team)}`,
     lastModified: now,

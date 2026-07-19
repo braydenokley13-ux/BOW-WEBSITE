@@ -30,9 +30,9 @@ const LEGEND_KINDS: QuestionKind[] = [
   "window-contradiction",
 ];
 
-export default function QuestionsPage() {
-  const docket = getOpenDocket();
-  const trackedCount = getAnalyticsPlayers().length;
+export default async function QuestionsPage() {
+  const docket = (await getOpenDocket());
+  const trackedCount = (await getAnalyticsPlayers()).length;
 
   return (
     <div data-screen-label="Open Docket">

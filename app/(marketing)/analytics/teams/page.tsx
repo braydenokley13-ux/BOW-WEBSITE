@@ -17,8 +17,8 @@ export const metadata: Metadata = {
 // deploys, so render per-request rather than at build time.
 export const dynamic = "force-dynamic";
 
-export default function TeamsPage() {
-  const players = getAnalyticsPlayers();
+export default async function TeamsPage() {
+  const players = (await getAnalyticsPlayers());
 
   return (
     <div data-screen-label="Franchise Strategy Index">

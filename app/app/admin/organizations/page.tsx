@@ -52,9 +52,9 @@ export default function AdminOrganizationsPage() {
     ? data.enrollments.filter((e) => selectedCohorts.some((c) => c.id === e.cohortId) && e.enroll !== "invited" && e.enroll !== "inactive").length
     : 0;
 
-  function submitCreate() {
+  async function submitCreate() {
     if (!coName.trim()) return;
-    createOrganization({ name: coName.trim(), type: coType, location: coLocation.trim() });
+    (await createOrganization({ name: coName.trim(), type: coType, location: coLocation.trim() }));
     setCreateOpen(false);
     setCoName("");
     setCoType("School");

@@ -34,7 +34,7 @@ export default function AccountSettingsPage() {
       body: "BOW administration will review and process the request. You’ll keep access until it’s actioned.",
       confirmLabel: "Request deletion",
       tone: "warning",
-      onConfirm: () => requestAccountDeletion(),
+      onConfirm: async () => (await requestAccountDeletion()),
     });
 
   const cardStyle: React.CSSProperties = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 24, marginBottom: 16 };

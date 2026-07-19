@@ -14,10 +14,10 @@ export default async function CurriculumDetailPage({ params }: { params: Promise
   const { id } = await params;
   const me = await getCurrentUser();
   const db = getDb();
-  const row = db.prepare("SELECT * FROM curricula WHERE id = ?").get(id) as any;
+  const row = (await db.prepare("SELECT * FROM curricula WHERE id = ?").get(id)) as any;
   if (!row) notFound();
   const curriculum = rowToCurriculum(row);
-  const classes = (db.prepare("SELECT * FROM classes WHERE curriculum_id = ? ORDER BY updated_at DESC").all(id) as any[]).map(rowToClass);
+  const classes = ((await db.prepare("SELECT * FROM classes WHERE curriculum_id = ? ORDER BY updated_at DESC").all(id)) as any[]).map(rowToClass);
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>

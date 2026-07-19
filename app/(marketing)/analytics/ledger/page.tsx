@@ -115,8 +115,8 @@ function EventRow({ event }: { event: LedgerEvent }) {
 
 export default async function LedgerPage() {
   const events = await getLedgerEvents();
-  const depth = getLedgerDepth();
-  const week = summarizeLastWeek(events);
+  const depth = (await getLedgerDepth());
+  const week = (await summarizeLastWeek(events));
   const days = groupByDay(events);
 
   return (

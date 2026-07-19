@@ -143,7 +143,7 @@ export default function StudentLessonPage() {
       done: status !== "not-started",
       render: () =>
         status === "not-started" ? (
-          <button className={styles.focusTarget} onClick={() => startLesson(lid)} type="button" style={primaryBtn}>Start Lesson</button>
+          <button className={styles.focusTarget} onClick={async () => (await startLesson(lid))} type="button" style={primaryBtn}>Start Lesson</button>
         ) : (
           <span style={doneTag}>Started{prog?.startedAt ? ` · ${prog.startedAt}` : ""}</span>
         ),
@@ -160,7 +160,7 @@ export default function StudentLessonPage() {
         prog?.simulationDone ? (
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <span style={doneTag}>Your call{selectedOption ? `: ${selectedOption}` : " · recorded"}</span>
-            <button className={styles.focusTarget} onClick={() => setSimulationDone(lid, false)} type="button" style={ghostBtn}>Undo</button>
+            <button className={styles.focusTarget} onClick={async () => (await setSimulationDone(lid, false))} type="button" style={ghostBtn}>Undo</button>
           </div>
         ) : (
           <div style={{ width: "100%" }}>
@@ -204,9 +204,9 @@ export default function StudentLessonPage() {
                       <button
                         className={styles.focusTarget}
                         key={opt.label}
-                        onClick={() => {
+                        onClick={async () => {
                           setSelectedOption(opt.label);
-                          setSimulationDone(lid, true);
+                          (await setSimulationDone(lid, true));
                         }}
                         type="button"
                         style={{ textAlign: "left", display: "flex", flexDirection: "column", gap: 3, padding: "12px 14px", cursor: "pointer", background: "var(--bow-paper)", border: "1px solid var(--border-rule)", borderRadius: 4 }}
@@ -217,7 +217,7 @@ export default function StudentLessonPage() {
                     ))}
                   </div>
                 ) : (
-                  <button className={styles.focusTarget} onClick={() => setSimulationDone(lid, true)} type="button" style={primaryBtn}>Mark case complete</button>
+                  <button className={styles.focusTarget} onClick={async () => (await setSimulationDone(lid, true))} type="button" style={primaryBtn}>Mark case complete</button>
                 )}
                 {L.simulationStatus === "available" && (
                   <Link className={styles.focusTarget} href={L.simulationUrl ?? "/simulation"} style={{ ...primaryBtn, display: "inline-block", textDecoration: "none", width: "fit-content" }}>Launch Simulation →</Link>
@@ -280,9 +280,9 @@ export default function StudentLessonPage() {
       done: !!prog?.challengeDone,
       render: () =>
         prog?.challengeDone ? (
-          <button className={styles.focusTarget} onClick={() => setChallengeDone(lid, false)} type="button" style={ghostBtn}>Undo</button>
+          <button className={styles.focusTarget} onClick={async () => (await setChallengeDone(lid, false))} type="button" style={ghostBtn}>Undo</button>
         ) : (
-          <button className={styles.focusTarget} onClick={() => setChallengeDone(lid, true)} type="button" style={primaryBtn}>Mark challenge complete</button>
+          <button className={styles.focusTarget} onClick={async () => (await setChallengeDone(lid, true))} type="button" style={primaryBtn}>Mark challenge complete</button>
         ),
     },
   ];
@@ -313,7 +313,7 @@ export default function StudentLessonPage() {
           <p style={{ margin: "0 0 22px", fontFamily: "var(--font-editorial)", fontSize: "clamp(17px,1.8vw,22px)", lineHeight: 1.45, color: "#d4d6db", maxWidth: 600 }}>{L.centralQuestion}</p>
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             {!locked && (
-              <button className={styles.focusTarget} disabled={status !== "not-started"} onClick={() => startLesson(lid)} type="button" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: status === "not-started" ? "pointer" : "default" }}>{primaryLabel}</button>
+              <button className={styles.focusTarget} disabled={status !== "not-started"} onClick={async () => (await startLesson(lid))} type="button" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", padding: "14px 28px", border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: status === "not-started" ? "pointer" : "default" }}>{primaryLabel}</button>
             )}
             <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "#9a9da6" }}>Role · {L.role} · {L.duration}</span>
           </div>
@@ -368,7 +368,7 @@ export default function StudentLessonPage() {
                 {completed ? "You’ve completed this lesson." : allDone ? "All steps done — lock it in." : "Finish the steps above to complete the lesson."}
               </span>
               {!completed && (
-                <button className={styles.focusTarget} onClick={() => completeLesson(lid)} disabled={!allDone} type="button" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 24px", border: "none", background: allDone ? "var(--bow-positive)" : "var(--bow-inactive)", color: "#fff", borderRadius: 4, cursor: allDone ? "pointer" : "not-allowed" }}>Complete Lesson</button>
+                <button className={styles.focusTarget} onClick={async () => (await completeLesson(lid))} disabled={!allDone} type="button" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 24px", border: "none", background: allDone ? "var(--bow-positive)" : "var(--bow-inactive)", color: "#fff", borderRadius: 4, cursor: allDone ? "pointer" : "not-allowed" }}>Complete Lesson</button>
               )}
             </div>
           </div>

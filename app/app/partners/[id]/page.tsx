@@ -16,13 +16,13 @@ const lifecycleStatuses = new Set<PartnerLifecycleStatus>(["prospect", "active",
 export default async function PartnerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireStaff();
   const { id } = await params;
-  const detail = getOrganizationDetail(id);
+  const detail = (await getOrganizationDetail(id));
   if (!detail) notFound();
   const { org, relatedClasses } = detail;
-  const activity = listActivity("organization", id);
+  const activity = (await listActivity("organization", id));
   const db = getDb();
-  const contacts = db.prepare(
-    `SELECT p.id, p.name, p.email, p.phone,
+  const contacts = (await db.prepare(
+      `SELECT p.id, p.name, p.email, p.phone,
             group_concat(DISTINCT op.relationship_type) AS relationship_types,
             max(op.is_primary) AS is_primary
        FROM organization_people op
@@ -30,7 +30,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
       WHERE op.organization_id = ? AND op.active = 1
       GROUP BY p.id, p.name, p.email, p.phone
       ORDER BY max(op.is_primary) DESC, p.name`,
-  ).all(id) as {
+    ).all(id)) as {
     id: string;
     name: string;
     email: string;
@@ -38,12 +38,12 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
     relationship_types: string;
     is_primary: number;
   }[];
-  const programs = db.prepare(
-    `SELECT id, name, stage, source_type, source_id, outcome_summary
+  const programs = (await db.prepare(
+      `SELECT id, name, stage, source_type, source_id, outcome_summary
        FROM programs
       WHERE partner_org_id = ?
       ORDER BY updated_at DESC`,
-  ).all(id) as {
+    ).all(id)) as {
     id: string;
     name: string;
     stage: string;
@@ -51,8 +51,8 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
     source_id: string | null;
     outcome_summary: string | null;
   }[];
-  const inquiries = db.prepare(
-    `SELECT i.id, i.name, i.email, i.type, i.date, i.status, i.summary,
+  const inquiries = (await db.prepare(
+      `SELECT i.id, i.name, i.email, i.type, i.date, i.status, i.summary,
             (
               SELECT p.id FROM programs p
                WHERE p.source_type = 'inquiry' AND p.source_id = i.id
@@ -75,7 +75,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
             WHERE linked.source_type = 'inquiry' AND linked.source_id = i.id AND linked.partner_org_id = ?
          )
       ORDER BY i.rowid DESC`,
-  ).all(id, id) as {
+    ).all(id, id)) as {
     id: string;
     name: string;
     email: string;
@@ -88,17 +88,17 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
     program_stage: string | null;
   }[];
   const lifecycleImpact = {
-    currentPrograms: (db.prepare(
-      `SELECT COUNT(*) AS count
+    currentPrograms: ((await db.prepare(
+            `SELECT COUNT(*) AS count
          FROM programs
         WHERE partner_org_id = ?
           AND stage NOT IN ('completed','renewal_review','renewed','closed')`,
-    ).get(id) as { count: number }).count,
-    activeOrEnrollingCohorts: (db.prepare(
-      "SELECT COUNT(*) AS count FROM cohorts WHERE org_id = ? AND status IN ('active','enrolling')",
-    ).get(id) as { count: number }).count,
-    currentClasses: (db.prepare(
-      `SELECT COUNT(*) AS count
+          ).get(id)) as { count: number }).count,
+    activeOrEnrollingCohorts: ((await db.prepare(
+          "SELECT COUNT(*) AS count FROM cohorts WHERE org_id = ? AND status IN ('active','enrolling')",
+        ).get(id)) as { count: number }).count,
+    currentClasses: ((await db.prepare(
+          `SELECT COUNT(*) AS count
          FROM classes c
         WHERE c.status NOT IN ('completed','cancelled')
           AND (
@@ -108,7 +108,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                WHERE p.id = c.program_id AND p.partner_org_id = ?
             )
           )`,
-    ).get(id, id) as { count: number }).count,
+        ).get(id, id)) as { count: number }).count,
   };
   const latestLifecycleEvent = activity.find((entry) => entry.kind === "lifecycle")?.body ?? null;
   const lifecycleStatus = lifecycleStatuses.has(org.status as PartnerLifecycleStatus)

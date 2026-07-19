@@ -13,8 +13,8 @@ function refresh() {
   revalidatePath("/admin");
 }
 
-const nextOrdinal = (table: string): number => {
-  const r = getDb().prepare(`SELECT COALESCE(MAX(ordinal), 0) AS m FROM ${table}`).get() as any;
+const nextOrdinal = async (table: string): Promise<number> => {
+  const r = (await getDb().prepare(`SELECT COALESCE(MAX(ordinal), 0) AS m FROM ${table}`).get()) as any;
   return (Number(r?.m) || 0) + 1;
 };
 
@@ -87,13 +87,13 @@ export async function upsertDailyQuestion(id: string | null, input: DailyQuestio
   const v = dailyValues(input);
   const db = getDb();
   if (id) {
-    db.prepare(
-      "UPDATE daily_questions SET question_text=?, type=?, choice_a=?, choice_b=?, choice_c=?, choice_d=?, correct_answer=?, explanation=?, concept_tag=?, difficulty=?, track=?, points=?, active=?, active_date=? WHERE id=?",
-    ).run(v.questionText, v.type, v.choiceA, v.choiceB, v.choiceC, v.choiceD, v.correct, v.explanation, v.conceptTag, v.difficulty, v.track, v.points, v.active, v.activeDate, id);
+    (await db.prepare(
+            "UPDATE daily_questions SET question_text=?, type=?, choice_a=?, choice_b=?, choice_c=?, choice_d=?, correct_answer=?, explanation=?, concept_tag=?, difficulty=?, track=?, points=?, active=?, active_date=? WHERE id=?",
+          ).run(v.questionText, v.type, v.choiceA, v.choiceB, v.choiceC, v.choiceD, v.correct, v.explanation, v.conceptTag, v.difficulty, v.track, v.points, v.active, v.activeDate, id));
   } else {
-    db.prepare(
-      "INSERT INTO daily_questions (id, ordinal, question_text, type, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, concept_tag, difficulty, track, points, active, active_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run(`dq-${randomUUID().slice(0, 8)}`, nextOrdinal("daily_questions"), v.questionText, v.type, v.choiceA, v.choiceB, v.choiceC, v.choiceD, v.correct, v.explanation, v.conceptTag, v.difficulty, v.track, v.points, v.active, v.activeDate);
+    (await db.prepare(
+            "INSERT INTO daily_questions (id, ordinal, question_text, type, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, concept_tag, difficulty, track, points, active, active_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          ).run(`dq-${randomUUID().slice(0, 8)}`, nextOrdinal("daily_questions"), v.questionText, v.type, v.choiceA, v.choiceB, v.choiceC, v.choiceD, v.correct, v.explanation, v.conceptTag, v.difficulty, v.track, v.points, v.active, v.activeDate));
   }
   refresh();
   return { ok: true };
@@ -101,10 +101,10 @@ export async function upsertDailyQuestion(id: string | null, input: DailyQuestio
 
 // Back-compat wrappers around upsertDailyQuestion.
 export async function createDailyQuestion(input: DailyQuestionInput): Promise<{ ok: boolean }> {
-  return upsertDailyQuestion(null, input);
+  return (await upsertDailyQuestion(null, input));
 }
 export async function updateDailyQuestion(id: string, input: DailyQuestionInput): Promise<{ ok: boolean }> {
-  return upsertDailyQuestion(id, input);
+  return (await upsertDailyQuestion(id, input));
 }
 
 /** Bulk show/hide questions by id. */
@@ -113,7 +113,7 @@ export async function setDailyQuestionsActive(ids: string[], active: boolean): P
   if (!Array.isArray(ids) || ids.length === 0) return { ok: true, updated: 0 };
   const stmt = getDb().prepare("UPDATE daily_questions SET active = ? WHERE id = ?");
   let updated = 0;
-  for (const id of ids) updated += Number(stmt.run(active ? 1 : 0, String(id)).changes) || 0;
+  for (const id of ids) updated += Number((await stmt.run(active ? 1 : 0, String(id))).changes) || 0;
   refresh();
   return { ok: true, updated };
 }
@@ -127,8 +127,8 @@ export async function deleteDailyQuestions(ids: string[]): Promise<{ ok: boolean
   const del = db.prepare("DELETE FROM daily_questions WHERE id = ?");
   let deleted = 0;
   for (const id of ids) {
-    delResp.run(String(id));
-    deleted += Number(del.run(String(id)).changes) || 0;
+    (await delResp.run(String(id)));
+    deleted += Number((await del.run(String(id))).changes) || 0;
   }
   refresh();
   return { ok: true, deleted };
@@ -185,20 +185,20 @@ export async function bulkImportQuestions(questions: unknown): Promise<BulkImpor
   }
   const db = getDb();
   const existing = new Set(
-    (db.prepare("SELECT question_text FROM daily_questions").all() as any[]).map((r) => normKey(String(r.question_text))),
+    ((await db.prepare("SELECT question_text FROM daily_questions").all()) as any[]).map((r) => normKey(String(r.question_text))),
   );
   const insert = db.prepare(
     "INSERT INTO daily_questions (id, ordinal, question_text, type, choice_a, choice_b, choice_c, choice_d, correct_answer, explanation, concept_tag, difficulty, track, points, active, active_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   let inserted = 0, skipped = 0, errors = 0;
-  let ordinal = nextOrdinal("daily_questions");
+  let ordinal = (await nextOrdinal("daily_questions"));
   for (const raw of questions) {
     const input = coerceImport(raw);
     if (!input || !validDaily(input)) { errors++; continue; }
     const key = normKey(input.questionText);
     if (existing.has(key)) { skipped++; continue; }
     const v = dailyValues(input);
-    insert.run(`dq-${randomUUID().slice(0, 8)}`, ordinal++, v.questionText, v.type, v.choiceA, v.choiceB, v.choiceC, v.choiceD, v.correct, v.explanation, v.conceptTag, v.difficulty, v.track, v.points, v.active, v.activeDate);
+    (await insert.run(`dq-${randomUUID().slice(0, 8)}`, ordinal++, v.questionText, v.type, v.choiceA, v.choiceB, v.choiceC, v.choiceD, v.correct, v.explanation, v.conceptTag, v.difficulty, v.track, v.points, v.active, v.activeDate));
     existing.add(key);
     inserted++;
   }
@@ -221,11 +221,11 @@ export async function createNewsItem(input: NewsItemInput): Promise<{ ok: boolea
   await requireRole("admin");
   if (!input.headline.trim() || !input.summary.trim()) return { ok: false };
   const id = `nw-${randomUUID().slice(0, 8)}`;
-  getDb()
-    .prepare(
-      "INSERT INTO news_items (id, headline, summary, source_name, source_url, concept_tag, published_date, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)",
-    )
-    .run(id, input.headline.trim(), input.summary.trim(), input.sourceName?.trim() || "", input.sourceUrl?.trim() || "", input.conceptTag?.trim() || "", input.publishedDate?.trim() || "", Date.now());
+  (await getDb()
+        .prepare(
+          "INSERT INTO news_items (id, headline, summary, source_name, source_url, concept_tag, published_date, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)",
+        )
+        .run(id, input.headline.trim(), input.summary.trim(), input.sourceName?.trim() || "", input.sourceUrl?.trim() || "", input.conceptTag?.trim() || "", input.publishedDate?.trim() || "", Date.now()));
   refresh();
   revalidatePath("/news");
   return { ok: true };
@@ -233,7 +233,7 @@ export async function createNewsItem(input: NewsItemInput): Promise<{ ok: boolea
 
 export async function setNewsItemActive(id: string, active: boolean): Promise<{ ok: boolean }> {
   await requireRole("admin");
-  getDb().prepare("UPDATE news_items SET active = ? WHERE id = ?").run(active ? 1 : 0, id);
+  (await getDb().prepare("UPDATE news_items SET active = ? WHERE id = ?").run(active ? 1 : 0, id));
   refresh();
   revalidatePath("/news");
   return { ok: true };
@@ -243,12 +243,12 @@ export async function setNewsItemActive(id: string, active: boolean): Promise<{ 
 export async function approveNewsSubmission(submissionId: string): Promise<{ ok: boolean }> {
   await requireRole("admin");
   const db = getDb();
-  const s = db.prepare("SELECT * FROM news_submissions WHERE id = ? AND status = 'pending'").get(submissionId) as any;
+  const s = (await db.prepare("SELECT * FROM news_submissions WHERE id = ? AND status = 'pending'").get(submissionId)) as any;
   if (!s) return { ok: false };
-  db.prepare(
-    "INSERT INTO news_items (id, headline, summary, source_name, source_url, concept_tag, published_date, active, created_at) VALUES (?, ?, ?, '', ?, '', '', 1, ?)",
-  ).run(`nw-${randomUUID().slice(0, 8)}`, s.headline, s.summary ?? "", s.source_url ?? "", Date.now());
-  db.prepare("UPDATE news_submissions SET status = 'approved' WHERE id = ?").run(submissionId);
+  (await db.prepare(
+        "INSERT INTO news_items (id, headline, summary, source_name, source_url, concept_tag, published_date, active, created_at) VALUES (?, ?, ?, '', ?, '', '', 1, ?)",
+      ).run(`nw-${randomUUID().slice(0, 8)}`, s.headline, s.summary ?? "", s.source_url ?? "", Date.now()));
+  (await db.prepare("UPDATE news_submissions SET status = 'approved' WHERE id = ?").run(submissionId));
   refresh();
   revalidatePath("/news");
   return { ok: true };
@@ -256,7 +256,7 @@ export async function approveNewsSubmission(submissionId: string): Promise<{ ok:
 
 export async function rejectNewsSubmission(submissionId: string): Promise<{ ok: boolean }> {
   await requireRole("admin");
-  getDb().prepare("UPDATE news_submissions SET status = 'rejected' WHERE id = ? AND status = 'pending'").run(submissionId);
+  (await getDb().prepare("UPDATE news_submissions SET status = 'rejected' WHERE id = ? AND status = 'pending'").run(submissionId));
   refresh();
   return { ok: true };
 }
@@ -276,17 +276,17 @@ export async function submitNewsStory(input: NewsSubmissionInput): Promise<{ ok:
   const sourceUrl = input.sourceUrl?.trim() || "";
   if (!headline || headline.length > 200 || summary.length > 2000 || sourceUrl.length > 2000) return { ok: false };
   if (sourceUrl && !/^https?:\/\/[^\s]+$/i.test(sourceUrl)) return { ok: false };
-  const limit = consumeRateLimit("news-submission-user", me.id, {
-    limit: 20,
-    windowMs: 24 * 60 * 60 * 1000,
-    blockMs: 24 * 60 * 60 * 1000,
-  });
+  const limit = (await consumeRateLimit("news-submission-user", me.id, {
+      limit: 20,
+      windowMs: 24 * 60 * 60 * 1000,
+      blockMs: 24 * 60 * 60 * 1000,
+    }));
   if (!limit.allowed) return { ok: false };
-  getDb()
-    .prepare(
-      "INSERT INTO news_submissions (id, student_id, headline, summary, source_url, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
-    )
-    .run(`ns-${randomUUID().slice(0, 8)}`, me.id, headline, summary, sourceUrl, Date.now());
+  (await getDb()
+        .prepare(
+          "INSERT INTO news_submissions (id, student_id, headline, summary, source_url, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+        )
+        .run(`ns-${randomUUID().slice(0, 8)}`, me.id, headline, summary, sourceUrl, Date.now()));
   revalidatePath("/news");
   return { ok: true };
 }
@@ -305,11 +305,11 @@ export async function createTestimonial(input: TestimonialInput): Promise<{ ok: 
   await requireRole("admin");
   if (!input.quote.trim() || !input.studentName.trim()) return { ok: false };
   const id = `tm-${randomUUID().slice(0, 8)}`;
-  getDb()
-    .prepare(
-      "INSERT INTO testimonials (id, quote, student_name, school_name, track_completed, active, ordinal, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .run(id, input.quote.trim(), input.studentName.trim(), input.schoolName?.trim() || "", input.trackCompleted?.trim() || "", input.active === false ? 0 : 1, nextOrdinal("testimonials"), Date.now());
+  (await getDb()
+        .prepare(
+          "INSERT INTO testimonials (id, quote, student_name, school_name, track_completed, active, ordinal, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(id, input.quote.trim(), input.studentName.trim(), input.schoolName?.trim() || "", input.trackCompleted?.trim() || "", input.active === false ? 0 : 1, nextOrdinal("testimonials"), Date.now()));
   refresh();
   revalidatePath("/");
   return { ok: true };
@@ -318,11 +318,11 @@ export async function createTestimonial(input: TestimonialInput): Promise<{ ok: 
 export async function updateTestimonial(id: string, input: TestimonialInput): Promise<{ ok: boolean }> {
   await requireRole("admin");
   if (!input.quote.trim() || !input.studentName.trim()) return { ok: false };
-  getDb()
-    .prepare(
-      "UPDATE testimonials SET quote = ?, student_name = ?, school_name = ?, track_completed = ?, active = ? WHERE id = ?",
-    )
-    .run(input.quote.trim(), input.studentName.trim(), input.schoolName?.trim() || "", input.trackCompleted?.trim() || "", input.active === false ? 0 : 1, id);
+  (await getDb()
+        .prepare(
+          "UPDATE testimonials SET quote = ?, student_name = ?, school_name = ?, track_completed = ?, active = ? WHERE id = ?",
+        )
+        .run(input.quote.trim(), input.studentName.trim(), input.schoolName?.trim() || "", input.trackCompleted?.trim() || "", input.active === false ? 0 : 1, id));
   refresh();
   revalidatePath("/");
   return { ok: true };
@@ -349,11 +349,11 @@ export async function createGlossaryTerm(input: GlossaryInput): Promise<{ ok: bo
   await requireRole("admin");
   if (!validGlossary(input)) return { ok: false };
   const id = `gl-${randomUUID().slice(0, 8)}`;
-  getDb()
-    .prepare(
-      "INSERT INTO glossary_terms (id, ordinal, term, definition, module_name, track, real_world_example, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .run(id, nextOrdinal("glossary_terms"), input.term.trim(), input.definition.trim(), input.moduleName.trim(), input.track.trim() || "101", input.realWorldExample.trim(), input.category);
+  (await getDb()
+        .prepare(
+          "INSERT INTO glossary_terms (id, ordinal, term, definition, module_name, track, real_world_example, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(id, nextOrdinal("glossary_terms"), input.term.trim(), input.definition.trim(), input.moduleName.trim(), input.track.trim() || "101", input.realWorldExample.trim(), input.category));
   refresh();
   revalidatePath("/glossary");
   return { ok: true };
@@ -362,11 +362,11 @@ export async function createGlossaryTerm(input: GlossaryInput): Promise<{ ok: bo
 export async function updateGlossaryTerm(id: string, input: GlossaryInput): Promise<{ ok: boolean }> {
   await requireRole("admin");
   if (!validGlossary(input)) return { ok: false };
-  getDb()
-    .prepare(
-      "UPDATE glossary_terms SET term = ?, definition = ?, module_name = ?, track = ?, real_world_example = ?, category = ? WHERE id = ?",
-    )
-    .run(input.term.trim(), input.definition.trim(), input.moduleName.trim(), input.track.trim() || "101", input.realWorldExample.trim(), input.category, id);
+  (await getDb()
+        .prepare(
+          "UPDATE glossary_terms SET term = ?, definition = ?, module_name = ?, track = ?, real_world_example = ?, category = ? WHERE id = ?",
+        )
+        .run(input.term.trim(), input.definition.trim(), input.moduleName.trim(), input.track.trim() || "101", input.realWorldExample.trim(), input.category, id));
   refresh();
   revalidatePath("/glossary");
   return { ok: true };

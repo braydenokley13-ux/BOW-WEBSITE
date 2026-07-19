@@ -132,23 +132,23 @@ export async function createTrainingModule(input: CreateModuleInput): Promise<Ac
   const id = `pfx-${randomUUID().slice(0, 8)}`;
   const now = Date.now();
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    db.prepare(
-      "INSERT INTO training_modules (id, title, category, required, content_type, content, ordinal, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-    )
-    .run(id, title.slice(0, 200), input.category, input.required ? 1 : 0, input.contentType, content || null, ordinal, now, now);
-    const affected = input.required ? recomputeAllInstructorStatuses() : 0;
-    logActivity(
-      "training_module",
-      id,
-      "note",
-      `Module "${title}" created.${input.required ? ` Recomputed readiness for ${affected} instructor${affected === 1 ? "" : "s"}.` : ""}`,
-      me.id,
-    );
-    db.exec("COMMIT");
+    (await db.prepare(
+            "INSERT INTO training_modules (id, title, category, required, content_type, content, ordinal, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+          )
+          .run(id, title.slice(0, 200), input.category, input.required ? 1 : 0, input.contentType, content || null, ordinal, now, now));
+    const affected = input.required ? (await recomputeAllInstructorStatuses()) : 0;
+    (await logActivity(
+            "training_module",
+            id,
+            "note",
+            `Module "${title}" created.${input.required ? ` Recomputed readiness for ${affected} instructor${affected === 1 ? "" : "s"}.` : ""}`,
+            me.id,
+          ));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     throw error;
   }
   revalidatePath("/app/training");
@@ -222,15 +222,15 @@ export async function updateTrainingModule(
   if (sets.length === 0) return { ok: true };
   let requirementsChanged = false;
   let savedUpdatedAt: number | undefined;
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const row = db.prepare(
-      `SELECT title, category, required, content_type, content, ordinal, active, updated_at,
+    const row = (await db.prepare(
+          `SELECT title, category, required, content_type, content, ordinal, active, updated_at,
               EXISTS (SELECT 1 FROM training_module_views v WHERE v.module_id = training_modules.id) AS has_views,
               EXISTS (SELECT 1 FROM training_module_completions c WHERE c.module_id = training_modules.id) AS has_completions
          FROM training_modules
         WHERE id = ?`,
-    ).get(moduleId) as {
+        ).get(moduleId)) as {
       title: string;
       category: string;
       required: number;
@@ -265,21 +265,21 @@ export async function updateTrainingModule(
     savedUpdatedAt = now;
     sets.push("updated_at = ?");
     values.push(now, moduleId, row.updated_at);
-    const updated = db.prepare(
-      `UPDATE training_modules SET ${sets.join(", ")} WHERE id = ? AND updated_at = ?`,
-    ).run(...(values as (string | number | null)[]));
+    const updated = (await db.prepare(
+          `UPDATE training_modules SET ${sets.join(", ")} WHERE id = ? AND updated_at = ?`,
+        ).run(...(values as (string | number | null)[])));
     if (updated.changes !== 1) throw new Error("module_changed");
-    const affected = requirementsChanged ? recomputeAllInstructorStatuses() : 0;
-    logActivity(
-      "training_module",
-      moduleId,
-      "note",
-      `Module updated.${next.required !== undefined && next.required !== row.required ? ` Requirement changed from ${row.required === 1 ? "required" : "optional"} to ${next.required === 1 ? "required" : "optional"}.` : ""}${requirementsChanged ? ` Recomputed readiness for ${affected} instructor${affected === 1 ? "" : "s"}.` : ""}`,
-      me.id,
-    );
-    db.exec("COMMIT");
+    const affected = requirementsChanged ? (await recomputeAllInstructorStatuses()) : 0;
+    (await logActivity(
+            "training_module",
+            moduleId,
+            "note",
+            `Module updated.${next.required !== undefined && next.required !== row.required ? ` Requirement changed from ${row.required === 1 ? "required" : "optional"} to ${next.required === 1 ? "required" : "optional"}.` : ""}${requirementsChanged ? ` Recomputed readiness for ${affected} instructor${affected === 1 ? "" : "s"}.` : ""}`,
+            me.id,
+          ));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "module_missing") return { ok: false, error: "Not found." };
     if (code === "module_archived") return { ok: false, error: "Archived modules are immutable. Create a successor module instead." };
@@ -307,31 +307,31 @@ export async function archiveTrainingModule(id: string, expectedUpdatedAt: numbe
   }
   const db = getDb();
   let requirementsChanged = false;
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const row = db.prepare("SELECT required, active, updated_at FROM training_modules WHERE id = ?").get(moduleId) as
+    const row = (await db.prepare("SELECT required, active, updated_at FROM training_modules WHERE id = ?").get(moduleId)) as
       | { required: number; active: number; updated_at: number }
       | undefined;
     if (!row) throw new Error("module_missing");
     if (row.active !== 1) throw new Error("module_archived");
     if (row.updated_at !== expectedUpdatedAt) throw new Error("module_changed");
     const now = nextUpdatedAt(row.updated_at);
-    const archived = db.prepare(
-      "UPDATE training_modules SET active = 0, updated_at = ? WHERE id = ? AND active = 1 AND updated_at = ?",
-    ).run(now, moduleId, row.updated_at);
+    const archived = (await db.prepare(
+          "UPDATE training_modules SET active = 0, updated_at = ? WHERE id = ? AND active = 1 AND updated_at = ?",
+        ).run(now, moduleId, row.updated_at));
     if (archived.changes !== 1) throw new Error("module_changed");
     requirementsChanged = row.required === 1;
-    const affected = requirementsChanged ? recomputeAllInstructorStatuses() : 0;
-    logActivity(
-      "training_module",
-      moduleId,
-      "note",
-      `Module archived.${requirementsChanged ? ` Recomputed readiness for ${affected} instructor${affected === 1 ? "" : "s"}.` : ""}`,
-      me.id,
-    );
-    db.exec("COMMIT");
+    const affected = requirementsChanged ? (await recomputeAllInstructorStatuses()) : 0;
+    (await logActivity(
+            "training_module",
+            moduleId,
+            "note",
+            `Module archived.${requirementsChanged ? ` Recomputed readiness for ${affected} instructor${affected === 1 ? "" : "s"}.` : ""}`,
+            me.id,
+          ));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "module_missing") return { ok: false, error: "Not found." };
     if (code === "module_archived") return { ok: false, error: "This module is already archived." };
@@ -387,39 +387,39 @@ export async function createTrainingSession(input: CreateSessionInput): Promise<
   }
   const id = `pfx-${randomUUID().slice(0, 8)}`;
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     if (
       facilitatorUserId
-      && !db.prepare("SELECT 1 FROM users WHERE id = ? AND status = 'active' AND role IN ('admin','growth')").get(facilitatorUserId)
+      && !(await db.prepare("SELECT 1 FROM users WHERE id = ? AND status = 'active' AND role IN ('admin','growth')").get(facilitatorUserId))
     ) {
       throw new Error("facilitator_unavailable");
     }
-    db.prepare(
-      "INSERT INTO training_sessions (id, title, scheduled_at, timezone, location, meeting_link, facilitator_user_id, required, facilitator_notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
-    )
-    .run(
-      id,
-      title,
-      schedule.epoch,
-      schedule.timeZone,
-      location || null,
-      meetingLink || null,
-      facilitatorUserId,
-      input.required ? 1 : 0,
-      now,
-      now,
-    );
-    logActivity(
-      "training_session",
-      id,
-      "note",
-      `Session "${title}" scheduled for ${formatDateTimeInZone(schedule.epoch, schedule.timeZone)} in ${schedule.timeZone}.`,
-      me.id,
-    );
-    db.exec("COMMIT");
+    (await db.prepare(
+            "INSERT INTO training_sessions (id, title, scheduled_at, timezone, location, meeting_link, facilitator_user_id, required, facilitator_notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+          )
+          .run(
+            id,
+            title,
+            schedule.epoch,
+            schedule.timeZone,
+            location || null,
+            meetingLink || null,
+            facilitatorUserId,
+            input.required ? 1 : 0,
+            now,
+            now,
+          ));
+    (await logActivity(
+            "training_session",
+            id,
+            "note",
+            `Session "${title}" scheduled for ${formatDateTimeInZone(schedule.epoch, schedule.timeZone)} in ${schedule.timeZone}.`,
+            me.id,
+          ));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     if (error instanceof Error && error.message === "facilitator_unavailable") {
       return { ok: false, error: "Choose an active staff facilitator." };
     }
@@ -510,13 +510,13 @@ export async function updateTrainingSession(id: string, patch: UpdateSessionPatc
   if (sets.length === 0) return { ok: true };
   let readinessChanged = false;
   let definitionChanged = false;
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const row = db.prepare(
-      `SELECT title, scheduled_at, timezone, location, meeting_link, facilitator_user_id,
+    const row = (await db.prepare(
+          `SELECT title, scheduled_at, timezone, location, meeting_link, facilitator_user_id,
               required, updated_at
          FROM training_sessions WHERE id = ?`,
-    ).get(sessionId) as {
+        ).get(sessionId)) as {
       title: string;
       scheduled_at: number;
       timezone: string | null;
@@ -530,7 +530,7 @@ export async function updateTrainingSession(id: string, patch: UpdateSessionPatc
     if (row.updated_at !== patch.expectedUpdatedAt) throw new Error("session_changed");
     if (
       next.facilitator_user_id
-      && !db.prepare("SELECT 1 FROM users WHERE id = ? AND status = 'active' AND role IN ('admin','growth')").get(next.facilitator_user_id)
+      && !(await db.prepare("SELECT 1 FROM users WHERE id = ? AND status = 'active' AND role IN ('admin','growth')").get(next.facilitator_user_id))
     ) {
       throw new Error("facilitator_unavailable");
     }
@@ -545,7 +545,7 @@ export async function updateTrainingSession(id: string, patch: UpdateSessionPatc
       || (next.facilitator_user_id !== undefined && next.facilitator_user_id !== row.facilitator_user_id);
     const now = Date.now();
     const hasAttendance = Boolean(
-      db.prepare("SELECT 1 FROM training_session_attendance WHERE session_id = ? LIMIT 1").get(sessionId),
+      (await db.prepare("SELECT 1 FROM training_session_attendance WHERE session_id = ? LIMIT 1").get(sessionId)),
     );
     if (definitionChanged && (row.scheduled_at <= now || hasAttendance)) {
       throw new Error("session_evidence_locked");
@@ -554,31 +554,31 @@ export async function updateTrainingSession(id: string, patch: UpdateSessionPatc
     const updatedAt = nextUpdatedAt(row.updated_at);
     sets.push("updated_at = ?");
     values.push(updatedAt, sessionId, row.updated_at);
-    const updated = db.prepare(
-      `UPDATE training_sessions SET ${sets.join(", ")} WHERE id = ? AND updated_at = ?`,
-    ).run(...(values as (string | number | null)[]));
+    const updated = (await db.prepare(
+          `UPDATE training_sessions SET ${sets.join(", ")} WHERE id = ? AND updated_at = ?`,
+        ).run(...(values as (string | number | null)[])));
     if (updated.changes !== 1) throw new Error("session_changed");
 
     // A required-session timing edit changes evidence for registered people.
     // Keep the definition and every cached readiness result in one commit.
     if (readinessChanged) {
-      const affected = db.prepare(
-        "SELECT DISTINCT instructor_id FROM training_session_registrations WHERE session_id = ?",
-      ).all(sessionId) as { instructor_id: string }[];
-      for (const registration of affected) recomputeInstructorStatuses(registration.instructor_id);
+      const affected = (await db.prepare(
+              "SELECT DISTINCT instructor_id FROM training_session_registrations WHERE session_id = ?",
+            ).all(sessionId)) as { instructor_id: string }[];
+      for (const registration of affected) (await recomputeInstructorStatuses(registration.instructor_id));
     }
-    logActivity(
-      "training_session",
-      sessionId,
-      "note",
-      schedule?.ok
-        ? `Session updated; scheduled for ${formatDateTimeInZone(schedule.epoch, schedule.timeZone)} in ${schedule.timeZone}.`
-        : "Session updated.",
-      me.id,
-    );
-    db.exec("COMMIT");
+    (await logActivity(
+            "training_session",
+            sessionId,
+            "note",
+            schedule?.ok
+              ? `Session updated; scheduled for ${formatDateTimeInZone(schedule.epoch, schedule.timeZone)} in ${schedule.timeZone}.`
+              : "Session updated.",
+            me.id,
+          ));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "session_missing") return { ok: false, error: "Not found." };
     if (code === "session_changed") return { ok: false, error: "This session changed. Refresh and try again." };
@@ -616,22 +616,22 @@ export async function addFacilitatorNotes(
   if (text.length > 4000) return { ok: false, error: "Facilitator notes must be 4,000 characters or fewer." };
   const db = getDb();
   let savedUpdatedAt: number | undefined;
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const row = db.prepare("SELECT updated_at FROM training_sessions WHERE id = ?").get(sessionKey) as
+    const row = (await db.prepare("SELECT updated_at FROM training_sessions WHERE id = ?").get(sessionKey)) as
       | { updated_at: number }
       | undefined;
     if (!row) throw new Error("session_missing");
     if (row.updated_at !== expectedUpdatedAt) throw new Error("session_changed");
     savedUpdatedAt = nextUpdatedAt(row.updated_at);
-    const updated = db.prepare(
-      "UPDATE training_sessions SET facilitator_notes = ?, updated_at = ? WHERE id = ? AND updated_at = ?",
-    ).run(text || null, savedUpdatedAt, sessionKey, row.updated_at);
+    const updated = (await db.prepare(
+          "UPDATE training_sessions SET facilitator_notes = ?, updated_at = ? WHERE id = ? AND updated_at = ?",
+        ).run(text || null, savedUpdatedAt, sessionKey, row.updated_at));
     if (updated.changes !== 1) throw new Error("session_changed");
-    logActivity("training_session", sessionKey, "note", "Facilitator notes updated.", me.id);
-    db.exec("COMMIT");
+    (await logActivity("training_session", sessionKey, "note", "Facilitator notes updated.", me.id));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "session_missing") return { ok: false, error: "Not found." };
     if (code === "session_changed") return { ok: false, error: "This session changed. Refresh before saving notes." };
@@ -652,48 +652,48 @@ export async function registerForTrainingSession(sessionId: string, instructorId
   }
   const db = getDb();
   if (me.role === "instructor") {
-    const self = getInstructorByUserId(me.id);
+    const self = (await getInstructorByUserId(me.id));
     if (!self || self.id !== instructorKey) return { ok: false, error: "You may only register yourself." };
   }
 
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const session = db.prepare("SELECT scheduled_at, required FROM training_sessions WHERE id = ?").get(sessionKey) as
+    const session = (await db.prepare("SELECT scheduled_at, required FROM training_sessions WHERE id = ?").get(sessionKey)) as
       | { scheduled_at: number; required: number }
       | undefined;
     if (!session) throw new Error("session_missing");
-    const instructor = db.prepare(
-      `SELECT i.id, p.user_id
+    const instructor = (await db.prepare(
+          `SELECT i.id, p.user_id
          FROM instructors i
          JOIN people p ON p.id = i.person_id
         WHERE i.id = ? AND i.stage NOT IN ('rejected','inactive')`,
-    ).get(instructorKey) as { id: string; user_id: string | null } | undefined;
+        ).get(instructorKey)) as { id: string; user_id: string | null } | undefined;
     if (!instructor) throw new Error("instructor_missing");
     if (me.role === "instructor" && instructor.user_id !== me.id) throw new Error("forbidden");
     const now = Date.now();
     if (me.role === "instructor" && session.scheduled_at <= now) throw new Error("registration_closed");
 
-    const existing = db.prepare(
-      "SELECT id FROM training_session_registrations WHERE session_id = ? AND instructor_id = ? LIMIT 1",
-    ).get(sessionKey, instructorKey);
+    const existing = (await db.prepare(
+          "SELECT id FROM training_session_registrations WHERE session_id = ? AND instructor_id = ? LIMIT 1",
+        ).get(sessionKey, instructorKey));
     if (!existing) {
-      db.prepare(
-        "INSERT INTO training_session_registrations (id, session_id, instructor_id, registered_at) VALUES (?, ?, ?, ?)",
-      ).run(`pfx-${randomUUID().slice(0, 8)}`, sessionKey, instructorKey, now);
-      logActivity(
-        "instructor",
-        instructorKey,
-        "note",
-        session.scheduled_at <= now
-          ? "Added to a training-session roster after the scheduled start by staff."
-          : "Registered for a training session.",
-        me.id,
-      );
+      (await db.prepare(
+                "INSERT INTO training_session_registrations (id, session_id, instructor_id, registered_at) VALUES (?, ?, ?, ?)",
+              ).run(`pfx-${randomUUID().slice(0, 8)}`, sessionKey, instructorKey, now));
+      (await logActivity(
+                "instructor",
+                instructorKey,
+                "note",
+                session.scheduled_at <= now
+                  ? "Added to a training-session roster after the scheduled start by staff."
+                  : "Registered for a training session.",
+                me.id,
+              ));
     }
-    if (session.required === 1) recomputeInstructorStatuses(instructorKey);
-    db.exec("COMMIT");
+    if (session.required === 1) (await recomputeInstructorStatuses(instructorKey));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "session_missing") return { ok: false, error: "Not found." };
     if (code === "instructor_missing") return { ok: false, error: "Choose a current instructor." };
@@ -725,28 +725,28 @@ export async function recordSessionAttendance(
   }
   const db = getDb();
   let savedRecordedAt: number | undefined;
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const session = db.prepare("SELECT scheduled_at FROM training_sessions WHERE id = ?").get(sessionKey) as
+    const session = (await db.prepare("SELECT scheduled_at FROM training_sessions WHERE id = ?").get(sessionKey)) as
       | { scheduled_at: number }
       | undefined;
     if (!session) throw new Error("session_missing");
     if (session.scheduled_at > Date.now()) throw new Error("session_not_started");
-    if (!db.prepare("SELECT 1 FROM instructors WHERE id = ? AND stage NOT IN ('rejected','inactive')").get(instructorKey)) {
+    if (!(await db.prepare("SELECT 1 FROM instructors WHERE id = ? AND stage NOT IN ('rejected','inactive')").get(instructorKey))) {
       throw new Error("instructor_missing");
     }
     if (
-      !db.prepare("SELECT 1 FROM training_session_registrations WHERE session_id = ? AND instructor_id = ?").get(
-        sessionKey,
-        instructorKey,
-      )
+      !(await db.prepare("SELECT 1 FROM training_session_registrations WHERE session_id = ? AND instructor_id = ?").get(
+                sessionKey,
+                instructorKey,
+              ))
     ) {
       throw new Error("not_registered");
     }
     const now = Date.now();
-    const existing = db.prepare(
-      "SELECT id, recorded_at FROM training_session_attendance WHERE session_id = ? AND instructor_id = ?",
-    ).get(sessionKey, instructorKey) as { id: string; recorded_at: number } | undefined;
+    const existing = (await db.prepare(
+          "SELECT id, recorded_at FROM training_session_attendance WHERE session_id = ? AND instructor_id = ?",
+        ).get(sessionKey, instructorKey)) as { id: string; recorded_at: number } | undefined;
     if (
       (existing && expectedRecordedAt !== existing.recorded_at)
       || (!existing && expectedRecordedAt !== null)
@@ -755,25 +755,25 @@ export async function recordSessionAttendance(
     }
     if (existing) {
       savedRecordedAt = nextUpdatedAt(existing.recorded_at);
-      const written = db.prepare(
-        `UPDATE training_session_attendance
+      const written = (await db.prepare(
+              `UPDATE training_session_attendance
             SET attended = ?, recorded_at = ?, recorded_by = ?
           WHERE id = ? AND recorded_at = ?`,
-      ).run(attended ? 1 : 0, savedRecordedAt, me.id, existing.id, existing.recorded_at);
+            ).run(attended ? 1 : 0, savedRecordedAt, me.id, existing.id, existing.recorded_at));
       if (written.changes !== 1) throw new Error("attendance_changed");
     } else {
       savedRecordedAt = now;
-      db.prepare(
-        `INSERT INTO training_session_attendance
+      (await db.prepare(
+                `INSERT INTO training_session_attendance
           (id, session_id, instructor_id, attended, recorded_at, recorded_by)
          VALUES (?, ?, ?, ?, ?, ?)`,
-      ).run(`pfx-${randomUUID().slice(0, 8)}`, sessionKey, instructorKey, attended ? 1 : 0, savedRecordedAt, me.id);
+              ).run(`pfx-${randomUUID().slice(0, 8)}`, sessionKey, instructorKey, attended ? 1 : 0, savedRecordedAt, me.id));
     }
-    recomputeInstructorStatuses(instructorKey);
-    logActivity("instructor", instructorKey, "note", `Attendance recorded for a training session: ${attended ? "attended" : "absent"}.`, me.id);
-    db.exec("COMMIT");
+    (await recomputeInstructorStatuses(instructorKey));
+    (await logActivity("instructor", instructorKey, "note", `Attendance recorded for a training session: ${attended ? "attended" : "absent"}.`, me.id));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "session_missing") return { ok: false, error: "Not found." };
     if (code === "session_not_started") return { ok: false, error: "Attendance opens when the training session starts." };

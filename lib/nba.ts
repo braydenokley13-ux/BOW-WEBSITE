@@ -43,21 +43,21 @@ const PLAYER_SELECT = `
 `;
 
 /** Full curated list, highest cap hit first. */
-export function getAnalyticsPlayers(): AnalyticsPlayer[] {
-  const rows = getDb().prepare(`${PLAYER_SELECT} ORDER BY c.cap_hit DESC`).all() as any[];
+export async function getAnalyticsPlayers(): Promise<AnalyticsPlayer[]> {
+  const rows = (await getDb().prepare(`${PLAYER_SELECT} ORDER BY c.cap_hit DESC`).all()) as any[];
   return rows.map(rowToPlayer);
 }
 
-export function getAnalyticsPlayer(slug: string): AnalyticsPlayer | null {
-  const row = getDb().prepare(`${PLAYER_SELECT} WHERE p.slug = ?`).get(slug) as any;
+export async function getAnalyticsPlayer(slug: string): Promise<AnalyticsPlayer | null> {
+  const row = (await getDb().prepare(`${PLAYER_SELECT} WHERE p.slug = ?`).get(slug)) as any;
   return row ? rowToPlayer(row) : null;
 }
 
 /** Resolve a set of slugs (article embeds); unknown slugs are dropped. */
-export function getAnalyticsPlayersBySlugs(slugs: string[]): AnalyticsPlayer[] {
+export async function getAnalyticsPlayersBySlugs(slugs: string[]): Promise<AnalyticsPlayer[]> {
   if (slugs.length === 0) return [];
   const ph = slugs.map(() => "?").join(", ");
-  const rows = getDb().prepare(`${PLAYER_SELECT} WHERE p.slug IN (${ph})`).all(...slugs) as any[];
+  const rows = (await getDb().prepare(`${PLAYER_SELECT} WHERE p.slug IN (${ph})`).all(...slugs)) as any[];
   const bySlug = new Map(rows.map((r) => [r.slug as string, rowToPlayer(r)]));
   // Preserve the order the author asked for.
   return slugs.map((s) => bySlug.get(s)).filter((p): p is AnalyticsPlayer => Boolean(p));
@@ -94,18 +94,18 @@ function rowToSeasonStat(r: any): SeasonStat {
 }
 
 /** One player's full stat history, oldest season first (season labels sort lexically: "2023-24" < "2024-25" < "2025-26"). */
-export function getPlayerSeasonHistory(slug: string): SeasonStat[] {
-  const rows = getDb()
-    .prepare(`SELECT season, games, minutes, epm, bpm, source FROM nba_player_stats WHERE player_slug = ? ORDER BY season ASC`)
-    .all(slug) as any[];
+export async function getPlayerSeasonHistory(slug: string): Promise<SeasonStat[]> {
+  const rows = (await getDb()
+      .prepare(`SELECT season, games, minutes, epm, bpm, source FROM nba_player_stats WHERE player_slug = ? ORDER BY season ASC`)
+      .all(slug)) as any[];
   return rows.map(rowToSeasonStat);
 }
 
 /** Every curated player's season history in one query, grouped by slug. Not consumed yet this phase — for a future bulk trends view. */
-export function getAllPlayerSeasonHistories(): Record<string, SeasonStat[]> {
-  const rows = getDb()
-    .prepare(`SELECT player_slug, season, games, minutes, epm, bpm, source FROM nba_player_stats ORDER BY player_slug ASC, season ASC`)
-    .all() as any[];
+export async function getAllPlayerSeasonHistories(): Promise<Record<string, SeasonStat[]>> {
+  const rows = (await getDb()
+      .prepare(`SELECT player_slug, season, games, minutes, epm, bpm, source FROM nba_player_stats ORDER BY player_slug ASC, season ASC`)
+      .all()) as any[];
   const bySlug: Record<string, SeasonStat[]> = {};
   for (const r of rows) {
     const slug = r.player_slug as string;
@@ -125,12 +125,12 @@ export interface DataProvenance {
 }
 
 /** How many players/teams are tracked, and how fresh the contract + stats data is — for provenance stamps. */
-export function getDataProvenance(): DataProvenance {
+export async function getDataProvenance(): Promise<DataProvenance> {
   const db = getDb();
-  const agg = db
-    .prepare(`SELECT COUNT(*) AS players, COUNT(DISTINCT team) AS teams, MAX(as_of) AS asOf FROM nba_players`)
-    .get() as any;
-  const ingest = db.prepare(`SELECT MAX(updated_at) AS last FROM nba_player_stats WHERE source = 'nba_api'`).get() as any;
+  const agg = (await db
+      .prepare(`SELECT COUNT(*) AS players, COUNT(DISTINCT team) AS teams, MAX(as_of) AS asOf FROM nba_players`)
+      .get()) as any;
+  const ingest = (await db.prepare(`SELECT MAX(updated_at) AS last FROM nba_player_stats WHERE source = 'nba_api'`).get()) as any;
   return {
     playerCount: Number(agg?.players) || 0,
     teamCount: Number(agg?.teams) || 0,
@@ -139,18 +139,18 @@ export function getDataProvenance(): DataProvenance {
   };
 }
 
-export function getStatsFreshness(): StatsFreshness {
+export async function getStatsFreshness(): Promise<StatsFreshness> {
   const db = getDb();
-  const players = (db.prepare("SELECT COUNT(*) AS n FROM nba_players").get() as any).n as number;
-  const agg = db
-    .prepare(
-      `SELECT
+  const players = ((await db.prepare("SELECT COUNT(*) AS n FROM nba_players").get()) as any).n as number;
+  const agg = (await db
+      .prepare(
+        `SELECT
          SUM(CASE WHEN source = 'nba_api' THEN 1 ELSE 0 END) AS live,
          SUM(CASE WHEN source != 'nba_api' THEN 1 ELSE 0 END) AS snap,
          MAX(updated_at) AS last, MAX(season) AS season
        FROM nba_player_stats`,
-    )
-    .get() as any;
+      )
+      .get()) as any;
   return {
     players,
     liveRows: Number(agg?.live) || 0,

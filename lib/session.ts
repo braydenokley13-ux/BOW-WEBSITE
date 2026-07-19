@@ -35,27 +35,27 @@ export async function createSession(userId: string): Promise<void> {
   const now = Date.now();
   const expiresAt = now + MAX_AGE_SECONDS * 1000;
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     // Status is rechecked under the writer lock so a suspension or completed
     // deletion request cannot race an already-in-flight sign-in into creating
     // a fresh authenticated session.
-    const inserted = db.prepare(
-      `INSERT INTO sessions (token, user_id, expires_at)
+    const inserted = (await db.prepare(
+          `INSERT INTO sessions (token, user_id, expires_at)
        SELECT ?, u.id, ?
          FROM users u
          JOIN organizations o ON o.id = u.org_id
         WHERE u.id = ? AND u.status = 'active' AND o.status = 'active'`,
-    ).run(tokenDigest, expiresAt, userId);
+        ).run(tokenDigest, expiresAt, userId));
     if (inserted.changes !== 1) throw new Error("Account or organization is not active.");
-    db.prepare(
-      `UPDATE users SET last_active_at = ?
+    (await db.prepare(
+            `UPDATE users SET last_active_at = ?
         WHERE id = ? AND status = 'active'
           AND EXISTS (SELECT 1 FROM organizations o WHERE o.id = users.org_id AND o.status = 'active')`,
-    ).run(now, userId);
-    db.exec("COMMIT");
+          ).run(now, userId));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     throw error;
   }
 
@@ -71,7 +71,7 @@ export async function createSession(userId: string): Promise<void> {
   } catch (error) {
     // Do not leave a durable credential behind when the browser cookie could
     // not be issued.
-    db.prepare("DELETE FROM sessions WHERE token = ?").run(tokenDigest);
+    (await db.prepare("DELETE FROM sessions WHERE token = ?").run(tokenDigest));
     throw error;
   }
 }
@@ -80,7 +80,7 @@ export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (token) {
-    getDb().prepare("DELETE FROM sessions WHERE token = ?").run(digestSessionToken(token));
+    (await getDb().prepare("DELETE FROM sessions WHERE token = ?").run(digestSessionToken(token)));
   }
   cookieStore.delete(SESSION_COOKIE);
 }
@@ -94,16 +94,16 @@ export async function getSessionUser(): Promise<User | null> {
 
   const db = getDb();
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const row = db
-    .prepare(
-      `SELECT u.*, s.expires_at AS __exp, s.token AS __session_token,
+  const row = (await db
+      .prepare(
+        `SELECT u.*, s.expires_at AS __exp, s.token AS __session_token,
               o.status AS __organization_status
          FROM sessions s
          JOIN users u ON u.id = s.user_id
          LEFT JOIN organizations o ON o.id = u.org_id
         WHERE s.token = ?`,
-    )
-    .get(tokenDigest) as any;
+      )
+      .get(tokenDigest)) as any;
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   if (!row) {
@@ -111,13 +111,13 @@ export async function getSessionUser(): Promise<User | null> {
     return null;
   }
   if (Number(row.__exp) <= Date.now()) {
-    db.prepare("DELETE FROM sessions WHERE token = ?").run(row.__session_token);
+    (await db.prepare("DELETE FROM sessions WHERE token = ?").run(row.__session_token));
     clearSessionCookieWhenPossible(cookieStore);
     return null;
   }
   // Only fully active accounts in an active organization may hold sessions.
   if (row.status !== "active" || row.__organization_status !== "active") {
-    db.prepare("DELETE FROM sessions WHERE token = ?").run(row.__session_token);
+    (await db.prepare("DELETE FROM sessions WHERE token = ?").run(row.__session_token));
     clearSessionCookieWhenPossible(cookieStore);
     return null;
   }

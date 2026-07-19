@@ -5,7 +5,7 @@ import { listClassesForInstructor } from "@/lib/hiring";
 
 export default async function TeachClassesPage() {
   const { instructor } = await requireActiveInstructorSelf();
-  const classes = listClassesForInstructor(instructor.id);
+  const classes = (await listClassesForInstructor(instructor.id));
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>

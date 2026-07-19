@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 /** A dynamic 1200×630 OG card for LinkedIn / iMessage previews of a public profile. */
 export default async function Image({ params }: { params: Promise<{ studentId: string }> }) {
   const { studentId: publicSlug } = await params;
-  const profile = getPublicProfile(publicSlug);
+  const profile = (await getPublicProfile(publicSlug));
 
   const name = profile?.name ?? "BOW Sports Capital";
   const rank = profile?.rank.name ?? "The front office for the next generation";

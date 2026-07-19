@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { DatabaseSync } from "node:sqlite";
+import type { PostgresDatabase } from "@/lib/db";
 import type { StaffingRecommendation } from "@/lib/operations-shared";
 import { hashOpaqueToken } from "@/lib/security-tokens";
 
@@ -121,10 +121,10 @@ export function classStaffingDecisionFingerprint(
  * Appends the durable decision record behind a Class staffing mutation.
  * Call this inside the same transaction that changes class_instructors.
  */
-export function recordClassStaffingDecision(
-  db: DatabaseSync,
+export async function recordClassStaffingDecision(
+  db: PostgresDatabase,
   input: ClassStaffingDecisionInput,
-): { decisionId: string; fingerprint: string } {
+): Promise<{ decisionId: string; fingerprint: string }> {
   if (
     input.recommendationFingerprint != null
     && !/^[0-9a-f]{64}$/.test(input.recommendationFingerprint)
@@ -138,26 +138,26 @@ export function recordClassStaffingDecision(
     role: input.role,
   };
   const fingerprint = classStaffingDecisionFingerprint({ ...input, decisionId });
-  db.prepare(
-    `INSERT INTO operational_decisions
+  (await db.prepare(
+        `INSERT INTO operational_decisions
       (id, entity_type, entity_id, decision_type, decision, reason, fingerprint,
        decided_by_user_id, decided_at, metadata)
      VALUES (?, 'class', ?, 'instructor_assignment', ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    decisionId,
-    input.classId,
-    JSON.stringify(decision),
-    input.reason,
-    fingerprint,
-    input.actorUserId,
-    input.decidedAt,
-    JSON.stringify({
-      assignmentId: input.assignmentId,
-      programId: input.programId ?? null,
-      ...(input.recommendationFingerprint
-        ? { recommendationFingerprint: input.recommendationFingerprint }
-        : {}),
-    }),
-  );
+      ).run(
+        decisionId,
+        input.classId,
+        JSON.stringify(decision),
+        input.reason,
+        fingerprint,
+        input.actorUserId,
+        input.decidedAt,
+        JSON.stringify({
+          assignmentId: input.assignmentId,
+          programId: input.programId ?? null,
+          ...(input.recommendationFingerprint
+            ? { recommendationFingerprint: input.recommendationFingerprint }
+            : {}),
+        }),
+      ));
   return { decisionId, fingerprint };
 }

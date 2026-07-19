@@ -26,15 +26,15 @@ export const metadata: Metadata = {
 // ingest); render per-request so a data refresh shows without a rebuild.
 export const dynamic = "force-dynamic";
 
-export default function AnalyticsPage() {
-  const players = getAnalyticsPlayers();
-  const latest = getPublishedArticles().slice(0, 3);
-  const docket = getOpenDocket();
+export default async function AnalyticsPage() {
+  const players = (await getAnalyticsPlayers());
+  const latest = (await getPublishedArticles()).slice(0, 3);
+  const docket = (await getOpenDocket());
   const teaser = docket.slice(0, 4);
-  const provenance = getDataProvenance();
+  const provenance = (await getDataProvenance());
   // Sync read of whatever ledger history exists — /analytics/ledger is
   // the surface that actually turns the daily page.
-  const week = summarizeLastWeek(getLedgerEventsSync());
+  const week = (await summarizeLastWeek((await getLedgerEventsSync())));
   const weekMoves = week.flips + week.opened + week.reopened + week.settled;
 
   return (

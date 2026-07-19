@@ -20,47 +20,47 @@ interface QueueInvitationDeliveryInput {
   actorUserId: string;
 }
 
-function recordDeliveryActivity(
+async function recordDeliveryActivity(
   invitationId: string,
   credentialKey: string,
   actorUserId: string,
   kind: "email_delivered" | "email_delivery_failed",
   body: string,
-): void {
-  getDb().prepare(
-    `INSERT OR IGNORE INTO crm_activity
+): Promise<void> {
+  (await getDb().prepare(
+        `INSERT OR IGNORE INTO crm_activity
       (id, entity_type, entity_id, kind, body, actor_user_id, created_at)
      VALUES (?, 'invitation', ?, ?, ?, ?, ?)`,
-  ).run(`pfx-invite-${kind}-${credentialKey}`, invitationId, kind, body, actorUserId, Date.now());
+      ).run(`pfx-invite-${kind}-${credentialKey}`, invitationId, kind, body, actorUserId, Date.now()));
 }
 
-function notifyDeliveryFailure(
+async function notifyDeliveryFailure(
   invitationId: string,
   tokenHash: string,
   actorUserId: string,
   role: "student" | "instructor",
-): void {
+): Promise<void> {
   const credentialKey = tokenHash.slice(0, 10);
   try {
-    recordDeliveryActivity(
-      invitationId,
-      credentialKey,
-      actorUserId,
-      "email_delivery_failed",
-      "Automated invitation email delivery did not complete. Use the secure copy fallback and verify email configuration before resending.",
-    );
+    (await recordDeliveryActivity(
+            invitationId,
+            credentialKey,
+            actorUserId,
+            "email_delivery_failed",
+            "Automated invitation email delivery did not complete. Use the secure copy fallback and verify email configuration before resending.",
+          ));
   } catch {
     // Still attempt the more visible notification below.
   }
   try {
-    createNotification({
-      id: `ntf-invite-delivery-${invitationId}-${credentialKey}`,
-      userId: actorUserId,
-      type: role === "instructor" ? "instructor_pipeline" : "class_ops",
-      title: "Invitation needs manual delivery",
-      body: "Automated email delivery did not complete. Open Invitations, use the secure copy fallback, and verify email configuration before resending.",
-      link: "/app/admin/invitations",
-    });
+    (await createNotification({
+            id: `ntf-invite-delivery-${invitationId}-${credentialKey}`,
+            userId: actorUserId,
+            type: role === "instructor" ? "instructor_pipeline" : "class_ops",
+            title: "Invitation needs manual delivery",
+            body: "Automated email delivery did not complete. Open Invitations, use the secure copy fallback, and verify email configuration before resending.",
+            link: "/app/admin/invitations",
+          }));
   } catch {
     // The copy fallback was already returned. A database outage is the only
     // condition that can also prevent this staff-visible recovery record.
@@ -81,11 +81,11 @@ export function queueInvitationDelivery(input: QueueInvitationDeliveryInput): In
   after(async () => {
     try {
       const db = getDb();
-      const current = db.prepare(
-        `SELECT email, role
+      const current = (await db.prepare(
+              `SELECT email, role
            FROM invitations
           WHERE id = ? AND token_hash = ? AND status = 'pending' AND expires_at > ?`,
-      ).get(input.invitationId, tokenHash, Date.now()) as { email: string; role: string } | undefined;
+            ).get(input.invitationId, tokenHash, Date.now())) as { email: string; role: string } | undefined;
 
       // This is an intentional cancellation, not a delivery failure. A revoked,
       // superseded, accepted, expired, or anonymized credential must not send.
@@ -112,31 +112,31 @@ export function queueInvitationDelivery(input: QueueInvitationDeliveryInput): In
 
       if (delivered) {
         try {
-          recordDeliveryActivity(
-            input.invitationId,
-            tokenHash.slice(0, 10),
-            input.actorUserId,
-            "email_delivered",
-            "Invitation email delivery was accepted by the transactional email provider.",
-          );
+          (await recordDeliveryActivity(
+                        input.invitationId,
+                        tokenHash.slice(0, 10),
+                        input.actorUserId,
+                        "email_delivered",
+                        "Invitation email delivery was accepted by the transactional email provider.",
+                      ));
         } catch {
           // Provider acceptance already happened; do not mislabel it as a
           // delivery failure merely because the audit database is unavailable.
         }
       } else {
-        notifyDeliveryFailure(input.invitationId, tokenHash, input.actorUserId, input.role);
+        (await notifyDeliveryFailure(input.invitationId, tokenHash, input.actorUserId, input.role));
       }
     } catch {
       // If the invitation still exists, persist a staff-visible recovery path.
       // A database outage can prevent even that record, but never changes the
       // issuing action's already-committed invitation or leaks its bearer token.
       try {
-        const stillCurrent = getDb().prepare(
-          `SELECT 1 FROM invitations
+        const stillCurrent = (await getDb().prepare(
+                  `SELECT 1 FROM invitations
             WHERE id = ? AND token_hash = ? AND status = 'pending' AND expires_at > ?
               AND lower(trim(email)) = ?`,
-        ).get(input.invitationId, tokenHash, Date.now(), normalizedEmail);
-        if (stillCurrent) notifyDeliveryFailure(input.invitationId, tokenHash, input.actorUserId, input.role);
+                ).get(input.invitationId, tokenHash, Date.now(), normalizedEmail));
+        if (stillCurrent) (await notifyDeliveryFailure(input.invitationId, tokenHash, input.actorUserId, input.role));
       } catch {
         // No additional safe persistence path exists while the database itself
         // is unavailable. The operator still receives the copy fallback.

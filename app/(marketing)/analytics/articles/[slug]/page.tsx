@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const article = getPublishedArticleBySlug(slug);
+  const article = (await getPublishedArticleBySlug(slug));
   if (!article) return { title: "Article Not Found — BOW Analytics" };
   const title = article.metaTitle || `${article.title} — BOW Sports Capital Analytics`;
   const description = article.metaDescription || article.dek || article.title;
@@ -45,16 +45,16 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   // A published paper's URL must survive a cold start (no-op without Blob).
   await rehydrateArticlesFromMirror();
   const { slug } = await params;
-  const article = getPublishedArticleBySlug(slug);
+  const article = (await getPublishedArticleBySlug(slug));
   if (!article) notFound();
 
-  bumpViewCount(article.id);
+  (await bumpViewCount(article.id));
 
   // One query prefetches every player any embed in the body references.
   // First mention of any curriculum term links to its glossary entry —
   // a reader who hits "second apron" cold is one click from the lesson.
   const blocks = linkGlossaryTerms(parseMarkdown(article.body), glossaryLinkTargets());
-  const embedPlayers = getAnalyticsPlayersBySlugs(collectEmbedSlugs(blocks));
+  const embedPlayers = (await getAnalyticsPlayersBySlugs(collectEmbedSlugs(blocks)));
   const playerMap: Record<string, AnalyticsPlayer> = {};
   for (const p of embedPlayers) playerMap[p.slug] = p;
 
@@ -62,7 +62,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   // player for their team (not just the slugs an author explicitly
   // embedded), and <ContractVerdict/>/<TeamFlex/> need the whole tracked
   // set to rank/score against, not just this article's referenced slugs.
-  const allPlayers = getAnalyticsPlayers();
+  const allPlayers = (await getAnalyticsPlayers());
 
   const embedTeams = collectEmbedTeams(blocks);
   if (embedTeams.length > 0) {
@@ -73,10 +73,10 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
 
   // <TrendChart/> needs each embedded player's season history.
   const playerHistories: Record<string, SeasonStat[]> = Object.fromEntries(
-    collectEmbedSlugs(blocks).map((s) => [s, getPlayerSeasonHistory(s)]),
+    (await Promise.all(collectEmbedSlugs(blocks).map(async (s) => [s, (await getPlayerSeasonHistory(s))]))),
   );
 
-  const related = getRelatedArticles(article, 3);
+  const related = (await getRelatedArticles(article, 3));
 
   return (
     <div data-screen-label="Article">

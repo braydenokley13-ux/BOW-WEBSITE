@@ -16,17 +16,17 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
-export default function DemoPage() {
+export default async function DemoPage() {
   // Pull real, live curriculum data so the demo always reflects the platform.
-  const concepts = getConceptMap().map((c) => ({
+  const concepts = (await getConceptMap()).map((c) => ({
     name: c.conceptName,
     track: c.track,
     category: c.category as string,
     application: c.frontofficeApplication,
   }));
 
-  const module201 = getSelfModules(TRACK_201).find((m) => m.ordinal === 1) ?? null;
-  const q201 = getQuizQuestions(TRACK_201).filter((q) => q.moduleUnlock === 1);
+  const module201 = (await getSelfModules(TRACK_201)).find((m) => m.ordinal === 1) ?? null;
+  const q201 = (await getQuizQuestions(TRACK_201)).filter((q) => q.moduleUnlock === 1);
   const mc = q201.find((q) => q.type === "mc") ?? null;
   const fr = q201.find((q) => q.type === "fr") ?? null;
   const math =

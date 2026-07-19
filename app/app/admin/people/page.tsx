@@ -109,7 +109,7 @@ export default function AdminPeoplePage() {
                       {wantsDeletion && (
                         <>
                           <button
-                            onClick={() => dismissDeletionRequest(u.id)}
+                            onClick={async () => (await dismissDeletionRequest(u.id))}
                             style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 13px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer", marginRight: 6 }}
                           >
                             Dismiss
@@ -122,7 +122,7 @@ export default function AdminPeoplePage() {
                               body: "This fulfills the deletion request and cannot be undone. Sign-in credentials, sessions, personal account identity, canonical contact details, pending invitations, profile sharing, and current enrollments will be removed or deactivated. BOW will keep stable anonymized IDs plus historical attendance, completed learning, certificates, rosters, session reports, and audit records so delivery evidence and referential integrity remain intact.",
                               confirmLabel: "Fulfill Deletion",
                               tone: "negative",
-                              onConfirm: () => fulfillDeletionRequest(u.id),
+                              onConfirm: async () => (await fulfillDeletionRequest(u.id)),
                             })}
                             style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 13px", border: "1px solid var(--bow-negative)", background: "var(--bow-negative)", color: "#fff", borderRadius: 4, cursor: u.id === me.id ? "not-allowed" : "pointer", opacity: u.id === me.id ? 0.45 : 1, marginRight: 6 }}
                           >
@@ -132,7 +132,7 @@ export default function AdminPeoplePage() {
                       )}
                       {isActive && (
                         <button
-                          onClick={() => askConfirm({ title: `Suspend ${u.name}?`, body: "They will lose access immediately until restored. This is a privileged action and is logged.", confirmLabel: "Suspend Access", tone: "negative", onConfirm: () => suspendUser(u.id) })}
+                          onClick={() => askConfirm({ title: `Suspend ${u.name}?`, body: "They will lose access immediately until restored. This is a privileged action and is logged.", confirmLabel: "Suspend Access", tone: "negative", onConfirm: async () => (await suspendUser(u.id)) })}
                           style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 13px", border: "1px solid var(--bow-negative)", background: "transparent", color: "var(--bow-negative)", borderRadius: 4, cursor: "pointer" }}
                         >
                           Suspend
@@ -140,7 +140,7 @@ export default function AdminPeoplePage() {
                       )}
                       {isSuspended && !deletionFulfilled && (
                         <button
-                          onClick={() => askConfirm({ title: `Restore access for ${u.name}?`, body: "They will regain access right away.", confirmLabel: "Restore Access", tone: "info", onConfirm: () => restoreUser(u.id) })}
+                          onClick={() => askConfirm({ title: `Restore access for ${u.name}?`, body: "They will regain access right away.", confirmLabel: "Restore Access", tone: "info", onConfirm: async () => (await restoreUser(u.id)) })}
                           style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 13px", border: "1px solid var(--bow-positive)", background: "transparent", color: "var(--bow-positive)", borderRadius: 4, cursor: "pointer" }}
                         >
                           Restore

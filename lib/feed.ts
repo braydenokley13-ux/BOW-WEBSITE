@@ -74,9 +74,9 @@ function rowToFeedStory(r: any): FeedStory {
 /* ---------------- stories ---------------- */
 
 /** The ordered Daily Feed stories (DB first, falling back to the seed). */
-export function getFeedStories(): FeedStory[] {
+export async function getFeedStories(): Promise<FeedStory[]> {
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const rows = getDb().prepare("SELECT * FROM feed_stories ORDER BY ordinal ASC").all() as any[];
+  const rows = (await getDb().prepare("SELECT * FROM feed_stories ORDER BY ordinal ASC").all()) as any[];
   if (rows.length === 0) return [...feedStorySeed].sort((a, b) => a.ordinal - b.ordinal);
   return rows.map(rowToFeedStory);
 }
@@ -87,9 +87,9 @@ export async function createFeedSession(feedUserId: string): Promise<void> {
   const token = randomBytes(32).toString("hex");
   const tokenDigest = digestFeedToken(token);
   const expiresAt = Date.now() + MAX_AGE_SECONDS * 1000;
-  getDb()
-    .prepare("INSERT INTO feed_sessions (token, feed_user_id, expires_at) VALUES (?, ?, ?)")
-    .run(tokenDigest, feedUserId, expiresAt);
+  (await getDb()
+        .prepare("INSERT INTO feed_sessions (token, feed_user_id, expires_at) VALUES (?, ?, ?)")
+        .run(tokenDigest, feedUserId, expiresAt));
 
   const cookieStore = await cookies();
   cookieStore.set(FEED_SESSION_COOKIE, token, {
@@ -104,7 +104,7 @@ export async function createFeedSession(feedUserId: string): Promise<void> {
 export async function destroyFeedSession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(FEED_SESSION_COOKIE)?.value;
-  if (token) getDb().prepare("DELETE FROM feed_sessions WHERE token = ?").run(digestFeedToken(token));
+  if (token) (await getDb().prepare("DELETE FROM feed_sessions WHERE token = ?").run(digestFeedToken(token)));
   cookieStore.delete(FEED_SESSION_COOKIE);
 }
 
@@ -115,16 +115,16 @@ export async function getCurrentFeedUser(): Promise<FeedUser | null> {
   const tokenDigest = digestFeedToken(token);
 
   const db = getDb();
-  const row = db
-    .prepare(
-      "SELECT u.*, s.expires_at AS __exp, s.token AS __session_token FROM feed_sessions s JOIN feed_users u ON u.id = s.feed_user_id WHERE s.token = ?",
-    )
-    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-    .get(tokenDigest) as any;
+  const row = (await db
+      .prepare(
+        "SELECT u.*, s.expires_at AS __exp, s.token AS __session_token FROM feed_sessions s JOIN feed_users u ON u.id = s.feed_user_id WHERE s.token = ?",
+      )
+      /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+      .get(tokenDigest)) as any;
 
   if (!row) return null;
   if (Number(row.__exp) < Date.now()) {
-    db.prepare("DELETE FROM feed_sessions WHERE token = ?").run(tokenDigest);
+    (await db.prepare("DELETE FROM feed_sessions WHERE token = ?").run(tokenDigest));
     return null;
   }
   return rowToFeedUser(row);
@@ -133,15 +133,15 @@ export async function getCurrentFeedUser(): Promise<FeedUser | null> {
 /* ---------------- mutations (called by server actions) ---------------- */
 
 /** Create a new device-local preview visitor. No email is used as authentication. */
-export function createFeedVisitor(displayName: string): FeedUser {
+export async function createFeedVisitor(displayName: string): Promise<FeedUser> {
   const db = getDb();
   const cleanName = displayName.trim().slice(0, 60);
   const id = `feed-${randomUUID()}`;
   const anonymousAddress = `${id}@anonymous.invalid`;
   const createdAt = Date.now();
-  db.prepare(
-    "INSERT INTO feed_users (id, email, display_name, created_at, decisions_completed, sim_completed, certificate_id) VALUES (?, ?, ?, ?, 0, 0, NULL)",
-  ).run(id, anonymousAddress, cleanName, createdAt);
+  (await db.prepare(
+        "INSERT INTO feed_users (id, email, display_name, created_at, decisions_completed, sim_completed, certificate_id) VALUES (?, ?, ?, ?, 0, 0, NULL)",
+      ).run(id, anonymousAddress, cleanName, createdAt));
   return {
     id,
     email: anonymousAddress,
@@ -154,16 +154,16 @@ export function createFeedVisitor(displayName: string): FeedUser {
   };
 }
 
-export function getFeedUserById(id: string): FeedUser | null {
+export async function getFeedUserById(id: string): Promise<FeedUser | null> {
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const row = getDb().prepare("SELECT * FROM feed_users WHERE id = ?").get(id) as any;
+  const row = (await getDb().prepare("SELECT * FROM feed_users WHERE id = ?").get(id)) as any;
   return row ? rowToFeedUser(row) : null;
 }
 
 /** Story ids this visitor has already answered. */
-export function getAnsweredStoryIds(feedUserId: string): string[] {
+export async function getAnsweredStoryIds(feedUserId: string): Promise<string[]> {
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const rows = getDb().prepare("SELECT story_id FROM feed_responses WHERE feed_user_id = ?").all(feedUserId) as any[];
+  const rows = (await getDb().prepare("SELECT story_id FROM feed_responses WHERE feed_user_id = ?").all(feedUserId)) as any[];
   return rows.map((r) => r.story_id as string);
 }
 
@@ -171,27 +171,27 @@ export function getAnsweredStoryIds(feedUserId: string): string[] {
  * Save a visitor's response to a story (idempotent per story). Returns the new
  * total of distinct decisions completed.
  */
-export function recordFeedResponse(feedUserId: string, storyId: string, response: string): number {
+export async function recordFeedResponse(feedUserId: string, storyId: string, response: string): Promise<number> {
   const db = getDb();
   const id = `fr-${randomUUID().slice(0, 12)}`;
-  db.prepare(
-    "INSERT OR IGNORE INTO feed_responses (id, feed_user_id, story_id, response, created_at) VALUES (?, ?, ?, ?, ?)",
-  ).run(id, feedUserId, storyId, response.trim(), Date.now());
+  (await db.prepare(
+        "INSERT OR IGNORE INTO feed_responses (id, feed_user_id, story_id, response, created_at) VALUES (?, ?, ?, ?, ?)",
+      ).run(id, feedUserId, storyId, response.trim(), Date.now()));
 
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const { n } = db.prepare("SELECT COUNT(*) AS n FROM feed_responses WHERE feed_user_id = ?").get(feedUserId) as any;
+  const { n } = (await db.prepare("SELECT COUNT(*) AS n FROM feed_responses WHERE feed_user_id = ?").get(feedUserId)) as any;
   const count = Number(n) || 0;
-  db.prepare("UPDATE feed_users SET decisions_completed = ? WHERE id = ?").run(count, feedUserId);
+  (await db.prepare("UPDATE feed_users SET decisions_completed = ? WHERE id = ?").run(count, feedUserId));
   return count;
 }
 
-function countVerifiedFeedDecisions(feedUserId: string): number {
-  const row = getDb().prepare(
-    `SELECT COUNT(DISTINCT fr.story_id) AS n
+async function countVerifiedFeedDecisions(feedUserId: string): Promise<number> {
+  const row = (await getDb().prepare(
+      `SELECT COUNT(DISTINCT fr.story_id) AS n
        FROM feed_responses fr
        JOIN feed_stories fs ON fs.id = fr.story_id
       WHERE fr.feed_user_id = ?`,
-  ).get(feedUserId) as { n: number };
+    ).get(feedUserId)) as { n: number };
   return Number(row.n) || 0;
 }
 
@@ -215,22 +215,22 @@ function isIssuedCredential(row: {
  * check and evidence write one decision: a caller cannot skip directly to a
  * later round or race two different rounds into an apparently complete run.
  */
-export function recordFeedSimulationDecisionEvidence(
+export async function recordFeedSimulationDecisionEvidence(
   feedUserId: string,
   stepIndex: number,
   choiceId: string,
-): boolean {
+): Promise<boolean> {
   const step = SIM[stepIndex];
   if (!Number.isInteger(stepIndex) || stepIndex < 0 || !step) return false;
   if (!step.options.some((option) => option.id === choiceId)) return false;
 
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const user = db.prepare(
-      `SELECT sim_completed, certificate_id, sim_completed_at, certificate_evidence_version
+    const user = (await db.prepare(
+          `SELECT sim_completed, certificate_id, sim_completed_at, certificate_evidence_version
          FROM feed_users WHERE id = ?`,
-    ).get(feedUserId) as {
+        ).get(feedUserId)) as {
       sim_completed: number;
       certificate_id: string | null;
       sim_completed_at: number | null;
@@ -238,18 +238,18 @@ export function recordFeedSimulationDecisionEvidence(
     } | undefined;
     if (!user) throw new FeedEvidenceError("visitor_missing");
     if (isIssuedCredential(user)) {
-      db.exec("COMMIT");
+      (await db.exec("COMMIT"));
       return true;
     }
-    if (countVerifiedFeedDecisions(feedUserId) < FEED_DECISIONS_TO_UNLOCK) {
+    if ((await countVerifiedFeedDecisions(feedUserId)) < FEED_DECISIONS_TO_UNLOCK) {
       throw new FeedEvidenceError("feed_decisions_incomplete");
     }
 
-    const recorded = db.prepare(
-      `SELECT step_index
+    const recorded = (await db.prepare(
+          `SELECT step_index
          FROM feed_simulation_responses
         WHERE feed_user_id = ? AND simulation_key = ? AND evidence_version = ?`,
-    ).all(feedUserId, FEED_SIMULATION_KEY, FEED_SIMULATION_EVIDENCE_VERSION) as { step_index: number }[];
+        ).all(feedUserId, FEED_SIMULATION_KEY, FEED_SIMULATION_EVIDENCE_VERSION)) as { step_index: number }[];
     const recordedSteps = new Set(recorded.map((row) => Number(row.step_index)));
     for (let prior = 0; prior < stepIndex; prior += 1) {
       if (!recordedSteps.has(prior)) throw new FeedEvidenceError("simulation_out_of_sequence");
@@ -257,30 +257,30 @@ export function recordFeedSimulationDecisionEvidence(
 
     // Replaying or changing an earlier round starts a new coherent suffix.
     // Later choices from an abandoned partial run must not satisfy issuance.
-    db.prepare(
-      `DELETE FROM feed_simulation_responses
+    (await db.prepare(
+            `DELETE FROM feed_simulation_responses
         WHERE feed_user_id = ? AND simulation_key = ? AND evidence_version = ?
           AND step_index > ?`,
-    ).run(feedUserId, FEED_SIMULATION_KEY, FEED_SIMULATION_EVIDENCE_VERSION, stepIndex);
+          ).run(feedUserId, FEED_SIMULATION_KEY, FEED_SIMULATION_EVIDENCE_VERSION, stepIndex));
 
-    db.prepare(
-      `INSERT INTO feed_simulation_responses
+    (await db.prepare(
+            `INSERT INTO feed_simulation_responses
         (feed_user_id, simulation_key, evidence_version, step_index, choice_id, recorded_at)
        VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(feed_user_id, simulation_key, evidence_version, step_index)
        DO UPDATE SET choice_id = excluded.choice_id, recorded_at = excluded.recorded_at`,
-    ).run(
-      feedUserId,
-      FEED_SIMULATION_KEY,
-      FEED_SIMULATION_EVIDENCE_VERSION,
-      stepIndex,
-      choiceId,
-      Date.now(),
-    );
-    db.exec("COMMIT");
+          ).run(
+            feedUserId,
+            FEED_SIMULATION_KEY,
+            FEED_SIMULATION_EVIDENCE_VERSION,
+            stepIndex,
+            choiceId,
+            Date.now(),
+          ));
+    (await db.exec("COMMIT"));
     return true;
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     if (error instanceof FeedEvidenceError) return false;
     throw error;
   }
@@ -296,14 +296,14 @@ export interface FeedCertificateIssuance {
  * issued credentials are returned unchanged; certificate identity and date
  * are additionally protected by a database trigger created during migration.
  */
-export function issueFeedCertificate(feedUserId: string): FeedCertificateIssuance | null {
+export async function issueFeedCertificate(feedUserId: string): Promise<FeedCertificateIssuance | null> {
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const user = db.prepare(
-      `SELECT sim_completed, certificate_id, sim_completed_at, certificate_evidence_version
+    const user = (await db.prepare(
+          `SELECT sim_completed, certificate_id, sim_completed_at, certificate_evidence_version
          FROM feed_users WHERE id = ?`,
-    ).get(feedUserId) as {
+        ).get(feedUserId)) as {
       sim_completed: number;
       certificate_id: string | null;
       sim_completed_at: number | null;
@@ -311,19 +311,19 @@ export function issueFeedCertificate(feedUserId: string): FeedCertificateIssuanc
     } | undefined;
     if (!user) throw new FeedEvidenceError("visitor_missing");
     if (isIssuedCredential(user)) {
-      db.exec("COMMIT");
+      (await db.exec("COMMIT"));
       return { certificateId: user.certificate_id as string, completedAt: Number(user.sim_completed_at) };
     }
-    if (countVerifiedFeedDecisions(feedUserId) < FEED_DECISIONS_TO_UNLOCK) {
+    if ((await countVerifiedFeedDecisions(feedUserId)) < FEED_DECISIONS_TO_UNLOCK) {
       throw new FeedEvidenceError("feed_decisions_incomplete");
     }
 
-    const evidence = db.prepare(
-      `SELECT step_index, choice_id
+    const evidence = (await db.prepare(
+          `SELECT step_index, choice_id
          FROM feed_simulation_responses
         WHERE feed_user_id = ? AND simulation_key = ? AND evidence_version = ?
         ORDER BY step_index`,
-    ).all(feedUserId, FEED_SIMULATION_KEY, FEED_SIMULATION_EVIDENCE_VERSION) as {
+        ).all(feedUserId, FEED_SIMULATION_KEY, FEED_SIMULATION_EVIDENCE_VERSION)) as {
       step_index: number;
       choice_id: string;
     }[];
@@ -338,26 +338,26 @@ export function issueFeedCertificate(feedUserId: string): FeedCertificateIssuanc
 
     const certificateId = user.certificate_id ?? randomUUID();
     const completedAt = Number(user.sim_completed_at) > 0 ? Number(user.sim_completed_at) : Date.now();
-    const updated = db.prepare(
-      `UPDATE feed_users
+    const updated = (await db.prepare(
+          `UPDATE feed_users
           SET sim_completed = 1,
               certificate_id = COALESCE(certificate_id, ?),
               sim_completed_at = COALESCE(sim_completed_at, ?),
               certificate_evidence_version = ?
         WHERE id = ?`,
-    ).run(certificateId, completedAt, FEED_SIMULATION_EVIDENCE_VERSION, feedUserId);
+        ).run(certificateId, completedAt, FEED_SIMULATION_EVIDENCE_VERSION, feedUserId));
     if (updated.changes !== 1) throw new FeedEvidenceError("visitor_changed");
 
-    const issued = db.prepare(
-      "SELECT certificate_id, sim_completed_at FROM feed_users WHERE id = ?",
-    ).get(feedUserId) as { certificate_id: string | null; sim_completed_at: number | null } | undefined;
+    const issued = (await db.prepare(
+          "SELECT certificate_id, sim_completed_at FROM feed_users WHERE id = ?",
+        ).get(feedUserId)) as { certificate_id: string | null; sim_completed_at: number | null } | undefined;
     if (!issued?.certificate_id || !Number.isSafeInteger(Number(issued.sim_completed_at)) || Number(issued.sim_completed_at) <= 0) {
       throw new Error("Feed certificate issuance did not persist its immutable metadata.");
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
     return { certificateId: issued.certificate_id, completedAt: Number(issued.sim_completed_at) };
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     if (error instanceof FeedEvidenceError) return null;
     throw error;
   }

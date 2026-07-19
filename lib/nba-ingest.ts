@@ -155,10 +155,10 @@ function parseCsv(text: string): Record<string, string>[] {
  * neither source has anything — a genuine setup problem, not a
  * transient failure.
  */
-export function resolveCuratedPlayers(csvPath: string = DEFAULT_CSV): CuratedPlayer[] {
+export async function resolveCuratedPlayers(csvPath: string = DEFAULT_CSV): Promise<CuratedPlayer[]> {
   try {
     const db = getDb();
-    const rows = db.prepare("SELECT slug, name FROM nba_players ORDER BY slug").all() as {
+    const rows = (await db.prepare("SELECT slug, name FROM nba_players ORDER BY slug").all()) as {
       slug: string;
       name: string;
     }[];
@@ -255,7 +255,7 @@ export async function ingestSeason(season: string, options: IngestOptions = {}):
 
   let players: CuratedPlayer[];
   try {
-    players = options.players ?? resolveCuratedPlayers(options.csvPath);
+    players = options.players ?? (await resolveCuratedPlayers(options.csvPath));
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
     return { season, matched: 0, updated: 0, skipped: 0, errors };
@@ -312,7 +312,7 @@ export async function ingestSeason(season: string, options: IngestOptions = {}):
   try {
     const db = getDb();
     const stmt = db.prepare(UPSERT_SQL);
-    for (const row of rows) stmt.run(...row);
+    for (const row of rows) (await stmt.run(...row));
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
     return { season, matched, updated: 0, skipped, errors };
@@ -329,7 +329,7 @@ export async function ingestSeasons(seasons: string[], options: IngestOptions = 
   let players = options.players;
   if (!players) {
     try {
-      players = resolveCuratedPlayers(options.csvPath);
+      players = (await resolveCuratedPlayers(options.csvPath));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return seasons.map((season) => ({ season, matched: 0, updated: 0, skipped: 0, errors: [msg] }));

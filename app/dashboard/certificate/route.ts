@@ -19,14 +19,14 @@ export async function GET(request: Request): Promise<Response> {
   }
   const url = new URL(request.url);
   const track = url.searchParams.get("track") === CERT_TRACK_201 ? CERT_TRACK_201 : CERT_TRACK;
-  if (!hasCompletedAllModules(me.id, track)) {
+  if (!(await hasCompletedAllModules(me.id, track))) {
     return new Response(`Finish all four Track ${track} modules to earn your certificate.`, {
       status: 403,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
 
-  const cert = issueCertificate(me.id, track);
+  const cert = (await issueCertificate(me.id, track));
   const dateLabel = new Date(cert.issuedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
   const html = buildCertificateHtml({ name: me.name, dateLabel, certId: cert.id, trackTitle: certTrackTitle(track) });
 

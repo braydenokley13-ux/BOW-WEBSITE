@@ -36,13 +36,13 @@ const BLOB_PREFIX = "ledger/";
  * project has no migration runner — CREATE IF NOT EXISTS on first touch
  * is the pattern that works on both fresh and existing files.
  */
-function ensureTable(): void {
-  getDb().exec(`CREATE TABLE IF NOT EXISTS ledger_snapshots (
+async function ensureTable(): Promise<void> {
+  (await getDb().exec(`CREATE TABLE IF NOT EXISTS ledger_snapshots (
     day TEXT PRIMARY KEY,
     taken_at INTEGER NOT NULL,
     season TEXT NOT NULL DEFAULT '',
     payload TEXT NOT NULL
-  )`);
+  )`));
 }
 
 function utcDay(ms: number): string {
@@ -59,26 +59,27 @@ function rowToSnapshot(r: any): LedgerSnapshot | null {
 }
 
 /** All stored snapshots, oldest first (the order eventsFromHistory wants). */
-function readHistory(): LedgerSnapshot[] {
-  ensureTable();
-  const rows = getDb().prepare("SELECT payload FROM ledger_snapshots ORDER BY taken_at ASC").all() as any[];
+async function readHistory(): Promise<LedgerSnapshot[]> {
+  (await ensureTable());
+  const rows = (await getDb().prepare("SELECT payload FROM ledger_snapshots ORDER BY taken_at ASC").all()) as any[];
   return rows.map(rowToSnapshot).filter((s): s is LedgerSnapshot => s !== null);
 }
 
-function insertSnapshot(snapshot: LedgerSnapshot): void {
-  ensureTable();
+async function insertSnapshot(snapshot: LedgerSnapshot): Promise<void> {
+  (await ensureTable());
   const db = getDb();
-  db.prepare("INSERT OR REPLACE INTO ledger_snapshots (day, taken_at, season, payload) VALUES (?, ?, ?, ?)").run(
-    utcDay(snapshot.takenAt),
-    snapshot.takenAt,
-    snapshot.season,
-    JSON.stringify(snapshot),
-  );
-  db.prepare(
-    `DELETE FROM ledger_snapshots WHERE day NOT IN (
+  (await db.prepare(`INSERT INTO ledger_snapshots (day, taken_at, season, payload) VALUES (?, ?, ?, ?)
+    ON CONFLICT (day) DO UPDATE SET taken_at = excluded.taken_at, season = excluded.season, payload = excluded.payload`).run(
+        utcDay(snapshot.takenAt),
+        snapshot.takenAt,
+        snapshot.season,
+        JSON.stringify(snapshot),
+      ));
+  (await db.prepare(
+        `DELETE FROM ledger_snapshots WHERE day NOT IN (
        SELECT day FROM ledger_snapshots ORDER BY taken_at DESC LIMIT ?
      )`,
-  ).run(MAX_SNAPSHOTS);
+      ).run(MAX_SNAPSHOTS));
 }
 
 /* ---------------- the Blob mirror ---------------- */
@@ -96,13 +97,13 @@ async function mirrorSnapshot(snapshot: LedgerSnapshot): Promise<void> {
 /** Cold start with an empty table → pull the history back from the mirror. */
 async function rehydrateFromMirror(): Promise<void> {
   if (!blobMirrorEnabled()) return;
-  ensureTable();
-  const count = getDb().prepare("SELECT COUNT(*) AS n FROM ledger_snapshots").get() as any;
+  (await ensureTable());
+  const count = (await getDb().prepare("SELECT COUNT(*) AS n FROM ledger_snapshots").get()) as any;
   if (Number(count?.n) > 0) return;
   const entries = await blobList(BLOB_PREFIX);
   for (const entry of entries.slice(-MAX_SNAPSHOTS)) {
     const snapshot = await blobGetJson<LedgerSnapshot>(entry.url);
-    if (snapshot?.players && snapshot.takenAt) insertSnapshot(snapshot);
+    if (snapshot?.players && snapshot.takenAt) (await insertSnapshot(snapshot));
   }
 }
 
@@ -112,21 +113,21 @@ async function rehydrateFromMirror(): Promise<void> {
 export async function recordDailySnapshot(opts: { force?: boolean } = {}): Promise<{ snapshot: LedgerSnapshot; events: LedgerEvent[] } | null> {
   await rehydrateFromMirror();
   const today = utcDay(Date.now());
-  ensureTable();
-  const existing = getDb().prepare("SELECT day FROM ledger_snapshots WHERE day = ?").get(today) as any;
+  (await ensureTable());
+  const existing = (await getDb().prepare("SELECT day FROM ledger_snapshots WHERE day = ?").get(today)) as any;
   if (existing && !opts.force) return null;
 
-  const players = getAnalyticsPlayers();
+  const players = (await getAnalyticsPlayers());
   if (players.length === 0) return null; // never freeze an unseeded database
   const snapshot = buildLedgerSnapshot(
-    { players, histories: getAllPlayerSeasonHistories(), assumptions: DEFAULT_ASSUMPTIONS },
+    { players, histories: (await getAllPlayerSeasonHistories()), assumptions: DEFAULT_ASSUMPTIONS },
     Date.now(),
     players[0].season,
   );
-  insertSnapshot(snapshot);
+  (await insertSnapshot(snapshot));
   await mirrorSnapshot(snapshot);
 
-  const history = readHistory();
+  const history = (await readHistory());
   const events = eventsFromHistory(history);
   return { snapshot, events: events.filter((e) => e.at === snapshot.takenAt) };
 }
@@ -138,7 +139,7 @@ export async function recordDailySnapshot(opts: { force?: boolean } = {}): Promi
  */
 export async function getLedgerEvents(): Promise<LedgerEvent[]> {
   await recordDailySnapshot();
-  return eventsFromHistory(readHistory());
+  return eventsFromHistory((await readHistory()));
 }
 
 /**
@@ -147,14 +148,14 @@ export async function getLedgerEvents(): Promise<LedgerEvent[]> {
  * sync read layers (the weekly challenge) and can tolerate seeing the
  * ledger as of the last page-turn.
  */
-export function getLedgerEventsSync(): LedgerEvent[] {
-  return eventsFromHistory(readHistory());
+export async function getLedgerEventsSync(): Promise<LedgerEvent[]> {
+  return eventsFromHistory((await readHistory()));
 }
 
 /** How many days of history the ledger currently holds. */
-export function getLedgerDepth(): number {
-  ensureTable();
-  const row = getDb().prepare("SELECT COUNT(*) AS n FROM ledger_snapshots").get() as any;
+export async function getLedgerDepth(): Promise<number> {
+  (await ensureTable());
+  const row = (await getDb().prepare("SELECT COUNT(*) AS n FROM ledger_snapshots").get()) as any;
   return Number(row?.n) || 0;
 }
 

@@ -78,11 +78,11 @@ export interface PublicProfile {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** Quiz MC correct/answered across the student's completed modules (both tracks). */
-function quizScore(studentId: string): { correct: number; answered: number } {
+async function quizScore(studentId: string): Promise<{ correct: number; answered: number }> {
   let correct = 0;
   let answered = 0;
   for (const track of [TRACK_101, TRACK_201]) {
-    for (const s of getQuizModuleSections(studentId, track)) {
+    for (const s of (await getQuizModuleSections(studentId, track))) {
       if (!s.unlocked) continue;
       correct += s.mcCorrect;
       answered += s.mcAnswered;
@@ -92,13 +92,13 @@ function quizScore(studentId: string): { correct: number; answered: number } {
 }
 
 /** The full private profile for the signed-in student. */
-export function getProfileData(studentId: string): ProfileData | null {
-  const u = getDb().prepare("SELECT id, name, first, created_at FROM users WHERE id = ?").get(studentId) as any;
+export async function getProfileData(studentId: string): Promise<ProfileData | null> {
+  const u = (await getDb().prepare("SELECT id, name, first, created_at FROM users WHERE id = ?").get(studentId)) as any;
   if (!u) return null;
 
-  const score = getStudentScore(studentId, 0);
-  const mods = getSelfModules();
-  const prog = getSelfProgressMap(studentId);
+  const score = (await getStudentScore(studentId, 0));
+  const mods = (await getSelfModules());
+  const prog = (await getSelfProgressMap(studentId));
   const modules: ProfileModule[] = mods.map((m) => {
     const p = prog[m.id];
     return { ordinal: m.ordinal, title: m.title, completed: !!p?.completed, completedAt: p?.completedAt ?? null };
@@ -109,28 +109,28 @@ export function getProfileData(studentId: string): ProfileData | null {
     .filter((r) => r.reflection.length > 0)
     .map((r) => ({ title: r.title, excerpt: r.reflection.length > 100 ? `${r.reflection.slice(0, 100)}…` : r.reflection }));
 
-  const stats = computeStats(studentId, 0);
-  const qs = quizScore(studentId);
-  const cert = getCertificate(studentId, CERT_TRACK);
+  const stats = (await computeStats(studentId, 0));
+  const qs = (await quizScore(studentId));
+  const cert = (await getCertificate(studentId, CERT_TRACK));
 
   // Track 201 modules + certificate (Feature 1).
-  const mods201 = getSelfModules(TRACK_201);
+  const mods201 = (await getSelfModules(TRACK_201));
   const modules201: ProfileModule[] = mods201.map((m) => {
     const p = prog[m.id];
     return { ordinal: m.ordinal, title: m.title, completed: !!p?.completed, completedAt: p?.completedAt ?? null };
   });
   const modules201Completed = modules201.filter((m) => m.completed).length;
-  const cert201 = getCertificate(studentId, CERT_TRACK_201);
-  const sharing = getDb()
-    .prepare(
-      `SELECT public_slug
+  const cert201 = (await getCertificate(studentId, CERT_TRACK_201));
+  const sharing = (await getDb()
+      .prepare(
+        `SELECT public_slug
        FROM profile_sharing_consents
        WHERE student_user_id = ? AND revoked_at IS NULL
          AND guardian_verified_at IS NOT NULL AND expires_at > ?
        ORDER BY granted_at DESC
        LIMIT 1`,
-    )
-    .get(studentId, Date.now()) as { public_slug: string } | undefined;
+      )
+      .get(studentId, Date.now())) as { public_slug: string } | undefined;
 
   return {
     studentId: u.id,
@@ -184,10 +184,10 @@ function minimizedStudentName(first: string, fullName: string): string {
  * Resolve a guardian-approved, revocable public credential by high-entropy
  * sharing slug. Internal user ids are never accepted as public URLs.
  */
-export function getPublicProfileRecord(publicSlug: string): PublicProfileRecord | null {
-  const u = getDb()
-    .prepare(
-      `SELECT u.id, u.name, u.first, c.public_slug
+export async function getPublicProfileRecord(publicSlug: string): Promise<PublicProfileRecord | null> {
+  const u = (await getDb()
+      .prepare(
+        `SELECT u.id, u.name, u.first, c.public_slug
        FROM profile_sharing_consents c
        JOIN users u ON u.id = c.student_user_id
        JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
@@ -203,17 +203,17 @@ export function getPublicProfileRecord(publicSlug: string): PublicProfileRecord 
            WHERE e.user_id = u.id AND e.enroll = 'active'
          )
        LIMIT 1`,
-    )
-    .get(publicSlug, Date.now()) as any;
+      )
+      .get(publicSlug, Date.now())) as any;
   if (!u) return null;
 
   const studentId = String(u.id);
 
-  const score = getStudentScore(studentId, 0);
+  const score = (await getStudentScore(studentId, 0));
   if (!score) return null;
-  const prog = getSelfProgressMap(studentId);
-  const mods101 = getSelfModules(TRACK_101);
-  const mods201 = getSelfModules(TRACK_201);
+  const prog = (await getSelfProgressMap(studentId));
+  const mods101 = (await getSelfModules(TRACK_101));
+  const mods201 = (await getSelfModules(TRACK_201));
   const completedIn = (ms: { id: string }[]) => ms.filter((m) => prog[m.id]?.completed).length;
 
   return {
@@ -224,16 +224,16 @@ export function getPublicProfileRecord(publicSlug: string): PublicProfileRecord 
       rank: score.rank,
       modulesCompleted: completedIn(mods101),
       totalModules: mods101.length,
-      certificateEarned: !!getCertificate(studentId, CERT_TRACK),
+      certificateEarned: !!(await getCertificate(studentId, CERT_TRACK)),
       modules201Completed: completedIn(mods201),
       total201Modules: mods201.length,
-      track201CertificateEarned: !!getCertificate(studentId, CERT_TRACK_201),
+      track201CertificateEarned: !!(await getCertificate(studentId, CERT_TRACK_201)),
     },
   };
 }
 
-export function getPublicProfile(publicSlug: string): PublicProfile | null {
-  return getPublicProfileRecord(publicSlug)?.profile ?? null;
+export async function getPublicProfile(publicSlug: string): Promise<PublicProfile | null> {
+  return (await getPublicProfileRecord(publicSlug))?.profile ?? null;
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */

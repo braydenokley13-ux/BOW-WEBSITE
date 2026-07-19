@@ -41,12 +41,12 @@ function splitSessions<T extends { scheduledAt: number }>(sessions: T[]): { upco
   };
 }
 
-export default function TrainingPage() {
-  const modules = listTrainingModules();
-  const sessions = listTrainingSessions();
+export default async function TrainingPage() {
+  const modules = (await listTrainingModules());
+  const sessions = (await listTrainingSessions());
   const { upcoming, past } = splitSessions(sessions);
 
-  const instructorsInPipeline = listInstructors().filter((i) =>
+  const instructorsInPipeline = (await listInstructors()).filter((i) =>
     ["onboarding", "training", "practice_evaluation"].includes(i.stage),
   );
   const byTraining = new Map<TrainingStatus, typeof instructorsInPipeline>();

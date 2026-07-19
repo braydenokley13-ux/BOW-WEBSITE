@@ -92,51 +92,51 @@ export interface StudentScore {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** Raw activity counts for a student, optionally scoped to events at/after `sinceTs`. */
-export function computeStats(studentId: string, sinceTs = 0): ScoreStats {
+export async function computeStats(studentId: string, sinceTs = 0): Promise<ScoreStats> {
   const db = getDb();
-  const one = (sql: string): number => Number((db.prepare(sql).get(studentId, sinceTs) as any)?.n) || 0;
-  const exists = (sql: string): boolean => !!(db.prepare(sql).get(studentId, sinceTs) as any);
+  const one = async (sql: string): Promise<number> => Number(((await db.prepare(sql).get(studentId, sinceTs)) as any)?.n) || 0;
+  const exists = async (sql: string): Promise<boolean> => !!((await db.prepare(sql).get(studentId, sinceTs)) as any);
 
   return {
-    modulesCompleted: one(
-      "SELECT COUNT(*) AS n FROM self_progress WHERE student_id = ? AND completed = 1 AND COALESCE(completed_at, 0) >= ?",
-    ),
-    mcCorrect: one(
-      "SELECT COUNT(*) AS n FROM quiz_responses WHERE student_id = ? AND is_correct = 1 AND COALESCE(submitted_at, 0) >= ?",
-    ),
-    scenariosSubmitted: one(
-      "SELECT COUNT(*) AS n FROM scenario_responses WHERE student_id = ? AND COALESCE(submitted_at, 0) >= ?",
-    ),
-    reflectionsSubmitted: one(
-      "SELECT COUNT(*) AS n FROM self_progress WHERE student_id = ? AND TRIM(reflection) != '' AND COALESCE(updated_at, 0) >= ?",
-    ),
-    certificateEarned: exists(
-      "SELECT 1 FROM certificates WHERE student_id = ? AND COALESCE(issued_at, 0) >= ? LIMIT 1",
-    ),
-    certificatesEarned: one(
-      "SELECT COUNT(*) AS n FROM certificates WHERE student_id = ? AND COALESCE(issued_at, 0) >= ?",
-    ),
-    simulationCompleted: exists(
-      "SELECT 1 FROM simulations WHERE student_id = ? AND completed = 1 AND COALESCE(sim_type, 'westbrook') = 'westbrook' AND COALESCE(created_at, 0) >= ? LIMIT 1",
-    ),
-    eastfieldCompleted: exists(
-      "SELECT 1 FROM simulations WHERE student_id = ? AND completed = 1 AND sim_type = 'eastfield' AND COALESCE(created_at, 0) >= ? LIMIT 1",
-    ),
-    discussionPosts: one(
-      "SELECT COUNT(*) AS n FROM discussion_posts WHERE user_id = ? AND COALESCE(created_at, 0) >= ?",
-    ),
-    weeklyCompletions: one(
-      "SELECT COUNT(*) AS n FROM weekly_completions WHERE student_id = ? AND COALESCE(submitted_at, 0) >= ?",
-    ),
-    dailyCorrect: one(
-      "SELECT COUNT(*) AS n FROM daily_responses WHERE student_id = ? AND is_correct = 1 AND COALESCE(responded_at, 0) >= ?",
-    ),
-    dailyIncorrect: one(
-      "SELECT COUNT(*) AS n FROM daily_responses WHERE student_id = ? AND is_correct = 0 AND COALESCE(responded_at, 0) >= ?",
-    ),
+    modulesCompleted: (await one(
+            "SELECT COUNT(*) AS n FROM self_progress WHERE student_id = ? AND completed = 1 AND COALESCE(completed_at, 0) >= ?",
+          )),
+    mcCorrect: (await one(
+          "SELECT COUNT(*) AS n FROM quiz_responses WHERE student_id = ? AND is_correct = 1 AND COALESCE(submitted_at, 0) >= ?",
+        )),
+    scenariosSubmitted: (await one(
+          "SELECT COUNT(*) AS n FROM scenario_responses WHERE student_id = ? AND COALESCE(submitted_at, 0) >= ?",
+        )),
+    reflectionsSubmitted: (await one(
+          "SELECT COUNT(*) AS n FROM self_progress WHERE student_id = ? AND TRIM(reflection) != '' AND COALESCE(updated_at, 0) >= ?",
+        )),
+    certificateEarned: (await exists(
+          "SELECT 1 FROM certificates WHERE student_id = ? AND COALESCE(issued_at, 0) >= ? LIMIT 1",
+        )),
+    certificatesEarned: (await one(
+          "SELECT COUNT(*) AS n FROM certificates WHERE student_id = ? AND COALESCE(issued_at, 0) >= ?",
+        )),
+    simulationCompleted: (await exists(
+          "SELECT 1 FROM simulations WHERE student_id = ? AND completed = 1 AND COALESCE(sim_type, 'westbrook') = 'westbrook' AND COALESCE(created_at, 0) >= ? LIMIT 1",
+        )),
+    eastfieldCompleted: (await exists(
+          "SELECT 1 FROM simulations WHERE student_id = ? AND completed = 1 AND sim_type = 'eastfield' AND COALESCE(created_at, 0) >= ? LIMIT 1",
+        )),
+    discussionPosts: (await one(
+          "SELECT COUNT(*) AS n FROM discussion_posts WHERE user_id = ? AND COALESCE(created_at, 0) >= ?",
+        )),
+    weeklyCompletions: (await one(
+          "SELECT COUNT(*) AS n FROM weekly_completions WHERE student_id = ? AND COALESCE(submitted_at, 0) >= ?",
+        )),
+    dailyCorrect: (await one(
+          "SELECT COUNT(*) AS n FROM daily_responses WHERE student_id = ? AND is_correct = 1 AND COALESCE(responded_at, 0) >= ?",
+        )),
+    dailyIncorrect: (await one(
+          "SELECT COUNT(*) AS n FROM daily_responses WHERE student_id = ? AND is_correct = 0 AND COALESCE(responded_at, 0) >= ?",
+        )),
     // Streak is a live, current-state value (not windowed by sinceTs).
     currentStreak: Number(
-      (db.prepare("SELECT current_streak FROM users WHERE id = ?").get(studentId) as any)?.current_streak,
+      ((await db.prepare("SELECT current_streak FROM users WHERE id = ?").get(studentId)) as any)?.current_streak,
     ) || 0,
   };
 }
@@ -184,8 +184,8 @@ export const RANK_LADDER: BowRank[] = [
 ];
 
 /** The student's current rank, computed from all-time progress. */
-export function rankForStudent(studentId: string): BowRank {
-  const s = computeStats(studentId, 0);
+export async function rankForStudent(studentId: string): Promise<BowRank> {
+  const s = (await computeStats(studentId, 0));
   return rankFor(s.modulesCompleted, s.certificateEarned);
 }
 
@@ -196,16 +196,16 @@ export function nextRankName(key: BowRank["key"]): string | null {
 }
 
 /** A student's primary cohort (active enrollment, preferring the self-paced cohort). */
-export function getStudentCohort(studentId: string): { id: string; name: string } | null {
-  const row = getDb()
-    .prepare(
-      `SELECT e.cohort_id AS id, c.name AS name
+export async function getStudentCohort(studentId: string): Promise<{ id: string; name: string } | null> {
+  const row = (await getDb()
+      .prepare(
+        `SELECT e.cohort_id AS id, c.name AS name
        FROM enrollments e JOIN cohorts c ON c.id = e.cohort_id
        WHERE e.user_id = ? AND e.enroll = 'active'
        ORDER BY (e.cohort_id = ?) DESC
        LIMIT 1`,
-    )
-    .get(studentId, SELF_PACED_COHORT_ID) as any;
+      )
+      .get(studentId, SELF_PACED_COHORT_ID)) as any;
   return row ? { id: row.id, name: row.name } : null;
 }
 
@@ -222,15 +222,15 @@ export function publicNameFor(name: string, first: string): string {
  * while the rank ladder always uses all-time module + certificate progress so a
  * rank is a durable achievement, not a weekly figure.
  */
-export function getStudentScore(studentId: string, sinceTs = 0): StudentScore | null {
-  const u = getDb()
-    .prepare("SELECT id, name, first, last_active_at, current_streak, longest_streak FROM users WHERE id = ?")
-    .get(studentId) as any;
+export async function getStudentScore(studentId: string, sinceTs = 0): Promise<StudentScore | null> {
+  const u = (await getDb()
+      .prepare("SELECT id, name, first, last_active_at, current_streak, longest_streak FROM users WHERE id = ?")
+      .get(studentId)) as any;
   if (!u) return null;
 
-  const windowStats = computeStats(studentId, sinceTs);
-  const allTime = sinceTs === 0 ? windowStats : computeStats(studentId, 0);
-  const cohort = getStudentCohort(studentId);
+  const windowStats = (await computeStats(studentId, sinceTs));
+  const allTime = sinceTs === 0 ? windowStats : (await computeStats(studentId, 0));
+  const cohort = (await getStudentCohort(studentId));
 
   return {
     studentId: u.id,
@@ -251,17 +251,17 @@ export function getStudentScore(studentId: string, sinceTs = 0): StudentScore | 
 }
 
 /** Active student-role users eligible for the leaderboard. */
-function eligibleStudentIds(orgId: string | null): string[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT DISTINCT u.id
+async function eligibleStudentIds(orgId: string | null): Promise<string[]> {
+  const rows = (await getDb()
+      .prepare(
+        `SELECT DISTINCT u.id
          FROM users u
          JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
          JOIN enrollments e ON e.user_id = u.id
         WHERE u.role = 'student' AND u.status = 'active' AND e.enroll = 'active'
           AND (? IS NULL OR u.org_id = ?)`,
-    )
-    .all(orgId, orgId) as any[];
+      )
+      .all(orgId, orgId)) as any[];
   return rows.map((r) => r.id as string);
 }
 
@@ -275,9 +275,9 @@ export interface LeaderboardOptions {
 }
 
 /** The ranked leaderboard. Sorted by BOW Score (desc), then name. Positions assigned. */
-export function getLeaderboard({ sinceTs = 0, cohortId = null, orgId = null }: LeaderboardOptions = {}): StudentScore[] {
-  let scores = eligibleStudentIds(orgId)
-    .map((id) => getStudentScore(id, sinceTs))
+export async function getLeaderboard({ sinceTs = 0, cohortId = null, orgId = null }: LeaderboardOptions = {}): Promise<StudentScore[]> {
+  let scores = (await Promise.all((await eligibleStudentIds(orgId))
+      .map(async (id) => (await getStudentScore(id, sinceTs)))))
     .filter((s): s is StudentScore => s !== null);
   if (cohortId) scores = scores.filter((s) => s.cohortId === cohortId);
   scores.sort((a, b) => b.bowScore - a.bowScore || a.name.localeCompare(b.name));
@@ -297,17 +297,17 @@ export function rangeSince(range: LeaderboardRange): number {
 }
 
 /** Cohorts that currently have at least one eligible student (for the filter). */
-export function getLeaderboardCohorts(orgId: string | null = null): { id: string; name: string }[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT DISTINCT c.id AS id, c.name AS name
+export async function getLeaderboardCohorts(orgId: string | null = null): Promise<{ id: string; name: string }[]> {
+  const rows = (await getDb()
+      .prepare(
+        `SELECT DISTINCT c.id AS id, c.name AS name
        FROM cohorts c JOIN enrollments e ON e.cohort_id = c.id JOIN users u ON u.id = e.user_id
        JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
        WHERE u.role = 'student' AND u.status = 'active' AND e.enroll = 'active'
          AND (? IS NULL OR u.org_id = ?)
        ORDER BY c.name ASC`,
-    )
-    .all(orgId, orgId) as any[];
+      )
+      .all(orgId, orgId)) as any[];
   return rows.map((r) => ({ id: r.id, name: r.name }));
 }
 

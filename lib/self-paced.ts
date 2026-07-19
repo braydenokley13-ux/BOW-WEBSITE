@@ -40,10 +40,10 @@ import {
 /* ---------------- modules ---------------- */
 
 /** Self-paced modules for a track, ordered (DB first, falling back to the seed). */
-export function getSelfModules(track: string = TRACK_101): SelfModule[] {
-  const rows = getDb()
-    .prepare("SELECT * FROM self_modules WHERE COALESCE(track, '101') = ? ORDER BY ordinal ASC")
-    .all(track) as any[];
+export async function getSelfModules(track: string = TRACK_101): Promise<SelfModule[]> {
+  const rows = (await getDb()
+      .prepare("SELECT * FROM self_modules WHERE COALESCE(track, '101') = ? ORDER BY ordinal ASC")
+      .all(track)) as any[];
   if (rows.length === 0) {
     return [...selfModuleSeed].filter((m) => m.track === track).sort((a, b) => a.ordinal - b.ordinal);
   }
@@ -59,18 +59,18 @@ export function getSelfModules(track: string = TRACK_101): SelfModule[] {
 }
 
 /** Look up a single module's track from its id (seed first, then DB). */
-export function trackForModule(moduleId: string): string {
+export async function trackForModule(moduleId: string): Promise<string> {
   const seed = selfModuleSeed.find((m) => m.id === moduleId);
   if (seed) return seed.track;
-  const row = getDb().prepare("SELECT track FROM self_modules WHERE id = ?").get(moduleId) as any;
+  const row = (await getDb().prepare("SELECT track FROM self_modules WHERE id = ?").get(moduleId)) as any;
   return row?.track ?? TRACK_101;
 }
 
 /* ---------------- progress ---------------- */
 
 /** A student's per-module progress, keyed by module id. */
-export function getSelfProgressMap(studentId: string): Record<string, SelfModuleProgress> {
-  const rows = getDb().prepare("SELECT * FROM self_progress WHERE student_id = ?").all(studentId) as any[];
+export async function getSelfProgressMap(studentId: string): Promise<Record<string, SelfModuleProgress>> {
+  const rows = (await getDb().prepare("SELECT * FROM self_progress WHERE student_id = ?").all(studentId)) as any[];
   const map: Record<string, SelfModuleProgress> = {};
   for (const r of rows) {
     const reflection = r.reflection ?? "";
@@ -86,10 +86,10 @@ export function getSelfProgressMap(studentId: string): Record<string, SelfModule
 }
 
 /** True once the student has been issued a certificate for a track. */
-export function hasCertificate(studentId: string, track: string = TRACK_101): boolean {
-  const row = getDb()
-    .prepare("SELECT 1 FROM certificates WHERE student_id = ? AND track = ? LIMIT 1")
-    .get(studentId, track);
+export async function hasCertificate(studentId: string, track: string = TRACK_101): Promise<boolean> {
+  const row = (await getDb()
+      .prepare("SELECT 1 FROM certificates WHERE student_id = ? AND track = ? LIMIT 1")
+      .get(studentId, track));
   return !!row;
 }
 
@@ -105,12 +105,12 @@ export function hasCertificate(studentId: string, track: string = TRACK_101): bo
  * Track 101 certificate. Once earned, Module 201-1 opens and the same sequential
  * rule applies.
  */
-export function getSelfModuleViews(studentId: string, track: string = TRACK_101): SelfModuleView[] {
-  const mods = getSelfModules(track);
-  const prog = getSelfProgressMap(studentId);
+export async function getSelfModuleViews(studentId: string, track: string = TRACK_101): Promise<SelfModuleView[]> {
+  const mods = (await getSelfModules(track));
+  const prog = (await getSelfProgressMap(studentId));
   const views: SelfModuleView[] = [];
   // Track 201's gate is the Track 101 certificate.
-  const trackGateOpen = track === TRACK_201 ? hasCertificate(studentId, TRACK_101) : true;
+  const trackGateOpen = track === TRACK_201 ? (await hasCertificate(studentId, TRACK_101)) : true;
   let prevGateMet = false; // first module ignores this (it's first)
 
   mods.forEach((m, i) => {
@@ -152,22 +152,22 @@ export function getSelfModuleViews(studentId: string, track: string = TRACK_101)
 }
 
 /** True when a specific module is currently accessible to the student. */
-export function isSelfModuleUnlocked(studentId: string, moduleId: string): boolean {
-  const track = trackForModule(moduleId);
-  return getSelfModuleViews(studentId, track).find((v) => v.module.id === moduleId)?.unlocked ?? false;
+export async function isSelfModuleUnlocked(studentId: string, moduleId: string): Promise<boolean> {
+  const track = (await trackForModule(moduleId));
+  return (await getSelfModuleViews(studentId, track)).find((v) => v.module.id === moduleId)?.unlocked ?? false;
 }
 
 /** True once the student has completed every module in a track (certificate-eligible). */
-export function hasCompletedAllModules(studentId: string, track: string = TRACK_101): boolean {
-  const views = getSelfModuleViews(studentId, track);
+export async function hasCompletedAllModules(studentId: string, track: string = TRACK_101): Promise<boolean> {
+  const views = (await getSelfModuleViews(studentId, track));
   return views.length > 0 && views.every((v) => v.completed);
 }
 
 /* ---------------- daily feed (real users) ---------------- */
 
 /** Map of story id -> the student's saved decision response. */
-export function getStudentFeedResponses(studentId: string): Record<string, string> {
-  const rows = getDb().prepare("SELECT story_id, response FROM self_feed_responses WHERE student_id = ?").all(studentId) as any[];
+export async function getStudentFeedResponses(studentId: string): Promise<Record<string, string>> {
+  const rows = (await getDb().prepare("SELECT story_id, response FROM self_feed_responses WHERE student_id = ?").all(studentId)) as any[];
   const map: Record<string, string> = {};
   for (const r of rows) map[r.story_id] = r.response;
   return map;
@@ -176,8 +176,8 @@ export function getStudentFeedResponses(studentId: string): Record<string, strin
 /* ---------------- BOW Daily scenarios (Feature 2) ---------------- */
 
 /** The daily scenarios, ordered (DB first, falling back to the seed). */
-export function getDailyScenarios(): DailyScenario[] {
-  const rows = getDb().prepare("SELECT * FROM daily_scenarios ORDER BY ordinal ASC").all() as any[];
+export async function getDailyScenarios(): Promise<DailyScenario[]> {
+  const rows = (await getDb().prepare("SELECT * FROM daily_scenarios ORDER BY ordinal ASC").all()) as any[];
   if (rows.length === 0) return [...scenarioSeed].sort((a, b) => a.ordinal - b.ordinal);
   return rows.map((r) => ({
     id: r.id,
@@ -195,10 +195,10 @@ interface ScenarioAnswer {
 }
 
 /** Map of scenario id -> the student's saved response + timestamp. */
-function scenarioResponses(studentId: string): Record<string, ScenarioAnswer> {
-  const rows = getDb()
-    .prepare("SELECT scenario_id, response_text, submitted_at FROM scenario_responses WHERE student_id = ?")
-    .all(studentId) as any[];
+async function scenarioResponses(studentId: string): Promise<Record<string, ScenarioAnswer>> {
+  const rows = (await getDb()
+      .prepare("SELECT scenario_id, response_text, submitted_at FROM scenario_responses WHERE student_id = ?")
+      .all(studentId)) as any[];
   const map: Record<string, ScenarioAnswer> = {};
   for (const r of rows) map[r.scenario_id] = { response: r.response_text, submittedAt: Number(r.submitted_at) || 0 };
   return map;
@@ -237,14 +237,14 @@ function scenarioView(s: DailyScenario, answer: ScenarioAnswer | undefined): Dai
  * scenario, plus up to three anonymized 60-char excerpts from OTHER students.
  * Makes the platform feel alive even with a small early user base.
  */
-function scenarioCommunity(scenarioId: string, excludeStudentId: string): { totalResponses: number; othersExcerpts: string[] } {
+async function scenarioCommunity(scenarioId: string, excludeStudentId: string): Promise<{ totalResponses: number; othersExcerpts: string[] }> {
   const db = getDb();
-  const { n } = db.prepare("SELECT COUNT(*) AS n FROM scenario_responses WHERE scenario_id = ?").get(scenarioId) as any;
-  const rows = db
-    .prepare(
-      "SELECT response_text FROM scenario_responses WHERE scenario_id = ? AND student_id != ? ORDER BY submitted_at DESC LIMIT 3",
-    )
-    .all(scenarioId, excludeStudentId) as any[];
+  const { n } = (await db.prepare("SELECT COUNT(*) AS n FROM scenario_responses WHERE scenario_id = ?").get(scenarioId)) as any;
+  const rows = (await db
+      .prepare(
+        "SELECT response_text FROM scenario_responses WHERE scenario_id = ? AND student_id != ? ORDER BY submitted_at DESC LIMIT 3",
+      )
+      .all(scenarioId, excludeStudentId)) as any[];
   const othersExcerpts = rows
     .map((r) => {
       const t = String(r.response_text ?? "").trim().replace(/\s+/g, " ");
@@ -255,21 +255,21 @@ function scenarioCommunity(scenarioId: string, excludeStudentId: string): { tota
 }
 
 /** The id of this week's active scenario (rotates by week number). */
-export function activeScenarioId(): string {
-  const scenarios = getDailyScenarios();
+export async function activeScenarioId(): Promise<string> {
+  const scenarios = (await getDailyScenarios());
   if (scenarios.length === 0) return "";
   return scenarios[activeScenarioIndex(scenarios.length)].id;
 }
 
 /** The active (this week's) scenario for a student, with their answer if any. */
-export function getActiveScenario(studentId: string): DailyScenarioView | null {
-  const scenarios = getDailyScenarios();
+export async function getActiveScenario(studentId: string): Promise<DailyScenarioView | null> {
+  const scenarios = (await getDailyScenarios());
   if (scenarios.length === 0) return null;
   const active = scenarios[activeScenarioIndex(scenarios.length)];
-  const view = scenarioView(active, scenarioResponses(studentId)[active.id]);
+  const view = scenarioView(active, (await scenarioResponses(studentId))[active.id]);
   // Attach the "How others answered" community data once the student has submitted.
   if (view.answered) {
-    const community = scenarioCommunity(active.id, studentId);
+    const community = (await scenarioCommunity(active.id, studentId));
     view.totalResponses = community.totalResponses;
     view.othersExcerpts = community.othersExcerpts;
   }
@@ -282,11 +282,11 @@ export function getActiveScenario(studentId: string): DailyScenarioView | null {
  * first); scenarios they haven't submitted yet appear locked with only the
  * concept and difficulty visible (the prompt is hidden so it isn't spoiled).
  */
-export function getScenarioArchive(studentId: string): DailyScenarioView[] {
-  const scenarios = getDailyScenarios();
+export async function getScenarioArchive(studentId: string): Promise<DailyScenarioView[]> {
+  const scenarios = (await getDailyScenarios());
   if (scenarios.length === 0) return [];
   const activeId = scenarios[activeScenarioIndex(scenarios.length)].id;
-  const answers = scenarioResponses(studentId);
+  const answers = (await scenarioResponses(studentId));
   return scenarios
     .filter((s) => s.id !== activeId)
     .map((s): DailyScenarioView => {
@@ -314,11 +314,11 @@ export function getScenarioArchive(studentId: string): DailyScenarioView[] {
 }
 
 /** Previously answered scenarios (excluding this week's), newest first. */
-export function getScenarioHistory(studentId: string): DailyScenarioView[] {
-  const scenarios = getDailyScenarios();
+export async function getScenarioHistory(studentId: string): Promise<DailyScenarioView[]> {
+  const scenarios = (await getDailyScenarios());
   if (scenarios.length === 0) return [];
   const activeId = scenarios[activeScenarioIndex(scenarios.length)].id;
-  const answers = scenarioResponses(studentId);
+  const answers = (await scenarioResponses(studentId));
   return scenarios
     .filter((s) => s.id !== activeId && answers[s.id])
     .map((s) => scenarioView(s, answers[s.id]))
@@ -328,10 +328,10 @@ export function getScenarioHistory(studentId: string): DailyScenarioView[] {
 /* ---------------- Econ Quiz bank (Feature 3) ---------------- */
 
 /** Quiz questions for a track, ordered by module then id (DB first, seed fallback). */
-export function getQuizQuestions(track: string = TRACK_101): QuizQuestion[] {
-  const rows = getDb()
-    .prepare("SELECT * FROM quiz_questions WHERE COALESCE(track, '101') = ? ORDER BY module_unlock ASC, id ASC")
-    .all(track) as any[];
+export async function getQuizQuestions(track: string = TRACK_101): Promise<QuizQuestion[]> {
+  const rows = (await getDb()
+      .prepare("SELECT * FROM quiz_questions WHERE COALESCE(track, '101') = ? ORDER BY module_unlock ASC, id ASC")
+      .all(track)) as any[];
   if (rows.length === 0) return quizSeed.filter((q) => (q.track ?? TRACK_101) === track);
   return rows.map((r) => ({
     id: r.id,
@@ -356,10 +356,10 @@ interface QuizAnswer {
 }
 
 /** Map of question id -> the student's saved quiz response. */
-function quizResponses(studentId: string): Record<string, QuizAnswer> {
-  const rows = getDb()
-    .prepare("SELECT question_id, selected_choice, response_text, is_correct FROM quiz_responses WHERE student_id = ?")
-    .all(studentId) as any[];
+async function quizResponses(studentId: string): Promise<Record<string, QuizAnswer>> {
+  const rows = (await getDb()
+      .prepare("SELECT question_id, selected_choice, response_text, is_correct FROM quiz_responses WHERE student_id = ?")
+      .all(studentId)) as any[];
   const map: Record<string, QuizAnswer> = {};
   for (const r of rows) {
     map[r.question_id] = {
@@ -419,10 +419,10 @@ function quizQuestionView(q: QuizQuestion, ans: QuizAnswer | undefined): QuizQue
  * questions to the client, so the answer keys can't be peeked. Per-section
  * trackers cover the MC score and FR completion.
  */
-export function getQuizModuleSections(studentId: string, track: string = TRACK_101): QuizModuleSection[] {
-  const modules = getSelfModuleViews(studentId, track);
-  const questions = getQuizQuestions(track);
-  const answers = quizResponses(studentId);
+export async function getQuizModuleSections(studentId: string, track: string = TRACK_101): Promise<QuizModuleSection[]> {
+  const modules = (await getSelfModuleViews(studentId, track));
+  const questions = (await getQuizQuestions(track));
+  const answers = (await quizResponses(studentId));
 
   return modules.map((mv) => {
     const ordinal = mv.module.ordinal;
@@ -469,12 +469,12 @@ export function getQuizModuleSections(studentId: string, track: string = TRACK_1
 /* ---------------- notes ---------------- */
 
 /** The most recent instructor notes for a student (default last 3). */
-export function getStudentNotes(studentId: string, limit = 3): StudentNote[] {
-  const rows = getDb()
-    .prepare(
-      "SELECT n.*, u.name AS author_name FROM session_notes n LEFT JOIN users u ON u.id = n.author_id WHERE n.student_id = ? ORDER BY n.created_ts DESC LIMIT ?",
-    )
-    .all(studentId, limit) as any[];
+export async function getStudentNotes(studentId: string, limit = 3): Promise<StudentNote[]> {
+  const rows = (await getDb()
+      .prepare(
+        "SELECT n.*, u.name AS author_name FROM session_notes n LEFT JOIN users u ON u.id = n.author_id WHERE n.student_id = ? ORDER BY n.created_ts DESC LIMIT ?",
+      )
+      .all(studentId, limit)) as any[];
   return rows.map((r) => ({
     id: r.id,
     studentId: r.student_id,
@@ -489,10 +489,10 @@ export function getStudentNotes(studentId: string, limit = 3): StudentNote[] {
 /* ---------------- attendance ---------------- */
 
 /** Present/absent per session for a student, length {@link SELF_PACED_SESSIONS}. */
-export function getSelfAttendance(cohortId: string, studentId: string): boolean[] {
-  const rows = getDb()
-    .prepare("SELECT session_no, present FROM self_attendance WHERE cohort_id = ? AND student_id = ?")
-    .all(cohortId, studentId) as any[];
+export async function getSelfAttendance(cohortId: string, studentId: string): Promise<boolean[]> {
+  const rows = (await getDb()
+      .prepare("SELECT session_no, present FROM self_attendance WHERE cohort_id = ? AND student_id = ?")
+      .all(cohortId, studentId)) as any[];
   const arr = Array.from({ length: SELF_PACED_SESSIONS }, () => false);
   for (const r of rows) {
     const i = Number(r.session_no);
@@ -504,10 +504,10 @@ export function getSelfAttendance(cohortId: string, studentId: string): boolean[
 /* ---------------- roster (instructor) ---------------- */
 
 /** Is this user an active student in the self-paced cohort? */
-export function isEnrolledSelfPaced(userId: string): boolean {
-  const row = getDb()
-    .prepare("SELECT 1 FROM enrollments WHERE user_id = ? AND cohort_id = ? AND enroll = 'active'")
-    .get(userId, SELF_PACED_COHORT_ID);
+export async function isEnrolledSelfPaced(userId: string): Promise<boolean> {
+  const row = (await getDb()
+      .prepare("SELECT 1 FROM enrollments WHERE user_id = ? AND cohort_id = ? AND enroll = 'active'")
+      .get(userId, SELF_PACED_COHORT_ID));
   return !!row;
 }
 
@@ -521,10 +521,10 @@ export function isEnrolledSelfPaced(userId: string): boolean {
  * self-paced student's roster, reflections, and notes regardless of
  * assignment, even though they can no longer write to it.
  */
-export function isInstructorOfSelfPaced(userId: string): boolean {
-  const row = getDb()
-    .prepare("SELECT 1 FROM cohorts WHERE id = ? AND instructor_id = ?")
-    .get(SELF_PACED_COHORT_ID, userId);
+export async function isInstructorOfSelfPaced(userId: string): Promise<boolean> {
+  const row = (await getDb()
+      .prepare("SELECT 1 FROM cohorts WHERE id = ? AND instructor_id = ?")
+      .get(SELF_PACED_COHORT_ID, userId));
   return !!row;
 }
 
@@ -534,10 +534,10 @@ export function isInstructorOfSelfPaced(userId: string): boolean {
  * surface a link back to the cohort LMS shell (/app/student) instead of
  * stranding a dual-enrolled student on one side.
  */
-export function isEnrolledInCohortClass(userId: string): boolean {
-  const row = getDb()
-    .prepare("SELECT 1 FROM enrollments WHERE user_id = ? AND cohort_id != ? AND enroll = 'active'")
-    .get(userId, SELF_PACED_COHORT_ID);
+export async function isEnrolledInCohortClass(userId: string): Promise<boolean> {
+  const row = (await getDb()
+      .prepare("SELECT 1 FROM enrollments WHERE user_id = ? AND cohort_id != ? AND enroll = 'active'")
+      .get(userId, SELF_PACED_COHORT_ID));
   return !!row;
 }
 
@@ -559,42 +559,42 @@ function lastActiveLabel(ts: number | null): string {
 }
 
 /** The full instructor roster for a self-paced cohort. */
-export function getSelfRoster(cohortId: string): SelfRosterEntry[] {
-  const students = getDb()
-    .prepare(
-      "SELECT u.* FROM enrollments e JOIN users u ON u.id = e.user_id WHERE e.cohort_id = ? AND e.enroll = 'active' AND u.role = 'student' ORDER BY u.name ASC",
-    )
-    .all(cohortId) as any[];
+export async function getSelfRoster(cohortId: string): Promise<SelfRosterEntry[]> {
+  const students = (await getDb()
+      .prepare(
+        "SELECT u.* FROM enrollments e JOIN users u ON u.id = e.user_id WHERE e.cohort_id = ? AND e.enroll = 'active' AND u.role = 'student' ORDER BY u.name ASC",
+      )
+      .all(cohortId)) as any[];
 
-  return students.map((u) => {
-    const modules = getSelfModuleViews(u.id);
-    const completedCount = modules.filter((m) => m.completed).length;
-    const reflectionCount = modules.filter((m) => m.reflection.trim() !== "").length;
-    const unlockedOrdinals = modules.filter((m) => m.unlocked).map((m) => m.module.ordinal);
-    const currentOrdinal = unlockedOrdinals.length ? Math.max(...unlockedOrdinals) : 1;
-    const current = modules.find((m) => m.module.ordinal === currentOrdinal)?.module ?? null;
-    const attendance = getSelfAttendance(cohortId, u.id);
-    const lastActiveAt = u.last_active_at != null ? Number(u.last_active_at) : null;
+  return (await Promise.all(students.map(async (u) => {
+      const modules = (await getSelfModuleViews(u.id));
+      const completedCount = modules.filter((m) => m.completed).length;
+      const reflectionCount = modules.filter((m) => m.reflection.trim() !== "").length;
+      const unlockedOrdinals = modules.filter((m) => m.unlocked).map((m) => m.module.ordinal);
+      const currentOrdinal = unlockedOrdinals.length ? Math.max(...unlockedOrdinals) : 1;
+      const current = modules.find((m) => m.module.ordinal === currentOrdinal)?.module ?? null;
+      const attendance = (await getSelfAttendance(cohortId, u.id));
+      const lastActiveAt = u.last_active_at != null ? Number(u.last_active_at) : null;
 
-    return {
-      studentId: u.id,
-      name: u.name,
-      first: u.first,
-      email: u.email,
-      currentModuleOrdinal: currentOrdinal,
-      currentModuleTitle: current?.title ?? "—",
-      completedCount,
-      totalModules: modules.length,
-      reflectionCount,
-      lastActiveLabel: lastActiveLabel(lastActiveAt),
-      lastActiveAt,
-      attendancePresent: attendance.filter(Boolean).length,
-      attendanceTotal: SELF_PACED_SESSIONS,
-      notes: getStudentNotes(u.id, 3),
-      modules,
-      attendance,
-    };
-  });
+      return {
+        studentId: u.id,
+        name: u.name,
+        first: u.first,
+        email: u.email,
+        currentModuleOrdinal: currentOrdinal,
+        currentModuleTitle: current?.title ?? "—",
+        completedCount,
+        totalModules: modules.length,
+        reflectionCount,
+        lastActiveLabel: lastActiveLabel(lastActiveAt),
+        lastActiveAt,
+        attendancePresent: attendance.filter(Boolean).length,
+        attendanceTotal: SELF_PACED_SESSIONS,
+        notes: (await getStudentNotes(u.id, 3)),
+        modules,
+        attendance,
+      };
+    })));
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */

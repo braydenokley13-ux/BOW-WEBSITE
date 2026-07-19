@@ -28,29 +28,29 @@ function upcomingSorted<T extends { scheduledAt: number }>(sessions: T[], now: n
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export default async function TeachHomePage() {
   const { user, instructor } = await requireInstructorSelf();
-  const detail = getInstructorDetail(instructor.id)!;
+  const detail = (await getInstructorDetail(instructor.id))!;
   const completedModuleIds = new Set(detail.completions.map((c) => c.moduleId));
   const db = getDb();
-  const now = Number((db.prepare("SELECT unixepoch('now') * 1000 AS now").get() as { now: number }).now);
+  const now = Number(((await db.prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
 
-  const modules = listTrainingModules();
+  const modules = (await listTrainingModules());
   const moduleViews = new Map(
-    (db.prepare("SELECT module_id, first_viewed_at FROM training_module_views WHERE instructor_id = ?").all(instructor.id) as { module_id: string; first_viewed_at: number }[])
+    ((await db.prepare("SELECT module_id, first_viewed_at FROM training_module_views WHERE instructor_id = ?").all(instructor.id)) as { module_id: string; first_viewed_at: number }[])
       .map((view) => [view.module_id, view.first_viewed_at]),
   );
   const onboardingModules = modules.filter((m) => m.category === "onboarding");
   const trainingModules = modules.filter((m) => m.category === "training");
 
-  const sessions = listTrainingSessions();
+  const sessions = (await listTrainingSessions());
   const upcomingSessions = upcomingSorted(sessions, now);
 
   const registeredSessionIds = new Set(
-    (db.prepare("SELECT session_id FROM training_session_registrations WHERE instructor_id = ?").all(instructor.id) as { session_id: string }[]).map(
+    ((await db.prepare("SELECT session_id FROM training_session_registrations WHERE instructor_id = ?").all(instructor.id)) as { session_id: string }[]).map(
       (r) => r.session_id,
     ),
   );
 
-  const openTasks = (db.prepare("SELECT * FROM tasks WHERE owner_user_id = ? AND status = 'open' ORDER BY due_at").all(user.id) as any[]).map(
+  const openTasks = ((await db.prepare("SELECT * FROM tasks WHERE owner_user_id = ? AND status = 'open' ORDER BY due_at").all(user.id)) as any[]).map(
     (r): Task => ({
       id: r.id,
       title: r.title,
@@ -88,9 +88,9 @@ export default async function TeachHomePage() {
         <span style={{ ...labelStyle, display: "block", marginBottom: 12 }}>Onboarding checklist</span>
         {onboardingModules.length === 0 && <p style={valueStyle}>Nothing to complete.</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {onboardingModules.map((module) => (
-            <TrainingModuleCard key={module.id} instructorId={instructor.id} module={module} completed={completedModuleIds.has(module.id)} initialViewedAt={moduleViews.get(module.id) ?? null} renderedAt={now} />
-          ))}
+          {(await Promise.all(onboardingModules.map(async (module) => (
+                              <TrainingModuleCard key={module.id} instructorId={instructor.id} module={module} completed={completedModuleIds.has(module.id)} initialViewedAt={(await moduleViews.get(module.id)) ?? null} renderedAt={now} />
+                            ))))}
         </div>
       </section>
 
@@ -98,9 +98,9 @@ export default async function TeachHomePage() {
         <span style={{ ...labelStyle, display: "block", marginBottom: 12 }}>Training modules</span>
         {trainingModules.length === 0 && <p style={valueStyle}>Nothing to complete.</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {trainingModules.map((module) => (
-            <TrainingModuleCard key={module.id} instructorId={instructor.id} module={module} completed={completedModuleIds.has(module.id)} initialViewedAt={moduleViews.get(module.id) ?? null} renderedAt={now} />
-          ))}
+          {(await Promise.all(trainingModules.map(async (module) => (
+                              <TrainingModuleCard key={module.id} instructorId={instructor.id} module={module} completed={completedModuleIds.has(module.id)} initialViewedAt={(await moduleViews.get(module.id)) ?? null} renderedAt={now} />
+                            ))))}
         </div>
       </section>
 

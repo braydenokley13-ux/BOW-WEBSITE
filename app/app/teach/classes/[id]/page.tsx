@@ -14,7 +14,7 @@ const valueStyle = { fontFamily: "var(--font-interface)", fontSize: 14, color: "
 export default async function TeachClassDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { instructor } = await requireActiveInstructorSelf();
-  const detail = getClassDetail(id);
+  const detail = (await getClassDetail(id));
   if (!detail) notFound();
 
   // Membership check — a non-member instructor sees nothing here, mirroring
@@ -25,10 +25,10 @@ export default async function TeachClassDetailPage({ params }: { params: Promise
   const { class: cls, sessions, enrollments } = detail;
   const db = getDb();
   const enrolled = enrollments.filter((e) => e.status === "enrolled");
-  const roster = enrolled.map((e) => {
-    const s = db.prepare("SELECT * FROM students WHERE id = ?").get(e.studentId) as any;
-    return { id: e.studentId, name: s?.name ?? e.studentId };
-  });
+  const roster = (await Promise.all(enrolled.map(async (e) => {
+      const s = (await db.prepare("SELECT * FROM students WHERE id = ?").get(e.studentId)) as any;
+      return { id: e.studentId, name: s?.name ?? e.studentId };
+    })));
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>

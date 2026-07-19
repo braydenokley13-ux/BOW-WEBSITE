@@ -15,19 +15,19 @@ export const dynamic = "force-dynamic";
 export default async function EditorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const isNew = id === "new";
-  const article = isNew ? null : getArticleByIdAdmin(id);
+  const article = isNew ? null : (await getArticleByIdAdmin(id));
   if (!isNew && !article) notFound();
 
-  const players = getAnalyticsPlayers();
+  const players = (await getAnalyticsPlayers());
   const playerMap: Record<string, AnalyticsPlayer> = {};
   for (const p of players) playerMap[p.slug] = p;
 
   // One query for every player's history — cheap at this data size, and it
   // lets the live preview render <TrendChart/> for ANY slug the author types,
   // not just the ones already referenced in the body.
-  const playerHistories = getAllPlayerSeasonHistories();
+  const playerHistories = (await getAllPlayerSeasonHistories());
 
-  const revisions = article ? getArticleRevisions(article.id) : [];
+  const revisions = article ? (await getArticleRevisions(article.id)) : [];
 
   return (
     <div style={{ padding: "clamp(18px,2.6vw,32px) clamp(14px,3vw,32px)" }}>

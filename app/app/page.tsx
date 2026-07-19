@@ -92,7 +92,7 @@ export default async function AppHome() {
   const me = await requireUser();
   if (me.role !== "admin" && me.role !== "growth") {
     if (me.role === "instructor") {
-      const instructor = getInstructorByUserId(me.id);
+      const instructor = (await getInstructorByUserId(me.id));
       if (!instructor || (instructor.stage === "active" && instructor.eligibilityStatus === "eligible")) {
         redirect("/app/instructor");
       }
@@ -103,10 +103,10 @@ export default async function AppHome() {
   }
 
   const db = getDb();
-  const now = Number((db.prepare("SELECT unixepoch('now') * 1000 AS now").get() as { now: number }).now);
-  const data = getLeadershipHomeData();
-  const programs = listPrograms();
-  const growth = getGrowthLeadershipSnapshot(now);
+  const now = Number(((await db.prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
+  const data = (await getLeadershipHomeData());
+  const programs = (await listPrograms());
+  const growth = (await getGrowthLeadershipSnapshot(now));
   const personNameStatement = db.prepare("SELECT name FROM people WHERE id = ?");
   const userNameStatement = db.prepare("SELECT name FROM users WHERE id = ?");
   const classContextStatement = db.prepare(
@@ -119,26 +119,26 @@ export default async function AppHome() {
   const personNames = new Map<string, string>();
   const userNames = new Map<string, string>();
   const classContexts = new Map<string, ClassContextRow | null>();
-  const personName = (personId: string): string => {
+  const personName = async (personId: string): Promise<string> => {
     const cached = personNames.get(personId);
     if (cached) return cached;
-    const row = personNameStatement.get(personId) as { name: string } | undefined;
+    const row = (await personNameStatement.get(personId)) as { name: string } | undefined;
     const name = row?.name?.trim() || "Instructor applicant";
     personNames.set(personId, name);
     return name;
   };
-  const userName = (userId: string | null): string | null => {
+  const userName = async (userId: string | null): Promise<string | null> => {
     if (!userId) return null;
     const cached = userNames.get(userId);
     if (cached) return cached;
-    const row = userNameStatement.get(userId) as { name: string } | undefined;
+    const row = (await userNameStatement.get(userId)) as { name: string } | undefined;
     if (!row?.name?.trim()) return null;
     userNames.set(userId, row.name);
     return row.name;
   };
-  const classContext = (classId: string): ClassContextRow | null => {
+  const classContext = async (classId: string): Promise<ClassContextRow | null> => {
     if (classContexts.has(classId)) return classContexts.get(classId) ?? null;
-    const row = classContextStatement.get(classId) as ClassContextRow | undefined;
+    const row = (await classContextStatement.get(classId)) as ClassContextRow | undefined;
     classContexts.set(classId, row ?? null);
     return row ?? null;
   };
@@ -198,7 +198,7 @@ export default async function AppHome() {
 
   for (const risk of classRisks.values()) {
     if (risk.item.programId && programRiskIds.has(risk.item.programId)) continue;
-    const context = classContext(risk.item.id);
+    const context = (await classContext(risk.item.id));
     const startAt = dateValue(risk.item.startDate);
     const daysToStart = startAt === null ? null : Math.ceil((startAt - now) / DAY_MS);
     const severity: Severity = risk.launchIncomplete || (daysToStart !== null && daysToStart <= 14) ? "critical" : "high";
@@ -225,7 +225,7 @@ export default async function AppHome() {
   }
 
   for (const report of data.flaggedSessionReports) {
-    const context = classContext(report.class_id);
+    const context = (await classContext(report.class_id));
     add({
       key: `session-report:${report.id}`,
       title: `${context?.class_title ?? "Class session"}: quality flag`,
@@ -254,7 +254,7 @@ export default async function AppHome() {
       context: task.dueAt
         ? `${overdue ? "Overdue" : "Due"} ${shortDate(task.dueAt)}. A founder decision or handoff is waiting.`
         : "A founder decision or handoff is waiting without a due date.",
-      owner: userName(task.ownerUserId) ?? "Founder",
+      owner: (await userName(task.ownerUserId)) ?? "Founder",
       unassigned: false,
       href: "/app/tasks",
       actionLabel: "Resolve handoff",
@@ -281,7 +281,7 @@ export default async function AppHome() {
   for (const instructor of data.awaitingFounderReview) {
     add({
       key: `instructor:${instructor.id}`,
-      title: personName(instructor.personId),
+      title: (await personName(instructor.personId)),
       domain: "People",
       domainHref: "/app/instructors",
       severity: "high",
@@ -296,10 +296,10 @@ export default async function AppHome() {
   }
 
   for (const instructor of data.behindOnOnboardingOrTraining) {
-    const owner = userName(instructor.ownerUserId);
+    const owner = (await userName(instructor.ownerUserId));
     add({
       key: `instructor:${instructor.id}`,
-      title: personName(instructor.personId),
+      title: (await personName(instructor.personId)),
       domain: "People",
       domainHref: "/app/instructors",
       severity: "high",
@@ -314,10 +314,10 @@ export default async function AppHome() {
   }
 
   for (const instructor of data.practiceEvalsNeeded) {
-    const owner = userName(instructor.ownerUserId);
+    const owner = (await userName(instructor.ownerUserId));
     add({
       key: `instructor:${instructor.id}`,
-      title: personName(instructor.personId),
+      title: (await personName(instructor.personId)),
       domain: "People",
       domainHref: "/app/instructors",
       severity: "high",
@@ -332,11 +332,11 @@ export default async function AppHome() {
   }
 
   for (const instructor of data.interviewsToSchedule) {
-    const owner = userName(instructor.ownerUserId);
+    const owner = (await userName(instructor.ownerUserId));
     const age = Math.floor((now - instructor.createdAt) / DAY_MS);
     add({
       key: `instructor:${instructor.id}`,
-      title: personName(instructor.personId),
+      title: (await personName(instructor.personId)),
       domain: "People",
       domainHref: "/app/instructors",
       severity: age >= 7 ? "high" : "watch",
@@ -351,10 +351,10 @@ export default async function AppHome() {
   }
 
   for (const instructor of data.newApplications) {
-    const owner = userName(instructor.ownerUserId);
+    const owner = (await userName(instructor.ownerUserId));
     add({
       key: `instructor:${instructor.id}`,
-      title: personName(instructor.personId),
+      title: (await personName(instructor.personId)),
       domain: "People",
       domainHref: "/app/instructors",
       severity: "watch",

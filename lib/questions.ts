@@ -15,17 +15,17 @@ import { buildDocket, DETECTORS, type DocketInput } from "@/lib/tensions";
 import type { QuestionKind, ResearchQuestion } from "@/lib/research-types";
 
 /** Live DocketInput: every curated player, full season histories, house assumptions. */
-function buildInput(): DocketInput {
+async function buildInput(): Promise<DocketInput> {
   return {
-    players: getAnalyticsPlayers(),
-    histories: getAllPlayerSeasonHistories(),
+    players: (await getAnalyticsPlayers()),
+    histories: (await getAllPlayerSeasonHistories()),
     assumptions: DEFAULT_ASSUMPTIONS,
   };
 }
 
 /** The full ranked research docket (capped at 24), built fresh from live data on every call. */
-export function getOpenDocket(): ResearchQuestion[] {
-  return buildDocket(buildInput());
+export async function getOpenDocket(): Promise<ResearchQuestion[]> {
+  return buildDocket((await buildInput()));
 }
 
 /**
@@ -37,8 +37,8 @@ export function getOpenDocket(): ResearchQuestion[] {
  * FULL (uncapped) dataset so any id a detector can actually produce still
  * resolves. Returns null for ids no detector recognizes.
  */
-export function getQuestionById(id: string): ResearchQuestion | null {
-  const input = buildInput();
+export async function getQuestionById(id: string): Promise<ResearchQuestion | null> {
+  const input = (await buildInput());
 
   const docket = buildDocket(input);
   const found = docket.find((q) => q.id === id);

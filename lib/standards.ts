@@ -125,8 +125,8 @@ function parseJsonArray(v: unknown): string[] {
 }
 
 /** All standards-alignment rows, ordered (DB first, falling back to seed). */
-export function getStandardsAlignment(): StandardsEntry[] {
-  const rows = getDb().prepare("SELECT * FROM standards_alignment ORDER BY ordinal ASC").all() as any[];
+export async function getStandardsAlignment(): Promise<StandardsEntry[]> {
+  const rows = (await getDb().prepare("SELECT * FROM standards_alignment ORDER BY ordinal ASC").all()) as any[];
   if (rows.length === 0) return [...STANDARDS_ALIGNMENT].sort((a, b) => a.ordinal - b.ordinal);
   return rows.map((r) => ({
     id: r.id,

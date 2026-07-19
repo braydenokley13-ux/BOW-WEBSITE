@@ -43,16 +43,16 @@ function friendlyFailure(error: unknown, fallback: string): ActionResult {
   return { ok: false, error: fallback };
 }
 
-function inImmediateTransaction<T>(operation: () => T): T {
+async function inImmediateTransaction<T>(operation: () => T): Promise<T> {
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     const result = operation();
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
     return result;
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the original error.
     }
@@ -66,30 +66,30 @@ function inImmediateTransaction<T>(operation: () => T): T {
  * unique normalized emails, so ambiguity must stop the write instead of
  * silently attaching a child to an arbitrary Person.
  */
-function resolveGuardianPerson(name: string, email: string, phone: string, now: number): string {
+async function resolveGuardianPerson(name: string, email: string, phone: string, now: number): Promise<string> {
   const db = getDb();
-  const matches = db
-    .prepare("SELECT id FROM people WHERE lower(trim(email)) = ? ORDER BY created_at, id")
-    .all(email) as unknown as { id: string }[];
+  const matches = (await db
+      .prepare("SELECT id FROM people WHERE lower(trim(email)) = ? ORDER BY created_at, id")
+      .all(email)) as unknown as { id: string }[];
   if (matches.length > 1) {
     throw new StudentActionError("More than one Person uses that guardian email. Reconcile the duplicate identity before adding this student.");
   }
   if (matches[0]) {
-    db.prepare(
-      `UPDATE people
+    (await db.prepare(
+            `UPDATE people
           SET email = ?,
               name = CASE WHEN trim(name) = '' THEN ? ELSE name END,
               phone = CASE WHEN trim(phone) = '' THEN ? ELSE phone END,
               updated_at = ?
         WHERE id = ?`,
-    ).run(email, name, phone, now, matches[0].id);
+          ).run(email, name, phone, now, matches[0].id));
     return matches[0].id;
   }
 
   const id = `pfx-${randomUUID().slice(0, 8)}`;
-  db.prepare(
-    "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)",
-  ).run(id, name, email, phone, now, now);
+  (await db.prepare(
+        "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)",
+      ).run(id, name, email, phone, now, now));
   return id;
 }
 
@@ -98,19 +98,19 @@ function resolveGuardianPerson(name: string, email: string, phone: string, now: 
  * guessing between duplicate identities. The caller holds BEGIN IMMEDIATE,
  * making the check-and-insert sequence safe against another writer.
  */
-function resolveStudentIdentity(email: string | null, name: string, now: number): { userId: string | null; personId: string | null } {
+async function resolveStudentIdentity(email: string | null, name: string, now: number): Promise<{ userId: string | null; personId: string | null }> {
   if (!email) return { userId: null, personId: null };
   const db = getDb();
-  const matchingStudents = db
-    .prepare("SELECT id FROM students WHERE lower(trim(email)) = ? ORDER BY created_at, id")
-    .all(email) as unknown as { id: string }[];
+  const matchingStudents = (await db
+      .prepare("SELECT id FROM students WHERE lower(trim(email)) = ? ORDER BY created_at, id")
+      .all(email)) as unknown as { id: string }[];
   if (matchingStudents.length > 0) {
     throw new StudentActionError("A student record already uses that email. Open the existing record instead of creating a duplicate.");
   }
 
-  const users = db
-    .prepare("SELECT id, role FROM users WHERE lower(trim(email)) = ? ORDER BY id")
-    .all(email) as unknown as { id: string; role: string }[];
+  const users = (await db
+      .prepare("SELECT id, role FROM users WHERE lower(trim(email)) = ? ORDER BY id")
+      .all(email)) as unknown as { id: string; role: string }[];
   if (users.length > 1) {
     throw new StudentActionError("More than one account uses that email. Reconcile the account identity before adding this student.");
   }
@@ -118,9 +118,9 @@ function resolveStudentIdentity(email: string | null, name: string, now: number)
     throw new StudentActionError("That email belongs to a non-student account. Use a different student email.");
   }
 
-  const people = db
-    .prepare("SELECT id, user_id FROM people WHERE lower(trim(email)) = ? ORDER BY created_at, id")
-    .all(email) as unknown as { id: string; user_id: string | null }[];
+  const people = (await db
+      .prepare("SELECT id, user_id FROM people WHERE lower(trim(email)) = ? ORDER BY created_at, id")
+      .all(email)) as unknown as { id: string; user_id: string | null }[];
   if (people.length > 1) {
     throw new StudentActionError("More than one Person uses that student email. Reconcile the duplicate identity before adding this student.");
   }
@@ -128,7 +128,7 @@ function resolveStudentIdentity(email: string | null, name: string, now: number)
   let userId = users[0]?.id ?? null;
   let personId = people[0]?.id ?? null;
   if (people[0]?.user_id) {
-    const linkedUser = db.prepare("SELECT id, role, email FROM users WHERE id = ?").get(people[0].user_id) as
+    const linkedUser = (await db.prepare("SELECT id, role, email FROM users WHERE id = ?").get(people[0].user_id)) as
       | { id: string; role: string; email: string }
       | undefined;
     if (
@@ -143,9 +143,9 @@ function resolveStudentIdentity(email: string | null, name: string, now: number)
   }
 
   if (userId) {
-    const peopleLinkedToAccount = db
-      .prepare("SELECT id, email FROM people WHERE user_id = ? ORDER BY created_at, id")
-      .all(userId) as unknown as { id: string; email: string }[];
+    const peopleLinkedToAccount = (await db
+          .prepare("SELECT id, email FROM people WHERE user_id = ? ORDER BY created_at, id")
+          .all(userId)) as unknown as { id: string; email: string }[];
     if (peopleLinkedToAccount.length > 1) {
       throw new StudentActionError("That account is linked to multiple People. Reconcile the identity before adding this student.");
     }
@@ -160,76 +160,76 @@ function resolveStudentIdentity(email: string | null, name: string, now: number)
     }
   }
 
-  if (userId && db.prepare("SELECT 1 FROM students WHERE user_id = ?").get(userId)) {
+  if (userId && (await db.prepare("SELECT 1 FROM students WHERE user_id = ?").get(userId))) {
     throw new StudentActionError("That student account is already linked to another student record.");
   }
-  if (personId && db.prepare("SELECT 1 FROM students WHERE person_id = ?").get(personId)) {
+  if (personId && (await db.prepare("SELECT 1 FROM students WHERE person_id = ?").get(personId))) {
     throw new StudentActionError("That Person is already linked to another student record.");
   }
   if (!personId) {
     personId = `pfx-${randomUUID().slice(0, 8)}`;
-    db.prepare(
-      "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?)",
-    ).run(personId, name, email, userId, now, now);
+    (await db.prepare(
+            "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?)",
+          ).run(personId, name, email, userId, now, now));
   } else {
-    db.prepare(
-      `UPDATE people
+    (await db.prepare(
+            `UPDATE people
           SET name = CASE WHEN trim(name) = '' THEN ? ELSE name END,
               email = ?, user_id = COALESCE(user_id, ?), updated_at = ?
         WHERE id = ?`,
-    ).run(name, email, userId, now, personId);
+          ).run(name, email, userId, now, personId));
   }
   return { userId, personId };
 }
 
-function attachFirstTouchAttribution(
+async function attachFirstTouchAttribution(
   studentId: string,
   studentPersonId: string | null,
   guardianPersonId: string | null,
   actorUserId: string,
   now: number,
-): void {
+): Promise<void> {
   const db = getDb();
   let touchpoint = studentPersonId
-    ? db.prepare(
-      `SELECT t.id
+    ? (await db.prepare(
+            `SELECT t.id
          FROM student_acquisition_touchpoints t
         WHERE t.voided_at IS NULL AND t.person_id = ?
           AND (t.student_id IS NULL OR t.student_id = ?)
         ORDER BY t.occurred_at, t.created_at, t.id
         LIMIT 1`,
-    ).get(studentPersonId, studentId) as unknown as { id: string } | undefined
+          ).get(studentPersonId, studentId)) as unknown as { id: string } | undefined
     : undefined;
   if (!touchpoint && guardianPersonId) {
-    const guardianStudentCount = db.prepare(
-      "SELECT COUNT(*) AS count FROM students WHERE guardian_person_id = ?",
-    ).get(guardianPersonId) as unknown as { count: number };
+    const guardianStudentCount = (await db.prepare(
+          "SELECT COUNT(*) AS count FROM students WHERE guardian_person_id = ?",
+        ).get(guardianPersonId)) as unknown as { count: number };
     if (Number(guardianStudentCount.count) === 1) {
-      touchpoint = db.prepare(
-        `SELECT t.id
+      touchpoint = (await db.prepare(
+              `SELECT t.id
            FROM student_acquisition_touchpoints t
           WHERE t.voided_at IS NULL AND t.person_id = ? AND t.student_id IS NULL
           ORDER BY t.occurred_at, t.created_at, t.id
           LIMIT 1`,
-      ).get(guardianPersonId) as unknown as { id: string } | undefined;
+            ).get(guardianPersonId)) as unknown as { id: string } | undefined;
     }
   }
   if (!touchpoint) return;
-  db.prepare(
-    `INSERT INTO student_acquisition_attributions
+  (await db.prepare(
+        `INSERT INTO student_acquisition_attributions
       (id, student_id, touchpoint_id, method, evidence_note, effective_from, effective_to,
        decided_by_user_id, decision_source, decision_source_id, created_at)
      VALUES (?, ?, ?, 'direct', ?, ?, NULL, ?, 'operator', NULL, ?)`,
-  ).run(
-    `saa-${randomUUID()}`,
-    studentId,
-    touchpoint.id,
-    "First-touch attribution linked automatically from the exact Student or guardian Person identity during Student creation.",
-    now,
-    actorUserId,
-    now,
-  );
-  logActivity("student", studentId, "acquisition", `First-touch acquisition attribution linked to ${touchpoint.id}.`, actorUserId);
+      ).run(
+        `saa-${randomUUID()}`,
+        studentId,
+        touchpoint.id,
+        "First-touch attribution linked automatically from the exact Student or guardian Person identity during Student creation.",
+        now,
+        actorUserId,
+        now,
+      ));
+  (await logActivity("student", studentId, "acquisition", `First-touch acquisition attribution linked to ${touchpoint.id}.`, actorUserId));
 }
 
 export interface CreateStudentInput {
@@ -282,44 +282,44 @@ export async function createStudent(input: CreateStudentInput): Promise<ActionRe
   const id = `pfx-${randomUUID().slice(0, 8)}`;
   const now = Date.now();
   try {
-    inImmediateTransaction(() => {
-      const { userId, personId } = resolveStudentIdentity(studentEmail, name, now);
-      const guardianPersonId = guardianEmail
-        ? resolveGuardianPerson(guardianName, guardianEmail, guardianPhone, now)
-        : null;
-      if (guardianPersonId && guardianPersonId === personId) {
-        throw new StudentActionError("Student and guardian resolve to the same Person. Reconcile the identity before continuing.");
-      }
-      getDb()
-        .prepare(
-          `INSERT INTO students
+    (await inImmediateTransaction(async () => {
+            const { userId, personId } = (await resolveStudentIdentity(studentEmail, name, now));
+            const guardianPersonId = guardianEmail
+              ? (await resolveGuardianPerson(guardianName, guardianEmail, guardianPhone, now))
+              : null;
+            if (guardianPersonId && guardianPersonId === personId) {
+              throw new StudentActionError("Student and guardian resolve to the same Person. Reconcile the identity before continuing.");
+            }
+            (await getDb()
+                      .prepare(
+                        `INSERT INTO students
             (id, name, age, grade, email, guardian_person_id, emergency_notes, enrollment_status, form_status,
              communication_notes, user_id, person_id, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'missing', ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          id,
-          name,
-          age,
-          (input.grade ?? "").trim().slice(0, 40) || null,
-          studentEmail,
-          guardianPersonId,
-          (input.emergencyNotes ?? "").trim().slice(0, 2000) || null,
-          (input.communicationNotes ?? "").trim().slice(0, 2000) || null,
-          userId,
-          personId,
-          now,
-          now,
-        );
-      attachFirstTouchAttribution(id, personId, guardianPersonId, me.id, now);
-      logActivity(
-        "student",
-        id,
-        "created",
-        `Student "${name}" added${guardianPersonId ? " with a canonical guardian Person" : ""}.`,
-        me.id,
-      );
-    });
+                      )
+                      .run(
+                        id,
+                        name,
+                        age,
+                        (input.grade ?? "").trim().slice(0, 40) || null,
+                        studentEmail,
+                        guardianPersonId,
+                        (input.emergencyNotes ?? "").trim().slice(0, 2000) || null,
+                        (input.communicationNotes ?? "").trim().slice(0, 2000) || null,
+                        userId,
+                        personId,
+                        now,
+                        now,
+                      ));
+            (await attachFirstTouchAttribution(id, personId, guardianPersonId, me.id, now));
+            (await logActivity(
+                      "student",
+                      id,
+                      "created",
+                      `Student "${name}" added${guardianPersonId ? " with a canonical guardian Person" : ""}.`,
+                      me.id,
+                    ));
+          }));
   } catch (error) {
     return friendlyFailure(error, "The student could not be created. Refresh and try again.");
   }
@@ -400,79 +400,79 @@ export async function updateStudent(id: string, patch: UpdateStudentPatch): Prom
   const affectedClassIds = new Set<string>();
   const affectedProgramIds = new Set<string>();
   try {
-    inImmediateTransaction(() => {
-      const live = db.prepare(
-        "SELECT id, name, email, user_id, person_id, enrollment_status, updated_at FROM students WHERE id = ?",
-      ).get(id) as
-        | {
-            id: string;
-            name: string;
-            email: string | null;
-            user_id: string | null;
-            person_id: string | null;
-            enrollment_status: "active" | "inactive";
-            updated_at: number;
-          }
-        | undefined;
-      if (!live) throw new StudentActionError("Student not found.");
-      if (live.updated_at !== patch.expectedUpdatedAt) {
-        throw new StudentActionError("This student changed while you were editing. Refresh and try again.");
-      }
+    (await inImmediateTransaction(async () => {
+            const live = (await db.prepare(
+                    "SELECT id, name, email, user_id, person_id, enrollment_status, updated_at FROM students WHERE id = ?",
+                  ).get(id)) as
+              | {
+                  id: string;
+                  name: string;
+                  email: string | null;
+                  user_id: string | null;
+                  person_id: string | null;
+                  enrollment_status: "active" | "inactive";
+                  updated_at: number;
+                }
+              | undefined;
+            if (!live) throw new StudentActionError("Student not found.");
+            if (live.updated_at !== patch.expectedUpdatedAt) {
+              throw new StudentActionError("This student changed while you were editing. Refresh and try again.");
+            }
 
-      const requestedEmail = patch.email !== undefined
-        ? normalizedEmailPatch ?? null
-        : live.email?.trim().toLowerCase() ?? null;
-      if (patch.email !== undefined && requestedEmail !== (live.email?.trim().toLowerCase() ?? null)) {
-        if (
-          requestedEmail &&
-          db.prepare("SELECT 1 FROM students WHERE id <> ? AND lower(trim(email)) = ?").get(id, requestedEmail)
-        ) {
-          throw new StudentActionError("Another student record already uses that email.");
-        }
-        if (live.user_id) {
-          const linkedUser = db.prepare("SELECT email, role FROM users WHERE id = ?").get(live.user_id) as
-            | { email: string; role: string }
-            | undefined;
-          if (!requestedEmail || !linkedUser || linkedUser.role !== "student" || linkedUser.email.trim().toLowerCase() !== requestedEmail) {
-            throw new StudentActionError("Change the linked student account email before changing this student identity.");
-          }
-          const accountPeople = db
-            .prepare("SELECT id, email FROM people WHERE user_id = ? ORDER BY created_at, id")
-            .all(live.user_id) as { id: string; email: string }[];
-          if (
-            accountPeople.length > 1 ||
-            (accountPeople[0] &&
-              (accountPeople[0].email.trim().toLowerCase() !== requestedEmail ||
-                (live.person_id && accountPeople[0].id !== live.person_id)))
-          ) {
-            throw new StudentActionError("The linked account and Person identity must be reconciled before changing this email.");
-          }
-        } else if (requestedEmail && db.prepare("SELECT 1 FROM users WHERE lower(trim(email)) = ?").get(requestedEmail)) {
-          throw new StudentActionError("That email already belongs to an account. Link identities through the account workflow instead.");
-        }
-        if (live.person_id) {
-          const linkedPerson = db.prepare("SELECT email FROM people WHERE id = ?").get(live.person_id) as { email: string } | undefined;
-          if (!requestedEmail || !linkedPerson || linkedPerson.email.trim().toLowerCase() !== requestedEmail) {
-            throw new StudentActionError("Change the linked Person email before changing this student identity.");
-          }
-        } else if (requestedEmail) {
-          const people = db
-            .prepare("SELECT id FROM people WHERE lower(trim(email)) = ? ORDER BY id")
-            .all(requestedEmail) as { id: string }[];
-          if (people.length > 0) {
-            throw new StudentActionError("That email already belongs to a Person. Link identities before changing this student record.");
-          }
-        }
-      }
+            const requestedEmail = patch.email !== undefined
+              ? normalizedEmailPatch ?? null
+              : live.email?.trim().toLowerCase() ?? null;
+            if (patch.email !== undefined && requestedEmail !== (live.email?.trim().toLowerCase() ?? null)) {
+              if (
+                requestedEmail &&
+                (await db.prepare("SELECT 1 FROM students WHERE id <> ? AND lower(trim(email)) = ?").get(id, requestedEmail))
+              ) {
+                throw new StudentActionError("Another student record already uses that email.");
+              }
+              if (live.user_id) {
+                const linkedUser = (await db.prepare("SELECT email, role FROM users WHERE id = ?").get(live.user_id)) as
+                  | { email: string; role: string }
+                  | undefined;
+                if (!requestedEmail || !linkedUser || linkedUser.role !== "student" || linkedUser.email.trim().toLowerCase() !== requestedEmail) {
+                  throw new StudentActionError("Change the linked student account email before changing this student identity.");
+                }
+                const accountPeople = (await db
+                            .prepare("SELECT id, email FROM people WHERE user_id = ? ORDER BY created_at, id")
+                            .all(live.user_id)) as { id: string; email: string }[];
+                if (
+                  accountPeople.length > 1 ||
+                  (accountPeople[0] &&
+                    (accountPeople[0].email.trim().toLowerCase() !== requestedEmail ||
+                      (live.person_id && accountPeople[0].id !== live.person_id)))
+                ) {
+                  throw new StudentActionError("The linked account and Person identity must be reconciled before changing this email.");
+                }
+              } else if (requestedEmail && (await db.prepare("SELECT 1 FROM users WHERE lower(trim(email)) = ?").get(requestedEmail))) {
+                throw new StudentActionError("That email already belongs to an account. Link identities through the account workflow instead.");
+              }
+              if (live.person_id) {
+                const linkedPerson = (await db.prepare("SELECT email FROM people WHERE id = ?").get(live.person_id)) as { email: string } | undefined;
+                if (!requestedEmail || !linkedPerson || linkedPerson.email.trim().toLowerCase() !== requestedEmail) {
+                  throw new StudentActionError("Change the linked Person email before changing this student identity.");
+                }
+              } else if (requestedEmail) {
+                const people = (await db
+                            .prepare("SELECT id FROM people WHERE lower(trim(email)) = ? ORDER BY id")
+                            .all(requestedEmail)) as { id: string }[];
+                if (people.length > 0) {
+                  throw new StudentActionError("That email already belongs to a Person. Link identities before changing this student record.");
+                }
+              }
+            }
 
-      const deactivating = live.enrollment_status === "active" && patch.enrollmentStatus === "inactive";
-      const reactivating = live.enrollment_status === "inactive" && patch.enrollmentStatus === "active";
-      const now = Date.now();
-      nextUpdatedAt = Math.max(now, live.updated_at + 1);
+            const deactivating = live.enrollment_status === "active" && patch.enrollmentStatus === "inactive";
+            const reactivating = live.enrollment_status === "inactive" && patch.enrollmentStatus === "active";
+            const now = Date.now();
+            nextUpdatedAt = Math.max(now, live.updated_at + 1);
 
-      if (deactivating) {
-        const affected = db.prepare(
-          `SELECT ce.id AS enrollment_id, ce.class_id, ce.status AS enrollment_status,
+            if (deactivating) {
+              const affected = (await db.prepare(
+                        `SELECT ce.id AS enrollment_id, ce.class_id, ce.status AS enrollment_status,
                   c.title AS class_title, c.status AS class_status, c.program_id,
                   p.owner_user_id AS program_owner_user_id
              FROM class_enrollments ce
@@ -480,30 +480,30 @@ export async function updateStudent(id: string, patch: UpdateStudentPatch): Prom
              LEFT JOIN programs p ON p.id = c.program_id
             WHERE ce.student_id = ? AND ce.status IN ('enrolled', 'waitlisted')
             ORDER BY ce.class_id`,
-        ).all(id) as {
-          enrollment_id: string | null;
-          class_id: string;
-          enrollment_status: string;
-          class_title: string;
-          class_status: string;
-          program_id: string | null;
-          program_owner_user_id: string | null;
-        }[];
+                      ).all(id)) as {
+                enrollment_id: string | null;
+                class_id: string;
+                enrollment_status: string;
+                class_title: string;
+                class_status: string;
+                program_id: string | null;
+                program_owner_user_id: string | null;
+              }[];
 
-        db.prepare(
-          `UPDATE class_enrollments
+              (await db.prepare(
+                          `UPDATE class_enrollments
               SET status = 'withdrawn', withdrawn_at = ?, withdrawal_reason = ?
             WHERE student_id = ? AND status IN ('enrolled', 'waitlisted')`,
-        ).run(now, DEACTIVATION_REASON, id);
-        if (live.user_id) {
-          db.prepare(
-            `UPDATE enrollments SET enroll = 'inactive'
+                        ).run(now, DEACTIVATION_REASON, id));
+              if (live.user_id) {
+                (await db.prepare(
+                              `UPDATE enrollments SET enroll = 'inactive'
               WHERE user_id = ? AND enroll IN ('active', 'invited', 'suspended')`,
-          ).run(live.user_id);
-        }
+                            ).run(live.user_id));
+              }
 
-        const removableRosterRows = db.prepare(
-          `SELECT csr.id, cs.class_id
+              const removableRosterRows = (await db.prepare(
+                        `SELECT csr.id, cs.class_id
              FROM class_session_roster csr
              JOIN class_sessions cs ON cs.id = csr.session_id
             WHERE csr.student_id = ? AND cs.session_date > ?
@@ -516,11 +516,11 @@ export async function updateStudent(id: string, patch: UpdateStudentPatch): Prom
                  WHERE report.session_id = csr.session_id AND report.completed = 1
               )
             ORDER BY csr.id`,
-        ).all(id, now) as { id: string; class_id: string }[];
-        const rosterImpactClassIds = new Set(removableRosterRows.map((row) => row.class_id));
-        for (const classId of rosterImpactClassIds) affectedClassIds.add(classId);
-        db.prepare(
-          `DELETE FROM class_session_roster
+                      ).all(id, now)) as { id: string; class_id: string }[];
+              const rosterImpactClassIds = new Set(removableRosterRows.map((row) => row.class_id));
+              for (const classId of rosterImpactClassIds) affectedClassIds.add(classId);
+              (await db.prepare(
+                          `DELETE FROM class_session_roster
             WHERE student_id = ?
               AND session_id IN (SELECT id FROM class_sessions WHERE session_date > ?)
               AND NOT EXISTS (
@@ -532,108 +532,108 @@ export async function updateStudent(id: string, patch: UpdateStudentPatch): Prom
                 SELECT 1 FROM class_session_reports report
                  WHERE report.session_id = class_session_roster.session_id AND report.completed = 1
               )`,
-        ).run(id, now);
+                        ).run(id, now));
 
-        const classImpacts = [...affected];
-        for (const classId of rosterImpactClassIds) {
-          if (classImpacts.some((row) => row.class_id === classId)) continue;
-          const rosterOnlyImpact = db.prepare(
-            `SELECT NULL AS enrollment_id, c.id AS class_id, 'roster_only' AS enrollment_status,
+              const classImpacts = [...affected];
+              for (const classId of rosterImpactClassIds) {
+                if (classImpacts.some((row) => row.class_id === classId)) continue;
+                const rosterOnlyImpact = (await db.prepare(
+                            `SELECT NULL AS enrollment_id, c.id AS class_id, 'roster_only' AS enrollment_status,
                     c.title AS class_title, c.status AS class_status, c.program_id,
                     p.owner_user_id AS program_owner_user_id
                FROM classes c
                LEFT JOIN programs p ON p.id = c.program_id
               WHERE c.id = ?`,
-          ).get(classId) as (typeof affected)[number] | undefined;
-          if (rosterOnlyImpact) classImpacts.push(rosterOnlyImpact);
-        }
+                          ).get(classId)) as (typeof affected)[number] | undefined;
+                if (rosterOnlyImpact) classImpacts.push(rosterOnlyImpact);
+              }
 
-        for (const row of classImpacts) {
-          affectedClassIds.add(row.class_id);
-          if (row.program_id) affectedProgramIds.add(row.program_id);
-          logActivity(
-            "class",
-            row.class_id,
-            "student_withdrawn",
-            row.enrollment_id
-              ? `${live.name} was withdrawn because the student record was deactivated. Historical attendance and finalized delivery evidence were preserved.`
-              : `${live.name} was removed from an unlocked future roster during deactivation. Historical attendance and finalized delivery evidence were preserved.`,
-            me.id,
-          );
-          if (
-            TERMINAL_CLASS_STATUSES.has(row.class_status) ||
-            (row.enrollment_status !== "enrolled" && !rosterImpactClassIds.has(row.class_id))
-          ) continue;
+              for (const row of classImpacts) {
+                affectedClassIds.add(row.class_id);
+                if (row.program_id) affectedProgramIds.add(row.program_id);
+                (await logActivity(
+                              "class",
+                              row.class_id,
+                              "student_withdrawn",
+                              row.enrollment_id
+                                ? `${live.name} was withdrawn because the student record was deactivated. Historical attendance and finalized delivery evidence were preserved.`
+                                : `${live.name} was removed from an unlocked future roster during deactivation. Historical attendance and finalized delivery evidence were preserved.`,
+                              me.id,
+                            ));
+                if (
+                  TERMINAL_CLASS_STATUSES.has(row.class_status) ||
+                  (row.enrollment_status !== "enrolled" && !rosterImpactClassIds.has(row.class_id))
+                ) continue;
 
-          const context = `Student lifecycle exception for ${id}.`;
-          const existingWork = db.prepare(
-            `SELECT id FROM tasks
+                const context = `Student lifecycle exception for ${id}.`;
+                const existingWork = (await db.prepare(
+                            `SELECT id FROM tasks
               WHERE entity_type = 'class' AND entity_id = ? AND status = 'open'
                 AND kind = 'issue' AND context = ?
               LIMIT 1`,
-          ).get(row.class_id, context);
-          if (existingWork) continue;
+                          ).get(row.class_id, context));
+                if (existingWork) continue;
 
-          const owner = row.program_owner_user_id
-            ? db.prepare(
-                "SELECT id FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'",
-              ).get(row.program_owner_user_id) as { id: string } | undefined
-            : undefined;
-          const taskId = `wrk-${randomUUID().slice(0, 12)}`;
-          db.prepare(
-            `INSERT INTO tasks
+                const owner = row.program_owner_user_id
+                  ? (await db.prepare(
+                                    "SELECT id FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'",
+                                  ).get(row.program_owner_user_id)) as { id: string } | undefined
+                  : undefined;
+                const taskId = `wrk-${randomUUID().slice(0, 12)}`;
+                (await db.prepare(
+                              `INSERT INTO tasks
               (id, title, owner_user_id, due_at, status, kind, priority, context, recommended_action,
                entity_type, entity_id, handoff_to_founder, created_at, updated_at)
              VALUES (?, ?, ?, ?, 'open', 'issue', 'high', ?, ?, 'class', ?, 0, ?, ?)`,
-          ).run(
-            taskId,
-            `Review enrollment after ${live.name}'s deactivation`.slice(0, 200),
-            owner?.id ?? me.id,
-            now + 2 * 24 * 60 * 60 * 1000,
-            context,
-            "Confirm the roster, minimum enrollment, family communication, and any replacement enrollment needed before the next session.",
-            row.class_id,
-            now,
-            now,
-          );
-          logActivity(
-            "task",
-            taskId,
-            "created",
-            `Enrollment exception opened for Class "${row.class_title}" after student deactivation.`,
-            me.id,
-          );
-        }
+                            ).run(
+                              taskId,
+                              `Review enrollment after ${live.name}'s deactivation`.slice(0, 200),
+                              owner?.id ?? me.id,
+                              now + 2 * 24 * 60 * 60 * 1000,
+                              context,
+                              "Confirm the roster, minimum enrollment, family communication, and any replacement enrollment needed before the next session.",
+                              row.class_id,
+                              now,
+                              now,
+                            ));
+                (await logActivity(
+                              "task",
+                              taskId,
+                              "created",
+                              `Enrollment exception opened for Class "${row.class_title}" after student deactivation.`,
+                              me.id,
+                            ));
+              }
 
-        logActivity(
-          "student",
-          id,
-          "deactivated",
-          `Student deactivated; ${affected.length} live Class enrollment${affected.length === 1 ? "" : "s"} withdrawn, ` +
-            `${removableRosterRows.length} safe future roster row${removableRosterRows.length === 1 ? "" : "s"} removed, and historical delivery evidence preserved.`,
-          me.id,
-        );
-      } else if (reactivating) {
-        logActivity(
-          "student",
-          id,
-          "reactivated",
-          "Student reactivated. Prior Class and legacy enrollments remain withdrawn/inactive and require a deliberate new enrollment decision.",
-          me.id,
-        );
-      }
+              (await logActivity(
+                          "student",
+                          id,
+                          "deactivated",
+                          `Student deactivated; ${affected.length} live Class enrollment${affected.length === 1 ? "" : "s"} withdrawn, ` +
+                            `${removableRosterRows.length} safe future roster row${removableRosterRows.length === 1 ? "" : "s"} removed, and historical delivery evidence preserved.`,
+                          me.id,
+                        ));
+            } else if (reactivating) {
+              (await logActivity(
+                          "student",
+                          id,
+                          "reactivated",
+                          "Student reactivated. Prior Class and legacy enrollments remain withdrawn/inactive and require a deliberate new enrollment decision.",
+                          me.id,
+                        ));
+            }
 
-      sets.push("updated_at = ?");
-      const updated = db.prepare(
-        `UPDATE students SET ${sets.join(", ")} WHERE id = ? AND updated_at = ?`,
-      ).run(...(vals as []), nextUpdatedAt, id, patch.expectedUpdatedAt);
-      if (updated.changes !== 1) {
-        throw new StudentActionError("This student changed while you were editing. Refresh and try again.");
-      }
-      if (!deactivating && !reactivating) {
-        logActivity("student", id, "updated", "Student details updated.", me.id);
-      }
-    });
+            sets.push("updated_at = ?");
+            const updated = (await db.prepare(
+                    `UPDATE students SET ${sets.join(", ")} WHERE id = ? AND updated_at = ?`,
+                  ).run(...(vals as []), nextUpdatedAt, id, patch.expectedUpdatedAt));
+            if (updated.changes !== 1) {
+              throw new StudentActionError("This student changed while you were editing. Refresh and try again.");
+            }
+            if (!deactivating && !reactivating) {
+              (await logActivity("student", id, "updated", "Student details updated.", me.id));
+            }
+          }));
   } catch (error) {
     return friendlyFailure(error, "The student could not be updated. Refresh and try again.");
   }
@@ -654,16 +654,16 @@ export async function updateFormStatus(id: string, status: string): Promise<Acti
   const db = getDb();
   let updatedAt = 0;
   try {
-    inImmediateTransaction(() => {
-      const row = db.prepare("SELECT updated_at FROM students WHERE id = ?").get(id) as { updated_at: number } | undefined;
-      if (!row) throw new StudentActionError("Student not found.");
-      updatedAt = Math.max(Date.now(), row.updated_at + 1);
-      const updated = db.prepare(
-        "UPDATE students SET form_status = ?, updated_at = ? WHERE id = ? AND updated_at = ?",
-      ).run(status, updatedAt, id, row.updated_at);
-      if (updated.changes !== 1) throw new StudentActionError("This student changed. Refresh and try again.");
-      logActivity("student", id, "note", `Form status set to ${status}.`, me.id);
-    });
+    (await inImmediateTransaction(async () => {
+            const row = (await db.prepare("SELECT updated_at FROM students WHERE id = ?").get(id)) as { updated_at: number } | undefined;
+            if (!row) throw new StudentActionError("Student not found.");
+            updatedAt = Math.max(Date.now(), row.updated_at + 1);
+            const updated = (await db.prepare(
+                    "UPDATE students SET form_status = ?, updated_at = ? WHERE id = ? AND updated_at = ?",
+                  ).run(status, updatedAt, id, row.updated_at));
+            if (updated.changes !== 1) throw new StudentActionError("This student changed. Refresh and try again.");
+            (await logActivity("student", id, "note", `Form status set to ${status}.`, me.id));
+          }));
   } catch (error) {
     return friendlyFailure(error, "The form status could not be updated. Refresh and try again.");
   }
@@ -681,50 +681,50 @@ export async function enrollStudent(classId: string, studentId: string): Promise
   const db = getDb();
   let programId: string | null = null;
   try {
-    inImmediateTransaction(() => {
-      const cls = db.prepare("SELECT id, capacity, status, program_id FROM classes WHERE id = ?").get(classId) as
-        | { id: string; capacity: number | null; status: string; program_id: string | null }
-        | undefined;
-      if (!cls) throw new Error("class_missing");
-      programId = cls.program_id;
-      if (TERMINAL_CLASS_STATUSES.has(cls.status)) throw new Error("class_history_frozen");
-      const student = db.prepare("SELECT id FROM students WHERE id = ? AND enrollment_status = 'active'").get(studentId);
-      if (!student) throw new Error("student_unavailable");
+    (await inImmediateTransaction(async () => {
+            const cls = (await db.prepare("SELECT id, capacity, status, program_id FROM classes WHERE id = ?").get(classId)) as
+              | { id: string; capacity: number | null; status: string; program_id: string | null }
+              | undefined;
+            if (!cls) throw new Error("class_missing");
+            programId = cls.program_id;
+            if (TERMINAL_CLASS_STATUSES.has(cls.status)) throw new Error("class_history_frozen");
+            const student = (await db.prepare("SELECT id FROM students WHERE id = ? AND enrollment_status = 'active'").get(studentId));
+            if (!student) throw new Error("student_unavailable");
 
-      const existingRows = db
-        .prepare("SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?")
-        .all(classId, studentId) as { id: string; status: string }[];
-      if (existingRows.length > 1) throw new Error("enrollment_invariant");
-      const existing = existingRows[0];
-      if (existing?.status === "enrolled") return;
+            const existingRows = (await db
+                    .prepare("SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?")
+                    .all(classId, studentId)) as { id: string; status: string }[];
+            if (existingRows.length > 1) throw new Error("enrollment_invariant");
+            const existing = existingRows[0];
+            if (existing?.status === "enrolled") return;
 
-      if (cls.capacity && cls.capacity > 0) {
-        const count = (
-          db.prepare(
-            `SELECT COUNT(*) AS n
+            if (cls.capacity && cls.capacity > 0) {
+              const count = (
+                (await db.prepare(
+                              `SELECT COUNT(*) AS n
                FROM class_enrollments ce
                JOIN students s ON s.id = ce.student_id
               WHERE ce.class_id = ? AND ce.status = 'enrolled' AND s.enrollment_status = 'active'`,
-          ).get(classId) as { n: number }
-        ).n;
-        if (count >= cls.capacity) throw new Error("class_full");
-      }
+                            ).get(classId)) as { n: number }
+              ).n;
+              if (count >= cls.capacity) throw new Error("class_full");
+            }
 
-      const now = Date.now();
-      let enrollmentId: string;
-      if (existing) {
-        enrollmentId = existing.id;
-        db.prepare(
-          "UPDATE class_enrollments SET status = 'enrolled', enrolled_at = ?, withdrawn_at = NULL, withdrawal_reason = NULL WHERE id = ?",
-        ).run(now, existing.id);
-      } else {
-        enrollmentId = `pfx-${randomUUID().slice(0, 8)}`;
-        db.prepare(
-          "INSERT INTO class_enrollments (id, class_id, student_id, status, enrolled_at, withdrawn_at, withdrawal_reason) VALUES (?, ?, ?, 'enrolled', ?, NULL, NULL)",
-        ).run(enrollmentId, classId, studentId, now);
-      }
-      db.prepare(
-        `INSERT INTO class_session_roster (id, session_id, student_id, enrollment_id, rostered_at)
+            const now = Date.now();
+            let enrollmentId: string;
+            if (existing) {
+              enrollmentId = existing.id;
+              (await db.prepare(
+                          "UPDATE class_enrollments SET status = 'enrolled', enrolled_at = ?, withdrawn_at = NULL, withdrawal_reason = NULL WHERE id = ?",
+                        ).run(now, existing.id));
+            } else {
+              enrollmentId = `pfx-${randomUUID().slice(0, 8)}`;
+              (await db.prepare(
+                          "INSERT INTO class_enrollments (id, class_id, student_id, status, enrolled_at, withdrawn_at, withdrawal_reason) VALUES (?, ?, ?, 'enrolled', ?, NULL, NULL)",
+                        ).run(enrollmentId, classId, studentId, now));
+            }
+            (await db.prepare(
+                      `INSERT INTO class_session_roster (id, session_id, student_id, enrollment_id, rostered_at)
          SELECT 'csr-' || lower(hex(randomblob(16))), cs.id, ?, ?, ?
          FROM class_sessions cs
          WHERE cs.class_id = ? AND cs.session_date > ?
@@ -732,9 +732,9 @@ export async function enrollStudent(classId: string, studentId: string): Promise
              SELECT 1 FROM class_session_roster csr
              WHERE csr.session_id = cs.id AND csr.student_id = ?
            )`,
-      ).run(studentId, enrollmentId, now, classId, now, studentId);
-      logActivity("class", classId, "note", "Student enrolled; future session rosters updated.", me.id);
-    });
+                    ).run(studentId, enrollmentId, now, classId, now, studentId));
+            (await logActivity("class", classId, "note", "Student enrolled; future session rosters updated.", me.id));
+          }));
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "class_missing") return { ok: false, error: "Class not found." };
@@ -759,26 +759,26 @@ export async function withdrawEnrollment(classId: string, studentId: string, rea
   if (cleanReason.length < 3) return { ok: false, error: "Record why the student is being withdrawn." };
   let programId: string | null = null;
   try {
-    inImmediateTransaction(() => {
-      const cls = db.prepare("SELECT status, program_id FROM classes WHERE id = ?").get(classId) as
-        | { status: string; program_id: string | null }
-        | undefined;
-      if (!cls) throw new Error("class_missing");
-      programId = cls.program_id;
-      if (TERMINAL_CLASS_STATUSES.has(cls.status)) throw new Error("class_history_frozen");
-      const existingRows = db
-        .prepare("SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?")
-        .all(classId, studentId) as { id: string; status: string }[];
-      if (existingRows.length > 1) throw new Error("enrollment_invariant");
-      const existing = existingRows[0];
-      if (!existing || existing.status !== "enrolled") throw new Error("not_enrolled");
+    (await inImmediateTransaction(async () => {
+            const cls = (await db.prepare("SELECT status, program_id FROM classes WHERE id = ?").get(classId)) as
+              | { status: string; program_id: string | null }
+              | undefined;
+            if (!cls) throw new Error("class_missing");
+            programId = cls.program_id;
+            if (TERMINAL_CLASS_STATUSES.has(cls.status)) throw new Error("class_history_frozen");
+            const existingRows = (await db
+                    .prepare("SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?")
+                    .all(classId, studentId)) as { id: string; status: string }[];
+            if (existingRows.length > 1) throw new Error("enrollment_invariant");
+            const existing = existingRows[0];
+            if (!existing || existing.status !== "enrolled") throw new Error("not_enrolled");
 
-      const now = Date.now();
-      db.prepare(
-        "UPDATE class_enrollments SET status = 'withdrawn', withdrawn_at = ?, withdrawal_reason = ? WHERE id = ? AND status = 'enrolled'",
-      ).run(now, cleanReason, existing.id);
-      db.prepare(
-        `DELETE FROM class_session_roster
+            const now = Date.now();
+            (await db.prepare(
+                      "UPDATE class_enrollments SET status = 'withdrawn', withdrawn_at = ?, withdrawal_reason = ? WHERE id = ? AND status = 'enrolled'",
+                    ).run(now, cleanReason, existing.id));
+            (await db.prepare(
+                      `DELETE FROM class_session_roster
          WHERE student_id = ?
            AND session_id IN (SELECT id FROM class_sessions WHERE class_id = ? AND session_date > ?)
            AND NOT EXISTS (
@@ -789,9 +789,9 @@ export async function withdrawEnrollment(classId: string, studentId: string, rea
              SELECT 1 FROM class_session_reports report
              WHERE report.session_id = class_session_roster.session_id AND report.completed = 1
            )`,
-      ).run(studentId, classId, now);
-      logActivity("class", classId, "note", `Student withdrawn. ${cleanReason}`, me.id);
-    });
+                    ).run(studentId, classId, now));
+            (await logActivity("class", classId, "note", `Student withdrawn. ${cleanReason}`, me.id));
+          }));
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "class_missing") return { ok: false, error: "Class not found." };

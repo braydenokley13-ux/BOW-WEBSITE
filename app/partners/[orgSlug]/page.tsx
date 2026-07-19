@@ -24,7 +24,7 @@ type Props = { params: Promise<{ orgSlug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { orgSlug } = await params;
-  const org = getPartnerBySlug(orgSlug);
+  const org = (await getPartnerBySlug(orgSlug));
   if (!org) {
     return { title: "Partner not found · BOW Sports Capital", robots: { index: false, follow: false } };
   }
@@ -54,7 +54,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function PartnerPage({ params }: Props) {
   const { orgSlug } = await params;
-  const org = getPartnerBySlug(orgSlug);
+  const org = (await getPartnerBySlug(orgSlug));
   if (!org) notFound();
 
   return (

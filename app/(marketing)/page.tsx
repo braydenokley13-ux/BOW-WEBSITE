@@ -25,10 +25,10 @@ import { getActiveTestimonials } from "@/lib/content";
 
 const SECTION_PAD = "clamp(56px,8vw,120px) clamp(18px,4vw,40px)";
 
-export default function HomePage() {
+export default async function HomePage() {
   // Testimonials are admin-editable (Feature 8); fall back to the static
   // seed quotes if none are active. revalidatePath("/") refreshes this after edits.
-  const dbTestimonials = getActiveTestimonials();
+  const dbTestimonials = (await getActiveTestimonials());
   const testimonials = dbTestimonials.length
     ? dbTestimonials.map((t) => ({
         text: t.quote,

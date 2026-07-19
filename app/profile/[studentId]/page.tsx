@@ -7,7 +7,7 @@ type Props = { params: Promise<{ studentId: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { studentId: publicSlug } = await params;
-  const profile = getPublicProfile(publicSlug);
+  const profile = (await getPublicProfile(publicSlug));
   if (!profile) {
     return { title: "Profile not found · BOW Sports Capital", robots: { index: false, follow: false } };
   }
@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function PublicProfilePage({ params }: Props) {
   const { studentId: publicSlug } = await params;
-  const record = getPublicProfileRecord(publicSlug);
+  const record = (await getPublicProfileRecord(publicSlug));
   if (!record) notFound();
   // Research publication/byline consent is separate from guardian credential
   // sharing consent. Do not attach papers to a minor's public credential until

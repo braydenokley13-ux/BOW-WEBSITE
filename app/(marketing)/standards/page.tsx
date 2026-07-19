@@ -64,8 +64,8 @@ function ModuleCard({ e }: { e: StandardsEntry }) {
   );
 }
 
-export default function StandardsPage() {
-  const entries = getStandardsAlignment();
+export default async function StandardsPage() {
+  const entries = (await getStandardsAlignment());
   const downloadHtml = buildStandardsHtml(entries);
 
   return (

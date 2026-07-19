@@ -30,15 +30,15 @@ export async function signUpForFeed(_prev: FeedSignupState, formData: FormData):
   if (displayName.length > 80) return { error: "Keep the display name under 80 characters." };
   const address = await clientAddressBucket();
   if (address) {
-    const limit = consumeRateLimit("feed-visitor-network", address, {
-      limit: 20,
-      windowMs: 24 * 60 * 60 * 1000,
-      blockMs: 24 * 60 * 60 * 1000,
-    });
+    const limit = (await consumeRateLimit("feed-visitor-network", address, {
+          limit: 20,
+          windowMs: 24 * 60 * 60 * 1000,
+          blockMs: 24 * 60 * 60 * 1000,
+        }));
     if (!limit.allowed) return { error: "Too many preview profiles were created from this network. Try again later." };
   }
 
-  const user = createFeedVisitor(displayName);
+  const user = (await createFeedVisitor(displayName));
   await createFeedSession(user.id);
   redirect("/feed");
 }
@@ -58,17 +58,17 @@ export async function submitFeedDecision(storyId: string, response: string): Pro
   const text = response.trim();
   if (!text) return { ok: false };
   if (text.length > 2000) return { ok: false };
-  const limit = consumeRateLimit("feed-decision-visitor", me.id, {
-    limit: 120,
-    windowMs: 60 * 60 * 1000,
-    blockMs: 60 * 60 * 1000,
-  });
+  const limit = (await consumeRateLimit("feed-decision-visitor", me.id, {
+      limit: 120,
+      windowMs: 60 * 60 * 1000,
+      blockMs: 60 * 60 * 1000,
+    }));
   if (!limit.allowed) return { ok: false };
 
-  const story = getFeedStories().find((s) => s.id === storyId);
+  const story = (await getFeedStories()).find((s) => s.id === storyId);
   if (!story) return { ok: false };
 
-  const decisionsCompleted = recordFeedResponse(me.id, storyId, text);
+  const decisionsCompleted = (await recordFeedResponse(me.id, storyId, text));
   revalidatePath("/feed");
   return {
     ok: true,
@@ -104,14 +104,14 @@ export async function recordFeedSimulationDecision(
   if (!cleanChoiceId || cleanChoiceId.length > 80) {
     return { ok: false, error: "Choose one of the available decisions." };
   }
-  const limit = consumeRateLimit("feed-simulation-decision-visitor", me.id, {
-    limit: 60,
-    windowMs: 60 * 60 * 1000,
-    blockMs: 60 * 60 * 1000,
-  });
+  const limit = (await consumeRateLimit("feed-simulation-decision-visitor", me.id, {
+      limit: 60,
+      windowMs: 60 * 60 * 1000,
+      blockMs: 60 * 60 * 1000,
+    }));
   if (!limit.allowed) return { ok: false, error: "Too many simulation decisions were submitted. Try again later." };
 
-  const recorded = recordFeedSimulationDecisionEvidence(me.id, stepIndex, cleanChoiceId);
+  const recorded = (await recordFeedSimulationDecisionEvidence(me.id, stepIndex, cleanChoiceId));
   return recorded
     ? { ok: true }
     : { ok: false, error: "Complete each Feed decision and simulation round in order before continuing." };
@@ -121,13 +121,13 @@ export async function recordFeedSimulationDecision(
 export async function completeFeedSimulation(): Promise<FeedCertificateState> {
   const me = await getCurrentFeedUser();
   if (!me) return { ok: false };
-  const limit = consumeRateLimit("feed-certificate-visitor", me.id, {
-    limit: 10,
-    windowMs: 24 * 60 * 60 * 1000,
-    blockMs: 24 * 60 * 60 * 1000,
-  });
+  const limit = (await consumeRateLimit("feed-certificate-visitor", me.id, {
+      limit: 10,
+      windowMs: 24 * 60 * 60 * 1000,
+      blockMs: 24 * 60 * 60 * 1000,
+    }));
   if (!limit.allowed) return { ok: false };
-  const issued = issueFeedCertificate(me.id);
+  const issued = (await issueFeedCertificate(me.id));
   if (!issued) return { ok: false };
   revalidatePath("/feed");
   return { ok: true, certificateId: issued.certificateId, completedAt: issued.completedAt };

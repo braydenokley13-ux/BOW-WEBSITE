@@ -9,8 +9,8 @@ export default async function NewProgramPage({
 }) {
   const params = await searchParams;
   const me = await requireStaff();
-  const options = getProgramFormOptions();
-  const prefill = getProgramSourcePrefill(params.source ?? null, params.sourceId ?? null);
+  const options = (await getProgramFormOptions());
+  const prefill = (await getProgramSourcePrefill(params.source ?? null, params.sourceId ?? null));
   const partner = params.partner && options.organizations.some((organization) => organization.id === params.partner)
     ? params.partner
     : prefill?.partnerOrgId ?? null;

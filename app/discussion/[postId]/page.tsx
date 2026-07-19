@@ -9,7 +9,7 @@ type Props = { params: Promise<{ postId: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { postId } = await params;
   const me = await requireUser();
-  const post = getPostDetail(postId, me.id);
+  const post = (await getPostDetail(postId, me.id));
   if (!post) {
     return { title: "Discussion · BOW Sports Capital", robots: { index: false, follow: false } };
   }
@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function PostThreadPage({ params }: Props) {
   const { postId } = await params;
   const me = await requireUser();
-  const post = getPostDetail(postId, me.id);
+  const post = (await getPostDetail(postId, me.id));
   if (!post) notFound();
 
   return <PostThread post={post} firstName={me.first} role={me.role} />;

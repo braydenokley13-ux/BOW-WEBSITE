@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default async function CardPage() {
   const me = await requireRole("student");
-  const data = getPlayerCardData(me.id);
+  const data = (await getPlayerCardData(me.id));
   if (!data) return null;
   return <PlayerCardView data={data} />;
 }

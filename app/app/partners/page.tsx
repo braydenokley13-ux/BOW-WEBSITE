@@ -2,9 +2,9 @@ import { Badge, Button, DataTable, SectionHeader } from "@/components/ds";
 import { listOrganizations, listDemoRequests } from "@/lib/hiring";
 import DemoRequestActions from "@/components/app/partners/DemoRequestActions";
 
-export default function PartnersPage() {
-  const organizations = listOrganizations();
-  const demoRequests = listDemoRequests();
+export default async function PartnersPage() {
+  const organizations = (await listOrganizations());
+  const demoRequests = (await listDemoRequests());
   const pendingDemoRequests = demoRequests.filter((d) => !d.dispositioned);
 
   return (

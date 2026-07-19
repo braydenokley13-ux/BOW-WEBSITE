@@ -15,10 +15,10 @@ export const metadata: Metadata = {
 export default async function FrontOfficePage() {
   const me = await requireRole("student");
   // Gate: The Front Office unlocks after Module 201-2.
-  const module201_2 = getSelfModuleViews(me.id, "201").find((v) => v.module.ordinal === 2)?.completed ?? false;
+  const module201_2 = (await getSelfModuleViews(me.id, "201")).find((v) => v.module.ordinal === 2)?.completed ?? false;
   if (!module201_2) redirect("/dashboard");
 
-  const state = getCurrentSimulation(me.id, TRACK_201_SIM_TYPE);
+  const state = (await getCurrentSimulation(me.id, TRACK_201_SIM_TYPE));
   // Pre-pick content only — outcomes, cap, and win impacts stay server-side.
   const turns = EASTFIELD_TURNS.map((t) => ({
     turn: t.turn,

@@ -63,11 +63,11 @@ export function positionTagline(label: string): string {
 }
 
 /** Quiz MC percentage across the student's unlocked modules (both tracks). */
-function quizPct(studentId: string): number | null {
+async function quizPct(studentId: string): Promise<number | null> {
   let correct = 0;
   let answered = 0;
   for (const track of [TRACK_101, TRACK_201]) {
-    for (const s of getQuizModuleSections(studentId, track)) {
+    for (const s of (await getQuizModuleSections(studentId, track))) {
       if (!s.unlocked) continue;
       correct += s.mcCorrect;
       answered += s.mcAnswered;
@@ -77,14 +77,14 @@ function quizPct(studentId: string): number | null {
 }
 
 /** Assemble the live data for a student's Player Card. */
-export function getPlayerCardData(studentId: string): PlayerCardData | null {
-  const score = getStudentScore(studentId, 0);
+export async function getPlayerCardData(studentId: string): Promise<PlayerCardData | null> {
+  const score = (await getStudentScore(studentId, 0));
   if (!score) return null;
-  const stats = computeStats(studentId, 0);
-  const pct = quizPct(studentId);
-  const streak = getStreak(studentId);
+  const stats = (await computeStats(studentId, 0));
+  const pct = (await quizPct(studentId));
+  const streak = (await getStreak(studentId));
   const totalModules =
-    getSelfModuleViews(studentId, TRACK_101).length + getSelfModuleViews(studentId, TRACK_201).length;
+    (await getSelfModuleViews(studentId, TRACK_101)).length + (await getSelfModuleViews(studentId, TRACK_201)).length;
 
   const positionLabel = getPositionLabel({
     quizScorePct: pct,
@@ -111,12 +111,12 @@ export function getPlayerCardData(studentId: string): PlayerCardData | null {
  * Record (idempotently) that a student generated their card. One row per
  * student, updated with the latest position label on each generation.
  */
-export function recordPlayerCard(studentId: string, positionLabel: string): void {
-  getDb()
-    .prepare(
-      "INSERT INTO player_cards (id, student_id, generated_at, position_label) VALUES (?, ?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET generated_at = excluded.generated_at, position_label = excluded.position_label",
-    )
-    .run(`pc-${studentId}`, studentId, Date.now(), positionLabel);
+export async function recordPlayerCard(studentId: string, positionLabel: string): Promise<void> {
+  (await getDb()
+        .prepare(
+          "INSERT INTO player_cards (id, student_id, generated_at, position_label) VALUES (?, ?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET generated_at = excluded.generated_at, position_label = excluded.position_label",
+        )
+        .run(`pc-${studentId}`, studentId, Date.now(), positionLabel));
 }
 
 /** A filesystem-safe download filename for the card. */

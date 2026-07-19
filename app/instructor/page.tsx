@@ -10,7 +10,7 @@ export default async function InstructorPage() {
   // Admins can view any cohort; an instructor must actually be assigned to
   // the self-paced cohort — otherwise this page would leak every self-paced
   // student's roster, reflections, and notes to any instructor account.
-  if (me.role === "instructor" && !isInstructorOfSelfPaced(me.id)) {
+  if (me.role === "instructor" && !(await isInstructorOfSelfPaced(me.id))) {
     return (
       <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px)" }}>
         <div style={{ maxWidth: 640, margin: "0 auto", background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 28 }}>
@@ -22,10 +22,10 @@ export default async function InstructorPage() {
     );
   }
   // Live roster, analytics, and cohort leaderboard from SQLite — no static data.
-  const roster = getSelfRoster(SELF_PACED_COHORT_ID);
-  const modules = getSelfModules();
-  const analytics = getCohortAnalytics(SELF_PACED_COHORT_ID);
-  const leaderboard = getLeaderboard({ cohortId: SELF_PACED_COHORT_ID });
+  const roster = (await getSelfRoster(SELF_PACED_COHORT_ID));
+  const modules = (await getSelfModules());
+  const analytics = (await getCohortAnalytics(SELF_PACED_COHORT_ID));
+  const leaderboard = (await getLeaderboard({ cohortId: SELF_PACED_COHORT_ID }));
 
   return (
     <InstructorDashboard

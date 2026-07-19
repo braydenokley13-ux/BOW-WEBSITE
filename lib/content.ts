@@ -59,17 +59,17 @@ function rowToTestimonial(r: any): Testimonial {
 }
 
 /** Active testimonials for the homepage, ordered. */
-export function getActiveTestimonials(): Testimonial[] {
-  return (getDb()
-    .prepare("SELECT * FROM testimonials WHERE active = 1 ORDER BY ordinal ASC, created_at ASC")
-    .all() as any[]).map(rowToTestimonial);
+export async function getActiveTestimonials(): Promise<Testimonial[]> {
+  return ((await getDb()
+      .prepare("SELECT * FROM testimonials WHERE active = 1 ORDER BY ordinal ASC, created_at ASC")
+      .all()) as any[]).map(rowToTestimonial);
 }
 
 /** Every testimonial (admin manager). */
-export function getAllTestimonials(): Testimonial[] {
-  return (getDb()
-    .prepare("SELECT * FROM testimonials ORDER BY ordinal ASC, created_at ASC")
-    .all() as any[]).map(rowToTestimonial);
+export async function getAllTestimonials(): Promise<Testimonial[]> {
+  return ((await getDb()
+      .prepare("SELECT * FROM testimonials ORDER BY ordinal ASC, created_at ASC")
+      .all()) as any[]).map(rowToTestimonial);
 }
 
 function rowToNews(r: any): NewsItem {
@@ -87,26 +87,26 @@ function rowToNews(r: any): NewsItem {
 }
 
 /** Active news items for the public /news page, newest first. */
-export function getActiveNewsItems(): NewsItem[] {
-  return (getDb()
-    .prepare("SELECT * FROM news_items WHERE active = 1 ORDER BY created_at DESC")
-    .all() as any[]).map(rowToNews);
+export async function getActiveNewsItems(): Promise<NewsItem[]> {
+  return ((await getDb()
+      .prepare("SELECT * FROM news_items WHERE active = 1 ORDER BY created_at DESC")
+      .all()) as any[]).map(rowToNews);
 }
 
 /** Every news item (admin manager), newest first. */
-export function getAllNewsItems(): NewsItem[] {
-  return (getDb()
-    .prepare("SELECT * FROM news_items ORDER BY created_at DESC")
-    .all() as any[]).map(rowToNews);
+export async function getAllNewsItems(): Promise<NewsItem[]> {
+  return ((await getDb()
+      .prepare("SELECT * FROM news_items ORDER BY created_at DESC")
+      .all()) as any[]).map(rowToNews);
 }
 
 /** Pending student news submissions (admin manager), newest first. */
-export function getPendingNewsSubmissions(): NewsSubmission[] {
-  return (getDb()
-    .prepare(
-      "SELECT s.*, u.name AS student_name FROM news_submissions s LEFT JOIN users u ON u.id = s.student_id WHERE s.status = 'pending' ORDER BY s.created_at DESC",
-    )
-    .all() as any[]).map((r) => ({
+export async function getPendingNewsSubmissions(): Promise<NewsSubmission[]> {
+  return ((await getDb()
+      .prepare(
+        "SELECT s.*, u.name AS student_name FROM news_submissions s LEFT JOIN users u ON u.id = s.student_id WHERE s.status = 'pending' ORDER BY s.created_at DESC",
+      )
+      .all()) as any[]).map((r) => ({
     id: r.id,
     studentId: r.student_id,
     studentName: r.student_name ?? "Student",
@@ -139,15 +139,15 @@ export interface DailyQuestionAdminRow {
   answeredCount: number;
 }
 
-export function getDailyQuestionsAdmin(): DailyQuestionAdminRow[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT q.id, q.ordinal, q.question_text, q.choice_a, q.choice_b, q.choice_c, q.choice_d,
+export async function getDailyQuestionsAdmin(): Promise<DailyQuestionAdminRow[]> {
+  const rows = (await getDb()
+      .prepare(
+        `SELECT q.id, q.ordinal, q.question_text, q.choice_a, q.choice_b, q.choice_c, q.choice_d,
               q.concept_tag, q.difficulty, q.type, q.track, q.points, q.active, q.active_date, q.correct_answer, q.explanation,
               (SELECT COUNT(*) FROM daily_responses r WHERE r.question_id = q.id) AS answered
        FROM daily_questions q ORDER BY q.ordinal ASC`,
-    )
-    .all() as any[];
+      )
+      .all()) as any[];
   return rows.map((r) => {
     const type = r.type === "math" || r.type === "fr" ? r.type : "mc";
     return {

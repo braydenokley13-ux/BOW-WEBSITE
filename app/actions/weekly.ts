@@ -27,15 +27,15 @@ export async function submitWeeklyChallenge(
   if (!text) return { ok: false, error: "empty" };
 
   // Only the open challenge is submittable.
-  if (challengeId !== currentWeeklyChallengeId()) return { ok: false, error: "closed" };
+  if (challengeId !== (await currentWeeklyChallengeId())) return { ok: false, error: "closed" };
 
-  getDb()
-    .prepare(
-      "INSERT OR IGNORE INTO weekly_completions (id, student_id, challenge_id, response_text, submitted_at) VALUES (?, ?, ?, ?, ?)",
-    )
-    .run(`wcmp-${randomUUID().slice(0, 12)}`, me.id, challengeId, text, Date.now());
+  (await getDb()
+        .prepare(
+          "INSERT OR IGNORE INTO weekly_completions (id, student_id, challenge_id, response_text, submitted_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run(`wcmp-${randomUUID().slice(0, 12)}`, me.id, challengeId, text, Date.now()));
 
-  getDb().prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(Date.now(), me.id);
+  (await getDb().prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(Date.now(), me.id));
   revalidatePath("/dashboard");
   revalidatePath("/profile");
   return { ok: true };

@@ -22,7 +22,7 @@ const REGION_STAGES: RegionStage[] = ["active", "paused", "closed"];
 export default async function EditRegionPage({ params }: { params: Promise<{ id: string }> }) {
   await requireStaff();
   const { id } = await params;
-  const row = getDb().prepare("SELECT * FROM operating_regions WHERE id = ?").get(id) as RegionRow | undefined;
+  const row = (await getDb().prepare("SELECT * FROM operating_regions WHERE id = ?").get(id)) as RegionRow | undefined;
   if (!row) notFound();
 
   if (row.stage === "closed") {

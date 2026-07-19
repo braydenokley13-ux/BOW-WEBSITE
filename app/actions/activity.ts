@@ -48,13 +48,13 @@ export async function addActivityNote(
   if (!table) return { ok: false, error: "Choose a supported operating record." };
 
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    if (!db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(normalizedId)) throw new Error("entity_missing");
-    logActivity(normalizedType, normalizedId, "note", text.slice(0, 4000), me.id);
-    db.exec("COMMIT");
+    if (!(await db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(normalizedId))) throw new Error("entity_missing");
+    (await logActivity(normalizedType, normalizedId, "note", text.slice(0, 4000), me.id));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     if (error instanceof Error && error.message === "entity_missing") {
       return { ok: false, error: "That operating record no longer exists." };
     }

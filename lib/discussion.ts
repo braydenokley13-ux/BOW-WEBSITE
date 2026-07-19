@@ -97,9 +97,9 @@ export interface ChannelCounts {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function discussionViewer(viewerId: string): { org_id: string } | undefined {
-  return getDb().prepare(
-    `SELECT u.org_id
+async function discussionViewer(viewerId: string): Promise<{ org_id: string } | undefined> {
+  return (await getDb().prepare(
+      `SELECT u.org_id
        FROM users u
        JOIN organizations o ON o.id = u.org_id
       WHERE u.id = ? AND u.status = 'active' AND o.status = 'active'
@@ -129,7 +129,7 @@ function discussionViewer(viewerId: string): { org_id: string } | undefined {
                AND i.eligibility_status = 'eligible'
           )
         )`,
-  ).get(viewerId) as { org_id: string } | undefined;
+    ).get(viewerId)) as { org_id: string } | undefined;
 }
 
 /** Relative "time ago" label from an epoch-ms timestamp. */
@@ -158,40 +158,40 @@ function excerpt(body: string, max = 120): string {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** The author's privacy-safe name + current rank, for any user id. */
-function authorMeta(userId: string): { name: string; rank: AuthorRank } {
-  const u = getDb().prepare("SELECT name, first FROM users WHERE id = ? AND status = 'active'").get(userId) as any;
+async function authorMeta(userId: string): Promise<{ name: string; rank: AuthorRank }> {
+  const u = (await getDb().prepare("SELECT name, first FROM users WHERE id = ? AND status = 'active'").get(userId)) as any;
   const name = u ? publicNameFor(u.name, u.first) : "Student";
-  const r = rankForStudent(userId);
+  const r = (await rankForStudent(userId));
   return { name, rank: { key: r.key, name: r.name } };
 }
 
 /** Reply count for a single post. */
-function replyCountFor(postId: string, orgId: string): number {
-  const row = getDb()
-    .prepare(
-      `SELECT COUNT(*) AS n
+async function replyCountFor(postId: string, orgId: string): Promise<number> {
+  const row = (await getDb()
+      .prepare(
+        `SELECT COUNT(*) AS n
          FROM discussion_replies r
          JOIN users u ON u.id = r.user_id
         JOIN discussion_posts p ON p.id = r.post_id
         WHERE r.post_id = ? AND p.org_id = ? AND u.status = 'active'`,
-    )
-    .get(postId, orgId) as any;
+      )
+      .get(postId, orgId)) as any;
   return Number(row?.n) || 0;
 }
 
 /** Reaction tallies for a single post. */
-function reactionCountsFor(postId: string, orgId: string): ReactionCounts {
+async function reactionCountsFor(postId: string, orgId: string): Promise<ReactionCounts> {
   const counts: ReactionCounts = { fire: 0, agree: 0, big_brain: 0 };
-  const rows = getDb()
-    .prepare(
-      `SELECT r.reaction_type AS type, COUNT(*) AS n
+  const rows = (await getDb()
+      .prepare(
+        `SELECT r.reaction_type AS type, COUNT(*) AS n
          FROM discussion_reactions r
          JOIN users u ON u.id = r.user_id
         JOIN discussion_posts p ON p.id = r.post_id
         WHERE r.post_id = ? AND p.org_id = ? AND u.status = 'active'
         GROUP BY r.reaction_type`,
-    )
-    .all(postId, orgId) as any[];
+      )
+      .all(postId, orgId)) as any[];
   for (const r of rows) {
     if (r.type === "fire" || r.type === "agree" || r.type === "big_brain") {
       counts[r.type as keyof ReactionCounts] = Number(r.n) || 0;
@@ -201,10 +201,10 @@ function reactionCountsFor(postId: string, orgId: string): ReactionCounts {
 }
 
 /** Reaction types a viewer has added to a post. */
-function viewerReactionsFor(postId: string, viewerId: string): ReactionType[] {
-  const rows = getDb()
-    .prepare("SELECT reaction_type AS type FROM discussion_reactions WHERE post_id = ? AND user_id = ?")
-    .all(postId, viewerId) as any[];
+async function viewerReactionsFor(postId: string, viewerId: string): Promise<ReactionType[]> {
+  const rows = (await getDb()
+      .prepare("SELECT reaction_type AS type FROM discussion_reactions WHERE post_id = ? AND user_id = ?")
+      .all(postId, viewerId)) as any[];
   const order = REACTION_TYPES.map((r) => r.key);
   return rows
     .map((r) => r.type as ReactionType)
@@ -215,94 +215,94 @@ function viewerReactionsFor(postId: string, viewerId: string): ReactionType[] {
  * One page of posts in a channel. Pinned posts come first, then newest first
  * (pinned DESC, created_at DESC). `page` is 1-based and clamped to range.
  */
-export function getChannelPosts(
+export async function getChannelPosts(
   channel: DiscussionChannel,
   page = 1,
   perPage = 10,
   viewerId: string,
-): ChannelPage {
+): Promise<ChannelPage> {
   const db = getDb();
-  const viewer = discussionViewer(viewerId);
+  const viewer = (await discussionViewer(viewerId));
   if (!viewer) return { posts: [], total: 0, page: 1, totalPages: 1 };
-  const totalRow = db
-    .prepare(
-      `SELECT COUNT(*) AS n
+  const totalRow = (await db
+      .prepare(
+        `SELECT COUNT(*) AS n
          FROM discussion_posts p JOIN users u ON u.id = p.user_id
         WHERE p.channel = ? AND p.org_id = ? AND u.status = 'active'`,
-    )
-    .get(channel, viewer.org_id) as any;
+      )
+      .get(channel, viewer.org_id)) as any;
   const total = Number(totalRow?.n) || 0;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   const safePage = Math.min(Math.max(1, Math.floor(page) || 1), totalPages);
   const offset = (safePage - 1) * perPage;
 
-  const rows = db
-    .prepare(
-      `SELECT p.id, p.user_id, p.channel, p.title, p.body, p.pinned, p.created_at
+  const rows = (await db
+      .prepare(
+        `SELECT p.id, p.user_id, p.channel, p.title, p.body, p.pinned, p.created_at
        FROM discussion_posts p JOIN users u ON u.id = p.user_id
        WHERE p.channel = ? AND p.org_id = ? AND u.status = 'active'
        ORDER BY p.pinned DESC, p.created_at DESC
        LIMIT ? OFFSET ?`,
-    )
-    .all(channel, viewer.org_id, perPage, offset) as any[];
+      )
+      .all(channel, viewer.org_id, perPage, offset)) as any[];
 
-  const posts: PostSummary[] = rows.map((r) => {
-    const meta = authorMeta(r.user_id);
-    return {
-      id: r.id,
-      channel: r.channel as DiscussionChannel,
-      channelLabel: channelLabel(r.channel),
-      title: r.title,
-      bodyExcerpt: excerpt(r.body ?? ""),
-      authorName: meta.name,
-      authorRank: meta.rank,
-      pinned: !!r.pinned,
-      createdAt: Number(r.created_at) || 0,
-      when: timeAgo(Number(r.created_at) || 0),
-      replyCount: replyCountFor(r.id, viewer.org_id),
-      reactions: reactionCountsFor(r.id, viewer.org_id),
-      viewerReactions: viewerReactionsFor(r.id, viewerId),
-    };
-  });
+  const posts: PostSummary[] = (await Promise.all(rows.map(async (r) => {
+      const meta = (await authorMeta(r.user_id));
+      return {
+        id: r.id,
+        channel: r.channel as DiscussionChannel,
+        channelLabel: channelLabel(r.channel),
+        title: r.title,
+        bodyExcerpt: excerpt(r.body ?? ""),
+        authorName: meta.name,
+        authorRank: meta.rank,
+        pinned: !!r.pinned,
+        createdAt: Number(r.created_at) || 0,
+        when: timeAgo(Number(r.created_at) || 0),
+        replyCount: (await replyCountFor(r.id, viewer.org_id)),
+        reactions: (await reactionCountsFor(r.id, viewer.org_id)),
+        viewerReactions: (await viewerReactionsFor(r.id, viewerId)),
+      };
+    })));
 
   return { posts, total, page: safePage, totalPages };
 }
 
 /** A single post with its replies and reactions, or null if it doesn't exist. */
-export function getPostDetail(postId: string, viewerId: string): PostDetail | null {
+export async function getPostDetail(postId: string, viewerId: string): Promise<PostDetail | null> {
   const db = getDb();
-  const viewer = discussionViewer(viewerId);
+  const viewer = (await discussionViewer(viewerId));
   if (!viewer) return null;
-  const p = db
-    .prepare(
-      `SELECT p.id, p.user_id, p.channel, p.title, p.body, p.pinned, p.created_at
+  const p = (await db
+      .prepare(
+        `SELECT p.id, p.user_id, p.channel, p.title, p.body, p.pinned, p.created_at
          FROM discussion_posts p JOIN users u ON u.id = p.user_id
         WHERE p.id = ? AND p.org_id = ? AND u.status = 'active'`,
-    )
-    .get(postId, viewer.org_id) as any;
+      )
+      .get(postId, viewer.org_id)) as any;
   if (!p) return null;
 
-  const meta = authorMeta(p.user_id);
-  const replyRows = db
-    .prepare(
-      `SELECT r.id, r.user_id, r.body, r.created_at
+  const meta = (await authorMeta(p.user_id));
+  const replyRows = (await db
+      .prepare(
+        `SELECT r.id, r.user_id, r.body, r.created_at
          FROM discussion_replies r JOIN users u ON u.id = r.user_id
         WHERE r.post_id = ? AND u.status = 'active'
         ORDER BY r.created_at ASC`,
-    )
-    .all(postId) as any[];
+      )
+      .all(postId)) as any[];
 
-  const replies: ReplyView[] = replyRows.map((r) => {
-    const rm = authorMeta(r.user_id);
-    return {
-      id: r.id,
-      authorName: rm.name,
-      authorRank: rm.rank,
-      body: r.body,
-      createdAt: Number(r.created_at) || 0,
-      when: timeAgo(Number(r.created_at) || 0),
-    };
-  });
+  const replies: ReplyView[] = (await Promise.all(replyRows.map(async (r) => {
+      const rm = (await authorMeta(r.user_id));
+      return {
+        id: r.id,
+        authorName: rm.name,
+        authorRank: rm.rank,
+        body: r.body,
+        createdAt: Number(r.created_at) || 0,
+        when: timeAgo(Number(r.created_at) || 0),
+      };
+    })));
 
   return {
     id: p.id,
@@ -318,25 +318,25 @@ export function getPostDetail(postId: string, viewerId: string): PostDetail | nu
     when: timeAgo(Number(p.created_at) || 0),
     canDelete: viewerId === p.user_id && replies.length === 0,
     replies,
-    reactions: reactionCountsFor(postId, viewer.org_id),
-    viewerReactions: viewerReactionsFor(postId, viewerId),
+    reactions: (await reactionCountsFor(postId, viewer.org_id)),
+    viewerReactions: (await viewerReactionsFor(postId, viewerId)),
   };
 }
 
 /** Post counts per channel, for the tab badges. */
-export function getChannelCounts(viewerId: string): ChannelCounts {
+export async function getChannelCounts(viewerId: string): Promise<ChannelCounts> {
   const counts: ChannelCounts = { gm_decisions: 0, econ_wild: 0, track_talk: 0 };
   const db = getDb();
-  const viewer = discussionViewer(viewerId);
+  const viewer = (await discussionViewer(viewerId));
   if (!viewer) return counts;
-  const rows = db
-    .prepare(
-      `SELECT p.channel, COUNT(*) AS n
+  const rows = (await db
+      .prepare(
+        `SELECT p.channel, COUNT(*) AS n
          FROM discussion_posts p JOIN users u ON u.id = p.user_id
         WHERE u.status = 'active' AND p.org_id = ?
         GROUP BY p.channel`,
-    )
-    .all(viewer.org_id) as any[];
+      )
+      .all(viewer.org_id)) as any[];
   for (const r of rows) {
     if (r.channel === "gm_decisions" || r.channel === "econ_wild" || r.channel === "track_talk") {
       counts[r.channel as keyof ChannelCounts] = Number(r.n) || 0;

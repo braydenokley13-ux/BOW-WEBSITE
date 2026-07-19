@@ -17,9 +17,9 @@ export const metadata: Metadata = {
 // Values come from the live cache; render per-request so a data refresh shows without a rebuild.
 export const dynamic = "force-dynamic";
 
-export default function TradePage() {
-  const players = getAnalyticsPlayers();
-  const provenance = getDataProvenance();
+export default async function TradePage() {
+  const players = (await getAnalyticsPlayers());
+  const provenance = (await getDataProvenance());
 
   return (
     <div data-screen-label="Trade Machine">

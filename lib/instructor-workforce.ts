@@ -437,23 +437,23 @@ function namedOptions(rows: { id: string; label: string }[], allLabel?: string):
   return allLabel ? [{ id: "all", label: allLabel }, ...options] : options;
 }
 
-export function getInstructorWorkforceDossier(instructorId: string): InstructorWorkforceDossier | null {
+export async function getInstructorWorkforceDossier(instructorId: string): Promise<InstructorWorkforceDossier | null> {
   const db = getDb();
   const now = Date.now();
-  const profile = db
-    .prepare(
-      `SELECT i.id, p.name, p.email, p.phone, p.user_id, i.stage, i.progression_level,
+  const profile = (await db
+      .prepare(
+        `SELECT i.id, p.name, p.email, p.phone, p.user_id, i.stage, i.progression_level,
               i.development_focus, i.max_weekly_classes
          FROM instructors i
          JOIN people p ON p.id = i.person_id
         WHERE i.id = ?`,
-    )
-    .get(instructorId) as BaseRow | undefined;
+      )
+      .get(instructorId)) as BaseRow | undefined;
   if (!profile) return null;
 
-  const assignmentRows = db
-    .prepare(
-      `SELECT ci.id, ci.class_id, c.title AS class_title, ci.role, c.status, c.start_date, c.end_date,
+  const assignmentRows = (await db
+      .prepare(
+        `SELECT ci.id, ci.class_id, c.title AS class_title, ci.role, c.status, c.start_date, c.end_date,
               c.program_id, p.name AS program_name, cr.title AS curriculum_title,
               COALESCE(l.name, c.location) AS location_name,
               CASE WHEN ci.removed_at IS NULL THEN ci.decision_reason ELSE ci.removal_reason END AS decision_reason,
@@ -466,11 +466,11 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
         WHERE ci.instructor_id = ?
         ORDER BY CASE WHEN c.status IN ('active','ready_to_launch','staffing','planning','paused') THEN 0 ELSE 1 END,
                  COALESCE(c.start_date, '9999-12-31') DESC, ci.added_at DESC`,
-    )
-    .all(instructorId) as unknown as AssignmentRow[];
-  const removedAssignmentRows = db
-    .prepare(
-      `SELECT od.id AS decision_id, od.entity_id AS class_id, c.title AS class_title,
+      )
+      .all(instructorId)) as unknown as AssignmentRow[];
+  const removedAssignmentRows = (await db
+      .prepare(
+        `SELECT od.id AS decision_id, od.entity_id AS class_id, c.title AS class_title,
               json_extract(od.decision, '$.role') AS role, 'removed' AS status,
               c.start_date, c.end_date, c.program_id, p.name AS program_name,
               cr.title AS curriculum_title, COALESCE(l.name, c.location) AS location_name,
@@ -490,8 +490,8 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
           )
         ORDER BY od.decided_at DESC
         LIMIT 250`,
-    )
-    .all(instructorId) as unknown as RemovedAssignmentRow[];
+      )
+      .all(instructorId)) as unknown as RemovedAssignmentRow[];
   const assignments: WorkforceAssignment[] = [
     ...assignmentRows.map((row) => ({
       id: row.id,
@@ -527,9 +527,9 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
     })),
   ];
 
-  const qualificationRows = db
-    .prepare(
-      `SELECT q.*, u.name AS approver_name, cr.title AS curriculum_name,
+  const qualificationRows = (await db
+      .prepare(
+        `SELECT q.*, u.name AS approver_name, cr.title AS curriculum_name,
               l.name AS location_name, r.name AS region_name
          FROM instructor_qualifications q
          LEFT JOIN users u ON u.id = q.approved_by
@@ -538,8 +538,8 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
          LEFT JOIN operating_regions r ON q.kind = 'region' AND r.id = q.value
         WHERE q.instructor_id = ?
         ORDER BY CASE q.status WHEN 'approved' THEN 0 ELSE 1 END, q.kind, q.updated_at DESC`,
-    )
-    .all(instructorId) as unknown as QualificationRow[];
+      )
+      .all(instructorId)) as unknown as QualificationRow[];
   const today = canonicalDateInZone(now);
   const qualifications: WorkforceQualification[] = qualificationRows.map((row) => {
     const expired = row.expires_on
@@ -559,9 +559,9 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
     };
   });
 
-  const feedbackRows = db
-    .prepare(
-      `SELECT f.*, c.title AS class_name, p.name AS program_name, o.name AS partner_name,
+  const feedbackRows = (await db
+      .prepare(
+        `SELECT f.*, c.title AS class_name, p.name AS program_name, o.name AS partner_name,
               cs.session_date, COALESCE(cs.timezone, c.schedule_timezone) AS session_timezone,
               u.name AS submitter_name
          FROM instructor_feedback f
@@ -573,8 +573,8 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
         WHERE f.instructor_id = ?
         ORDER BY f.created_at DESC
         LIMIT 60`,
-    )
-    .all(instructorId) as unknown as FeedbackRow[];
+      )
+      .all(instructorId)) as unknown as FeedbackRow[];
   const feedback: WorkforceFeedback[] = feedbackRows.map((row) => ({
     id: row.id,
     sourceType: row.source_type,
@@ -595,9 +595,9 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
   }));
   const recentCutoff = now - 90 * 24 * 60 * 60 * 1000;
   const priorCutoff = now - 180 * 24 * 60 * 60 * 1000;
-  const qualityAggregate = db
-    .prepare(
-      `WITH bounds AS (SELECT ? AS recent_cutoff, ? AS prior_cutoff)
+  const qualityAggregate = (await db
+      .prepare(
+        `WITH bounds AS (SELECT ? AS recent_cutoff, ? AS prior_cutoff)
        SELECT
          AVG(f.curriculum_delivery) AS curriculum_all,
          AVG(CASE WHEN f.created_at >= b.recent_cutoff THEN f.curriculum_delivery END) AS curriculum_recent,
@@ -618,20 +618,20 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
        FROM instructor_feedback f
        CROSS JOIN bounds b
        WHERE f.instructor_id = ?`,
-    )
-    .get(recentCutoff, priorCutoff, instructorId) as unknown as QualityAggregateRow;
+      )
+      .get(recentCutoff, priorCutoff, instructorId)) as unknown as QualityAggregateRow;
 
-  const developmentRows = db
-    .prepare(
-      `SELECT d.*, u.name AS owner_name
+  const developmentRows = (await db
+      .prepare(
+        `SELECT d.*, u.name AS owner_name
          FROM instructor_development_items d
          LEFT JOIN users u ON u.id = d.owner_user_id
         WHERE d.instructor_id = ?
         ORDER BY CASE d.status WHEN 'open' THEN 0 ELSE 1 END,
                  CASE WHEN d.due_at IS NULL THEN 1 ELSE 0 END, d.due_at, d.updated_at DESC
         LIMIT 80`,
-    )
-    .all(instructorId) as unknown as DevelopmentRow[];
+      )
+      .all(instructorId)) as unknown as DevelopmentRow[];
   const development: WorkforceDevelopmentItem[] = developmentRows.map((row) => ({
     id: row.id,
     kind: row.kind,
@@ -648,33 +648,33 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
     resolvedAt: row.resolved_at,
   }));
 
-  const availability = db
-    .prepare(
-      `SELECT id, day_of_week AS dayOfWeek, start_time AS startTime, end_time AS endTime, notes
+  const availability = (await db
+      .prepare(
+        `SELECT id, day_of_week AS dayOfWeek, start_time AS startTime, end_time AS endTime, notes
          FROM instructor_availability
         WHERE instructor_id = ?
         ORDER BY day_of_week, start_time`,
-    )
-    .all(instructorId) as InstructorWorkforceDossier["availability"];
+      )
+      .all(instructorId)) as InstructorWorkforceDossier["availability"];
 
   const currentClasses = assignments.filter((assignment) => assignment.current && assignment.status !== "paused").length;
   const pausedClasses = assignments.filter((assignment) => assignment.status === "paused").length;
   const workload = { currentClasses, pausedClasses, maximumClasses: Number(profile.max_weekly_classes) || 3 };
   const cutoff180 = priorCutoff;
   const next30 = now + 30 * 24 * 60 * 60 * 1000;
-  const delivered = db
-    .prepare(
-      `SELECT COUNT(DISTINCT cs.id) AS total
+  const delivered = (await db
+      .prepare(
+        `SELECT COUNT(DISTINCT cs.id) AS total
          FROM class_sessions cs
         JOIN class_instructors ci ON ci.class_id = cs.class_id
         WHERE ci.instructor_id = ? AND cs.session_date >= ci.added_at
           AND (ci.removed_at IS NULL OR cs.session_date < ci.removed_at)
           AND cs.session_date BETWEEN ? AND ?`,
-    )
-    .get(instructorId, cutoff180, now) as { total: number };
-  const missingReports = db
-    .prepare(
-      `SELECT COUNT(DISTINCT cs.id) AS total
+      )
+      .get(instructorId, cutoff180, now)) as { total: number };
+  const missingReports = (await db
+      .prepare(
+        `SELECT COUNT(DISTINCT cs.id) AS total
          FROM class_sessions cs
         JOIN class_instructors ci ON ci.class_id = cs.class_id
         WHERE ci.instructor_id = ? AND cs.session_date >= ci.added_at
@@ -683,12 +683,12 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
           AND NOT EXISTS (
             SELECT 1 FROM class_session_reports r WHERE r.session_id = cs.id AND r.completed = 1
           )`,
-    )
-    .get(instructorId, cutoff180, now) as { total: number };
+      )
+      .get(instructorId, cutoff180, now)) as { total: number };
   const reportsByInstructor = profile.user_id
-    ? (db
-        .prepare(
-          `SELECT COUNT(DISTINCT r.session_id) AS total
+    ? ((await db
+              .prepare(
+                `SELECT COUNT(DISTINCT r.session_id) AS total
              FROM class_session_reports r
              JOIN class_sessions cs ON cs.id = r.session_id
              JOIN class_instructors ci ON ci.class_id = cs.class_id
@@ -696,27 +696,27 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
               AND cs.session_date >= ci.added_at
               AND (ci.removed_at IS NULL OR cs.session_date < ci.removed_at)
               AND cs.session_date BETWEEN ? AND ?`,
-        )
-        .get(instructorId, profile.user_id, cutoff180, now) as { total: number })
+              )
+              .get(instructorId, profile.user_id, cutoff180, now)) as { total: number })
     : { total: 0 };
-  const lowReliability = db
-    .prepare(
-      `SELECT COUNT(*) AS total
+  const lowReliability = (await db
+      .prepare(
+        `SELECT COUNT(*) AS total
          FROM instructor_feedback
         WHERE instructor_id = ? AND created_at >= ?
           AND organization_reliability IS NOT NULL AND organization_reliability <= 2`,
-    )
-    .get(instructorId, cutoff180) as { total: number };
-  const upcoming = db
-    .prepare(
-      `SELECT COUNT(DISTINCT cs.id) AS total
+      )
+      .get(instructorId, cutoff180)) as { total: number };
+  const upcoming = (await db
+      .prepare(
+        `SELECT COUNT(DISTINCT cs.id) AS total
          FROM class_sessions cs
         JOIN class_instructors ci ON ci.class_id = cs.class_id
         WHERE ci.instructor_id = ? AND cs.session_date >= ci.added_at
           AND (ci.removed_at IS NULL OR cs.session_date < ci.removed_at)
           AND cs.session_date > ? AND cs.session_date <= ?`,
-    )
-    .get(instructorId, now, next30) as { total: number };
+      )
+      .get(instructorId, now, next30)) as { total: number };
   const reliability = {
     deliveredSessions180d: Number(delivered.total) || 0,
     missingReports180d: Number(missingReports.total) || 0,
@@ -725,26 +725,26 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
     next30DaySessions: Number(upcoming.total) || 0,
   };
 
-  const curriculumOptions = db
-    .prepare("SELECT id, title AS label FROM curricula WHERE published = 1 ORDER BY title LIMIT 250")
-    .all() as unknown as NamedOption[];
-  const ageGroupOptions = db
-    .prepare(
-      `SELECT value AS id, value AS label FROM (
+  const curriculumOptions = (await db
+      .prepare("SELECT id, title AS label FROM curricula WHERE published = 1 ORDER BY title LIMIT 250")
+      .all()) as unknown as NamedOption[];
+  const ageGroupOptions = (await db
+      .prepare(
+        `SELECT value AS id, value AS label FROM (
          SELECT DISTINCT trim(age_range) AS value FROM classes WHERE trim(COALESCE(age_range, '')) <> ''
          UNION SELECT DISTINCT trim(audience) AS value FROM programs WHERE trim(COALESCE(audience, '')) <> ''
        ) ORDER BY value LIMIT 250`,
-    )
-    .all() as unknown as NamedOption[];
-  const locationOptions = db
-    .prepare(
-      `SELECT l.id, l.name || CASE WHEN trim(COALESCE(l.city, '')) <> '' THEN ' · ' || l.city ELSE '' END AS label
+      )
+      .all()) as unknown as NamedOption[];
+  const locationOptions = (await db
+      .prepare(
+        `SELECT l.id, l.name || CASE WHEN trim(COALESCE(l.city, '')) <> '' THEN ' · ' || l.city ELSE '' END AS label
          FROM locations l WHERE l.stage <> 'closed' ORDER BY l.name LIMIT 250`,
-    )
-    .all() as unknown as NamedOption[];
-  const regionOptions = db
-    .prepare("SELECT id, name || ' · ' || code AS label FROM operating_regions WHERE stage <> 'closed' ORDER BY name LIMIT 250")
-    .all() as unknown as NamedOption[];
+      )
+      .all()) as unknown as NamedOption[];
+  const regionOptions = (await db
+      .prepare("SELECT id, name || ' · ' || code AS label FROM operating_regions WHERE stage <> 'closed' ORDER BY name LIMIT 250")
+      .all()) as unknown as NamedOption[];
   const qualificationOptions: QualificationOptionGroups = {
     curriculum: namedOptions(curriculumOptions, "All curricula"),
     age_group: namedOptions(ageGroupOptions, "All age groups"),
@@ -763,39 +763,39 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
     region: namedOptions(regionOptions, "All regions"),
   };
 
-  const classOptions = db
-    .prepare(
-      `SELECT DISTINCT c.id, c.title || ' · ' || COALESCE(p.name, 'No Program') || ' · ' || replace(c.status, '_', ' ') AS label
+  const classOptions = (await db
+      .prepare(
+        `SELECT DISTINCT c.id, c.title || ' · ' || COALESCE(p.name, 'No Program') || ' · ' || replace(c.status, '_', ' ') AS label
          FROM class_instructors ci
          JOIN classes c ON c.id = ci.class_id
          LEFT JOIN programs p ON p.id = c.program_id
         WHERE ci.instructor_id = ?
         ORDER BY c.updated_at DESC LIMIT 250`,
-    )
-    .all(instructorId) as unknown as NamedOption[];
-  const programOptions = db
-    .prepare(
-      `SELECT DISTINCT p.id, p.name || ' · ' || replace(p.stage, '_', ' ') AS label
+      )
+      .all(instructorId)) as unknown as NamedOption[];
+  const programOptions = (await db
+      .prepare(
+        `SELECT DISTINCT p.id, p.name || ' · ' || replace(p.stage, '_', ' ') AS label
          FROM class_instructors ci
          JOIN classes c ON c.id = ci.class_id
          JOIN programs p ON p.id = c.program_id
         WHERE ci.instructor_id = ?
         ORDER BY p.name LIMIT 250`,
-    )
-    .all(instructorId) as unknown as NamedOption[];
-  const partnerOptions = db
-    .prepare(
-      `SELECT DISTINCT o.id, o.name AS label
+      )
+      .all(instructorId)) as unknown as NamedOption[];
+  const partnerOptions = (await db
+      .prepare(
+        `SELECT DISTINCT o.id, o.name AS label
          FROM class_instructors ci
          JOIN classes c ON c.id = ci.class_id
          JOIN organizations o ON o.id = c.partner_org_id
         WHERE ci.instructor_id = ?
         ORDER BY o.name LIMIT 250`,
-    )
-    .all(instructorId) as unknown as NamedOption[];
-  const sessionRows = db
-    .prepare(
-      `SELECT cs.id, c.title, cs.session_date, COALESCE(cs.timezone, c.schedule_timezone) AS schedule_timezone
+      )
+      .all(instructorId)) as unknown as NamedOption[];
+  const sessionRows = (await db
+      .prepare(
+        `SELECT cs.id, c.title, cs.session_date, COALESCE(cs.timezone, c.schedule_timezone) AS schedule_timezone
          FROM class_instructors ci
         JOIN classes c ON c.id = ci.class_id
         JOIN class_sessions cs ON cs.class_id = c.id
@@ -803,8 +803,8 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
           AND cs.session_date >= ci.added_at
           AND (ci.removed_at IS NULL OR cs.session_date < ci.removed_at)
         ORDER BY cs.session_date DESC LIMIT 250`,
-    )
-    .all(instructorId, now) as { id: string; title: string; session_date: number; schedule_timezone: string | null }[];
+      )
+      .all(instructorId, now)) as { id: string; title: string; session_date: number; schedule_timezone: string | null }[];
   const feedbackContextOptions: FeedbackContextOptions = {
     classes: classOptions,
     programs: programOptions,
@@ -815,16 +815,16 @@ export function getInstructorWorkforceDossier(instructorId: string): InstructorW
     })),
   };
 
-  const managerWork = db
-    .prepare(
-      `SELECT title, priority, due_at AS dueAt, due_on AS dueOn
+  const managerWork = (await db
+      .prepare(
+        `SELECT title, priority, due_at AS dueAt, due_on AS dueOn
          FROM tasks
         WHERE entity_type = 'instructor' AND entity_id = ? AND status = 'open'
         ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END,
                  CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at
         LIMIT 100`,
-    )
-    .all(instructorId) as { title: string; priority: string; dueAt: number | null; dueOn: string | null }[];
+      )
+      .all(instructorId)) as { title: string; priority: string; dueAt: number | null; dueOn: string | null }[];
 
   const quality = qualitySummary(qualityAggregate);
   const nextAction = nextActionFor({ profile, qualifications, feedback, development, workload, reliability, work: managerWork });

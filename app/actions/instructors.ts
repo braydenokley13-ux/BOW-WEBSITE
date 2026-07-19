@@ -79,52 +79,52 @@ export async function createInstructorApplication(input: ApplicationInput): Prom
 
   const address = await clientAddressBucket();
   if (address) {
-    const networkLimit = consumeRateLimit("instructor-application-network", address, {
-      limit: 12,
-      windowMs: 24 * 60 * 60 * 1000,
-      blockMs: 24 * 60 * 60 * 1000,
-    });
+    const networkLimit = (await consumeRateLimit("instructor-application-network", address, {
+          limit: 12,
+          windowMs: 24 * 60 * 60 * 1000,
+          blockMs: 24 * 60 * 60 * 1000,
+        }));
     if (!networkLimit.allowed) return { ok: false, error: "Too many applications were submitted from this network. Try again later." };
   }
-  const identityLimit = consumeRateLimit("instructor-application-email", v.email, {
-    limit: 3,
-    windowMs: 30 * 24 * 60 * 60 * 1000,
-    blockMs: 30 * 24 * 60 * 60 * 1000,
-  });
+  const identityLimit = (await consumeRateLimit("instructor-application-email", v.email, {
+      limit: 3,
+      windowMs: 30 * 24 * 60 * 60 * 1000,
+      blockMs: 30 * 24 * 60 * 60 * 1000,
+    }));
   if (!identityLimit.allowed) return { ok: false, error: "An application for this email was already submitted recently." };
 
   const id = `pfx-${randomUUID().slice(0, 8)}`;
   const now = Date.now();
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const personId = upsertPersonByEmail(v.name, v.email, v.phone);
-    const existing = getActiveInstructorForPerson(personId);
+    const personId = (await upsertPersonByEmail(v.name, v.email, v.phone));
+    const existing = (await getActiveInstructorForPerson(personId));
     if (existing) throw new Error("application_exists");
-    db.prepare(
-      "INSERT INTO instructors (id, person_id, stage, source, owner_user_id, answers, created_at, updated_at) VALUES (?, ?, 'applied', 'public_application', NULL, ?, ?, ?)",
-    ).run(id, personId, JSON.stringify(v.answers), now, now);
+    (await db.prepare(
+            "INSERT INTO instructors (id, person_id, stage, source, owner_user_id, answers, created_at, updated_at) VALUES (?, ?, 'applied', 'public_application', NULL, ?, ?, ?)",
+          ).run(id, personId, JSON.stringify(v.answers), now, now));
 
-    logActivity("instructor", id, "note", `Application submitted by ${v.name} (${v.email}).`, null);
+    (await logActivity("instructor", id, "note", `Application submitted by ${v.name} (${v.email}).`, null));
     const dueAt = now + 3 * 24 * 60 * 60 * 1000;
-    db.prepare(
-      "INSERT INTO tasks (id, title, owner_user_id, due_at, status, entity_type, entity_id, handoff_to_founder, created_at, updated_at) VALUES (?, ?, NULL, ?, 'open', 'instructor', ?, 0, ?, ?)",
-    ).run(`pfx-${randomUUID().slice(0, 8)}`, `Review application: ${v.name}`, dueAt, id, now, now);
+    (await db.prepare(
+            "INSERT INTO tasks (id, title, owner_user_id, due_at, status, entity_type, entity_id, handoff_to_founder, created_at, updated_at) VALUES (?, ?, NULL, ?, 'open', 'instructor', ?, 0, ?, ?)",
+          ).run(`pfx-${randomUUID().slice(0, 8)}`, `Review application: ${v.name}`, dueAt, id, now, now));
 
-    for (const staffId of listStaffUserIds()) {
-      createNotification({
-        id: `ntf-instr-applied-${id}-${staffId}`,
-        userId: staffId,
-        type: "instructor_pipeline",
-        title: "New instructor application",
-        body: `${v.name} applied to teach with BOW.`,
-        link: `/app/instructors/${id}`,
-      });
+    for (const staffId of (await listStaffUserIds())) {
+      (await createNotification({
+                id: `ntf-instr-applied-${id}-${staffId}`,
+                userId: staffId,
+                type: "instructor_pipeline",
+                title: "New instructor application",
+                body: `${v.name} applied to teach with BOW.`,
+                link: `/app/instructors/${id}`,
+              }));
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the intake failure.
     }
@@ -150,20 +150,20 @@ export async function createInstructorManually(input: ManualApplicationInput): P
   const id = `pfx-${randomUUID().slice(0, 8)}`;
   const now = Date.now();
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const personId = upsertPersonByEmail(v.name, v.email, v.phone);
-    const existing = getActiveInstructorForPerson(personId);
+    const personId = (await upsertPersonByEmail(v.name, v.email, v.phone));
+    const existing = (await getActiveInstructorForPerson(personId));
     if (existing) throw new Error("application_exists");
-    db.prepare(
-      "INSERT INTO instructors (id, person_id, stage, source, owner_user_id, answers, created_at, updated_at) VALUES (?, ?, 'applied', ?, ?, ?, ?, ?)",
-    )
-    .run(id, personId, source, me.id, JSON.stringify(v.answers), now, now);
-    logActivity("instructor", id, "note", `Added manually by staff (source: ${source}).`, me.id);
-    db.exec("COMMIT");
+    (await db.prepare(
+            "INSERT INTO instructors (id, person_id, stage, source, owner_user_id, answers, created_at, updated_at) VALUES (?, ?, 'applied', ?, ?, ?, ?, ?)",
+          )
+          .run(id, personId, source, me.id, JSON.stringify(v.answers), now, now));
+    (await logActivity("instructor", id, "note", `Added manually by staff (source: ${source}).`, me.id));
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the intake failure.
     }
@@ -179,9 +179,9 @@ export async function createInstructorManually(input: ManualApplicationInput): P
 /* ---------------- stage transitions ---------------- */
 
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-function getInstructorRow(id: string): any {
+async function getInstructorRow(id: string): Promise<any> {
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  return getDb().prepare("SELECT * FROM instructors WHERE id = ?").get(id) as any;
+  return (await getDb().prepare("SELECT * FROM instructors WHERE id = ?").get(id)) as any;
 }
 
 export interface ScheduleInterviewInput {
@@ -202,33 +202,33 @@ export async function scheduleInterview(id: string, schedule: ScheduleInterviewI
   const cleanNotes = (notes ?? "").trim().slice(0, 500);
 
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const row = db.prepare("SELECT stage FROM instructors WHERE id = ?").get(instructorId) as
+    const row = (await db.prepare("SELECT stage FROM instructors WHERE id = ?").get(instructorId)) as
       | { stage: InstructorStage }
       | undefined;
     if (!row) throw new Error("instructor_missing");
     if (!["applied", "reviewing"].includes(row.stage)) throw new Error("wrong_stage");
-    const changed = db.prepare(
-      "UPDATE instructors SET stage = 'interview_scheduled', interview_at = ?, interview_timezone = ?, updated_at = ? WHERE id = ? AND stage = ?",
-    ).run(resolved.epoch, resolved.timeZone, now, instructorId, row.stage);
+    const changed = (await db.prepare(
+          "UPDATE instructors SET stage = 'interview_scheduled', interview_at = ?, interview_timezone = ?, updated_at = ? WHERE id = ? AND stage = ?",
+        ).run(resolved.epoch, resolved.timeZone, now, instructorId, row.stage));
     if (changed.changes !== 1) throw new Error("instructor_changed");
-    db.prepare(
-      `UPDATE tasks
+    (await db.prepare(
+            `UPDATE tasks
           SET status = 'done', completed_at = ?, completion_note = ?, updated_at = ?
         WHERE entity_type = 'instructor' AND entity_id = ? AND status = 'open'
           AND title LIKE 'Review application:%'`,
-    ).run(now, "Application reviewed and interview scheduled.", now, instructorId);
-    logActivity(
-      "instructor",
-      instructorId,
-      "stage_change",
-      `Interview scheduled for ${formatDateTimeInZone(resolved.epoch, resolved.timeZone)} in ${resolved.timeZone}.${cleanNotes ? ` ${cleanNotes}` : ""}`,
-      me.id,
-    );
-    db.exec("COMMIT");
+          ).run(now, "Application reviewed and interview scheduled.", now, instructorId));
+    (await logActivity(
+            "instructor",
+            instructorId,
+            "stage_change",
+            `Interview scheduled for ${formatDateTimeInZone(resolved.epoch, resolved.timeZone)} in ${resolved.timeZone}.${cleanNotes ? ` ${cleanNotes}` : ""}`,
+            me.id,
+          ));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "instructor_missing") return { ok: false, error: "Not found." };
     if (code === "wrong_stage") return { ok: false, error: "Only a new or reviewing application can be scheduled." };
@@ -251,22 +251,22 @@ export async function recordInterviewNotes(id: string, notes: string): Promise<A
 
   const now = Date.now();
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const row = db.prepare("SELECT stage, interview_notes FROM instructors WHERE id = ?").get(instructorId) as
+    const row = (await db.prepare("SELECT stage, interview_notes FROM instructors WHERE id = ?").get(instructorId)) as
       | { stage: InstructorStage; interview_notes: string | null }
       | undefined;
     if (!row) throw new Error("instructor_missing");
     if (row.stage !== "interview_scheduled") throw new Error("wrong_stage");
     const combined = row.interview_notes ? `${row.interview_notes}\n\n${text}` : text;
-    const changed = db.prepare(
-      "UPDATE instructors SET stage = 'interviewed', interview_notes = ?, updated_at = ? WHERE id = ? AND stage = 'interview_scheduled'",
-    ).run(combined, now, instructorId);
+    const changed = (await db.prepare(
+          "UPDATE instructors SET stage = 'interviewed', interview_notes = ?, updated_at = ? WHERE id = ? AND stage = 'interview_scheduled'",
+        ).run(combined, now, instructorId));
     if (changed.changes !== 1) throw new Error("instructor_changed");
-    logActivity("instructor", instructorId, "stage_change", "Interview notes recorded.", me.id);
-    db.exec("COMMIT");
+    (await logActivity("instructor", instructorId, "stage_change", "Interview notes recorded.", me.id));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "instructor_missing") return { ok: false, error: "Not found." };
     if (code === "wrong_stage") return { ok: false, error: "Only a scheduled interview can receive final notes." };
@@ -285,30 +285,30 @@ export async function submitForFounderReview(id: string): Promise<ActionResult> 
   if (!instructorId || instructorId.length > 100) return { ok: false, error: "Choose a valid instructor." };
   const now = Date.now();
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const row = db.prepare("SELECT stage FROM instructors WHERE id = ?").get(instructorId) as
+    const row = (await db.prepare("SELECT stage FROM instructors WHERE id = ?").get(instructorId)) as
       | { stage: InstructorStage }
       | undefined;
     if (!row) throw new Error("instructor_missing");
     if (row.stage !== "interviewed") throw new Error("wrong_stage");
-    const changed = db.prepare(
-      "UPDATE instructors SET stage = 'founder_review', updated_at = ? WHERE id = ? AND stage = 'interviewed'",
-    ).run(now, instructorId);
+    const changed = (await db.prepare(
+          "UPDATE instructors SET stage = 'founder_review', updated_at = ? WHERE id = ? AND stage = 'interviewed'",
+        ).run(now, instructorId));
     if (changed.changes !== 1) throw new Error("instructor_changed");
-    logActivity("instructor", instructorId, "stage_change", "Submitted for founder review.", me.id);
-    db.prepare(
-      `INSERT INTO tasks
+    (await logActivity("instructor", instructorId, "stage_change", "Submitted for founder review.", me.id));
+    (await db.prepare(
+            `INSERT INTO tasks
         (id, title, owner_user_id, due_at, status, entity_type, entity_id, handoff_to_founder, created_at, updated_at)
        SELECT ?, 'Founder decision needed on applicant', NULL, NULL, 'open', 'instructor', ?, 1, ?, ?
         WHERE NOT EXISTS (
           SELECT 1 FROM tasks
            WHERE entity_type = 'instructor' AND entity_id = ? AND handoff_to_founder = 1 AND status = 'open'
         )`,
-    ).run(`pfx-${randomUUID().slice(0, 8)}`, instructorId, now, now, instructorId);
-    db.exec("COMMIT");
+          ).run(`pfx-${randomUUID().slice(0, 8)}`, instructorId, now, now, instructorId));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "instructor_missing") return { ok: false, error: "Not found." };
     if (code === "wrong_stage") return { ok: false, error: "Only a completed interview can be sent for founder review." };
@@ -334,58 +334,58 @@ export async function recordFounderDecision(
   const db = getDb();
   const nextStage: InstructorStage = decision === "accepted" ? "onboarding" : "rejected";
   let invitationToken: string | undefined;
-  let issuedInvitation: ReturnType<typeof createInvitationInternal> | undefined;
-  db.exec("BEGIN IMMEDIATE");
+  let issuedInvitation: Awaited<ReturnType<typeof createInvitationInternal>> | undefined;
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const row = db.prepare(
-      `SELECT i.stage, i.person_id, p.name, p.email
+    const row = (await db.prepare(
+          `SELECT i.stage, i.person_id, p.name, p.email
          FROM instructors i JOIN people p ON p.id = i.person_id
         WHERE i.id = ?`,
-    ).get(id) as { stage: InstructorStage; person_id: string; name: string; email: string } | undefined;
+        ).get(id)) as { stage: InstructorStage; person_id: string; name: string; email: string } | undefined;
     if (!row) throw new Error("not_found");
     if (row.stage !== "founder_review") throw new Error("stage_changed");
 
-    const updated = db.prepare(
-      `UPDATE instructors
+    const updated = (await db.prepare(
+          `UPDATE instructors
           SET stage = ?, founder_decision = ?, decided_by = ?, decided_at = ?, updated_at = ?
         WHERE id = ? AND stage = 'founder_review'`,
-    ).run(nextStage, decision, me.id, now, now, id);
+        ).run(nextStage, decision, me.id, now, now, id));
     if (updated.changes !== 1) throw new Error("stage_changed");
-    logActivity("instructor", id, "stage_change", `Founder decision: ${decision}.${note ? ` ${note.slice(0, 500)}` : ""}`, me.id);
+    (await logActivity("instructor", id, "stage_change", `Founder decision: ${decision}.${note ? ` ${note.slice(0, 500)}` : ""}`, me.id));
 
     if (decision === "accepted") {
-      const invitation = createInvitationInternal({ role: "instructor", email: row.email, orgId: BOW_ORG_ID, cohortId: null });
+      const invitation = (await createInvitationInternal({ role: "instructor", email: row.email, orgId: BOW_ORG_ID, cohortId: null }));
       issuedInvitation = invitation;
       invitationToken = invitation.token;
-      logActivity("instructor", id, "note", `Invitation created (${invitation.email}).`, me.id);
-      createNotification({
-        id: `ntf-instr-accepted-${id}`,
-        userId: me.id,
-        type: "instructor_pipeline",
-        title: "Applicant accepted",
-        body: `${row.name} was accepted and invited to onboard.`,
-        link: `/app/instructors/${id}`,
-      });
+      (await logActivity("instructor", id, "note", `Invitation created (${invitation.email}).`, me.id));
+      (await createNotification({
+                id: `ntf-instr-accepted-${id}`,
+                userId: me.id,
+                type: "instructor_pipeline",
+                title: "Applicant accepted",
+                body: `${row.name} was accepted and invited to onboard.`,
+                link: `/app/instructors/${id}`,
+              }));
     }
 
-    const founderTasks = db.prepare(
-      `SELECT id FROM tasks
+    const founderTasks = (await db.prepare(
+          `SELECT id FROM tasks
         WHERE entity_type = 'instructor' AND entity_id = ?
           AND handoff_to_founder = 1 AND status = 'open'`,
-    ).all(id) as { id: string }[];
+        ).all(id)) as { id: string }[];
     for (const task of founderTasks) {
-      const completed = db.prepare(
-        `UPDATE tasks
+      const completed = (await db.prepare(
+              `UPDATE tasks
             SET status = 'done', completed_at = ?, completion_note = ?, updated_at = ?
           WHERE id = ? AND status = 'open' AND handoff_to_founder = 1`,
-      ).run(now, `Resolved by founder ${decision} decision.`, now, task.id);
+            ).run(now, `Resolved by founder ${decision} decision.`, now, task.id));
       if (completed.changes !== 1) throw new Error("task_changed");
-      logActivity("task", task.id, "completed", `Resolved by founder ${decision} decision for Instructor ${id}.`, me.id);
+      (await logActivity("task", task.id, "completed", `Resolved by founder ${decision} decision for Instructor ${id}.`, me.id));
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the decision error.
     }
@@ -414,23 +414,23 @@ export async function recordFounderDecision(
 
 export async function updateApplicantOwner(id: string, ownerUserId: string): Promise<ActionResult> {
   const me = await requireStaff();
-  const row = getInstructorRow(id);
+  const row = (await getInstructorRow(id));
   if (!row) return { ok: false, error: "Not found." };
   const nextOwnerId = typeof ownerUserId === "string" ? ownerUserId.trim() || null : null;
   const nextOwner = nextOwnerId
-    ? (getDb().prepare("SELECT name FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'").get(nextOwnerId) as { name: string } | undefined)
+    ? ((await getDb().prepare("SELECT name FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'").get(nextOwnerId)) as { name: string } | undefined)
     : undefined;
   if (nextOwnerId && !nextOwner) {
     return { ok: false, error: "Choose an active BOW staff owner." };
   }
   if ((row.owner_user_id ?? null) === nextOwnerId) return { ok: true };
-  const changed = getDb().prepare("UPDATE instructors SET owner_user_id = ?, updated_at = ? WHERE id = ? AND owner_user_id IS ?")
-    .run(nextOwnerId, Date.now(), id, row.owner_user_id ?? null);
+  const changed = (await getDb().prepare("UPDATE instructors SET owner_user_id = ?, updated_at = ? WHERE id = ? AND owner_user_id IS ?")
+      .run(nextOwnerId, Date.now(), id, row.owner_user_id ?? null));
   if (changed.changes !== 1) return { ok: false, error: "The instructor owner changed. Refresh and try again." };
   const previousOwner = row.owner_user_id
-    ? (getDb().prepare("SELECT name FROM users WHERE id = ?").get(row.owner_user_id) as { name: string } | undefined)?.name ?? "an unavailable account"
+    ? ((await getDb().prepare("SELECT name FROM users WHERE id = ?").get(row.owner_user_id)) as { name: string } | undefined)?.name ?? "an unavailable account"
     : "unassigned";
-  logActivity("instructor", id, "owner_changed", `Accountable owner changed from ${previousOwner} to ${nextOwner?.name ?? "unassigned"}.`, me.id);
+  (await logActivity("instructor", id, "owner_changed", `Accountable owner changed from ${previousOwner} to ${nextOwner?.name ?? "unassigned"}.`, me.id));
 
   revalidatePath(`/app/instructors/${id}`);
   revalidatePath("/app/instructors");
@@ -447,17 +447,17 @@ export async function recordTrainingModuleView(instructorId: string, moduleId: s
   const { instructor } = await requireInstructorSelf();
   if (instructor.id !== instructorId) return { ok: false, error: "You may only open your own training modules." };
   const db = getDb();
-  const trainingModuleRecord = db.prepare("SELECT id FROM training_modules WHERE id = ? AND active = 1").get(moduleId);
+  const trainingModuleRecord = (await db.prepare("SELECT id FROM training_modules WHERE id = ? AND active = 1").get(moduleId));
   if (!trainingModuleRecord) return { ok: false, error: "Module not found." };
   const now = Date.now();
-  db.prepare(
-    `INSERT INTO training_module_views (instructor_id, module_id, first_viewed_at, last_viewed_at)
+  (await db.prepare(
+        `INSERT INTO training_module_views (instructor_id, module_id, first_viewed_at, last_viewed_at)
      VALUES (?, ?, ?, ?)
      ON CONFLICT(instructor_id, module_id) DO UPDATE SET last_viewed_at = excluded.last_viewed_at`,
-  ).run(instructorId, moduleId, now, now);
-  const view = db.prepare(
-    "SELECT first_viewed_at FROM training_module_views WHERE instructor_id = ? AND module_id = ?",
-  ).get(instructorId, moduleId) as { first_viewed_at: number };
+      ).run(instructorId, moduleId, now, now));
+  const view = (await db.prepare(
+      "SELECT first_viewed_at FROM training_module_views WHERE instructor_id = ? AND module_id = ?",
+    ).get(instructorId, moduleId)) as { first_viewed_at: number };
   return { ok: true, firstViewedAt: view.first_viewed_at };
 }
 
@@ -476,48 +476,48 @@ export async function completeTrainingModule(instructorId: string, moduleId: str
 
   const db = getDb();
   const now = Date.now();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const row = getInstructorRow(instructorId);
+    const row = (await getInstructorRow(instructorId));
     if (!row) throw new Error("instructor_missing");
-    const trainingModule = db.prepare("SELECT id FROM training_modules WHERE id = ? AND active = 1").get(moduleId);
+    const trainingModule = (await db.prepare("SELECT id FROM training_modules WHERE id = ? AND active = 1").get(moduleId));
     if (!trainingModule) throw new Error("module_missing");
 
-    const existing = db
-      .prepare("SELECT id FROM training_module_completions WHERE instructor_id = ? AND module_id = ? ORDER BY completed_at LIMIT 1")
-      .get(instructorId, moduleId);
+    const existing = (await db
+          .prepare("SELECT id FROM training_module_completions WHERE instructor_id = ? AND module_id = ? ORDER BY completed_at LIMIT 1")
+          .get(instructorId, moduleId));
     if (!existing) {
-      const view = db.prepare(
-        "SELECT first_viewed_at FROM training_module_views WHERE instructor_id = ? AND module_id = ?",
-      ).get(instructorId, moduleId) as { first_viewed_at: number } | undefined;
+      const view = (await db.prepare(
+              "SELECT first_viewed_at FROM training_module_views WHERE instructor_id = ? AND module_id = ?",
+            ).get(instructorId, moduleId)) as { first_viewed_at: number } | undefined;
       if (!view) throw new Error("module_not_opened");
       if (now - Number(view.first_viewed_at) < 5_000) throw new Error("module_review_too_short");
-      db.prepare(
-        "INSERT INTO training_module_completions (id, instructor_id, module_id, completed_at, notes) VALUES (?, ?, ?, ?, ?)",
-      ).run(`pfx-${randomUUID().slice(0, 8)}`, instructorId, moduleId, now, (notes ?? "").trim().slice(0, 2000) || null);
-      logActivity("instructor", instructorId, "note", "Training module completed.", me.id);
+      (await db.prepare(
+                "INSERT INTO training_module_completions (id, instructor_id, module_id, completed_at, notes) VALUES (?, ?, ?, ?, ?)",
+              ).run(`pfx-${randomUUID().slice(0, 8)}`, instructorId, moduleId, now, (notes ?? "").trim().slice(0, 2000) || null));
+      (await logActivity("instructor", instructorId, "note", "Training module completed.", me.id));
     }
 
-    recomputeInstructorStatuses(instructorId);
+    (await recomputeInstructorStatuses(instructorId));
 
     // Auto-advance forward only, never backward, inside the same durable write.
-    const refreshed = getInstructorRow(instructorId);
+    const refreshed = (await getInstructorRow(instructorId));
     if (!refreshed) throw new Error("instructor_missing");
     if (REQUIRED_ONBOARDING_STAGE_FROM.includes(refreshed.stage) && refreshed.onboarding_status === "complete") {
-      const advanced = db.prepare("UPDATE instructors SET stage = 'training', updated_at = ? WHERE id = ? AND stage = ?")
-        .run(Date.now(), instructorId, refreshed.stage);
+      const advanced = (await db.prepare("UPDATE instructors SET stage = 'training', updated_at = ? WHERE id = ? AND stage = ?")
+              .run(Date.now(), instructorId, refreshed.stage));
       if (advanced.changes !== 1) throw new Error("instructor_changed");
-      logActivity("instructor", instructorId, "stage_change", "Onboarding complete — advanced to training.", me.id);
+      (await logActivity("instructor", instructorId, "stage_change", "Onboarding complete — advanced to training.", me.id));
     } else if (REQUIRED_TRAINING_STAGE_FROM.includes(refreshed.stage) && refreshed.training_status === "complete") {
-      const advanced = db.prepare("UPDATE instructors SET stage = 'practice_evaluation', updated_at = ? WHERE id = ? AND stage = ?")
-        .run(Date.now(), instructorId, refreshed.stage);
+      const advanced = (await db.prepare("UPDATE instructors SET stage = 'practice_evaluation', updated_at = ? WHERE id = ? AND stage = ?")
+              .run(Date.now(), instructorId, refreshed.stage));
       if (advanced.changes !== 1) throw new Error("instructor_changed");
-      logActivity("instructor", instructorId, "stage_change", "Training complete — advanced to practice evaluation.", me.id);
+      (await logActivity("instructor", instructorId, "stage_change", "Training complete — advanced to practice evaluation.", me.id));
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the completion failure.
     }
@@ -539,24 +539,24 @@ export async function completeTrainingModule(instructorId: string, moduleId: str
 export async function moveToPracticeEvaluation(id: string): Promise<ActionResult> {
   const me = await requireStaff();
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
     // Cached readiness is a projection, never the authorization source. Rebuild
     // it from the current required modules, attendance, and evaluation while
     // holding the same writer lock as this lifecycle decision.
-    recomputeInstructorStatuses(id);
-    const row = getInstructorRow(id);
+    (await recomputeInstructorStatuses(id));
+    const row = (await getInstructorRow(id));
     if (!row) throw new Error("instructor_missing");
     if (row.stage !== "training") throw new Error("wrong_stage");
     if (row.training_status !== "complete") throw new Error("training_incomplete");
-    const changed = db.prepare("UPDATE instructors SET stage = 'practice_evaluation', updated_at = ? WHERE id = ? AND stage = 'training' AND training_status = 'complete'")
-      .run(Date.now(), id);
+    const changed = (await db.prepare("UPDATE instructors SET stage = 'practice_evaluation', updated_at = ? WHERE id = ? AND stage = 'training' AND training_status = 'complete'")
+          .run(Date.now(), id));
     if (changed.changes !== 1) throw new Error("instructor_changed");
-    logActivity("instructor", id, "stage_change", "Moved to practice evaluation.", me.id);
-    db.exec("COMMIT");
+    (await logActivity("instructor", id, "stage_change", "Moved to practice evaluation.", me.id));
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the transition failure.
     }
@@ -610,40 +610,40 @@ export async function recordPracticeEvaluation(id: string, input: PracticeEvalIn
 
   const now = Date.now();
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const row = getInstructorRow(id);
+    const row = (await getInstructorRow(id));
     if (!row) throw new Error("instructor_missing");
     if (row.stage !== "practice_evaluation" || row.training_status !== "complete") {
       throw new Error("evaluation_stage_changed");
     }
-    db.prepare(
-      `INSERT INTO practice_evaluations
+    (await db.prepare(
+            `INSERT INTO practice_evaluations
         (id, instructor_id, evaluator_user_id, evaluated_at, lesson_used, rating_curriculum_delivery, rating_communication_engagement, rating_preparedness_reliability, strengths, concerns, decision, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      `pfx-${randomUUID().slice(0, 8)}`,
-      id,
-      me.id,
-      input.evaluatedAt,
-      lessonUsed || null,
-      input.ratingCurriculumDelivery,
-      input.ratingCommunicationEngagement,
-      input.ratingPreparednessReliability,
-      strengths || null,
-      concerns || null,
-      input.decision,
-      now,
-    );
+          )
+          .run(
+            `pfx-${randomUUID().slice(0, 8)}`,
+            id,
+            me.id,
+            input.evaluatedAt,
+            lessonUsed || null,
+            input.ratingCurriculumDelivery,
+            input.ratingCommunicationEngagement,
+            input.ratingPreparednessReliability,
+            strengths || null,
+            concerns || null,
+            input.decision,
+            now,
+          ));
 
-    recomputeInstructorStatuses(id);
-    logActivity("instructor", id, "note", `Practice evaluation recorded: ${input.decision}.`, me.id);
+    (await recomputeInstructorStatuses(id));
+    (await logActivity("instructor", id, "note", `Practice evaluation recorded: ${input.decision}.`, me.id));
 
     if (input.decision === "revise_retry") {
-      const person = db.prepare("SELECT name FROM people WHERE id = ?").get(row.person_id) as { name: string } | undefined;
-      db.prepare(
-        `INSERT INTO tasks
+      const person = (await db.prepare("SELECT name FROM people WHERE id = ?").get(row.person_id)) as { name: string } | undefined;
+      (await db.prepare(
+                `INSERT INTO tasks
           (id, title, owner_user_id, due_at, status, kind, priority, context, recommended_action,
            entity_type, entity_id, handoff_to_founder, created_at, updated_at)
          SELECT ?, ?, ?, ?, 'open', 'review', 'high', ?, ?, 'instructor', ?, 0, ?, ?
@@ -652,23 +652,23 @@ export async function recordPracticeEvaluation(id: string, input: PracticeEvalIn
              WHERE entity_type = 'instructor' AND entity_id = ? AND status = 'open'
                AND kind = 'review' AND recommended_action = 'Schedule and record the next practice evaluation.'
           )`,
-      ).run(
-        `wrk-${randomUUID().slice(0, 10)}`,
-        `Re-evaluate ${person?.name ?? "instructor"}`,
-        me.id,
-        now + 7 * 24 * 60 * 60 * 1000,
-        "The latest practice evaluation requires revision and another observed attempt.",
-        "Schedule and record the next practice evaluation.",
-        id,
-        now,
-        now,
-        id,
-      );
+              ).run(
+                `wrk-${randomUUID().slice(0, 10)}`,
+                `Re-evaluate ${person?.name ?? "instructor"}`,
+                me.id,
+                now + 7 * 24 * 60 * 60 * 1000,
+                "The latest practice evaluation requires revision and another observed attempt.",
+                "Schedule and record the next practice evaluation.",
+                id,
+                now,
+                now,
+                id,
+              ));
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the evaluation failure.
     }
@@ -689,39 +689,39 @@ export async function markEligible(id: string): Promise<ActionResult> {
   const me = await requireAdmin();
   const now = Date.now();
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    recomputeInstructorStatuses(id);
-    const row = getInstructorRow(id);
+    (await recomputeInstructorStatuses(id));
+    const row = (await getInstructorRow(id));
     if (!row) throw new Error("instructor_missing");
     if (row.stage !== "practice_evaluation") throw new Error("eligibility_stage_changed");
-    const latestEval = db
-      .prepare("SELECT decision FROM practice_evaluations WHERE instructor_id = ? AND evaluated_at <= ? ORDER BY evaluated_at DESC, created_at DESC LIMIT 1")
-      .get(id, now) as { decision: PracticeEvalDecision } | undefined;
+    const latestEval = (await db
+          .prepare("SELECT decision FROM practice_evaluations WHERE instructor_id = ? AND evaluated_at <= ? ORDER BY evaluated_at DESC, created_at DESC LIMIT 1")
+          .get(id, now)) as { decision: PracticeEvalDecision } | undefined;
     if (latestEval?.decision !== "pass" || row.training_status !== "complete" || row.onboarding_status !== "complete") {
       throw new Error("not_ready");
     }
-    const changed = db
-      .prepare("UPDATE instructors SET stage = 'eligible', eligibility_status = 'eligible', updated_at = ? WHERE id = ? AND stage = 'practice_evaluation' AND training_status = 'complete' AND onboarding_status = 'complete'")
-      .run(now, id);
+    const changed = (await db
+          .prepare("UPDATE instructors SET stage = 'eligible', eligibility_status = 'eligible', updated_at = ? WHERE id = ? AND stage = 'practice_evaluation' AND training_status = 'complete' AND onboarding_status = 'complete'")
+          .run(now, id));
     if (changed.changes !== 1) throw new Error("eligibility_stage_changed");
-    logActivity("instructor", id, "stage_change", "Founder marked instructor eligible after rechecking training and evaluation evidence.", me.id);
+    (await logActivity("instructor", id, "stage_change", "Founder marked instructor eligible after rechecking training and evaluation evidence.", me.id));
 
-    const person = db.prepare("SELECT name FROM people WHERE id = ?").get(row.person_id) as { name: string } | undefined;
-    for (const staffId of listStaffUserIds()) {
-      createNotification({
-        id: `ntf-instr-eligible-${id}-${staffId}`,
-        userId: staffId,
-        type: "instructor_pipeline",
-        title: "Instructor eligible",
-        body: `${person?.name ?? "An instructor"} is now eligible to teach.`,
-        link: `/app/instructors/${id}`,
-      });
+    const person = (await db.prepare("SELECT name FROM people WHERE id = ?").get(row.person_id)) as { name: string } | undefined;
+    for (const staffId of (await listStaffUserIds())) {
+      (await createNotification({
+                id: `ntf-instr-eligible-${id}-${staffId}`,
+                userId: staffId,
+                type: "instructor_pipeline",
+                title: "Instructor eligible",
+                body: `${person?.name ?? "An instructor"} is now eligible to teach.`,
+                link: `/app/instructors/${id}`,
+              }));
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the eligibility failure.
     }
@@ -740,38 +740,38 @@ export async function markEligible(id: string): Promise<ActionResult> {
 export async function markActive(id: string): Promise<ActionResult> {
   const me = await requireAdmin();
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    recomputeInstructorStatuses(id);
-    const row = getInstructorRow(id);
+    (await recomputeInstructorStatuses(id));
+    const row = (await getInstructorRow(id));
     if (!row) throw new Error("instructor_missing");
     if (row.stage === "active") {
       if (row.eligibility_status !== "eligible" || row.onboarding_status !== "complete" || row.training_status !== "complete") {
         throw new Error("not_ready");
       }
-      db.exec("COMMIT");
+      (await db.exec("COMMIT"));
       return { ok: true };
     }
     if (!["eligible", "inactive"].includes(row.stage)) throw new Error("wrong_stage");
     if (row.eligibility_status !== "eligible" || row.onboarding_status !== "complete" || row.training_status !== "complete") {
       throw new Error("not_ready");
     }
-    const otherCurrentDossier = db.prepare(
-      `SELECT id FROM instructors
+    const otherCurrentDossier = (await db.prepare(
+          `SELECT id FROM instructors
         WHERE person_id = ? AND id <> ? AND stage NOT IN ('rejected','inactive')
         LIMIT 1`,
-    ).get(row.person_id, id);
+        ).get(row.person_id, id));
     if (otherCurrentDossier) throw new Error("duplicate_identity");
-    const updated = db.prepare(
-      `UPDATE instructors SET stage = 'active', updated_at = ?
+    const updated = (await db.prepare(
+          `UPDATE instructors SET stage = 'active', updated_at = ?
         WHERE id = ? AND stage = ? AND eligibility_status = 'eligible'
           AND onboarding_status = 'complete' AND training_status = 'complete'`,
-    ).run(Date.now(), id, row.stage);
+        ).run(Date.now(), id, row.stage));
     if (updated.changes !== 1) throw new Error("stale_instructor");
-    logActivity("instructor", id, "stage_change", "Marked active after eligibility prerequisites were re-derived from current evidence.", me.id);
-    db.exec("COMMIT");
+    (await logActivity("instructor", id, "stage_change", "Marked active after eligibility prerequisites were re-derived from current evidence.", me.id));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "instructor_missing") return { ok: false, error: "Not found." };
     if (code === "wrong_stage") return { ok: false, error: "Only an eligible or previously inactive instructor can be activated." };
@@ -790,7 +790,7 @@ export async function markActive(id: string): Promise<ActionResult> {
 
 export async function markInactive(id: string, reason?: string): Promise<ActionResult> {
   const me = await requireAdmin();
-  const row = getInstructorRow(id);
+  const row = (await getInstructorRow(id));
   if (!row) return { ok: false, error: "Not found." };
   if (row.stage === "inactive") return { ok: true };
   if (!["eligible", "active"].includes(row.stage)) {
@@ -801,29 +801,29 @@ export async function markInactive(id: string, reason?: string): Promise<ActionR
 
   const db = getDb();
   const now = Date.now();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const updated = db.prepare("UPDATE instructors SET stage = 'inactive', updated_at = ? WHERE id = ? AND stage = ?")
-      .run(now, id, row.stage);
+    const updated = (await db.prepare("UPDATE instructors SET stage = 'inactive', updated_at = ? WHERE id = ? AND stage = ?")
+          .run(now, id, row.stage));
     if (updated.changes !== 1) throw new Error("stale_instructor");
 
-    const linkedUser = db.prepare("SELECT user_id FROM people WHERE id = ?").get(row.person_id) as
+    const linkedUser = (await db.prepare("SELECT user_id FROM people WHERE id = ?").get(row.person_id)) as
       | { user_id: string | null }
       | undefined;
-    if (linkedUser?.user_id) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(linkedUser.user_id);
+    if (linkedUser?.user_id) (await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(linkedUser.user_id));
 
-    const affectedClasses = db.prepare(
-      `SELECT c.id, c.title
+    const affectedClasses = (await db.prepare(
+          `SELECT c.id, c.title
          FROM class_instructors ci
          JOIN classes c ON c.id = ci.class_id
         WHERE ci.instructor_id = ? AND ci.removed_at IS NULL
           AND c.status NOT IN ('completed','cancelled')
         ORDER BY c.title, c.id`,
-    ).all(id) as { id: string; title: string }[];
+        ).all(id)) as { id: string; title: string }[];
     if (affectedClasses.length > 0) {
       const classSummary = affectedClasses.map((item) => item.title).join(", ").slice(0, 1200);
-      db.prepare(
-        `INSERT INTO tasks
+      (await db.prepare(
+                `INSERT INTO tasks
           (id, title, owner_user_id, due_at, status, kind, priority, context, recommended_action,
            entity_type, entity_id, handoff_to_founder, created_at, updated_at)
          SELECT ?, ?, ?, ?, 'open', 'issue', 'urgent', ?, ?, 'instructor', ?, 0, ?, ?
@@ -832,24 +832,24 @@ export async function markInactive(id: string, reason?: string): Promise<ActionR
              WHERE entity_type = 'instructor' AND entity_id = ? AND status = 'open'
                AND kind = 'issue' AND recommended_action = 'Assign replacement coverage and confirm every affected Program remains ready.'
           )`,
-      ).run(
-        `wrk-${randomUUID().slice(0, 10)}`,
-        `Replace inactive instructor across ${affectedClasses.length} Class${affectedClasses.length === 1 ? "" : "es"}`,
-        me.id,
-        now,
-        `Teaching access was revoked. Affected Classes: ${classSummary}. Reason: ${recordedReason}`,
-        "Assign replacement coverage and confirm every affected Program remains ready.",
-        id,
-        now,
-        now,
-        id,
-      );
+              ).run(
+                `wrk-${randomUUID().slice(0, 10)}`,
+                `Replace inactive instructor across ${affectedClasses.length} Class${affectedClasses.length === 1 ? "" : "es"}`,
+                me.id,
+                now,
+                `Teaching access was revoked. Affected Classes: ${classSummary}. Reason: ${recordedReason}`,
+                "Assign replacement coverage and confirm every affected Program remains ready.",
+                id,
+                now,
+                now,
+                id,
+              ));
     }
-    logActivity("instructor", id, "stage_change", `Teaching access revoked. ${recordedReason}`, me.id);
-    db.exec("COMMIT");
+    (await logActivity("instructor", id, "stage_change", `Teaching access revoked. ${recordedReason}`, me.id));
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the original failure.
     }
@@ -886,7 +886,7 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
  */
 export async function updateInstructorAvailability(instructorId: string, slots: AvailabilitySlotInput[]): Promise<ActionResult> {
   const me = await requireRole("admin", "growth", "instructor");
-  const row = getInstructorRow(instructorId);
+  const row = (await getInstructorRow(instructorId));
   if (!row) return { ok: false, error: "Not found." };
 
   if (me.role === "instructor") {
@@ -918,24 +918,24 @@ export async function updateInstructorAvailability(instructorId: string, slots: 
 
   const db = getDb();
   const now = Date.now();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const currentInstructor = db.prepare("SELECT stage FROM instructors WHERE id = ?").get(instructorId) as
+    const currentInstructor = (await db.prepare("SELECT stage FROM instructors WHERE id = ?").get(instructorId)) as
       | { stage: InstructorStage }
       | undefined;
     if (!currentInstructor) throw new Error("instructor_missing");
     if (["rejected", "inactive"].includes(currentInstructor.stage)) throw new Error("instructor_inactive");
-    db.prepare("DELETE FROM instructor_availability WHERE instructor_id = ?").run(instructorId);
+    (await db.prepare("DELETE FROM instructor_availability WHERE instructor_id = ?").run(instructorId));
     const insert = db.prepare(
       "INSERT INTO instructor_availability (id, instructor_id, day_of_week, start_time, end_time, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
     );
     for (const slot of clean) {
-      insert.run(`pfx-${randomUUID().slice(0, 8)}`, instructorId, slot.dayOfWeek, slot.startTime, slot.endTime, slot.notes, now);
+      (await insert.run(`pfx-${randomUUID().slice(0, 8)}`, instructorId, slot.dayOfWeek, slot.startTime, slot.endTime, slot.notes, now));
     }
-    logActivity("instructor", instructorId, "note", `Availability updated (${clean.length} slot(s)).`, me.id);
-    db.exec("COMMIT");
+    (await logActivity("instructor", instructorId, "note", `Availability updated (${clean.length} slot(s)).`, me.id));
+    (await db.exec("COMMIT"));
   } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    if (db.isTransaction) (await db.exec("ROLLBACK"));
     const code = error instanceof Error ? error.message : "";
     if (code === "instructor_missing") return { ok: false, error: "Not found." };
     if (code === "instructor_inactive") return { ok: false, error: "Inactive or rejected instructor records cannot publish availability." };

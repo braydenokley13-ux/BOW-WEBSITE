@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id: raw } = await params;
-  const question = getQuestionById(decodeURIComponent(raw));
+  const question = (await getQuestionById(decodeURIComponent(raw)));
   if (!question) return { title: "Case Not Found — BOW Open Docket" };
   const title = `${question.question} — BOW Open Docket`;
   const description = `${question.setup[0]} ${question.method}`;
@@ -42,8 +42,8 @@ const captionStyle: React.CSSProperties = {
 };
 
 /** Player evidence — resolved verdict + scenario band under house assumptions. */
-function PlayerEvidence({ evidenceRef, ctx, questionId }: { evidenceRef: EvidenceRef; ctx: LeagueContext; questionId: string }) {
-  const [player] = getAnalyticsPlayersBySlugs(evidenceRef.slugs);
+async function PlayerEvidence({ evidenceRef, ctx, questionId }: { evidenceRef: EvidenceRef; ctx: LeagueContext; questionId: string }) {
+  const [player] = (await getAnalyticsPlayersBySlugs(evidenceRef.slugs));
   if (!player) {
     return (
       <EvidenceCard kicker="Player evidence">
@@ -95,8 +95,8 @@ function PlayerEvidence({ evidenceRef, ctx, questionId }: { evidenceRef: Evidenc
 }
 
 /** Trade evidence — the two-player swap, reusing TradeAnalysisView wholesale (no forked internals). */
-function TradeEvidence({ evidenceRef, questionId }: { evidenceRef: EvidenceRef; questionId: string }) {
-  const [send, receive] = getAnalyticsPlayersBySlugs(evidenceRef.slugs);
+async function TradeEvidence({ evidenceRef, questionId }: { evidenceRef: EvidenceRef; questionId: string }) {
+  const [send, receive] = (await getAnalyticsPlayersBySlugs(evidenceRef.slugs));
   if (!send || !receive) {
     return (
       <EvidenceCard kicker="Trade evidence">
@@ -177,10 +177,10 @@ function TeamEvidence({ evidenceRef, allPlayers, questionId }: { evidenceRef: Ev
 export default async function QuestionCasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: raw } = await params;
   const id = decodeURIComponent(raw);
-  const question = getQuestionById(id);
+  const question = (await getQuestionById(id));
   if (!question) notFound();
 
-  const allPlayers = getAnalyticsPlayers();
+  const allPlayers = (await getAnalyticsPlayers());
   const ctx = buildLeagueContext(allPlayers, DEFAULT_ASSUMPTIONS);
   const kindLabel = QUESTION_KIND_LABELS[question.kind];
 

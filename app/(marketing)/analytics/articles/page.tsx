@@ -29,9 +29,9 @@ export default async function ArticlesIndex({
   const activeCategory = category && (ARTICLE_CATEGORIES as readonly string[]).includes(category) ? category : undefined;
   const activeTag = tag?.toLowerCase() || undefined;
 
-  const articles = getPublishedArticles({ category: activeCategory, tag: activeTag });
-  const provenance = getDataProvenance();
-  const tags = getPublishedTags();
+  const articles = (await getPublishedArticles({ category: activeCategory, tag: activeTag }));
+  const provenance = (await getDataProvenance());
+  const tags = (await getPublishedTags());
   const filtered = Boolean(activeCategory || activeTag);
   const featured = !filtered ? articles.filter((a) => a.featured) : [];
   const rest = filtered ? articles : articles.filter((a) => !a.featured);

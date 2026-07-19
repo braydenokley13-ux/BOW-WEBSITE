@@ -45,10 +45,10 @@ interface ChallengeRow {
 }
 
 /** All challenges, ordered by their week window then ordinal. */
-function allChallenges(): ChallengeRow[] {
-  return getDb()
-    .prepare("SELECT id, title, prompt, week_start, week_end, ordinal FROM weekly_challenges ORDER BY week_start ASC, ordinal ASC")
-    .all() as any[];
+async function allChallenges(): Promise<ChallengeRow[]> {
+  return (await getDb()
+      .prepare("SELECT id, title, prompt, week_start, week_end, ordinal FROM weekly_challenges ORDER BY week_start ASC, ordinal ASC")
+      .all()) as any[];
 }
 
 /** Today's date as a YYYY-MM-DD string (UTC) for window comparisons. */
@@ -73,11 +73,11 @@ function currentWeekWindow(): { start: string; end: string; startMs: number } {
  * The id is stable for the week, so weekly_completions rows work
  * unchanged and one submission per student per week still holds.
  */
-function ledgerChallenge(): ChallengeRow | null {
+async function ledgerChallenge(): Promise<ChallengeRow | null> {
   try {
-    if (getLedgerDepth() < 2) return null; // day one has no diffs to argue with
+    if ((await getLedgerDepth()) < 2) return null; // day one has no diffs to argue with
     const week = currentWeekWindow();
-    const top = summarizeWindow(getLedgerEventsSync(), week.startMs).top;
+    const top = (await summarizeWindow((await getLedgerEventsSync()), week.startMs)).top;
     if (!top) return null;
     return {
       id: `wc-ledger-${week.start}`,
@@ -98,13 +98,13 @@ function ledgerChallenge(): ChallengeRow | null {
 }
 
 /** The currently open challenge: an authored in-window one, else this week's ledger event, else the rotation. */
-function pickCurrent(rows: ChallengeRow[]): ChallengeRow | null {
+async function pickCurrent(rows: ChallengeRow[]): Promise<ChallengeRow | null> {
   const today = todayIso();
   const inWindow = rows.find((r) => r.week_start <= today && today <= r.week_end);
   if (inWindow) return inWindow;
   // The ledger fills empty weeks with something REAL before the canned
   // rotation gets a turn — a non-repeating reason to come back.
-  const fromLedger = ledgerChallenge();
+  const fromLedger = (await ledgerChallenge());
   if (fromLedger) return fromLedger;
   if (rows.length === 0) return null;
   // Last resort so a live challenge always shows: rotate by week number.
@@ -113,8 +113,8 @@ function pickCurrent(rows: ChallengeRow[]): ChallengeRow | null {
 }
 
 /** The id of the currently open challenge, or null. */
-export function currentWeeklyChallengeId(): string | null {
-  return pickCurrent(allChallenges())?.id ?? null;
+export async function currentWeeklyChallengeId(): Promise<string | null> {
+  return (await pickCurrent((await allChallenges())))?.id ?? null;
 }
 
 /**
@@ -122,24 +122,24 @@ export function currentWeeklyChallengeId(): string | null {
  * open challenge. Idempotent (fixed id), so the dashboard can call it on load —
  * the notification fires once per student per challenge.
  */
-export function ensureWeeklyChallengeNotification(studentId: string): void {
-  const current = pickCurrent(allChallenges());
+export async function ensureWeeklyChallengeNotification(studentId: string): Promise<void> {
+  const current = (await pickCurrent((await allChallenges())));
   if (!current) return;
-  createNotification({
-    id: `ntf-weekly-${studentId}-${current.id}`,
-    userId: studentId,
-    type: "weekly_challenge",
-    title: "New Weekly Challenge.",
-    body: `${current.title} is live. You have until Sunday.`,
-    link: "/dashboard",
-  });
+  (await createNotification({
+        id: `ntf-weekly-${studentId}-${current.id}`,
+        userId: studentId,
+        type: "weekly_challenge",
+        title: "New Weekly Challenge.",
+        body: `${current.title} is live. You have until Sunday.`,
+        link: "/dashboard",
+      }));
 }
 
 /** A map of challenge id -> the student's completion (response + timestamp). */
-function completionsFor(studentId: string): Record<string, { response: string; submittedAt: number }> {
-  const rows = getDb()
-    .prepare("SELECT challenge_id, response_text, submitted_at FROM weekly_completions WHERE student_id = ?")
-    .all(studentId) as any[];
+async function completionsFor(studentId: string): Promise<Record<string, { response: string; submittedAt: number }>> {
+  const rows = (await getDb()
+      .prepare("SELECT challenge_id, response_text, submitted_at FROM weekly_completions WHERE student_id = ?")
+      .all(studentId)) as any[];
   const map: Record<string, { response: string; submittedAt: number }> = {};
   for (const r of rows) map[r.challenge_id] = { response: r.response_text, submittedAt: Number(r.submitted_at) || 0 };
   return map;
@@ -162,18 +162,18 @@ function toView(r: ChallengeRow, currentId: string | null, comp: Record<string, 
 }
 
 /** This week's open challenge for a student, with their submission if any. */
-export function getCurrentWeeklyChallenge(studentId: string): WeeklyChallengeView | null {
-  const rows = allChallenges();
-  const current = pickCurrent(rows);
+export async function getCurrentWeeklyChallenge(studentId: string): Promise<WeeklyChallengeView | null> {
+  const rows = (await allChallenges());
+  const current = (await pickCurrent(rows));
   if (!current) return null;
-  return toView(current, current.id, completionsFor(studentId));
+  return toView(current, current.id, (await completionsFor(studentId)));
 }
 
 /** Past challenges (everything except the current one), view-only, newest first. */
-export function getPastWeeklyChallenges(studentId: string): WeeklyChallengeView[] {
-  const rows = allChallenges();
-  const currentId = pickCurrent(rows)?.id ?? null;
-  const comp = completionsFor(studentId);
+export async function getPastWeeklyChallenges(studentId: string): Promise<WeeklyChallengeView[]> {
+  const rows = (await allChallenges());
+  const currentId = (await pickCurrent(rows))?.id ?? null;
+  const comp = (await completionsFor(studentId));
   return rows
     .filter((r) => r.id !== currentId)
     .map((r) => toView(r, currentId, comp))
@@ -181,15 +181,15 @@ export function getPastWeeklyChallenges(studentId: string): WeeklyChallengeView[
 }
 
 /** How many weekly challenges the student has completed (for the profile). */
-export function getWeeklyCompletionCount(studentId: string): number {
-  const row = getDb().prepare("SELECT COUNT(*) AS n FROM weekly_completions WHERE student_id = ?").get(studentId) as any;
+export async function getWeeklyCompletionCount(studentId: string): Promise<number> {
+  const row = (await getDb().prepare("SELECT COUNT(*) AS n FROM weekly_completions WHERE student_id = ?").get(studentId)) as any;
   return Number(row?.n) || 0;
 }
 
 /** Total weekly challenges + completions (for the admin overview). */
-export function getWeeklyChallengeStats(): { challenges: number; completions: number } {
-  const a = getDb().prepare("SELECT COUNT(*) AS n FROM weekly_challenges").get() as any;
-  const b = getDb().prepare("SELECT COUNT(*) AS n FROM weekly_completions").get() as any;
+export async function getWeeklyChallengeStats(): Promise<{ challenges: number; completions: number }> {
+  const a = (await getDb().prepare("SELECT COUNT(*) AS n FROM weekly_challenges").get()) as any;
+  const b = (await getDb().prepare("SELECT COUNT(*) AS n FROM weekly_completions").get()) as any;
   return { challenges: Number(a?.n) || 0, completions: Number(b?.n) || 0 };
 }
 

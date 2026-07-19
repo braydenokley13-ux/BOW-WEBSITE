@@ -14,7 +14,7 @@ export default async function FeedPage() {
   const me = await getCurrentFeedUser();
   if (!me) return <FeedSignup />;
 
-  const stories = getFeedStories();
-  const answeredIds = getAnsweredStoryIds(me.id);
+  const stories = (await getFeedStories());
+  const answeredIds = (await getAnsweredStoryIds(me.id));
   return <FeedTerminal user={me} stories={stories} answeredIds={answeredIds} />;
 }

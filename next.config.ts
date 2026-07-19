@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // This repository sits below another package-lock.json in the user's home
+  // directory. Pinning the root keeps Turbopack from scanning that whole tree.
+  turbopack: {
+    root: process.cwd(),
+  },
   async headers() {
     return [
       {

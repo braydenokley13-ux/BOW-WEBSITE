@@ -11,15 +11,15 @@ const STATUS_BADGE: Record<string, "positive" | "warning" | "negative" | "info" 
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export default function ClassProposalsPage() {
-  const proposals = listClassProposals().filter((p) => p.status !== "draft");
-  const curricula = listCurricula();
+export default async function ClassProposalsPage() {
+  const proposals = (await listClassProposals()).filter((p) => p.status !== "draft");
+  const curricula = (await listCurricula());
   const db = getDb();
 
-  const instructorName = (instructorId: string): string => {
-    const row = db.prepare("SELECT person_id FROM instructors WHERE id = ?").get(instructorId) as { person_id: string } | undefined;
+  const instructorName = async (instructorId: string): Promise<string> => {
+    const row = (await db.prepare("SELECT person_id FROM instructors WHERE id = ?").get(instructorId)) as { person_id: string } | undefined;
     if (!row) return instructorId;
-    const person = db.prepare("SELECT * FROM people WHERE id = ?").get(row.person_id) as any;
+    const person = (await db.prepare("SELECT * FROM people WHERE id = ?").get(row.person_id)) as any;
     return person ? rowToPerson(person).name : instructorId;
   };
 
@@ -42,31 +42,31 @@ export default function ClassProposalsPage() {
         isEmpty={proposals.length === 0}
         emptyLabel="No proposals submitted yet."
       >
-        {proposals.map((p) => (
-          <tr key={p.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
-            <td style={{ padding: "11px 12px", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{p.title}</td>
-            <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{instructorName(p.instructorId)}</td>
-            <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{p.ageGroup || "—"}</td>
-            <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{p.format || "—"}</td>
-            <td style={{ padding: "11px 12px" }}>
-              <Badge status={STATUS_BADGE[p.status] ?? "neutral"}>{p.status}</Badge>
-            </td>
-            <td style={{ padding: "11px 12px", textAlign: "right" }}>
-              <ProposalActions
-                proposalId={p.id}
-                status={p.status}
-                convertedClassId={p.convertedClassId}
-                convertedProgramId={
-                  p.convertedClassId
-                    ? ((db.prepare("SELECT program_id FROM classes WHERE id = ?").get(p.convertedClassId) as { program_id: string | null } | undefined)?.program_id ?? null)
-                    : null
-                }
-                description={p.description}
-                curricula={curricula.map((c) => ({ id: c.id, title: c.title }))}
-              />
-            </td>
-          </tr>
-        ))}
+        {(await Promise.all(proposals.map(async (p) => (
+                        <tr key={p.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
+                          <td style={{ padding: "11px 12px", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{p.title}</td>
+                          <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{(await instructorName(p.instructorId))}</td>
+                          <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{p.ageGroup || "—"}</td>
+                          <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{p.format || "—"}</td>
+                          <td style={{ padding: "11px 12px" }}>
+                            <Badge status={STATUS_BADGE[p.status] ?? "neutral"}>{p.status}</Badge>
+                          </td>
+                          <td style={{ padding: "11px 12px", textAlign: "right" }}>
+                            <ProposalActions
+                              proposalId={p.id}
+                              status={p.status}
+                              convertedClassId={p.convertedClassId}
+                              convertedProgramId={
+                                p.convertedClassId
+                                  ? (((await db.prepare("SELECT program_id FROM classes WHERE id = ?").get(p.convertedClassId)) as { program_id: string | null } | undefined)?.program_id ?? null)
+                                  : null
+                              }
+                              description={p.description}
+                              curricula={curricula.map((c) => ({ id: c.id, title: c.title }))}
+                            />
+                          </td>
+                        </tr>
+                      ))))}
       </DataTable>
     </div>
   );

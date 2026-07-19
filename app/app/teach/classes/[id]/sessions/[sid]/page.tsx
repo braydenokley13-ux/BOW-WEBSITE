@@ -42,21 +42,21 @@ export default async function TeachSessionDetailPage({ params }: { params: Promi
   const { instructor } = await requireActiveInstructorSelf();
 
   const db = getDb();
-  const session = db.prepare(
-    "SELECT session_date, timezone, location FROM class_sessions WHERE id = ? AND class_id = ?",
-  ).get(sid, id) as ClassSessionRow | undefined;
+  const session = (await db.prepare(
+      "SELECT session_date, timezone, location FROM class_sessions WHERE id = ? AND class_id = ?",
+    ).get(sid, id)) as ClassSessionRow | undefined;
   if (!session) notFound();
 
-  const isMember = db.prepare(
-    "SELECT 1 FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL",
-  ).get(id, instructor.id);
+  const isMember = (await db.prepare(
+      "SELECT 1 FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL",
+    ).get(id, instructor.id));
   if (!isMember) redirect("/app/teach/classes");
-  const cls = db.prepare(
-    `SELECT c.title, c.schedule_timezone, curriculum.title AS curriculum_title
+  const cls = (await db.prepare(
+      `SELECT c.title, c.schedule_timezone, curriculum.title AS curriculum_title
        FROM classes c
        LEFT JOIN curricula curriculum ON curriculum.id = c.curriculum_id
       WHERE c.id = ?`,
-  ).get(id) as
+    ).get(id)) as
     | ClassContextRow
     | undefined;
   if (!cls) notFound();
@@ -64,8 +64,8 @@ export default async function TeachSessionDetailPage({ params }: { params: Promi
   // Cohorts and Classes share an id only for the explicit legacy projection.
   // Require the Program provenance as well so an unrelated Class can never
   // inherit curriculum context merely because its identifier happens to match.
-  const legacyCohort = db.prepare(
-    `SELECT cohort.name, cohort.track, cohort.current_lesson_id
+  const legacyCohort = (await db.prepare(
+      `SELECT cohort.name, cohort.track, cohort.current_lesson_id
        FROM cohorts cohort
        JOIN classes c ON c.id = cohort.id
        JOIN programs p ON p.id = c.program_id
@@ -74,23 +74,23 @@ export default async function TeachSessionDetailPage({ params }: { params: Promi
         AND p.source_id = cohort.id
         AND cohort.org_id IS c.partner_org_id
         AND p.partner_org_id IS c.partner_org_id`,
-  ).get(id) as LegacyCohortContextRow | undefined;
+    ).get(id)) as LegacyCohortContextRow | undefined;
   const lessonCandidate = legacyCohort?.current_lesson_id
     ? getLessonById(legacyCohort.current_lesson_id)
     : undefined;
 
-  const roster = db
-    .prepare(
-      `SELECT csr.student_id, s.name
+  const roster = (await db
+      .prepare(
+        `SELECT csr.student_id, s.name
        FROM class_session_roster csr
        LEFT JOIN students s ON s.id = csr.student_id
        WHERE csr.session_id = ?
        ORDER BY s.name, csr.student_id`,
-    )
-    .all(sid) as { student_id: string; name: string | null }[];
-  const attendanceRows = db
-    .prepare("SELECT student_id, present, status, note, recorded_at FROM attendance_records WHERE session_id = ?")
-    .all(sid) as { student_id: string; present: number; status: string | null; note: string | null; recorded_at: number }[];
+      )
+      .all(sid)) as { student_id: string; name: string | null }[];
+  const attendanceRows = (await db
+      .prepare("SELECT student_id, present, status, note, recorded_at FROM attendance_records WHERE session_id = ?")
+      .all(sid)) as { student_id: string; present: number; status: string | null; note: string | null; recorded_at: number }[];
   const attendanceMap = new Map(attendanceRows.map((row) => [row.student_id, row]));
 
   const students = roster.map((student) => ({
@@ -103,10 +103,10 @@ export default async function TeachSessionDetailPage({ params }: { params: Promi
     recordedAt: attendanceMap.get(student.student_id)?.recorded_at ?? null,
   }));
 
-  const report = db.prepare(
-    `SELECT notes, flagged, flag_reason, completed, reported_at, lesson_id, lesson_snapshot
+  const report = (await db.prepare(
+      `SELECT notes, flagged, flag_reason, completed, reported_at, lesson_id, lesson_snapshot
        FROM class_session_reports WHERE session_id = ?`,
-  ).get(sid) as SessionReportRow | undefined;
+    ).get(sid)) as SessionReportRow | undefined;
   // The legacy Cohort stores only its mutable current lesson; it does not
   // snapshot a lesson/version on each Class session. That live context is
   // useful before finalization, but must never appear to be historical proof.

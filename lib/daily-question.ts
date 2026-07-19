@@ -1232,15 +1232,15 @@ export function seedToQuestion(s: DailyQuestionSeed): DailyQuestion {
 }
 
 /** All daily questions, ordered (DB first, falling back to the seed bank). */
-export function getDailyQuestions(): DailyQuestion[] {
-  const rows = getDb().prepare("SELECT * FROM daily_questions ORDER BY ordinal ASC").all() as any[];
+export async function getDailyQuestions(): Promise<DailyQuestion[]> {
+  const rows = (await getDb().prepare("SELECT * FROM daily_questions ORDER BY ordinal ASC").all()) as any[];
   if (rows.length === 0) return [...DAILY_QUESTIONS].sort((a, b) => a.ordinal - b.ordinal).map(seedToQuestion);
   return rows.map(rowToDailyQuestion);
 }
 
 /** A single question by id (admin + submit-action use), or null. */
-export function getDailyQuestionById(id: string): DailyQuestion | null {
-  const r = getDb().prepare("SELECT * FROM daily_questions WHERE id = ?").get(id) as any;
+export async function getDailyQuestionById(id: string): Promise<DailyQuestion | null> {
+  const r = (await getDb().prepare("SELECT * FROM daily_questions WHERE id = ?").get(id)) as any;
   return r ? rowToDailyQuestion(r) : null;
 }
 
@@ -1282,16 +1282,16 @@ function pickForDay(pool: DailyQuestion[], today: string, now: number): DailyQue
  * question scheduled for today's date; otherwise rotates by day number. Kept for
  * callers that want a single global question regardless of student.
  */
-export function getActiveDailyQuestion(now: number = Date.now()): DailyQuestion | null {
-  const all = getDailyQuestions().filter((q) => q.active);
+export async function getActiveDailyQuestion(now: number = Date.now()): Promise<DailyQuestion | null> {
+  const all = (await getDailyQuestions()).filter((q) => q.active);
   return pickForDay(all, todayUtcIso(now), now);
 }
 
 /** Lifetime count of this student's correct daily answers. */
-export function lifetimeCorrectCount(studentId: string): number {
-  const row = getDb()
-    .prepare("SELECT COUNT(*) AS n FROM daily_responses WHERE student_id = ? AND is_correct = 1")
-    .get(studentId) as any;
+export async function lifetimeCorrectCount(studentId: string): Promise<number> {
+  const row = (await getDb()
+      .prepare("SELECT COUNT(*) AS n FROM daily_responses WHERE student_id = ? AND is_correct = 1")
+      .get(studentId)) as any;
   return Number(row?.n) || 0;
 }
 
@@ -1299,10 +1299,10 @@ export function lifetimeCorrectCount(studentId: string): number {
  * The student's current curriculum track. Earning the Track 101 certificate
  * unlocks Track 201, so a certified student gets the 201 question bank.
  */
-export function currentTrackFor(studentId: string): string {
-  const row = getDb()
-    .prepare("SELECT 1 AS c FROM certificates WHERE student_id = ? AND track = '101' LIMIT 1")
-    .get(studentId) as any;
+export async function currentTrackFor(studentId: string): Promise<string> {
+  const row = (await getDb()
+      .prepare("SELECT 1 AS c FROM certificates WHERE student_id = ? AND track = '101' LIMIT 1")
+      .get(studentId)) as any;
   return row ? "201" : "101";
 }
 
@@ -1310,8 +1310,8 @@ export function currentTrackFor(studentId: string): string {
  * The difficulty a student should see, by lifetime correct answers:
  *  0–4 → Rookie (1), 5–14 → Pro (2), 15+ → Executive (3).
  */
-export function computedDifficultyFor(studentId: string): number {
-  const correct = lifetimeCorrectCount(studentId);
+export async function computedDifficultyFor(studentId: string): Promise<number> {
+  const correct = (await lifetimeCorrectCount(studentId));
   if (correct >= 15) return 3;
   if (correct >= 5) return 2;
   return 1;
@@ -1323,11 +1323,11 @@ export function computedDifficultyFor(studentId: string): number {
  * exact difficulty, fall one tier down, then to any difficulty on the track,
  * then to anything — so there is ALWAYS a question.
  */
-export function getDailyQuestion(studentId: string, now: number = Date.now()): DailyQuestion | null {
-  const all = getDailyQuestions().filter((q) => q.active);
+export async function getDailyQuestion(studentId: string, now: number = Date.now()): Promise<DailyQuestion | null> {
+  const all = (await getDailyQuestions()).filter((q) => q.active);
   if (all.length === 0) return null;
-  const track = currentTrackFor(studentId);
-  const targetDiff = computedDifficultyFor(studentId);
+  const track = (await currentTrackFor(studentId));
+  const targetDiff = (await computedDifficultyFor(studentId));
   const today = todayUtcIso(now);
 
   const matchers: ((q: DailyQuestion) => boolean)[] = [];
@@ -1343,13 +1343,13 @@ export function getDailyQuestion(studentId: string, now: number = Date.now()): D
 }
 
 /** The student's stored response to a specific daily question, if any. */
-export function getDailyResponse(
+export async function getDailyResponse(
   studentId: string,
   questionId: string,
-): { selectedChoice: string; isCorrect: boolean; respondedAt: number } | null {
-  const r = getDb()
-    .prepare("SELECT selected_choice, is_correct, responded_at FROM daily_responses WHERE student_id = ? AND question_id = ?")
-    .get(studentId, questionId) as any;
+): Promise<{ selectedChoice: string; isCorrect: boolean; respondedAt: number } | null> {
+  const r = (await getDb()
+      .prepare("SELECT selected_choice, is_correct, responded_at FROM daily_responses WHERE student_id = ? AND question_id = ?")
+      .get(studentId, questionId)) as any;
   if (!r) return null;
   return {
     // Raw — MC stores an uppercase letter; math/fr store the typed answer.
@@ -1382,10 +1382,10 @@ export function gradeAnswer(q: DailyQuestion, submitted: string): boolean {
 }
 
 /** Build the dashboard view of today's question for a student. */
-export function getDailyQuestionView(studentId: string, now: number = Date.now()): DailyQuestionView | null {
-  const q = getDailyQuestion(studentId, now);
+export async function getDailyQuestionView(studentId: string, now: number = Date.now()): Promise<DailyQuestionView | null> {
+  const q = (await getDailyQuestion(studentId, now));
   if (!q) return null;
-  const answer = getDailyResponse(studentId, q.id);
+  const answer = (await getDailyResponse(studentId, q.id));
   const choices =
     q.type === "mc"
       ? [
@@ -1418,11 +1418,11 @@ export function getDailyQuestionView(studentId: string, now: number = Date.now()
 }
 
 /** How many daily answers were recorded across all students today (admin overview). */
-export function countDailyAnswersToday(now: number = Date.now()): number {
+export async function countDailyAnswersToday(now: number = Date.now()): Promise<number> {
   const start = utcDayNumber(now) * DAY_MS;
-  const row = getDb()
-    .prepare("SELECT COUNT(*) AS n FROM daily_responses WHERE responded_at >= ? AND responded_at < ?")
-    .get(start, start + DAY_MS) as any;
+  const row = (await getDb()
+      .prepare("SELECT COUNT(*) AS n FROM daily_responses WHERE responded_at >= ? AND responded_at < ?")
+      .get(start, start + DAY_MS)) as any;
   return Number(row?.n) || 0;
 }
 

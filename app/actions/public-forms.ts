@@ -68,7 +68,7 @@ function isLearnerAcquisitionInquiry(source: PublicInquirySource, type: string):
   return normalized === "family";
 }
 
-function recordPublicLearnerTouchpoint(
+async function recordPublicLearnerTouchpoint(
   db: ReturnType<typeof getDb>,
   input: {
     inquiryId: string;
@@ -78,27 +78,27 @@ function recordPublicLearnerTouchpoint(
     summary: string;
     occurredAt: number;
   },
-): void {
+): Promise<void> {
   if (!isLearnerAcquisitionInquiry(input.source, input.type)) return;
   const touchpointId = `sat-web-${createHash("sha256").update(input.inquiryId).digest("hex").slice(0, 20)}`;
-  db.prepare(
-    `INSERT INTO student_acquisition_touchpoints
+  (await db.prepare(
+        `INSERT INTO student_acquisition_touchpoints
       (id, person_id, student_id, channel_id, campaign_id, contributor_id, touchpoint_type,
        occurred_at, occurred_on, timezone, external_key, detail, recorded_by_user_id, source_type, source_id,
        voided_at, voided_by_user_id, void_reason, created_at)
      VALUES (?, ?, NULL, 'gch-direct-inquiry', NULL, NULL, 'inquiry', ?, ?, ?, ?, ?, NULL,
              'public_inquiry', ?, NULL, NULL, NULL, ?)`,
-  ).run(
-    touchpointId,
-    input.personId,
-    input.occurredAt,
-    canonicalDateInZone(input.occurredAt, DEFAULT_TIME_ZONE),
-    DEFAULT_TIME_ZONE,
-    `public-inquiry:${input.inquiryId}`,
-    `${PUBLIC_INQUIRY_SOURCE_META[input.source].label}: ${input.type}. ${input.summary}`.slice(0, 2000),
-    input.inquiryId,
-    input.occurredAt,
-  );
+      ).run(
+        touchpointId,
+        input.personId,
+        input.occurredAt,
+        canonicalDateInZone(input.occurredAt, DEFAULT_TIME_ZONE),
+        DEFAULT_TIME_ZONE,
+        `public-inquiry:${input.inquiryId}`,
+        `${PUBLIC_INQUIRY_SOURCE_META[input.source].label}: ${input.type}. ${input.summary}`.slice(0, 2000),
+        input.inquiryId,
+        input.occurredAt,
+      ));
 }
 
 /**
@@ -132,9 +132,9 @@ export async function submitPublicInquiry(input: PublicInquiryInput): Promise<Ac
   const inquiryId = `iq-web-${sourceMeta.code}-${createHash("sha256").update(requestKey).digest("hex").slice(0, 20)}`;
   const payload = { name, email, type, orgName, summary };
   const db = getDb();
-  const replay = db.prepare(
-    "SELECT name, email, type, org_name, summary FROM inquiries WHERE id = ?",
-  ).get(inquiryId) as InquiryReplayRow | undefined;
+  const replay = (await db.prepare(
+      "SELECT name, email, type, org_name, summary FROM inquiries WHERE id = ?",
+    ).get(inquiryId)) as InquiryReplayRow | undefined;
   if (replay) {
     return matchesPublicInquiryReplay(replay, payload)
       ? { ok: true }
@@ -143,20 +143,20 @@ export async function submitPublicInquiry(input: PublicInquiryInput): Promise<Ac
 
   const address = await clientAddressBucket();
   if (address) {
-    const networkLimit = consumeRateLimit("public-inquiry-network", address, {
-      limit: 15,
-      windowMs: 24 * 60 * 60 * 1000,
-      blockMs: 24 * 60 * 60 * 1000,
-    });
+    const networkLimit = (await consumeRateLimit("public-inquiry-network", address, {
+          limit: 15,
+          windowMs: 24 * 60 * 60 * 1000,
+          blockMs: 24 * 60 * 60 * 1000,
+        }));
     if (!networkLimit.allowed) {
       return { ok: false, error: "Too many inquiries were submitted from this network. Try again tomorrow." };
     }
   }
-  const identityLimit = consumeRateLimit("public-inquiry-email", email, {
-    limit: 4,
-    windowMs: 7 * 24 * 60 * 60 * 1000,
-    blockMs: 7 * 24 * 60 * 60 * 1000,
-  });
+  const identityLimit = (await consumeRateLimit("public-inquiry-email", email, {
+      limit: 4,
+      windowMs: 7 * 24 * 60 * 60 * 1000,
+      blockMs: 7 * 24 * 60 * 60 * 1000,
+    }));
   if (!identityLimit.allowed) {
     return { ok: false, error: "This email has already sent several recent inquiries. Contact BOW directly if this is urgent." };
   }
@@ -168,119 +168,119 @@ export async function submitPublicInquiry(input: PublicInquiryInput): Promise<Ac
   let wasReplay = false;
   let transactionOpen = false;
   try {
-    db.exec("BEGIN IMMEDIATE");
+    (await db.exec("BEGIN IMMEDIATE"));
     transactionOpen = true;
-    const lockedReplay = db.prepare(
-      "SELECT name, email, type, org_name, summary FROM inquiries WHERE id = ?",
-    ).get(inquiryId) as InquiryReplayRow | undefined;
+    const lockedReplay = (await db.prepare(
+          "SELECT name, email, type, org_name, summary FROM inquiries WHERE id = ?",
+        ).get(inquiryId)) as InquiryReplayRow | undefined;
     if (lockedReplay) {
       if (!matchesPublicInquiryReplay(lockedReplay, payload)) throw new Error("request_key_mismatch");
       wasReplay = true;
     } else {
-      const topology = ensureInquiryTopology(
-        db,
-        { organizationName: orgName, contactName: name, contactEmail: email },
-        { now },
-      );
+      const topology = (await ensureInquiryTopology(
+              db,
+              { organizationName: orgName, contactName: name, contactEmail: email },
+              { now },
+            ));
       organizationId = topology.organizationId;
 
-      db.prepare(
-        `INSERT INTO inquiries (id, organization_id, name, email, type, org_name, date, status, summary)
+      (await db.prepare(
+                `INSERT INTO inquiries (id, organization_id, name, email, type, org_name, date, status, summary)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)`,
-      ).run(
-        inquiryId,
-        organizationId,
-        name,
-        email,
-        type,
-        orgName,
-        formatCanonicalDate(canonicalDateInZone(now)),
-        summary,
-      );
-      recordPublicLearnerTouchpoint(db, {
-        inquiryId,
-        personId: topology.sourcePersonId,
-        source: source as PublicInquirySource,
-        type,
-        summary,
-        occurredAt: now,
-      });
+              ).run(
+                inquiryId,
+                organizationId,
+                name,
+                email,
+                type,
+                orgName,
+                formatCanonicalDate(canonicalDateInZone(now)),
+                summary,
+              ));
+      (await recordPublicLearnerTouchpoint(db, {
+                inquiryId,
+                personId: topology.sourcePersonId,
+                source: source as PublicInquirySource,
+                type,
+                summary,
+                occurredAt: now,
+              }));
 
-      logActivity(
-        "inquiry",
-        inquiryId,
-        "submitted",
-        `${sourceMeta.label} inquiry received from ${name}${submittedOrgName ? ` at ${submittedOrgName}` : ""}.`,
-        null,
-      );
-      logActivity(
-        "person",
-        topology.sourcePersonId,
-        "inquiry",
-        `Submitted ${type} inquiry ${inquiryId} through the ${sourceMeta.label} form.`,
-        null,
-      );
+      (await logActivity(
+                "inquiry",
+                inquiryId,
+                "submitted",
+                `${sourceMeta.label} inquiry received from ${name}${submittedOrgName ? ` at ${submittedOrgName}` : ""}.`,
+                null,
+              ));
+      (await logActivity(
+                "person",
+                topology.sourcePersonId,
+                "inquiry",
+                `Submitted ${type} inquiry ${inquiryId} through the ${sourceMeta.label} form.`,
+                null,
+              ));
       if (organizationId) {
-        logActivity(
-          "organization",
-          organizationId,
-          "inquiry",
-          `${type} inquiry from ${name} (${email}). ${summary.slice(0, 500)}`,
-          null,
-        );
+        (await logActivity(
+                    "organization",
+                    organizationId,
+                    "inquiry",
+                    `${type} inquiry from ${name} (${email}). ${summary.slice(0, 500)}`,
+                    null,
+                  ));
       }
 
       const subject = submittedOrgName || name;
-      const defaultOwner = db.prepare(
-        `SELECT id
+      const defaultOwner = (await db.prepare(
+              `SELECT id
            FROM users
           WHERE role IN ('growth','admin') AND status = 'active'
           ORDER BY CASE role WHEN 'growth' THEN 0 ELSE 1 END, id
           LIMIT 1`,
-      ).get() as { id: string } | undefined;
+            ).get()) as { id: string } | undefined;
       const context = [
         `Source: ${sourceMeta.label}.`,
         `Contact: ${name} (${email}).`,
         submittedOrgName ? `Organization: ${submittedOrgName}.` : "",
         `Inquiry: ${summary}`,
       ].filter(Boolean).join(" ").slice(0, 2000);
-      db.prepare(
-        `INSERT INTO tasks
+      (await db.prepare(
+                `INSERT INTO tasks
           (id, title, owner_user_id, due_at, due_on, status, kind, priority, context, recommended_action,
            entity_type, entity_id, handoff_to_founder, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 'open', 'follow_up', 'high', ?, ?, ?, ?, 0, ?, ?)`,
-      ).run(
-        taskId,
-        `Review and respond: ${type} — ${subject}`.slice(0, 200),
-        defaultOwner?.id ?? null,
-        now + 3 * 24 * 60 * 60 * 1000,
-        followUpDate,
-        context,
-        `Review the inquiry and contact ${name} at ${email} with the correct next step.`,
-        organizationId ? "organization" : "inquiry",
-        organizationId ?? inquiryId,
-        now,
-        now,
-      );
-      logActivity("task", taskId, "created", `Created from public inquiry ${inquiryId}.`, null);
+              ).run(
+                taskId,
+                `Review and respond: ${type} — ${subject}`.slice(0, 200),
+                defaultOwner?.id ?? null,
+                now + 3 * 24 * 60 * 60 * 1000,
+                followUpDate,
+                context,
+                `Review the inquiry and contact ${name} at ${email} with the correct next step.`,
+                organizationId ? "organization" : "inquiry",
+                organizationId ?? inquiryId,
+                now,
+                now,
+              ));
+      (await logActivity("task", taskId, "created", `Created from public inquiry ${inquiryId}.`, null));
 
-      for (const staffId of listStaffUserIds()) {
-        createNotification({
-          id: `ntf-public-inquiry-${inquiryId}-${staffId}`,
-          userId: staffId,
-          type: "partner_pipeline",
-          title: `New ${type} inquiry`,
-          body: `${subject} submitted through the ${sourceMeta.label} form. Follow-up Work is ready.`,
-          link: organizationId ? `/app/partners/${organizationId}#inquiry-${inquiryId}` : `/app/inquiries#inquiry-${inquiryId}`,
-        });
+      for (const staffId of (await listStaffUserIds())) {
+        (await createNotification({
+                    id: `ntf-public-inquiry-${inquiryId}-${staffId}`,
+                    userId: staffId,
+                    type: "partner_pipeline",
+                    title: `New ${type} inquiry`,
+                    body: `${subject} submitted through the ${sourceMeta.label} form. Follow-up Work is ready.`,
+                    link: organizationId ? `/app/partners/${organizationId}#inquiry-${inquiryId}` : `/app/inquiries#inquiry-${inquiryId}`,
+                  }));
       }
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
     transactionOpen = false;
   } catch (error) {
     if (transactionOpen) {
       try {
-        db.exec("ROLLBACK");
+        (await db.exec("ROLLBACK"));
       } catch {
         // Preserve the original intake failure.
       }
@@ -334,9 +334,9 @@ export async function submitPartnershipInquiry(input: PartnershipInquiryInput): 
   // the original successful intake instead of creating duplicate work.
   const inquiryId = `iq-p-${createHash("sha256").update(requestKey).digest("hex").slice(0, 24)}`;
   const summary = ["Partnership inquiry.", message].filter(Boolean).join(" ");
-  const replay = getDb().prepare(
-    "SELECT name, email, org_name, summary FROM inquiries WHERE id = ?",
-  ).get(inquiryId) as { name: string; email: string; org_name: string; summary: string } | undefined;
+  const replay = (await getDb().prepare(
+      "SELECT name, email, org_name, summary FROM inquiries WHERE id = ?",
+    ).get(inquiryId)) as { name: string; email: string; org_name: string; summary: string } | undefined;
   if (replay) {
     return replay.name === contactName
       && replay.email === contactEmail
@@ -348,18 +348,18 @@ export async function submitPartnershipInquiry(input: PartnershipInquiryInput): 
 
   const address = await clientAddressBucket();
   if (address) {
-    const networkLimit = consumeRateLimit("partnership-inquiry-network", address, {
-      limit: 15,
-      windowMs: 24 * 60 * 60 * 1000,
-      blockMs: 24 * 60 * 60 * 1000,
-    });
+    const networkLimit = (await consumeRateLimit("partnership-inquiry-network", address, {
+          limit: 15,
+          windowMs: 24 * 60 * 60 * 1000,
+          blockMs: 24 * 60 * 60 * 1000,
+        }));
     if (!networkLimit.allowed) return { ok: false, error: "Too many inquiries were submitted from this network. Try again later." };
   }
-  const identityLimit = consumeRateLimit("partnership-inquiry-email", contactEmail, {
-    limit: 4,
-    windowMs: 7 * 24 * 60 * 60 * 1000,
-    blockMs: 7 * 24 * 60 * 60 * 1000,
-  });
+  const identityLimit = (await consumeRateLimit("partnership-inquiry-email", contactEmail, {
+      limit: 4,
+      windowMs: 7 * 24 * 60 * 60 * 1000,
+      blockMs: 7 * 24 * 60 * 60 * 1000,
+    }));
   if (!identityLimit.allowed) return { ok: false, error: "This email already submitted several recent inquiries." };
 
   const db = getDb();
@@ -369,11 +369,11 @@ export async function submitPartnershipInquiry(input: PartnershipInquiryInput): 
   let wasReplay = false;
   let transactionOpen = false;
   try {
-    db.exec("BEGIN IMMEDIATE");
+    (await db.exec("BEGIN IMMEDIATE"));
     transactionOpen = true;
-    const lockedReplay = db.prepare(
-      "SELECT name, email, org_name, summary FROM inquiries WHERE id = ?",
-    ).get(inquiryId) as { name: string; email: string; org_name: string; summary: string } | undefined;
+    const lockedReplay = (await db.prepare(
+          "SELECT name, email, org_name, summary FROM inquiries WHERE id = ?",
+        ).get(inquiryId)) as { name: string; email: string; org_name: string; summary: string } | undefined;
     if (lockedReplay) {
       if (
         lockedReplay.name !== contactName
@@ -385,11 +385,11 @@ export async function submitPartnershipInquiry(input: PartnershipInquiryInput): 
       }
       wasReplay = true;
     } else {
-      const topology = ensureInquiryTopology(
-        db,
-        { organizationName: orgName, contactName, contactEmail },
-        { now },
-      );
+      const topology = (await ensureInquiryTopology(
+              db,
+              { organizationName: orgName, contactName, contactEmail },
+              { now },
+            ));
       organizationId = topology.organizationId;
 
       const submittedDate = new Intl.DateTimeFormat("en-US", {
@@ -398,50 +398,50 @@ export async function submitPartnershipInquiry(input: PartnershipInquiryInput): 
         year: "numeric",
         timeZone: "UTC",
       }).format(now);
-      db.prepare(
-        `INSERT INTO inquiries (id, organization_id, name, email, type, org_name, date, status, summary)
+      (await db.prepare(
+                `INSERT INTO inquiries (id, organization_id, name, email, type, org_name, date, status, summary)
          VALUES (?, ?, ?, ?, 'Partnership', ?, ?, 'new', ?)`,
-      ).run(inquiryId, organizationId, contactName, contactEmail, orgName, submittedDate, summary);
+              ).run(inquiryId, organizationId, contactName, contactEmail, orgName, submittedDate, summary));
 
       if (organizationId) {
-        logActivity(
-          "organization",
-          organizationId,
-          "inquiry",
-          `Partnership inquiry from ${contactName} (${contactEmail}).${message ? ` ${message.slice(0, 500)}` : ""}`,
-          null,
-        );
+        (await logActivity(
+                    "organization",
+                    organizationId,
+                    "inquiry",
+                    `Partnership inquiry from ${contactName} (${contactEmail}).${message ? ` ${message.slice(0, 500)}` : ""}`,
+                    null,
+                  ));
       }
-      logActivity("inquiry", inquiryId, "submitted", `Partnership inquiry received from ${orgName}.`, null);
-      db.prepare(
-        "INSERT INTO tasks (id, title, owner_user_id, due_at, status, entity_type, entity_id, handoff_to_founder, created_at, updated_at) VALUES (?, ?, NULL, ?, 'open', ?, ?, 0, ?, ?)",
-      ).run(
-        taskId,
-        `${organizationId ? "Follow up" : "Resolve partner and follow up"}: ${orgName} partnership inquiry`,
-        now + 3 * 24 * 60 * 60 * 1000,
-        organizationId ? "organization" : "inquiry",
-        organizationId ?? inquiryId,
-        now,
-        now,
-      );
+      (await logActivity("inquiry", inquiryId, "submitted", `Partnership inquiry received from ${orgName}.`, null));
+      (await db.prepare(
+                "INSERT INTO tasks (id, title, owner_user_id, due_at, status, entity_type, entity_id, handoff_to_founder, created_at, updated_at) VALUES (?, ?, NULL, ?, 'open', ?, ?, 0, ?, ?)",
+              ).run(
+                taskId,
+                `${organizationId ? "Follow up" : "Resolve partner and follow up"}: ${orgName} partnership inquiry`,
+                now + 3 * 24 * 60 * 60 * 1000,
+                organizationId ? "organization" : "inquiry",
+                organizationId ?? inquiryId,
+                now,
+                now,
+              ));
 
-      for (const staffId of listStaffUserIds()) {
-        createNotification({
-          id: `ntf-partner-inquiry-${inquiryId}-${staffId}`,
-          userId: staffId,
-          type: "instructor_pipeline",
-          title: "New partnership inquiry",
-          body: `${orgName} submitted a partnership inquiry.`,
-          link: organizationId ? `/app/partners/${organizationId}#inquiry-${inquiryId}` : "/app/inquiries",
-        });
+      for (const staffId of (await listStaffUserIds())) {
+        (await createNotification({
+                    id: `ntf-partner-inquiry-${inquiryId}-${staffId}`,
+                    userId: staffId,
+                    type: "instructor_pipeline",
+                    title: "New partnership inquiry",
+                    body: `${orgName} submitted a partnership inquiry.`,
+                    link: organizationId ? `/app/partners/${organizationId}#inquiry-${inquiryId}` : "/app/inquiries",
+                  }));
       }
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
     transactionOpen = false;
   } catch (error) {
     if (transactionOpen) {
       try {
-        db.exec("ROLLBACK");
+        (await db.exec("ROLLBACK"));
       } catch {
         // Preserve the intake failure.
       }

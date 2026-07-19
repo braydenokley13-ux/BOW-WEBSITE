@@ -32,9 +32,9 @@ function readinessTone(state: string): "positive" | "warning" | "negative" | "ne
 export default async function ProgramDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireStaff();
   const { id } = await params;
-  const detail = getProgram(id);
+  const detail = (await getProgram(id));
   if (!detail) notFound();
-  const options = getProgramFormOptions();
+  const options = (await getProgramFormOptions());
   const program = detail.program;
   const firstBlocker = detail.readiness.blockers[0];
   const nextAction = detail.readiness.nextAction;

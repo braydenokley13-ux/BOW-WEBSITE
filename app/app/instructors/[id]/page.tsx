@@ -87,18 +87,18 @@ function AssignmentList({ assignments, empty }: { assignments: WorkforceAssignme
 export default async function InstructorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const me = await getCurrentUser();
-  const detail = getInstructorDetail(id);
-  const dossier = getInstructorWorkforceDossier(id);
+  const detail = (await getInstructorDetail(id));
+  const dossier = (await getInstructorWorkforceDossier(id));
   if (!detail || !dossier) notFound();
 
   const { instructor, person, completions, evaluations } = detail;
-  const now = Number((getDb().prepare("SELECT unixepoch('now') * 1000 AS now").get() as { now: number }).now);
+  const now = Number(((await getDb().prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
   const today = canonicalDateInZone(now);
-  const activity = listActivity("instructor", id).slice(0, 30);
-  const openTasks = listOpenTasksForEntity("instructor", id);
-  const staffUsers = listStaffUsers();
+  const activity = (await listActivity("instructor", id)).slice(0, 30);
+  const openTasks = (await listOpenTasksForEntity("instructor", id));
+  const staffUsers = (await listStaffUsers());
   const resolvedOwnerName = instructor.ownerUserId
-    ? resolveUserNames([instructor.ownerUserId]).get(instructor.ownerUserId)
+    ? (await resolveUserNames([instructor.ownerUserId])).get(instructor.ownerUserId)
     : null;
   const ownerName = instructor.ownerUserId
     ? resolvedOwnerName && resolvedOwnerName !== instructor.ownerUserId ? resolvedOwnerName : "Former staff member"

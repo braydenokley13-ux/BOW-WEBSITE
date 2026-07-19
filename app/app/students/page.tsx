@@ -7,8 +7,8 @@ const FORM_BADGE: Record<string, "positive" | "warning" | "negative"> = {
   missing: "negative",
 };
 
-export default function StudentsPage() {
-  const students = listStudents();
+export default async function StudentsPage() {
+  const students = (await listStudents());
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>

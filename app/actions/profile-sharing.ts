@@ -51,11 +51,11 @@ export async function grantPublicProfileConsent(input: GrantProfileSharingInput)
   const consentId = `psc-${randomUUID()}`;
   const publicSlug = randomBytes(32).toString("base64url");
 
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const student = db
-      .prepare(
-        `SELECT id FROM users
+    const student = (await db
+          .prepare(
+            `SELECT id FROM users
          WHERE id = ? AND role = 'student' AND status = 'active' AND deletion_requested = 0
            AND EXISTS (
              SELECT 1 FROM organizations o
@@ -65,50 +65,50 @@ export async function grantPublicProfileConsent(input: GrantProfileSharingInput)
              SELECT 1 FROM enrollments e
              WHERE e.user_id = users.id AND e.enroll = 'active'
            )`,
-      )
-      .get(studentUserId);
+          )
+          .get(studentUserId));
     if (!student) throw new Error("student_unavailable");
 
-    db.prepare(
-      `UPDATE profile_sharing_consents
+    (await db.prepare(
+            `UPDATE profile_sharing_consents
        SET revoked_by_user_id = ?, revoked_at = ?
        WHERE student_user_id = ? AND revoked_at IS NULL`,
-    ).run(me.id, now, studentUserId);
+          ).run(me.id, now, studentUserId));
 
-    db.prepare(
-      `INSERT INTO profile_sharing_consents
+    (await db.prepare(
+            `INSERT INTO profile_sharing_consents
         (id, student_user_id, public_slug, guardian_name, guardian_email,
          consent_method, guardian_verified_at, granted_by_user_id, granted_at,
          expires_at, discoverable, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
-    ).run(
-      consentId,
-      studentUserId,
-      publicSlug,
-      guardianName,
-      guardianEmail,
-      input.consentMethod,
-      now,
-      me.id,
-      now,
-      expiresAt,
-      notes,
-    );
-    db.prepare(
-      `INSERT INTO crm_activity
+          ).run(
+            consentId,
+            studentUserId,
+            publicSlug,
+            guardianName,
+            guardianEmail,
+            input.consentMethod,
+            now,
+            me.id,
+            now,
+            expiresAt,
+            notes,
+          ));
+    (await db.prepare(
+            `INSERT INTO crm_activity
         (id, entity_type, entity_id, kind, body, actor_user_id, created_at)
        VALUES (?, 'student_profile', ?, 'sharing_consent_granted', ?, ?, ?)`,
-    ).run(
-      `pfx-${randomUUID()}`,
-      studentUserId,
-      `Guardian consent verified by ${input.consentMethod}; link expires ${new Date(expiresAt).toISOString()}.`,
-      me.id,
-      now,
-    );
-    db.exec("COMMIT");
+          ).run(
+            `pfx-${randomUUID()}`,
+            studentUserId,
+            `Guardian consent verified by ${input.consentMethod}; link expires ${new Date(expiresAt).toISOString()}.`,
+            me.id,
+            now,
+          ));
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the original error.
     }
@@ -131,39 +131,39 @@ export async function revokePublicProfileConsent(consentId: string, reason?: str
 
   const db = getDb();
   const now = Date.now();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const consent = db
-      .prepare("SELECT student_user_id, public_slug FROM profile_sharing_consents WHERE id = ? AND revoked_at IS NULL")
-      .get(id) as { student_user_id: string; public_slug: string } | undefined;
+    const consent = (await db
+          .prepare("SELECT student_user_id, public_slug FROM profile_sharing_consents WHERE id = ? AND revoked_at IS NULL")
+          .get(id)) as { student_user_id: string; public_slug: string } | undefined;
     if (!consent) throw new Error("consent_unavailable");
-    const revoked = db
-      .prepare(
-        `UPDATE profile_sharing_consents
+    const revoked = (await db
+          .prepare(
+            `UPDATE profile_sharing_consents
          SET revoked_by_user_id = ?, revoked_at = ?
          WHERE id = ? AND revoked_at IS NULL`,
-      )
-      .run(me.id, now, id);
+          )
+          .run(me.id, now, id));
     if (revoked.changes !== 1) throw new Error("consent_unavailable");
-    db.prepare(
-      `INSERT INTO crm_activity
+    (await db.prepare(
+            `INSERT INTO crm_activity
         (id, entity_type, entity_id, kind, body, actor_user_id, created_at)
        VALUES (?, 'student_profile', ?, 'sharing_consent_revoked', ?, ?, ?)`,
-    ).run(
-      `pfx-${randomUUID()}`,
-      consent.student_user_id,
-      reason?.trim().slice(0, 500) || "Public credential sharing revoked.",
-      me.id,
-      now,
-    );
-    db.exec("COMMIT");
+          ).run(
+            `pfx-${randomUUID()}`,
+            consent.student_user_id,
+            reason?.trim().slice(0, 500) || "Public credential sharing revoked.",
+            me.id,
+            now,
+          ));
+    (await db.exec("COMMIT"));
     revalidatePath("/profile");
     revalidatePath(`/profile/${consent.public_slug}`);
     revalidatePath("/app/admin/people");
     return { ok: true };
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the original error.
     }

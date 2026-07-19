@@ -73,8 +73,8 @@ export const BADGE_CATALOG: BadgeSeed[] = [
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** All badges from the catalog table, in display order. */
-export function getAllBadges(): Badge[] {
-  const rows = getDb().prepare("SELECT * FROM badges ORDER BY ordinal ASC").all() as any[];
+export async function getAllBadges(): Promise<Badge[]> {
+  const rows = (await getDb().prepare("SELECT * FROM badges ORDER BY ordinal ASC").all()) as any[];
   if (rows.length === 0) return BADGE_CATALOG.map(stripSeed);
   return rows.map(rowToBadge);
 }
@@ -102,38 +102,38 @@ export interface EarnedBadge extends Badge {
 }
 
 /** A student's earned badges, most recent first. */
-export function getStudentBadges(studentId: string): EarnedBadge[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT b.*, sb.earned_at AS earned_at
+export async function getStudentBadges(studentId: string): Promise<EarnedBadge[]> {
+  const rows = (await getDb()
+      .prepare(
+        `SELECT b.*, sb.earned_at AS earned_at
        FROM student_badges sb JOIN badges b ON b.id = sb.badge_id
        WHERE sb.student_id = ?
        ORDER BY sb.earned_at DESC, b.ordinal ASC`,
-    )
-    .all(studentId) as any[];
+      )
+      .all(studentId)) as any[];
   return rows.map((r) => ({ ...rowToBadge(r), earnedAt: String(r.earned_at ?? "") }));
 }
 
 /** Set of badge ids this student has already earned. */
-export function getEarnedBadgeIds(studentId: string): Set<string> {
-  const rows = getDb().prepare("SELECT badge_id FROM student_badges WHERE student_id = ?").all(studentId) as any[];
+export async function getEarnedBadgeIds(studentId: string): Promise<Set<string>> {
+  const rows = (await getDb().prepare("SELECT badge_id FROM student_badges WHERE student_id = ?").all(studentId)) as any[];
   return new Set(rows.map((r) => String(r.badge_id)));
 }
 
 /** How many badges a student has earned. */
-export function countStudentBadges(studentId: string): number {
-  const r = getDb().prepare("SELECT COUNT(*) AS n FROM student_badges WHERE student_id = ?").get(studentId) as any;
+export async function countStudentBadges(studentId: string): Promise<number> {
+  const r = (await getDb().prepare("SELECT COUNT(*) AS n FROM student_badges WHERE student_id = ?").get(studentId)) as any;
   return Number(r?.n) || 0;
 }
 
 /** The student's most recently earned badge (the "top badge" on the XP board). */
-export function getMostRecentBadge(studentId: string): Badge | null {
-  const r = getDb()
-    .prepare(
-      `SELECT b.* FROM student_badges sb JOIN badges b ON b.id = sb.badge_id
+export async function getMostRecentBadge(studentId: string): Promise<Badge | null> {
+  const r = (await getDb()
+      .prepare(
+        `SELECT b.* FROM student_badges sb JOIN badges b ON b.id = sb.badge_id
        WHERE sb.student_id = ? ORDER BY sb.earned_at DESC, b.ordinal DESC LIMIT 1`,
-    )
-    .get(studentId) as any;
+      )
+      .get(studentId)) as any;
   return r ? rowToBadge(r) : null;
 }
 
@@ -147,21 +147,21 @@ interface BadgeStats {
 }
 
 /** Gather everything the badge conditions need in one pass. */
-function getBadgeStats(studentId: string): BadgeStats {
+async function getBadgeStats(studentId: string): Promise<BadgeStats> {
   const db = getDb();
-  const u = db.prepare("SELECT longest_streak, current_streak, created_at FROM users WHERE id = ?").get(studentId) as any;
-  const counts = db
-    .prepare(
-      "SELECT COUNT(*) AS answered, SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) AS correct FROM daily_responses WHERE student_id = ?",
-    )
-    .get(studentId) as any;
-  const diff = db
-    .prepare(
-      `SELECT MAX(CASE WHEN r.is_correct = 1 THEN q.difficulty ELSE 0 END) AS max_correct_diff
+  const u = (await db.prepare("SELECT longest_streak, current_streak, created_at FROM users WHERE id = ?").get(studentId)) as any;
+  const counts = (await db
+      .prepare(
+        "SELECT COUNT(*) AS answered, SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) AS correct FROM daily_responses WHERE student_id = ?",
+      )
+      .get(studentId)) as any;
+  const diff = (await db
+      .prepare(
+        `SELECT MAX(CASE WHEN r.is_correct = 1 THEN q.difficulty ELSE 0 END) AS max_correct_diff
        FROM daily_responses r JOIN daily_questions q ON q.id = r.question_id
        WHERE r.student_id = ?`,
-    )
-    .get(studentId) as any;
+      )
+      .get(studentId)) as any;
   const maxCorrectDiff = Number(diff?.max_correct_diff) || 0;
   return {
     longestStreak: Math.max(Number(u?.longest_streak) || 0, Number(u?.current_streak) || 0),
@@ -197,17 +197,17 @@ function badgeEarned(badge: Badge, stats: BadgeStats): boolean {
  * (INSERT OR IGNORE so it's idempotent), and return ONLY the new ones so the
  * UI can toast them. Called after scoring inside the submit action.
  */
-export function checkAndAwardBadges(studentId: string): Badge[] {
+export async function checkAndAwardBadges(studentId: string): Promise<Badge[]> {
   const db = getDb();
-  const stats = getBadgeStats(studentId);
-  const earned = getEarnedBadgeIds(studentId);
+  const stats = (await getBadgeStats(studentId));
+  const earned = (await getEarnedBadgeIds(studentId));
   const insert = db.prepare("INSERT OR IGNORE INTO student_badges (student_id, badge_id) VALUES (?, ?)");
 
   const newly: Badge[] = [];
-  for (const badge of getAllBadges()) {
+  for (const badge of (await getAllBadges())) {
     if (earned.has(badge.id)) continue;
     if (!badgeEarned(badge, stats)) continue;
-    const res = insert.run(studentId, badge.id);
+    const res = (await insert.run(studentId, badge.id));
     if (Number(res.changes) > 0) newly.push(badge);
   }
   return newly;
@@ -229,8 +229,8 @@ export interface BadgeShowcase {
 }
 
 /** Build the grouped earned/locked showcase for the /badges page. */
-export function getBadgeShowcase(studentId: string): BadgeShowcase {
-  const earnedRows = getStudentBadges(studentId);
+export async function getBadgeShowcase(studentId: string): Promise<BadgeShowcase> {
+  const earnedRows = (await getStudentBadges(studentId));
   const earnedMap = new Map(earnedRows.map((b) => [b.id, b.earnedAt]));
 
   const views: BadgeView[] = BADGE_CATALOG.map((seed) => ({

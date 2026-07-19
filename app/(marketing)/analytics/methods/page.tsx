@@ -55,9 +55,9 @@ function Section({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function MethodsPage() {
+export default async function MethodsPage() {
   const a = DEFAULT_ASSUMPTIONS;
-  const p = getDataProvenance();
+  const p = (await getDataProvenance());
 
   return (
     <div data-screen-label="Methods & Data">

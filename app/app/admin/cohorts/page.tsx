@@ -69,9 +69,9 @@ export default function AdminCohortsPage() {
   const addableStudents = selected ? data.users.filter((u) => u.role === "student" && !selRosterIds.has(u.id)) : [];
   const transferTargets = selected ? cohorts.filter((c) => c.id !== selected.id && c.status !== "completed") : [];
 
-  function submitCreate() {
+  async function submitCreate() {
     if (!ccName || !ccOrg || !ccTrack) return;
-    createCohort({ name: ccName.trim(), orgId: ccOrg, track: ccTrack });
+    (await createCohort({ name: ccName.trim(), orgId: ccOrg, track: ccTrack }));
     setCreateOpen(false);
     setCcName("");
     setCcOrg("");
@@ -137,7 +137,7 @@ export default function AdminCohortsPage() {
               <select
                 id="cohort-instructor"
                 value={selected.instructorId ?? ""}
-                onChange={(e) => assignInstructor(selected.id, e.target.value || null)}
+                onChange={async (e) => (await assignInstructor(selected.id, e.target.value || null))}
                 style={{ ...input, width: "auto", flex: 1, minWidth: 200 }}
               >
                 <option value="">Unassigned</option>
@@ -146,7 +146,7 @@ export default function AdminCohortsPage() {
                 ))}
               </select>
               {selected.instructorId && (
-                <button type="button" onClick={() => assignInstructor(selected.id, null)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "9px 14px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer" }}>Remove</button>
+                <button type="button" onClick={async () => (await assignInstructor(selected.id, null))} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", padding: "9px 14px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", borderRadius: 4, cursor: "pointer" }}>Remove</button>
               )}
             </div>
 
@@ -180,7 +180,7 @@ export default function AdminCohortsPage() {
                     {transferTargets.length > 0 && (
                       <select
                         value=""
-                        onChange={(ev) => { if (ev.target.value) transferStudent(e.userId, selected.id, ev.target.value); }}
+                        onChange={async (ev) => { if (ev.target.value) (await transferStudent(e.userId, selected.id, ev.target.value)); }}
                         style={miniSelect}
                         aria-label={`Transfer ${e.user.name}`}
                       >
@@ -192,7 +192,7 @@ export default function AdminCohortsPage() {
                     )}
                     <button
                       type="button"
-                      onClick={() => askConfirm({ title: `Remove ${e.user.name}?`, body: "They’ll be removed from this cohort’s roster. Their account and history stay intact.", confirmLabel: "Remove", tone: "negative", onConfirm: () => removeStudent(selected.id, e.userId) })}
+                      onClick={() => askConfirm({ title: `Remove ${e.user.name}?`, body: "They’ll be removed from this cohort’s roster. Their account and history stay intact.", confirmLabel: "Remove", tone: "negative", onConfirm: async () => (await removeStudent(selected.id, e.userId)) })}
                       style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "7px 11px", border: "1px solid var(--bow-negative)", background: "transparent", color: "var(--bow-negative)", borderRadius: 4, cursor: "pointer" }}
                     >
                       Remove
@@ -213,7 +213,7 @@ export default function AdminCohortsPage() {
               </select>
               <button
                 type="button"
-                onClick={() => { if (addStudentId) { assignStudent(selected.id, addStudentId); setAddStudentId(""); } }}
+                onClick={async () => { if (addStudentId) { (await assignStudent(selected.id, addStudentId)); setAddStudentId(""); } }}
                 disabled={!addStudentId}
                 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.05em", textTransform: "uppercase", padding: "11px 18px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: addStudentId ? "pointer" : "not-allowed", opacity: addStudentId ? 1 : 0.5 }}
               >
@@ -223,7 +223,7 @@ export default function AdminCohortsPage() {
 
             <button
               type="button"
-              onClick={() => advanceCohortLesson(selected.id, selNextLesson ? selNextLesson.id : null)}
+              onClick={async () => (await advanceCohortLesson(selected.id, selNextLesson ? selNextLesson.id : null))}
               style={{ width: "100%", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: 13, border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: "pointer" }}
             >
               {selNextLesson ? `Advance to “${selNextLesson.title}”` : "Advance Lesson"}

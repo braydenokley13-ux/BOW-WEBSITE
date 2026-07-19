@@ -46,10 +46,10 @@ function money(cents: number): string {
 
 export default async function GrowthCommandCenterPage() {
   await requireStaff();
-  const now = Number((getDb().prepare("SELECT unixepoch('now') * 1000 AS now").get() as { now: number }).now);
+  const now = Number(((await getDb().prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
   const today = canonicalDateInZone(now);
   const quarterEnd = addCanonicalDays(today, 90);
-  const center = getGrowthCommandCenter(now);
+  const center = (await getGrowthCommandCenter(now));
   const { funnel } = center;
   const activeGoals = center.goals.filter((goal) => goal.status === "active");
   const closedGoals = center.goals.filter((goal) => goal.status !== "active");

@@ -19,22 +19,22 @@ import {
 } from "@/lib/sim-game";
 
 /** True once the student has completed Module 2 (the Simulation Room gate). */
-function module2Complete(studentId: string): boolean {
-  return getSelfModuleViews(studentId).find((v) => v.module.ordinal === 2)?.completed ?? false;
+async function module2Complete(studentId: string): Promise<boolean> {
+  return (await getSelfModuleViews(studentId)).find((v) => v.module.ordinal === 2)?.completed ?? false;
 }
 
-function touchActive(uid: string) {
-  getDb().prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(Date.now(), uid);
+async function touchActive(uid: string) {
+  (await getDb().prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(Date.now(), uid));
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function loadActiveRow(studentId: string): any {
+async function loadActiveRow(studentId: string): Promise<any> {
   // Scope to the Westbrook sim so the Track 201 Eastfield sim never collides here.
-  return getDb()
-    .prepare(
-      "SELECT * FROM simulations WHERE student_id = ? AND completed = 0 AND COALESCE(sim_type, 'westbrook') = 'westbrook' ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(studentId);
+  return (await getDb()
+      .prepare(
+        "SELECT * FROM simulations WHERE student_id = ? AND completed = 0 AND COALESCE(sim_type, 'westbrook') = 'westbrook' ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(studentId));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -44,21 +44,21 @@ function loadActiveRow(studentId: string): any {
  */
 export async function startSimulation(): Promise<SimActionResult> {
   const me = await requireRole("student");
-  if (!module2Complete(me.id)) return { ok: false, error: "locked" };
+  if (!(await module2Complete(me.id))) return { ok: false, error: "locked" };
 
-  const existing = getActiveSimulation(me.id);
+  const existing = (await getActiveSimulation(me.id));
   if (existing) return { ok: true, state: existing };
 
   const id = `sim-${randomUUID().slice(0, 12)}`;
-  getDb()
-    .prepare(
-      "INSERT INTO simulations (id, student_id, turn, cap_space, team_record, decisions, completed, final_score, created_at) VALUES (?, ?, 1, ?, '0-0', '[]', 0, NULL, ?)",
-    )
-    .run(id, me.id, START_CAP, Date.now());
-  touchActive(me.id);
+  (await getDb()
+        .prepare(
+          "INSERT INTO simulations (id, student_id, turn, cap_space, team_record, decisions, completed, final_score, created_at) VALUES (?, ?, 1, ?, '0-0', '[]', 0, NULL, ?)",
+        )
+        .run(id, me.id, START_CAP, Date.now()));
+  (await touchActive(me.id));
   revalidatePath("/simulation-room");
 
-  return { ok: true, state: getActiveSimulation(me.id) ?? undefined };
+  return { ok: true, state: (await getActiveSimulation(me.id)) ?? undefined };
 }
 
 /**
@@ -68,7 +68,7 @@ export async function startSimulation(): Promise<SimActionResult> {
  */
 export async function makeSimDecision(choiceId: string): Promise<SimActionResult> {
   const me = await requireRole("student");
-  const row = loadActiveRow(me.id);
+  const row = (await loadActiveRow(me.id));
   if (!row) return { ok: false, error: "no-sim" };
 
   const turn = Number(row.turn) || 1;
@@ -115,20 +115,20 @@ export async function makeSimDecision(choiceId: string): Promise<SimActionResult
 
   if (isLast) {
     report = gradeSimulation(decisions);
-    db.prepare(
-      "UPDATE simulations SET turn = ?, cap_space = ?, team_record = ?, decisions = ?, completed = 1, final_score = ? WHERE id = ?",
-    ).run(TOTAL_TURNS, capAfter, `${winsAfter}-${lossesAfter}`, JSON.stringify(decisions), report.gmScore, row.id);
+    (await db.prepare(
+            "UPDATE simulations SET turn = ?, cap_space = ?, team_record = ?, decisions = ?, completed = 1, final_score = ? WHERE id = ?",
+          ).run(TOTAL_TURNS, capAfter, `${winsAfter}-${lossesAfter}`, JSON.stringify(decisions), report.gmScore, row.id));
   } else {
-    db.prepare(
-      "UPDATE simulations SET turn = ?, cap_space = ?, team_record = ?, decisions = ? WHERE id = ?",
-    ).run(turn + 1, capAfter, `${winsAfter}-${lossesAfter}`, JSON.stringify(decisions), row.id);
+    (await db.prepare(
+            "UPDATE simulations SET turn = ?, cap_space = ?, team_record = ?, decisions = ? WHERE id = ?",
+          ).run(turn + 1, capAfter, `${winsAfter}-${lossesAfter}`, JSON.stringify(decisions), row.id));
   }
 
-  touchActive(me.id);
+  (await touchActive(me.id));
   revalidatePath("/simulation-room");
   revalidatePath("/profile");
 
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const updated = db.prepare("SELECT * FROM simulations WHERE id = ?").get(row.id) as any;
+  const updated = (await db.prepare("SELECT * FROM simulations WHERE id = ?").get(row.id)) as any;
   return { ok: true, state: rowToSimState(updated), justResolved: decision, report };
 }

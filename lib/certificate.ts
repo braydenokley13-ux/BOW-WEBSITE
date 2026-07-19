@@ -41,9 +41,9 @@ function rowToCert(r: any): CertificateRecord {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** The student's certificate for a track, or null if not yet issued. */
-export function getCertificate(studentId: string, track: string = CERT_TRACK): CertificateRecord | null {
+export async function getCertificate(studentId: string, track: string = CERT_TRACK): Promise<CertificateRecord | null> {
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const row = getDb().prepare("SELECT * FROM certificates WHERE student_id = ? AND track = ?").get(studentId, track) as any;
+  const row = (await getDb().prepare("SELECT * FROM certificates WHERE student_id = ? AND track = ?").get(studentId, track)) as any;
   return row ? rowToCert(row) : null;
 }
 
@@ -52,16 +52,16 @@ export function getCertificate(studentId: string, track: string = CERT_TRACK): C
  * already issued, otherwise creates and returns a new one. The caller is
  * responsible for verifying completion before calling this.
  */
-export function issueCertificate(studentId: string, track: string = CERT_TRACK): CertificateRecord {
-  const existing = getCertificate(studentId, track);
+export async function issueCertificate(studentId: string, track: string = CERT_TRACK): Promise<CertificateRecord> {
+  const existing = (await getCertificate(studentId, track));
   if (existing) return existing;
   const id = `cert-${randomUUID()}`;
   const issuedAt = Date.now();
-  getDb()
-    .prepare("INSERT OR IGNORE INTO certificates (id, student_id, issued_at, track) VALUES (?, ?, ?, ?)")
-    .run(id, studentId, issuedAt, track);
+  (await getDb()
+        .prepare("INSERT OR IGNORE INTO certificates (id, student_id, issued_at, track) VALUES (?, ?, ?, ?)")
+        .run(id, studentId, issuedAt, track));
   // Re-read in case of a race where another insert won (UNIQUE(student_id, track)).
-  return getCertificate(studentId, track) ?? { id, studentId, issuedAt, track };
+  return (await getCertificate(studentId, track)) ?? { id, studentId, issuedAt, track };
 }
 
 /** Escape user-supplied text before interpolating it into the certificate HTML. */

@@ -34,20 +34,20 @@ export async function createPost(
   if (!t || !b) return { ok: false, error: "A title and body are required." };
   if (t.length > 160) return { ok: false, error: "Keep the discussion title under 160 characters." };
   if (b.length > 5000) return { ok: false, error: "Keep the discussion post under 5,000 characters." };
-  const postLimit = consumeRateLimit("discussion-post-user", me.id, {
-    limit: 10,
-    windowMs: 60 * 60 * 1000,
-    blockMs: 60 * 60 * 1000,
-  });
+  const postLimit = (await consumeRateLimit("discussion-post-user", me.id, {
+      limit: 10,
+      windowMs: 60 * 60 * 1000,
+      blockMs: 60 * 60 * 1000,
+    }));
   if (!postLimit.allowed) return { ok: false, error: "You have posted too often. Wait before starting another discussion." };
 
   const id = `dp-${randomUUID().slice(0, 12)}`;
   const now = Date.now();
-  getDb()
-    .prepare(
-      "INSERT INTO discussion_posts (id, user_id, org_id, channel, title, body, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
-    )
-    .run(id, me.id, me.orgId, channel, t, b, now, now);
+  (await getDb()
+        .prepare(
+          "INSERT INTO discussion_posts (id, user_id, org_id, channel, title, body, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
+        )
+        .run(id, me.id, me.orgId, channel, t, b, now, now));
 
   revalidatePath("/discussion");
   return { ok: true, postId: id };
@@ -60,43 +60,43 @@ export async function addReply(postId: string, body: string): Promise<{ ok: bool
   const b = body.trim();
   if (!b) return { ok: false, error: "A reply can't be empty." };
   if (b.length > 3000) return { ok: false, error: "Keep the reply under 3,000 characters." };
-  const replyLimit = consumeRateLimit("discussion-reply-user", me.id, {
-    limit: 40,
-    windowMs: 60 * 60 * 1000,
-    blockMs: 60 * 60 * 1000,
-  });
+  const replyLimit = (await consumeRateLimit("discussion-reply-user", me.id, {
+      limit: 40,
+      windowMs: 60 * 60 * 1000,
+      blockMs: 60 * 60 * 1000,
+    }));
   if (!replyLimit.allowed) return { ok: false, error: "You have replied too often. Wait before adding another reply." };
 
   const id = `dr-${randomUUID().slice(0, 12)}`;
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const post = db
-      .prepare(
-        `SELECT p.id, p.user_id
+    const post = (await db
+          .prepare(
+            `SELECT p.id, p.user_id
            FROM discussion_posts p JOIN users u ON u.id = p.user_id
           WHERE p.id = ? AND p.org_id = ? AND u.status = 'active'`,
-      )
-      .get(postId, me.orgId) as any;
+          )
+          .get(postId, me.orgId)) as any;
     if (!post) throw new Error("post_missing");
 
-    db.prepare("INSERT INTO discussion_replies (id, post_id, user_id, body, created_at) VALUES (?, ?, ?, ?, ?)")
-      .run(id, postId, me.id, b, Date.now());
+    (await db.prepare("INSERT INTO discussion_replies (id, post_id, user_id, body, created_at) VALUES (?, ?, ?, ?, ?)")
+            .run(id, postId, me.id, b, Date.now()));
 
     // Keep the reply and its notification in one durable operation.
     if (post.user_id !== me.id) {
-      createNotification({
-        userId: post.user_id,
-        type: "discussion_reply",
-        title: `${me.first} replied to your post.`,
-        body: b.length > 60 ? `${b.slice(0, 60)}…` : b,
-        link: `/discussion/${postId}`,
-      });
+      (await createNotification({
+                userId: post.user_id,
+                type: "discussion_reply",
+                title: `${me.first} replied to your post.`,
+                body: b.length > 60 ? `${b.slice(0, 60)}…` : b,
+                link: `/discussion/${postId}`,
+              }));
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the reply failure.
     }
@@ -118,45 +118,45 @@ export async function toggleReaction(
   const me = await requireDiscussionMember();
 
   if (!isReactionType(reactionType)) return { ok: false, error: "Unknown reaction." };
-  const reactionLimit = consumeRateLimit("discussion-reaction-user", me.id, {
-    limit: 300,
-    windowMs: 60 * 60 * 1000,
-    blockMs: 60 * 60 * 1000,
-  });
+  const reactionLimit = (await consumeRateLimit("discussion-reaction-user", me.id, {
+      limit: 300,
+      windowMs: 60 * 60 * 1000,
+      blockMs: 60 * 60 * 1000,
+    }));
   if (!reactionLimit.allowed) return { ok: false, error: "Too many reactions. Wait and try again." };
 
   const db = getDb();
-  const post = db.prepare(
-    `SELECT p.id
+  const post = (await db.prepare(
+      `SELECT p.id
        FROM discussion_posts p JOIN users u ON u.id = p.user_id
       WHERE p.id = ? AND p.org_id = ? AND u.status = 'active'`,
-  ).get(postId, me.orgId);
+    ).get(postId, me.orgId));
   if (!post) return { ok: false, error: "That post is no longer available in your organization." };
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const livePost = db.prepare("SELECT id FROM discussion_posts WHERE id = ? AND org_id = ?").get(postId, me.orgId);
+    const livePost = (await db.prepare("SELECT id FROM discussion_posts WHERE id = ? AND org_id = ?").get(postId, me.orgId));
     if (!livePost) throw new Error("post_unavailable");
-    const existing = db
-      .prepare(
-        "SELECT id FROM discussion_reactions WHERE post_id = ? AND user_id = ? AND reaction_type = ? ORDER BY created_at LIMIT 1",
-      )
-      .get(postId, me.id, reactionType) as any;
+    const existing = (await db
+          .prepare(
+            "SELECT id FROM discussion_reactions WHERE post_id = ? AND user_id = ? AND reaction_type = ? ORDER BY created_at LIMIT 1",
+          )
+          .get(postId, me.id, reactionType)) as any;
 
     if (existing) {
       // Delete every legacy duplicate as well as the canonical row so one
       // toggle always produces one deterministic off-state.
-      db.prepare("DELETE FROM discussion_reactions WHERE post_id = ? AND user_id = ? AND reaction_type = ?")
-        .run(postId, me.id, reactionType);
+      (await db.prepare("DELETE FROM discussion_reactions WHERE post_id = ? AND user_id = ? AND reaction_type = ?")
+                .run(postId, me.id, reactionType));
     } else {
       const id = `dx-${randomUUID().slice(0, 12)}`;
-      db.prepare(
-        "INSERT INTO discussion_reactions (id, post_id, user_id, reaction_type, created_at) VALUES (?, ?, ?, ?, ?)",
-      ).run(id, postId, me.id, reactionType, Date.now());
+      (await db.prepare(
+                "INSERT INTO discussion_reactions (id, post_id, user_id, reaction_type, created_at) VALUES (?, ?, ?, ?, ?)",
+              ).run(id, postId, me.id, reactionType, Date.now()));
     }
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the scoped mutation failure.
     }
@@ -175,27 +175,27 @@ export async function deletePost(postId: string): Promise<{ ok: boolean; error?:
   const me = await requireDiscussionMember();
 
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const post = db
-      .prepare("SELECT id, user_id FROM discussion_posts WHERE id = ? AND org_id = ?")
-      .get(postId, me.orgId) as any;
+    const post = (await db
+          .prepare("SELECT id, user_id FROM discussion_posts WHERE id = ? AND org_id = ?")
+          .get(postId, me.orgId)) as any;
     if (!post) throw new Error("post_missing");
     if (post.user_id !== me.id) throw new Error("not_owner");
 
-    const replies = db
-      .prepare("SELECT COUNT(*) AS n FROM discussion_replies WHERE post_id = ?")
-      .get(postId) as any;
+    const replies = (await db
+          .prepare("SELECT COUNT(*) AS n FROM discussion_replies WHERE post_id = ?")
+          .get(postId)) as any;
     if ((Number(replies?.n) || 0) > 0) throw new Error("has_replies");
 
-    db.prepare("DELETE FROM discussion_reactions WHERE post_id = ?").run(postId);
-    const removed = db.prepare("DELETE FROM discussion_posts WHERE id = ? AND org_id = ? AND user_id = ?")
-      .run(postId, me.orgId, me.id);
+    (await db.prepare("DELETE FROM discussion_reactions WHERE post_id = ?").run(postId));
+    const removed = (await db.prepare("DELETE FROM discussion_posts WHERE id = ? AND org_id = ? AND user_id = ?")
+          .run(postId, me.orgId, me.id));
     if (removed.changes !== 1) throw new Error("post_missing");
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the scoped deletion failure.
     }
@@ -216,30 +216,30 @@ export async function togglePin(postId: string): Promise<{ ok: boolean; error?: 
   if (me.role !== "instructor" && me.role !== "admin") return { ok: false, error: "Only instructors and administrators can pin posts." };
 
   const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
+  (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const post = db
-      .prepare(
-        `SELECT p.id, p.pinned
+    const post = (await db
+          .prepare(
+            `SELECT p.id, p.pinned
            FROM discussion_posts p JOIN users u ON u.id = p.user_id
           WHERE p.id = ? AND p.org_id = ? AND u.status = 'active'`,
-      )
-      .get(postId, me.orgId) as any;
+          )
+          .get(postId, me.orgId)) as any;
     if (!post) throw new Error("post_missing");
 
     const next = post.pinned ? 0 : 1;
-    const updated = db.prepare("UPDATE discussion_posts SET pinned = ?, updated_at = ? WHERE id = ? AND org_id = ? AND pinned = ?").run(
-      next,
-      Date.now(),
-      postId,
-      me.orgId,
-      post.pinned ? 1 : 0,
-    );
+    const updated = (await db.prepare("UPDATE discussion_posts SET pinned = ?, updated_at = ? WHERE id = ? AND org_id = ? AND pinned = ?").run(
+          next,
+          Date.now(),
+          postId,
+          me.orgId,
+          post.pinned ? 1 : 0,
+        ));
     if (updated.changes !== 1) throw new Error("post_changed");
-    db.exec("COMMIT");
+    (await db.exec("COMMIT"));
   } catch (error) {
     try {
-      db.exec("ROLLBACK");
+      (await db.exec("ROLLBACK"));
     } catch {
       // Preserve the scoped pin failure.
     }

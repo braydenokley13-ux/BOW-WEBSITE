@@ -50,7 +50,7 @@ export default async function ProgramsPage({
   await requireStaff();
   const requested = (await searchParams).view;
   const view: View = VIEW_LABELS.some((item) => item.value === requested) ? (requested as View) : "launching";
-  const programs = listPrograms();
+  const programs = (await listPrograms());
   const visible = programs.filter((program) => matchesView(program, view));
   const atRisk = programs.filter((program) => program.readiness.blockers.length > 0 && matchesView(program, "launching")).length;
 

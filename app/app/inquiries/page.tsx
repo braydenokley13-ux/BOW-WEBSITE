@@ -15,8 +15,8 @@ const INQUIRY_STATUSES = new Set<InquiryStatus>([
 export default async function InquiriesPage() {
   await requireStaff();
   const db = getDb();
-  const rows = db.prepare(
-    `SELECT id, name, email, type, org_name, date, status, summary
+  const rows = (await db.prepare(
+      `SELECT id, name, email, type, org_name, date, status, summary
        FROM inquiries
       ORDER BY CASE status
         WHEN 'new' THEN 0
@@ -27,7 +27,7 @@ export default async function InquiriesPage() {
         WHEN 'spam' THEN 5
         ELSE 6
       END, rowid DESC`,
-  ).all() as {
+    ).all()) as {
     id: string;
     name: string;
     email: string;
@@ -50,12 +50,12 @@ export default async function InquiriesPage() {
     }]
     : []);
 
-  const programs = db.prepare(
-    `SELECT source_id, id, name
+  const programs = (await db.prepare(
+      `SELECT source_id, id, name
        FROM programs
       WHERE source_type = 'inquiry' AND source_id IS NOT NULL
       ORDER BY created_at DESC`,
-  ).all() as { source_id: string; id: string; name: string }[];
+    ).all()) as { source_id: string; id: string; name: string }[];
   const convertedPrograms: Record<string, { id: string; name: string }> = {};
   for (const program of programs) {
     if (!convertedPrograms[program.source_id]) {
