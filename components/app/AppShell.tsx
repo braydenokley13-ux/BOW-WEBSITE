@@ -20,7 +20,7 @@ export default function AppShell({
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "100vh" }}>
       <AuthHeader instructorCanDeliver={instructorCanDeliver} />
-      {children}
+      <div className="bow-app-main">{children}</div>
       <Toast />
       <ConfirmModal />
     </div>

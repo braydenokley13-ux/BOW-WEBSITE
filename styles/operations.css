@@ -6,12 +6,12 @@
 
 .ops-page {
   --ops-accent: var(--bow-orange);
-  width: min(100%, 1280px);
+  width: min(100%, 1180px);
   margin: 0 auto;
-  padding: 44px clamp(18px, 4vw, 42px) 104px;
+  padding: 34px clamp(16px, 4vw, 32px) 80px;
   display: flex;
   flex-direction: column;
-  gap: 34px;
+  gap: 28px;
 }
 
 .ops-page[data-accent="blue"] { --ops-accent: var(--bow-blue); }
@@ -19,10 +19,10 @@
 .ops-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 28px;
+  gap: 24px;
   align-items: end;
-  padding-bottom: 24px;
-  border-bottom: 5px solid var(--ops-accent);
+  padding-bottom: 18px;
+  border-bottom: 3px solid var(--ops-accent);
 }
 
 .ops-hero__copy { min-width: 0; }
@@ -40,21 +40,21 @@
 }
 
 .ops-title {
-  margin-top: 9px;
+  margin-top: 8px;
   max-width: 900px;
   font-family: var(--font-editorial);
   font-weight: 600;
-  font-size: clamp(42px, 6vw, 72px);
-  line-height: 0.98;
-  letter-spacing: -0.035em;
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.02;
+  letter-spacing: -0.025em;
   text-wrap: balance;
 }
 
 .ops-summary {
-  margin-top: 14px;
-  max-width: 760px;
+  margin-top: 10px;
+  max-width: 680px;
   font-family: var(--font-interface);
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.55;
   color: var(--bow-slate);
 }
@@ -150,16 +150,16 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 18px;
-  padding-bottom: 13px;
+  padding-bottom: 11px;
   border-bottom: 1px solid var(--border-rule);
-  margin-bottom: 18px;
+  margin-bottom: 15px;
 }
 
 .ops-section-title {
   font-family: var(--font-editorial);
   font-weight: 600;
-  font-size: clamp(25px, 3vw, 34px);
-  line-height: 1.05;
+  font-size: clamp(20px, 2.4vw, 26px);
+  line-height: 1.08;
 }
 
 .ops-section-note {
@@ -195,7 +195,7 @@
 .ops-value--large {
   font-family: var(--font-editorial);
   font-weight: 600;
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1;
 }
 
@@ -208,7 +208,7 @@
 
 .ops-readiness-number {
   font-family: var(--font-editorial);
-  font-size: 58px;
+  font-size: 46px;
   line-height: 0.9;
   letter-spacing: -0.04em;
 }
@@ -322,6 +322,20 @@
   grid-template-columns: minmax(0, 1fr) minmax(120px, 0.5fr) auto;
 }
 
+/* Shared row interaction — any bordered working row lights up subtly on
+ * hover so lists read as actionable surfaces, not static records. */
+.ops-list-row,
+.ops-location-row,
+.ops-rank {
+  transition: background-color var(--dur-hover) var(--ease-out);
+}
+
+.ops-list-row:hover,
+.ops-location-row:hover,
+.ops-rank:hover {
+  background: color-mix(in srgb, var(--bow-white) 65%, transparent);
+}
+
 .ops-location-row {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.65fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 0.85fr) auto;
@@ -346,7 +360,7 @@
 .ops-record-name {
   font-family: var(--font-editorial);
   font-weight: 600;
-  font-size: 21px;
+  font-size: 18px;
   line-height: 1.12;
   overflow-wrap: anywhere;
 }
@@ -406,13 +420,13 @@
 
 .ops-empty {
   border: 1px dashed var(--border-rule);
-  padding: clamp(26px, 5vw, 52px);
+  padding: clamp(20px, 3vw, 32px);
   text-align: left;
 }
 
 .ops-empty__title {
   font-family: var(--font-editorial);
-  font-size: 29px;
+  font-size: 20px;
   font-weight: 600;
 }
 
@@ -749,6 +763,37 @@
   }
   .ops-rank { grid-template-columns: 38px minmax(150px, 0.8fr) minmax(0, 1.4fr); }
   .ops-rank > :nth-child(4), .ops-rank > :nth-child(5) { grid-column: 2 / -1; }
+}
+
+/* ============================================================
+ * App-wide defaults for the authenticated workspace (.bow-app-main).
+ * These reach every internal screen — including tables and rows that
+ * predate the ops-* classes — so interaction quality is uniform.
+ * ============================================================ */
+.bow-app-main table { border-collapse: collapse; }
+
+.bow-app-main tbody tr {
+  border-bottom: 1px solid var(--border-rule);
+  transition: background-color var(--dur-hover) var(--ease-out);
+}
+
+.bow-app-main tbody tr:last-child { border-bottom: 0; }
+
+.bow-app-main tbody tr:hover {
+  background: color-mix(in srgb, var(--bow-blue) 4%, transparent);
+}
+
+.bow-app-main tbody td {
+  font-family: var(--font-interface);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.bow-app-main a:focus-visible,
+.bow-app-main button:focus-visible,
+.bow-app-main [role="button"]:focus-visible {
+  outline: 2px solid var(--bow-blue);
+  outline-offset: 2px;
 }
 
 @media (max-width: 720px) {
