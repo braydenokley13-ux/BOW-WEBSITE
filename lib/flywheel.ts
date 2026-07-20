@@ -83,6 +83,16 @@ export function ensureFlywheelSchema(): Promise<void> {
       await db.exec(
         "CREATE INDEX IF NOT EXISTS idx_growth_intros_introducer ON growth_introductions (introducer_type, introducer_id)",
       );
+      // Execution-layer columns on existing primitives (idempotent).
+      await db.exec("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS outcome text");
+      await db.exec("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_key text");
+      await db.exec("ALTER TABLE growth_introductions ADD COLUMN IF NOT EXISTS converted_organization_id text");
+      // Indexes that keep the flywheel fast at thousands of records.
+      await db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_open_source_key ON tasks (source_key) WHERE status = 'open'");
+      await db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_status_entity ON tasks (status, entity_type, entity_id)");
+      await db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks (status, due_on)");
+      await db.exec("CREATE INDEX IF NOT EXISTS idx_spo_student_outcome ON student_program_outcomes (student_id, outcome_type)");
+      await db.exec("CREATE INDEX IF NOT EXISTS idx_intros_status_created ON growth_introductions (status, created_at)");
     })().catch((error) => {
       schemaReady = null;
       throw error;
@@ -163,7 +173,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
   // 1. Open growth-relevant tasks that are overdue or handed to the founder.
   const openTasks = (await db.prepare(
     `SELECT t.id, t.title, t.recommended_action, t.entity_type, t.entity_id, t.due_on, t.priority,
-            t.handoff_to_founder, t.created_at
+            t.handoff_to_founder, t.owner_user_id, t.created_at
        FROM tasks t
       WHERE t.status = 'open'
         AND (t.handoff_to_founder = 1 OR (t.due_on IS NOT NULL AND t.due_on <= ?))
@@ -181,6 +191,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
       ageDays: days(now, num(task.created_at)),
       ctaLabel: "Open Work",
       taskId: String(task.id),
+      ownerUserId: task.owner_user_id == null ? null : String(task.owner_user_id),
     });
   }
 
@@ -191,6 +202,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
        LEFT JOIN organizations o ON o.id = p.partner_org_id
       WHERE p.stage = 'completed'
         AND NOT EXISTS (SELECT 1 FROM programs child WHERE child.parent_program_id = p.id)
+        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.status = 'open' AND t.source_key = 'program-renewal:' || p.id)
       ORDER BY p.updated_at
       LIMIT 6`,
   ).all()) as any[];
@@ -205,6 +217,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
       action: "Run renewal review: propose the next program or consciously close.",
       ageDays: age,
       ctaLabel: "Open program",
+      assignable: true,
     });
   }
 
@@ -214,6 +227,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
        FROM classes c
        LEFT JOIN class_closeouts cc ON cc.class_id = c.id
       WHERE c.status = 'completed' AND (cc.class_id IS NULL OR cc.completed_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.status = 'open' AND t.source_key = 'closeout:' || c.id)
       ORDER BY c.updated_at
       LIMIT 6`,
   ).all()) as any[];
@@ -228,6 +242,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
       action: "Finish the closeout: feedback, testimonial, referral prompts, partner follow-up.",
       ageDays: age,
       ctaLabel: "Run closeout",
+      assignable: true,
     });
   }
 
@@ -264,6 +279,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
     `SELECT d.id, d.requester_name, d.org_slug, d.created_at
        FROM demo_requests d
       WHERE d.dispositioned = 0 AND d.created_at <= ?
+        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.status = 'open' AND t.source_key = 'demo:' || d.id)
       ORDER BY d.created_at
       LIMIT 4`,
   ).all(now - 3 * DAY_MS)) as any[];
@@ -278,6 +294,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
       action: "Reply and disposition: convert to a partner conversation or close.",
       ageDays: age,
       ctaLabel: "Open partners",
+      assignable: true,
     });
   }
 
@@ -295,6 +312,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
           SELECT 1 FROM growth_introductions gi
            WHERE gi.introducer_type = 'instructor' AND gi.introducer_id = i.id
         )
+        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.status = 'open' AND t.source_key = 'instructor-activation:' || i.id)
       ORDER BY i.updated_at
       LIMIT 3`,
   ).all()) as any[];
@@ -308,6 +326,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
       action: "Ask about one introduction: their school, a club, or a future instructor.",
       ageDays: days(now, num(instructor.updated_at)),
       ctaLabel: "Open instructor",
+      assignable: true,
     });
   }
 
@@ -316,6 +335,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
     `SELECT gi.id, gi.target_name, gi.target_kind, gi.introducer_type, gi.introducer_id, gi.created_at
        FROM growth_introductions gi
       WHERE gi.status = 'suggested' AND gi.created_at <= ?
+        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.status = 'open' AND t.source_key = 'introduction:' || gi.id)
       ORDER BY gi.created_at
       LIMIT 4`,
   ).all(now - 5 * DAY_MS)) as any[];
@@ -330,6 +350,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
       action: "Follow up on the introduction before it goes cold.",
       ageDays: age,
       ctaLabel: "Open record",
+      assignable: true,
     });
   }
 
@@ -380,4 +401,330 @@ export async function getFlywheelLeaks(now = Date.now()): Promise<FlywheelLeak[]
 export async function getFlywheelSnapshot(now = Date.now()): Promise<FlywheelSnapshot> {
   const [actions, leaks] = await Promise.all([getGrowthActions(now), getFlywheelLeaks(now)]);
   return { actions, leaks };
+}
+
+/* ============================================================
+ * Execution core — signal → owned action → outcome → next action.
+ * These are the auth-free primitives; app/actions/flywheel.ts wraps
+ * them with requireStaff. Kept here so lifecycle tests can drive the
+ * exact production logic.
+ * ============================================================ */
+
+import { randomUUID } from "node:crypto";
+import { TASK_OUTCOMES, type TaskOutcome } from "@/lib/flywheel-shared";
+
+export interface ExecResult {
+  ok: boolean;
+  error?: string;
+  taskId?: string;
+  organizationId?: string;
+  nextTaskId?: string;
+}
+
+function newTaskId(): string {
+  return `wrk-${randomUUID().slice(0, 12)}`;
+}
+
+async function logCrm(entityType: string, entityId: string, kind: string, body: string, actorUserId: string | null): Promise<void> {
+  await getDb().prepare(
+    "INSERT INTO crm_activity (id, entity_type, entity_id, kind, body, actor_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(`pfx-${randomUUID().slice(0, 8)}`, entityType, entityId, kind, body, actorUserId, Date.now());
+}
+
+interface MaterializeSpec {
+  entityType: string;
+  entityId: string;
+  title: string;
+  context: string;
+  recommendedAction: string;
+}
+
+/** Resolve a derived flywheel action key into a concrete, verified task spec. */
+async function resolveActionKey(key: string): Promise<MaterializeSpec | null> {
+  const db = getDb();
+  const [kind, id] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
+  if (!id) return null;
+  if (kind === "program-renewal") {
+    const row = (await db.prepare(
+      "SELECT p.name, o.name AS partner FROM programs p LEFT JOIN organizations o ON o.id = p.partner_org_id WHERE p.id = ?",
+    ).get(id)) as any;
+    if (!row) return null;
+    return {
+      entityType: "program", entityId: id,
+      title: `Renewal review: ${row.name}`,
+      context: `${row.partner ? `${row.partner} — ` : ""}program completed with no repeat discussion recorded.`,
+      recommendedAction: "Contact the partner, share the outcome, and propose the next program — or consciously close.",
+    };
+  }
+  if (kind === "closeout") {
+    const row = (await db.prepare("SELECT title FROM classes WHERE id = ?").get(id)) as any;
+    if (!row) return null;
+    return {
+      entityType: "class", entityId: id,
+      title: `Closeout: ${row.title}`,
+      context: "Completed class; the proof checklist (feedback, testimonial, referral prompts) is unfinished.",
+      recommendedAction: "Work the closeout checklist on the class page until every item is done.",
+    };
+  }
+  if (kind === "demo") {
+    const row = (await db.prepare("SELECT requester_name, org_slug FROM demo_requests WHERE id = ? AND dispositioned = 0").get(id)) as any;
+    if (!row) return null;
+    return {
+      entityType: "organization", entityId: id,
+      title: `Reply to demo request: ${row.requester_name}`,
+      context: `Inbound demo request via ${row.org_slug}; still undispositioned.`,
+      recommendedAction: "Reply, then disposition it on the Partners page: convert to a conversation or close.",
+    };
+  }
+  if (kind === "instructor-activation") {
+    const row = (await db.prepare("SELECT p.name FROM instructors i JOIN people p ON p.id = i.person_id WHERE i.id = ?").get(id)) as any;
+    if (!row) return null;
+    return {
+      entityType: "instructor", entityId: id,
+      title: `Growth conversation with ${row.name}`,
+      context: "Delivered a completed class; no school/community introduction explored yet.",
+      recommendedAction: "Ask about one introduction — their school, a club, or a future instructor — and record it on their page.",
+    };
+  }
+  if (kind === "introduction") {
+    const row = (await db.prepare("SELECT target_name, introducer_type, introducer_id FROM growth_introductions WHERE id = ?").get(id)) as any;
+    if (!row) return null;
+    return {
+      entityType: row.introducer_type === "instructor" ? "instructor" : "organization",
+      entityId: row.introducer_type === "instructor" ? String(row.introducer_id) : id,
+      title: `Follow up on introduction: ${row.target_name}`,
+      context: "An introduction was suggested but no contact has been recorded.",
+      recommendedAction: "Reach out (or nudge the introducer), then mark the introduction contacted on their page.",
+    };
+  }
+  return null;
+}
+
+/**
+ * Turn a derived flywheel signal into an owned, dated Work item.
+ * Dedupe: one open task per source key, ever — assigning twice is a no-op.
+ */
+export async function materializeGrowthAction(
+  viewerId: string,
+  key: string,
+  ownerUserId: string | null,
+  dueOn: string | null,
+): Promise<ExecResult> {
+  await ensureFlywheelSchema();
+  const db = getDb();
+  const existing = (await db.prepare("SELECT id FROM tasks WHERE status = 'open' AND source_key = ?").get(key)) as any;
+  if (existing) return { ok: true, taskId: String(existing.id) };
+  const spec = await resolveActionKey(key);
+  if (!spec) return { ok: false, error: "This action can no longer be assigned — the underlying record moved on." };
+  const now = Date.now();
+  const id = newTaskId();
+  await db.prepare(
+    `INSERT INTO tasks (id, title, owner_user_id, due_on, status, kind, priority, context, recommended_action, entity_type, entity_id, handoff_to_founder, source_key, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'open', 'follow_up', 'normal', ?, ?, ?, ?, 0, ?, ?, ?)`,
+  ).run(id, spec.title, ownerUserId, dueOn, spec.context, spec.recommendedAction, spec.entityType, spec.entityId, key, now, now);
+  if (spec.entityType !== "organization" || !key.startsWith("demo:")) {
+    await logCrm(spec.entityType, spec.entityId, "assigned", `Growth action assigned: ${spec.title}`, viewerId);
+  }
+  return { ok: true, taskId: id };
+}
+
+const OUTCOME_KEYS = new Set<string>(TASK_OUTCOMES.map((outcome) => outcome.key));
+const FOLLOW_UP_DAYS: Partial<Record<TaskOutcome, number>> = {
+  contacted: 4,
+  no_response: 4,
+  interested: 2,
+};
+
+function addDays(dateIso: string, daysToAdd: number): string {
+  const date = new Date(`${dateIso}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + daysToAdd);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Record a structured outcome on a Work item, then deterministically create
+ * the next step: waiting outcomes schedule a dated follow-up on the same
+ * entity (carrying the source key so the flywheel doesn't double-surface);
+ * closing outcomes end the loop. History lands on the entity's activity feed.
+ */
+export async function applyTaskOutcome(
+  viewerId: string,
+  taskId: string,
+  outcome: TaskOutcome,
+  note: string,
+  followUpOn: string | null,
+  now = Date.now(),
+): Promise<ExecResult> {
+  await ensureFlywheelSchema();
+  if (!OUTCOME_KEYS.has(outcome)) return { ok: false, error: "Unknown outcome." };
+  const db = getDb();
+  const task = (await db.prepare("SELECT * FROM tasks WHERE id = ? AND status = 'open'").get(taskId)) as any;
+  if (!task) return { ok: false, error: "This Work item is no longer open." };
+  const today = new Date(now).toISOString().slice(0, 10);
+  const needsDate = outcome === "follow_up_later" || outcome === "meeting_booked";
+  if (needsDate && (!followUpOn || followUpOn <= today)) {
+    return { ok: false, error: "Pick a future follow-up date for this outcome." };
+  }
+
+  const outcomeLabel = TASK_OUTCOMES.find((entry) => entry.key === outcome)!.label;
+  await db.prepare(
+    "UPDATE tasks SET status = 'done', outcome = ?, completed_at = ?, completion_note = ?, updated_at = ? WHERE id = ?",
+  ).run(outcome, now, note || outcomeLabel, now, taskId);
+  if (task.entity_type && task.entity_id) {
+    await logCrm(String(task.entity_type), String(task.entity_id), "outcome", `${task.title} → ${outcomeLabel}${note ? ` — ${note}` : ""}`, viewerId);
+  }
+
+  // Deterministic next step.
+  let nextTaskId: string | undefined;
+  const waitDays = FOLLOW_UP_DAYS[outcome];
+  const nextDue = needsDate ? followUpOn! : waitDays ? addDays(today, waitDays) : null;
+  if (nextDue) {
+    const nextTitle = outcome === "meeting_booked" ? `Meeting follow-up: ${task.title}` : `Follow up: ${String(task.title).replace(/^(Follow up: |Meeting follow-up: )+/, "")}`;
+    const duplicate = (await db.prepare(
+      "SELECT id FROM tasks WHERE status = 'open' AND title = ? AND entity_type IS NOT DISTINCT FROM ? AND entity_id IS NOT DISTINCT FROM ?",
+    ).get(nextTitle, task.entity_type, task.entity_id)) as any;
+    if (!duplicate) {
+      nextTaskId = newTaskId();
+      await db.prepare(
+        `INSERT INTO tasks (id, title, owner_user_id, due_on, status, kind, priority, context, recommended_action, entity_type, entity_id, handoff_to_founder, source_key, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'open', 'follow_up', ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+      ).run(
+        nextTaskId,
+        nextTitle,
+        task.owner_user_id,
+        nextDue,
+        outcome === "meeting_booked" ? "high" : "normal",
+        `Previous outcome: ${outcomeLabel}${note ? ` — ${note}` : ""}.`,
+        outcome === "meeting_booked"
+          ? "Hold the meeting, then record what happened so the relationship keeps moving."
+          : "Check for a reply and take the next step; record the outcome either way.",
+        task.entity_type,
+        task.entity_id,
+        task.source_key,
+        now,
+        now,
+      );
+    } else {
+      nextTaskId = String(duplicate.id);
+    }
+  }
+  return { ok: true, taskId, nextTaskId };
+}
+
+/**
+ * Zero-loss handoff: a converted introduction becomes a real partner
+ * organization plus an owned first-conversation task — no retyping, and the
+ * source stays attributed to the introducer.
+ */
+export async function convertIntroductionCore(
+  viewerId: string,
+  introId: string,
+  organizationName: string,
+  organizationType: string,
+  now = Date.now(),
+): Promise<ExecResult> {
+  await ensureFlywheelSchema();
+  const db = getDb();
+  const intro = (await db.prepare("SELECT * FROM growth_introductions WHERE id = ?").get(introId)) as any;
+  if (!intro) return { ok: false, error: "Introduction not found." };
+  if (intro.converted_organization_id) return { ok: true, organizationId: String(intro.converted_organization_id) };
+  const name = organizationName.trim() || String(intro.target_name);
+  if (name.length < 2) return { ok: false, error: "Name the organization." };
+  const existingOrg = (await db.prepare("SELECT id FROM organizations WHERE lower(name) = lower(?)").get(name)) as any;
+  const organizationId = existingOrg ? String(existingOrg.id) : `org-${randomUUID().slice(0, 12)}`;
+  if (!existingOrg) {
+    await db.prepare("INSERT INTO organizations (id, name, type, location, status) VALUES (?, ?, ?, '', 'active')").run(
+      organizationId, name, organizationType.trim() || "School",
+    );
+  }
+  await db.prepare(
+    "UPDATE growth_introductions SET status = 'converted', resolved_at = ?, converted_organization_id = ? WHERE id = ?",
+  ).run(now, organizationId, introId);
+
+  const introducerLabel = `${String(intro.introducer_type)} ${String(intro.introducer_id)}`;
+  await logCrm("organization", organizationId, "introduction", `Created from an introduction by ${introducerLabel}: ${intro.target_name}`, viewerId);
+  if (intro.introducer_type === "instructor" || intro.introducer_type === "student") {
+    await logCrm(String(intro.introducer_type), String(intro.introducer_id), "introduction", `Introduction converted: ${name} is now a partner lead.`, viewerId);
+  }
+
+  const sourceKey = `intro-convert:${introId}`;
+  const open = (await db.prepare("SELECT id FROM tasks WHERE status = 'open' AND source_key = ?").get(sourceKey)) as any;
+  let taskId = open ? String(open.id) : undefined;
+  if (!taskId) {
+    taskId = newTaskId();
+    await db.prepare(
+      `INSERT INTO tasks (id, title, owner_user_id, due_on, status, kind, priority, context, recommended_action, entity_type, entity_id, handoff_to_founder, source_key, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'open', 'follow_up', 'high', ?, ?, 'organization', ?, 0, ?, ?, ?)`,
+    ).run(
+      taskId,
+      `Open partnership conversation: ${name}`,
+      intro.owner_user_id ?? viewerId,
+      addDays(new Date(now).toISOString().slice(0, 10), 3),
+      `Warm lead from an introduction (${intro.target_name}). Source attribution is preserved on the organization's history.`,
+      "Reach out through the introducer, book the first conversation, and record the outcome.",
+      organizationId,
+      sourceKey,
+      now,
+      now,
+    );
+  }
+  return { ok: true, organizationId, taskId };
+}
+
+/* ---------------- weekly operating summary ---------------- */
+
+export interface WeeklySummary {
+  windowLabel: string;
+  created: { newStudents: number; referrals: number; introductionsMade: number; introductionsConverted: number; repeatPrograms: number; demoRequests: number };
+  execution: { completed: number; outcomes: Array<{ outcome: string; count: number }>; overdue: number; unowned: number; dueNextWeek: number };
+  nextMoves: GrowthAction[];
+  leaks: FlywheelLeak[];
+}
+
+/** One deterministic founder view: what happened in the last 7 days, what's next. */
+export async function getWeeklyOperatingSummary(now = Date.now()): Promise<WeeklySummary> {
+  await ensureFlywheelSchema();
+  const db = getDb();
+  const since = now - 7 * DAY_MS;
+  const today = new Date(now).toISOString().slice(0, 10);
+  const weekOut = addDays(today, 7);
+  const row = (await db.prepare(
+    `SELECT
+      (SELECT COUNT(*) FROM students WHERE created_at >= ?) AS new_students,
+      (SELECT COUNT(*) FROM student_referrals WHERE created_at >= ? AND voided_at IS NULL) AS referrals,
+      (SELECT COUNT(*) FROM growth_introductions WHERE created_at >= ?) AS intros_made,
+      (SELECT COUNT(*) FROM growth_introductions WHERE resolved_at >= ? AND status = 'converted') AS intros_converted,
+      (SELECT COUNT(*) FROM programs WHERE created_at >= ? AND parent_program_id IS NOT NULL) AS repeat_programs,
+      (SELECT COUNT(*) FROM demo_requests WHERE created_at >= ?) AS demo_requests,
+      (SELECT COUNT(*) FROM tasks WHERE status = 'done' AND completed_at >= ?) AS completed,
+      (SELECT COUNT(*) FROM tasks WHERE status = 'open' AND due_on IS NOT NULL AND due_on < ?) AS overdue,
+      (SELECT COUNT(*) FROM tasks WHERE status = 'open' AND owner_user_id IS NULL) AS unowned,
+      (SELECT COUNT(*) FROM tasks WHERE status = 'open' AND due_on IS NOT NULL AND due_on >= ? AND due_on <= ?) AS due_next_week`,
+  ).get(since, since, since, since, since, since, since, today, today, weekOut)) as any;
+  const outcomes = (await db.prepare(
+    `SELECT outcome, COUNT(*) AS n FROM tasks
+      WHERE status = 'done' AND completed_at >= ? AND outcome IS NOT NULL
+      GROUP BY outcome ORDER BY n DESC LIMIT 6`,
+  ).all(since)) as any[];
+  const [nextMoves, leaks] = await Promise.all([getGrowthActions(now, 5), getFlywheelLeaks(now)]);
+  return {
+    windowLabel: "Last 7 days",
+    created: {
+      newStudents: num(row?.new_students),
+      referrals: num(row?.referrals),
+      introductionsMade: num(row?.intros_made),
+      introductionsConverted: num(row?.intros_converted),
+      repeatPrograms: num(row?.repeat_programs),
+      demoRequests: num(row?.demo_requests),
+    },
+    execution: {
+      completed: num(row?.completed),
+      outcomes: outcomes.map((entry) => ({ outcome: String(entry.outcome), count: num(entry.n) })),
+      overdue: num(row?.overdue),
+      unowned: num(row?.unowned),
+      dueNextWeek: num(row?.due_next_week),
+    },
+    nextMoves,
+    leaks: leaks.slice(0, 4),
+  };
 }

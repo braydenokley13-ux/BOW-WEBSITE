@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeTask, reassignTask } from "@/app/actions/tasks";
 import { Button, Modal } from "@/components/ds";
+import OutcomeControls from "@/components/app/tasks/OutcomeControls";
 
 interface WorkItemActionsProps {
   taskId: string;
@@ -22,7 +23,7 @@ export default function WorkItemActions({
   canManageFounderWork,
 }: WorkItemActionsProps) {
   const router = useRouter();
-  const [modal, setModal] = useState<"complete" | "owner" | null>(null);
+  const [modal, setModal] = useState<"complete" | "owner" | "outcome" | null>(null);
   const [ownerId, setOwnerId] = useState(currentOwnerId ?? "");
   const [completionNote, setCompletionNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -74,7 +75,10 @@ export default function WorkItemActions({
         <Button size="sm" variant="secondary" disabled={busy} onClick={() => { setError(null); setOwnerId(currentOwnerId ?? ""); setModal("owner"); }}>
           Change owner
         </Button>
-        <Button size="sm" variant="primary" disabled={busy} onClick={() => { setError(null); setModal("complete"); }}>
+        <Button size="sm" variant="primary" disabled={busy} onClick={() => { setError(null); setModal("outcome"); }}>
+          Record outcome
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setError(null); setModal("complete"); }}>
           Complete
         </Button>
       </div>
@@ -129,6 +133,9 @@ export default function WorkItemActions({
           {busy ? "Saving…" : ownerId ? "Assign owner" : "Mark unassigned"}
         </Button>
       </Modal>
-    </>
+      <Modal open={modal === "outcome"} onClose={close} title="Record outcome" dismissible={!busy}>
+        <OutcomeControls taskId={taskId} onDone={() => setModal(null)} />
+      </Modal>
+</>
   );
 }

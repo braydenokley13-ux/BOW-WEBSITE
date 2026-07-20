@@ -2,7 +2,7 @@
 
 import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { recordIntroduction, setIntroductionStatus } from "@/app/actions/flywheel";
+import { convertIntroductionToPartner, recordIntroduction, setIntroductionStatus } from "@/app/actions/flywheel";
 import { Badge, Button } from "@/components/ds";
 import { INTRODUCTION_TARGET_KINDS, type GrowthIntroduction } from "@/lib/flywheel-shared";
 
@@ -39,6 +39,8 @@ export default function IntroductionTracker({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [orgName, setOrgName] = useState("");
 
   const run = async (key: string, work: () => Promise<{ ok: boolean; error?: string }>) => {
     if (inFlight.current) return false;
@@ -143,15 +145,43 @@ export default function IntroductionTracker({
                 )}
                 {intro.status === "contacted" && (
                   <>
-                    <Button size="sm" variant="primary" disabled={busy === intro.id} onClick={() => run(intro.id, () => setIntroductionStatus(intro.id, "converted"))}>
-                      Converted
-                    </Button>
+                    {intro.targetKind === "partner" || intro.targetKind === "community" ? (
+                      <Button size="sm" variant="primary" disabled={busy === intro.id} onClick={() => { setOrgName(intro.targetName); setConvertingId(convertingId === intro.id ? null : intro.id); }}>
+                        {convertingId === intro.id ? "Cancel" : "Converted → partner lead"}
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="primary" disabled={busy === intro.id} onClick={() => run(intro.id, () => setIntroductionStatus(intro.id, "converted"))}>
+                        Converted
+                      </Button>
+                    )}
                     <Button size="sm" variant="ghost" disabled={busy === intro.id} onClick={() => run(intro.id, () => setIntroductionStatus(intro.id, "declined"))}>
                       Declined
                     </Button>
                   </>
                 )}
               </div>
+              {convertingId === intro.id && (
+                <div style={{ gridColumn: "1 / -1", display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
+                  <input
+                    aria-label="Organization name"
+                    value={orgName}
+                    onChange={(event) => setOrgName(event.currentTarget.value)}
+                    placeholder="Organization name"
+                    style={{ flex: "1 1 200px", minHeight: 34, border: "1px solid var(--border-rule)", borderRadius: "var(--radius-control)", padding: "4px 8px", fontFamily: "var(--font-interface)", fontSize: 13 }}
+                  />
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={busy === intro.id || orgName.trim().length < 2}
+                    onClick={async () => {
+                      const ok = await run(intro.id, () => convertIntroductionToPartner({ introId: intro.id, organizationName: orgName }));
+                      if (ok) setConvertingId(null);
+                    }}
+                  >
+                    Create partner lead + first task
+                  </Button>
+                </div>
+              )}
             </article>
           ))}
         </div>

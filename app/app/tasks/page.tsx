@@ -96,7 +96,11 @@ function urgencyScore(item: WorkItem, now: number, today: string, dueSoonOn: str
   return (overdue ? 1_000 : 0) + priority + (item.handoffToFounder ? 250 : 0) + (!item.ownerUserId ? 180 : 0) + (dueSoon ? 100 : 0);
 }
 
-export default async function TasksPage() {
+const VIEWS = ["mine", "all", "unowned", "overdue"] as const;
+type WorkView = (typeof VIEWS)[number];
+
+export default async function TasksPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const { view: viewParam } = await searchParams;
   const me = await requireStaff();
   const db = getDb();
   const now = Number(((await db.prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
@@ -143,6 +147,25 @@ export default async function TasksPage() {
   const overdueCount = open.filter(isOverdue).length;
   const dueSoonCount = open.filter(isDueSoon).length;
   const unassignedCount = open.filter((item) => !item.ownerUserId).length;
+  const mineCount = open.filter((item) => item.ownerUserId === me.id).length;
+
+  const view: WorkView = (VIEWS as readonly string[]).includes(viewParam ?? "")
+    ? (viewParam as WorkView)
+    : mineCount > 0
+      ? "mine"
+      : "all";
+  const inView = (item: WorkItem): boolean => {
+    if (view === "mine") return item.ownerUserId === me.id;
+    if (view === "unowned") return !item.ownerUserId;
+    if (view === "overdue") return isOverdue(item);
+    return true;
+  };
+  const viewLabels: Record<WorkView, string> = {
+    mine: `My work (${mineCount})`,
+    all: `Everything (${open.length})`,
+    unowned: `Unowned (${unassignedCount})`,
+    overdue: `Overdue (${overdueCount})`,
+  };
 
   const ownerLabel = (item: WorkItem): string => {
     if (!item.ownerUserId) return "Unassigned";
@@ -253,6 +276,19 @@ export default async function TasksPage() {
         </div>
       </header>
 
+      <nav className="ops-filters" aria-label="Work views">
+        {VIEWS.map((value) => (
+          <Link
+            key={value}
+            className="ops-filter"
+            aria-current={view === value ? "page" : undefined}
+            href={value === "mine" ? "/app/tasks?view=mine" : `/app/tasks?view=${value}`}
+          >
+            {viewLabels[value]}
+          </Link>
+        ))}
+      </nav>
+
       <CreateWorkForm
         staffUsers={staffUsers}
         defaultOwnerId={staffUsers.some((user) => user.id === me.id) ? me.id : ""}
@@ -283,7 +319,7 @@ export default async function TasksPage() {
                 <span className="ops-label">Overdue · urgent · founder · unassigned</span>
                 <h2 id="attention-work-heading" className="ops-section-title">Needs attention</h2>
               </div>
-              {renderItems(attention)}
+              {renderItems(attention.filter(inView))}
             </section>
           )}
 
@@ -293,7 +329,7 @@ export default async function TasksPage() {
                 <span className="ops-label">Owned commitments</span>
                 <h2 id="planned-work-heading" className="ops-section-title">Planned queue</h2>
               </div>
-              {renderItems(planned)}
+              {renderItems(planned.filter(inView))}
             </section>
           )}
         </>

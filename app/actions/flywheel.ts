@@ -12,7 +12,13 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireStaff } from "@/lib/dal";
 import { logActivity } from "@/lib/hiring";
-import { ensureFlywheelSchema } from "@/lib/flywheel";
+import {
+  applyTaskOutcome,
+  convertIntroductionCore,
+  ensureFlywheelSchema,
+  materializeGrowthAction,
+} from "@/lib/flywheel";
+import type { TaskOutcome } from "@/lib/flywheel-shared";
 import {
   CLOSEOUT_FIELDS,
   INTRODUCTION_STATUSES,
@@ -175,5 +181,81 @@ export async function promptReferralInvites(): Promise<FlywheelActionResult> {
     return { ok: true, count: eligible.length };
   } catch (error) {
     return fail(error, "Could not create referral invites.");
+  }
+}
+
+/** Assign a derived flywheel signal to an owner as a dated Work item (deduped). */
+export async function assignGrowthAction(input: {
+  key: string;
+  ownerUserId?: string | null;
+  dueOn?: string | null;
+}): Promise<FlywheelActionResult> {
+  try {
+    const viewer = await requireStaff();
+    const key = String(input?.key ?? "").trim();
+    if (!key.includes(":")) return { ok: false, error: "Invalid action." };
+    const owner = input?.ownerUserId ? String(input.ownerUserId).trim() : null;
+    if (owner) {
+      const exists = (await getDb().prepare("SELECT 1 FROM users WHERE id = ? AND status = 'active'").get(owner));
+      if (!exists) return { ok: false, error: "Pick an active owner." };
+    }
+    const dueOn = input?.dueOn && /^\d{4}-\d{2}-\d{2}$/.test(String(input.dueOn)) ? String(input.dueOn) : null;
+    const result = await materializeGrowthAction(viewer.id, key, owner, dueOn);
+    if (!result.ok) return { ok: false, error: result.error };
+    revalidatePath("/app/growth");
+    revalidatePath("/app/tasks");
+    return { ok: true };
+  } catch (error) {
+    return fail(error, "Could not assign this action.");
+  }
+}
+
+/** Record a structured outcome; the system schedules the deterministic next step. */
+export async function recordTaskOutcome(input: {
+  taskId: string;
+  outcome: string;
+  note?: string;
+  followUpOn?: string | null;
+}): Promise<FlywheelActionResult> {
+  try {
+    const viewer = await requireStaff();
+    const followUpOn = input?.followUpOn && /^\d{4}-\d{2}-\d{2}$/.test(String(input.followUpOn)) ? String(input.followUpOn) : null;
+    const result = await applyTaskOutcome(
+      viewer.id,
+      String(input?.taskId ?? "").trim(),
+      String(input?.outcome ?? "").trim() as TaskOutcome,
+      String(input?.note ?? "").trim(),
+      followUpOn,
+    );
+    if (!result.ok) return { ok: false, error: result.error };
+    revalidatePath("/app/tasks");
+    revalidatePath("/app/growth");
+    return { ok: true };
+  } catch (error) {
+    return fail(error, "Could not record the outcome.");
+  }
+}
+
+/** Convert a made introduction into a real partner organization + first-conversation task. */
+export async function convertIntroductionToPartner(input: {
+  introId: string;
+  organizationName?: string;
+  organizationType?: string;
+}): Promise<FlywheelActionResult> {
+  try {
+    const viewer = await requireStaff();
+    const result = await convertIntroductionCore(
+      viewer.id,
+      String(input?.introId ?? "").trim(),
+      String(input?.organizationName ?? ""),
+      String(input?.organizationType ?? ""),
+    );
+    if (!result.ok) return { ok: false, error: result.error };
+    revalidatePath("/app/growth");
+    revalidatePath("/app/tasks");
+    revalidatePath("/app/partners");
+    return { ok: true };
+  } catch (error) {
+    return fail(error, "Could not convert the introduction.");
   }
 }
