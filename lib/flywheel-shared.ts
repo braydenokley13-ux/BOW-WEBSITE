@@ -21,7 +21,25 @@ export interface GrowthAction {
   ctaLabel: string;
   /** Present when the action is an open row in `tasks` (completable). */
   taskId?: string;
+  /** Owner of the backing task, when one exists. */
+  ownerUserId?: string | null;
+  /** Derived actions can be materialized into an owned, dated Work item. */
+  assignable?: boolean;
 }
+
+/** Structured outcomes for growth work. Each advances the lifecycle differently. */
+export const TASK_OUTCOMES = [
+  { key: "contacted", label: "Contacted", needsDate: false, next: "Awaiting reply — resurfaces automatically in 4 days if nothing happens." },
+  { key: "no_response", label: "No response", needsDate: false, next: "A follow-up is created 4 days out." },
+  { key: "interested", label: "Interested", needsDate: false, next: "A next-step follow-up is created 2 days out." },
+  { key: "follow_up_later", label: "Follow up later", needsDate: true, next: "A follow-up is created on the date you set." },
+  { key: "meeting_booked", label: "Meeting booked", needsDate: true, next: "A meeting follow-up is created on the meeting date." },
+  { key: "converted", label: "Converted", needsDate: false, next: "The loop closes; the lifecycle advances." },
+  { key: "declined", label: "Declined", needsDate: false, next: "The loop closes; no more nagging." },
+  { key: "not_applicable", label: "Not applicable", needsDate: false, next: "The item is closed without outcome." },
+] as const;
+
+export type TaskOutcome = (typeof TASK_OUTCOMES)[number]["key"];
 
 export interface FlywheelLeak {
   key: string;

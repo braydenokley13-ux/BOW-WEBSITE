@@ -7,7 +7,8 @@ import { Badge, DataStrip } from "@/components/ds";
 import { requireStaff } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { getGrowthCommandCenter, type CampaignMetric } from "@/lib/growth";
-import { getFlywheelSnapshot } from "@/lib/flywheel";
+import { getFlywheelSnapshot, getWeeklyOperatingSummary } from "@/lib/flywheel";
+import { listStaffUsers } from "@/lib/hiring";
 import FlywheelPanel from "@/components/app/growth/FlywheelPanel";
 import { addCanonicalDays, canonicalDateInZone } from "@/lib/timezone";
 
@@ -53,6 +54,8 @@ export default async function GrowthCommandCenterPage() {
   const quarterEnd = addCanonicalDays(today, 90);
   const center = (await getGrowthCommandCenter(now));
   const flywheel = (await getFlywheelSnapshot(now));
+  const weekly = (await getWeeklyOperatingSummary(now));
+  const staffUsers = (await listStaffUsers()).map((user) => ({ id: user.id, name: user.name }));
   const { funnel } = center;
   const activeGoals = center.goals.filter((goal) => goal.status === "active");
   const closedGoals = center.goals.filter((goal) => goal.status !== "active");
@@ -79,7 +82,49 @@ export default async function GrowthCommandCenterPage() {
         <GrowthCommandActions options={center.options} today={today} quarterEnd={quarterEnd} />
       </header>
 
-      <FlywheelPanel snapshot={flywheel} />
+      <FlywheelPanel snapshot={flywheel} staffUsers={staffUsers} />
+
+      <section className="ops-panel ops-panel--flat ops-anchor" aria-labelledby="weekly-heading">
+        <div className="ops-section-head">
+          <div>
+            <span className="ops-label">{weekly.windowLabel}</span>
+            <h2 className="ops-section-title" id="weekly-heading">What happened this week</h2>
+          </div>
+          <span className="ops-section-note">Created → executed → leaking. Every number opens the underlying records.</span>
+        </div>
+        <div className="ops-meta-grid">
+          <div className="ops-meta">
+            <span className="ops-label">Growth created</span>
+            <span className="ops-value">
+              <Link className="ops-inline-link" href="/app/students">{weekly.created.newStudents} new student{weekly.created.newStudents === 1 ? "" : "s"}</Link>
+              {" · "}{weekly.created.referrals} referral{weekly.created.referrals === 1 ? "" : "s"}
+              {" · "}{weekly.created.introductionsMade} introduction{weekly.created.introductionsMade === 1 ? "" : "s"} ({weekly.created.introductionsConverted} converted)
+            </span>
+          </div>
+          <div className="ops-meta">
+            <span className="ops-label">Pipeline created</span>
+            <span className="ops-value">
+              <Link className="ops-inline-link" href="/app/programs">{weekly.created.repeatPrograms} repeat program{weekly.created.repeatPrograms === 1 ? "" : "s"}</Link>
+              {" · "}{weekly.created.demoRequests} demo request{weekly.created.demoRequests === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="ops-meta">
+            <span className="ops-label">Execution</span>
+            <span className="ops-value">
+              <Link className="ops-inline-link" href="/app/tasks">{weekly.execution.completed} completed</Link>
+              {" · "}{weekly.execution.overdue} overdue · {weekly.execution.unowned} unowned · {weekly.execution.dueNextWeek} due next week
+            </span>
+          </div>
+          <div className="ops-meta">
+            <span className="ops-label">Outcomes recorded</span>
+            <span className="ops-value">
+              {weekly.execution.outcomes.length === 0
+                ? "None yet — record outcomes on Work items so the system can advance loops."
+                : weekly.execution.outcomes.map((entry) => `${label(entry.outcome)} ×${entry.count}`).join(" · ")}
+            </span>
+          </div>
+        </div>
+      </section>
 
       <DataStrip
         dense
