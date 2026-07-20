@@ -32,8 +32,8 @@ const thStyle = {
 export default function DataTable({ columns, children, minWidth = 640, emptyLabel = "Nothing here.", isEmpty }: DataTableProps) {
   if (isEmpty) {
     return (
-      <div style={{ background: "var(--bow-white)", border: "1px dashed var(--border-rule)", borderRadius: 6, padding: 32, textAlign: "center" }}>
-        <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>{emptyLabel}</p>
+      <div className="ops-empty">
+        <p className="ops-empty__body" style={{ margin: 0 }}>{emptyLabel}</p>
       </div>
     );
   }

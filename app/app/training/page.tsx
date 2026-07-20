@@ -1,28 +1,9 @@
 import Link from "next/link";
-import { Badge, SectionHeader } from "@/components/ds";
+import { Badge, Button } from "@/components/ds";
 import { listTrainingModules, listTrainingSessions, listInstructors, type TrainingStatus } from "@/lib/hiring";
 import TrainingModuleActions from "@/components/app/training/TrainingModuleActions";
 import NewTrainingModal from "@/components/app/training/NewTrainingModal";
 import { formatDateTimeInZone } from "@/lib/timezone";
-
-const cardStyle = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 20 } as const;
-const labelStyle = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--bow-slate)" };
-const valueStyle = { fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-ink)" };
-const viewStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "8px 16px",
-  border: "1px solid var(--border-strong)",
-  borderRadius: "var(--radius-control)",
-  color: "var(--text-primary)",
-  fontFamily: "var(--font-display)",
-  fontSize: 13,
-  fontWeight: 700,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase" as const,
-  whiteSpace: "nowrap" as const,
-};
 
 const TRAINING_BUCKET_LABEL: Record<TrainingStatus, string> = {
   not_started: "Not started",
@@ -57,102 +38,124 @@ export default async function TrainingPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 32 }}>
-      <SectionHeader kicker="BOW HQ" title="Training" level={1} />
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">BOW HQ · Training</span>
+          <h1 className="ops-title">Training</h1>
+          <p className="ops-summary">
+            Modules, sessions, and where each instructor in the pipeline stands.
+          </p>
+        </div>
+      </header>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <h3 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16, textTransform: "uppercase", color: "var(--bow-ink)" }}>
-            Modules
-          </h3>
+      <section className="ops-panel ops-panel--flat" aria-labelledby="training-modules-title">
+        <div className="ops-section-head">
+          <div><span className="ops-label">Onboarding &amp; ongoing</span><h2 id="training-modules-title" className="ops-section-title">Modules</h2></div>
           <NewTrainingModal kind="module" />
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {modules.length === 0 && <p style={valueStyle}>No modules yet.</p>}
-          {modules.map((m) => (
-            <div key={m.id} style={{ ...cardStyle, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <span style={{ ...valueStyle, fontWeight: 600 }}>{m.title}</span>
-                  <Badge status={m.category === "onboarding" ? "info" : "warning"}>{m.category}</Badge>
-                  {m.required && <Badge status="negative">Required</Badge>}
+        {modules.length === 0 ? (
+          <div className="ops-empty">
+            <h3 className="ops-empty__title">No training modules yet.</h3>
+            <p className="ops-empty__body">Create the first module to start building the onboarding curriculum.</p>
+          </div>
+        ) : (
+          <div className="ops-list">
+            {modules.map((m) => (
+              <article className="ops-list-row ops-list-row--compact" key={m.id}>
+                <div>
+                  <span className="ops-record-name" style={{ fontSize: 15 }}>{m.title}</span>
+                  <span className="ops-record-meta">{m.contentType}</span>
                 </div>
-                <span style={{ ...labelStyle }}>{m.contentType}</span>
-              </div>
-              <TrainingModuleActions key={`${m.id}:${m.updatedAt}`} module={m} />
-            </div>
-          ))}
-        </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <Badge status="neutral">{m.category}</Badge>
+                  {m.required && <Badge status="warning">Required</Badge>}
+                </div>
+                <TrainingModuleActions key={`${m.id}:${m.updatedAt}`} module={m} />
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <h3 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16, textTransform: "uppercase", color: "var(--bow-ink)" }}>
-            Sessions
-          </h3>
+      <section className="ops-panel ops-panel--flat" aria-labelledby="training-sessions-title">
+        <div className="ops-section-head">
+          <div><span className="ops-label">Live &amp; recorded</span><h2 id="training-sessions-title" className="ops-section-title">Sessions</h2></div>
           <NewTrainingModal kind="session" />
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={labelStyle}>Upcoming</span>
-          {upcoming.length === 0 && <p style={valueStyle}>No upcoming sessions.</p>}
-          {upcoming.map((s) => (
-            <Link className="bow-button" key={s.id} href={`/app/training/sessions/${s.id}`} aria-label={`View training session ${s.title}`} style={{ display: "block", textDecoration: "none" }}>
-              <div style={{ ...cardStyle, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-                <div>
-                  <span style={{ ...valueStyle, fontWeight: 600 }}>{s.title}</span>{" "}
-                  {s.required && <Badge status="negative">Required</Badge>}
-                  <p style={{ ...labelStyle, margin: "4px 0 0" }}>{formatDateTimeInZone(s.scheduledAt, s.timeZone)}</p>
-                </div>
-                <span aria-hidden="true" style={viewStyle}>View</span>
+        <div className="ops-stack" style={{ gap: 20 }}>
+          <div>
+            <span className="ops-label">Upcoming</span>
+            {upcoming.length === 0 ? (
+              <p className="ops-body" style={{ marginTop: 8 }}>No upcoming sessions.</p>
+            ) : (
+              <div className="ops-list">
+                {upcoming.map((s) => (
+                  <article className="ops-list-row ops-list-row--compact" key={s.id}>
+                    <div>
+                      <Link className="ops-record-name" style={{ fontSize: 15 }} href={`/app/training/sessions/${s.id}`}>{s.title}</Link>
+                      <span className="ops-record-meta">{formatDateTimeInZone(s.scheduledAt, s.timeZone)}</span>
+                    </div>
+                    <div>{s.required && <Badge status="warning">Required</Badge>}</div>
+                    <Button href={`/app/training/sessions/${s.id}`} variant="secondary" size="sm">View</Button>
+                  </article>
+                ))}
               </div>
-            </Link>
-          ))}
-        </div>
+            )}
+          </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={labelStyle}>Past</span>
-          {past.length === 0 && <p style={valueStyle}>No past sessions.</p>}
-          {past.map((s) => (
-            <Link className="bow-button" key={s.id} href={`/app/training/sessions/${s.id}`} aria-label={`View training session ${s.title}`} style={{ display: "block", textDecoration: "none" }}>
-              <div style={{ ...cardStyle, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-                <div>
-                  <span style={{ ...valueStyle, fontWeight: 600 }}>{s.title}</span>
-                  <p style={{ ...labelStyle, margin: "4px 0 0" }}>{formatDateTimeInZone(s.scheduledAt, s.timeZone)}</p>
-                </div>
-                <span aria-hidden="true" style={viewStyle}>View</span>
+          <div>
+            <span className="ops-label">Past</span>
+            {past.length === 0 ? (
+              <p className="ops-body" style={{ marginTop: 8 }}>No past sessions.</p>
+            ) : (
+              <div className="ops-list">
+                {past.map((s) => (
+                  <article className="ops-list-row ops-list-row--compact" key={s.id}>
+                    <div>
+                      <Link className="ops-record-name" style={{ fontSize: 15 }} href={`/app/training/sessions/${s.id}`}>{s.title}</Link>
+                      <span className="ops-record-meta">{formatDateTimeInZone(s.scheduledAt, s.timeZone)}</span>
+                    </div>
+                    <div />
+                    <Button href={`/app/training/sessions/${s.id}`} variant="secondary" size="sm">View</Button>
+                  </article>
+                ))}
               </div>
-            </Link>
-          ))}
+            )}
+          </div>
         </div>
       </section>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <h3 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16, textTransform: "uppercase", color: "var(--bow-ink)" }}>
-          Training overview
-        </h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px,1fr))", gap: 16 }}>
+      <section className="ops-panel ops-panel--flat" aria-labelledby="training-overview-title">
+        <div className="ops-section-head">
+          <div><span className="ops-label">Pipeline status</span><h2 id="training-overview-title" className="ops-section-title">Training overview</h2></div>
+        </div>
+        <div className="ops-meta-grid">
           {TRAINING_BUCKET_ORDER.map((bucket) => {
             const rows = byTraining.get(bucket) ?? [];
             return (
-              <div key={bucket} style={cardStyle}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                  <span style={labelStyle}>{TRAINING_BUCKET_LABEL[bucket]}</span>
+              <div className="ops-meta" key={bucket}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span className="ops-label">{TRAINING_BUCKET_LABEL[bucket]}</span>
                   <Badge status={bucket === "behind" ? "negative" : bucket === "complete" ? "positive" : "neutral"}>{rows.length}</Badge>
                 </div>
-                {rows.length === 0 && <span style={{ ...valueStyle, color: "var(--bow-slate)" }}>None</span>}
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {rows.map((i) => (
-                    <Link key={i.id} href={`/app/instructors/${i.id}`} style={{ ...valueStyle, color: "var(--bow-blue)", textDecoration: "none" }}>
-                      {i.person?.name ?? i.id}
-                    </Link>
-                  ))}
-                </div>
+                {rows.length === 0 ? (
+                  <span className="ops-value">None</span>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 5 }}>
+                    {rows.map((i) => (
+                      <Link key={i.id} className="ops-inline-link" href={`/app/instructors/${i.id}`}>
+                        {i.person?.name ?? i.id}
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       </section>
-    </div>
+    </main>
   );
 }

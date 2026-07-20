@@ -1,4 +1,4 @@
-import { Badge, Button, SectionHeader } from "@/components/ds";
+import { Badge, Button } from "@/components/ds";
 import { listStudents } from "@/lib/hiring";
 
 const FORM_BADGE: Record<string, "positive" | "warning" | "negative"> = {
@@ -11,45 +11,43 @@ export default async function StudentsPage() {
   const students = (await listStudents());
 
   return (
-    <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="BOW HQ" title="Students" action={{ label: "New Student", href: "/app/students/new" }} level={1} />
-      <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)", maxWidth: 640 }}>
-        Student and guardian records across every class. {students.length} total.
-      </p>
-
-      <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-rule)" }}>
-              {["Name", "Age", "Grade", "Form status", "Enrollment", ""].map((h) => (
-                <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {students.map((s) => (
-              <tr key={s.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
-                <td style={{ padding: "11px 12px", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{s.name}</td>
-                <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{s.age ?? "—"}</td>
-                <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{s.grade ?? "—"}</td>
-                <td style={{ padding: "11px 12px" }}><Badge status={FORM_BADGE[s.formStatus] ?? "neutral"}>{s.formStatus}</Badge></td>
-                <td style={{ padding: "11px 12px" }}><Badge status={s.enrollmentStatus === "active" ? "positive" : "locked"}>{s.enrollmentStatus}</Badge></td>
-                <td style={{ padding: "11px 12px", textAlign: "right" }}>
-                  <Button href={`/app/students/${s.id}`} variant="secondary" size="sm">View</Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {students.length === 0 && (
-        <div style={{ background: "var(--bow-white)", border: "1px dashed var(--border-rule)", borderRadius: 6, padding: 32, textAlign: "center" }}>
-          <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>No students yet.</p>
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">BOW HQ · Students</span>
+          <h1 className="ops-title">Student and guardian records.</h1>
+          <p className="ops-summary">{students.length} student{students.length === 1 ? "" : "s"} total, across every class.</p>
         </div>
+        <div className="ops-actions">
+          <Button href="/app/students/new" variant="emphasis">New Student</Button>
+        </div>
+      </header>
+
+      {students.length === 0 ? (
+        <section className="ops-empty">
+          <h2 className="ops-empty__title">No students yet.</h2>
+          <p className="ops-empty__body">Students appear here once they are enrolled in a Class.</p>
+        </section>
+      ) : (
+        <section className="ops-list" aria-label="Students">
+          {students.map((s) => (
+            <article className="ops-list-row" key={s.id}>
+              <div>
+                <a className="ops-record-name" href={`/app/students/${s.id}`}>{s.name}</a>
+                <span className="ops-record-meta">
+                  {s.age ? `Age ${s.age}` : "Age unset"} · {s.grade ? `Grade ${s.grade}` : "Grade unset"}
+                </span>
+              </div>
+              <Badge status={FORM_BADGE[s.formStatus] ?? "neutral"}>{s.formStatus}</Badge>
+              <Badge status={s.enrollmentStatus === "active" ? "positive" : "locked"}>{s.enrollmentStatus}</Badge>
+              <div />
+              <Button href={`/app/students/${s.id}`} variant="secondary" size="sm">
+                View
+              </Button>
+            </article>
+          ))}
+        </section>
       )}
-    </div>
+    </main>
   );
 }

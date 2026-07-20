@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Modal } from "@/components/ds";
+import { Badge, Button, Modal } from "@/components/ds";
 import { useAppState } from "@/components/app/AppState";
 import type { Cohort } from "@/lib/account";
 import type { NewOrganizationInput } from "@/app/actions/lms";
@@ -23,9 +22,6 @@ const cohortStatusBadge: Record<Cohort["status"], BadgeStatus> = {
   completed: "neutral",
   draft: "warning",
 };
-
-const label: CSSProperties = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", marginBottom: 6 };
-const input: CSSProperties = { width: "100%", background: "var(--bow-paper)", border: "1px solid var(--border-rule)", color: "var(--bow-ink)", padding: 12, borderRadius: 4, fontFamily: "var(--font-interface)", fontSize: 14 };
 
 const ORG_TYPES: NewOrganizationInput["type"][] = ["School", "Camp", "Youth Organization"];
 
@@ -62,22 +58,29 @@ export default function AdminOrganizationsPage() {
   }
 
   return (
-    <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
-      <div style={{ maxWidth: 1000, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 26 }}>
-          <div>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Programs run with</span>
-            <h1 style={{ margin: "8px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(30px,4vw,46px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>Organizations</h1>
-          </div>
-          <button type="button" onClick={() => setCreateOpen(true)} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 22px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Create Organization</button>
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">Programs run with</span>
+          <h1 className="ops-title">Organizations</h1>
         </div>
+        <div className="ops-actions">
+          <Button onClick={() => setCreateOpen(true)} variant="ink">Create Organization</Button>
+        </div>
+      </header>
 
+      {orgCards.length === 0 ? (
+        <div className="ops-empty">
+          <h2 className="ops-empty__title">No Organizations yet.</h2>
+          <p className="ops-empty__body">Create the first partner organization to start scheduling cohorts against it.</p>
+        </div>
+      ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
           {orgCards.map((o) => (
-            <button type="button" key={o.id} onClick={() => setSelectedOrganizationId(o.id)} style={{ width: "100%", textAlign: "left", background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 20, cursor: "pointer", color: "inherit" }}>
+            <button type="button" key={o.id} onClick={() => setSelectedOrganizationId(o.id)} className="ops-panel" style={{ width: "100%", textAlign: "left", cursor: "pointer", color: "inherit" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
                 <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 19, textTransform: "uppercase", letterSpacing: "-0.01em", color: "var(--bow-ink)", lineHeight: 1.05 }}>{o.name}</span>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)", whiteSpace: "nowrap" }}>{o.type}</span>
+                <span className="ops-label" style={{ whiteSpace: "nowrap" }}>{o.type}</span>
               </div>
               <span style={{ fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>{o.location}</span>
               <div style={{ display: "flex", gap: 18, marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border-rule)" }}>
@@ -88,39 +91,41 @@ export default function AdminOrganizationsPage() {
             </button>
           ))}
         </div>
-      </div>
+      )}
 
       {/* org detail panel */}
       <Modal open={Boolean(selectedOrg)} onClose={() => setSelectedOrganizationId(null)} title={selectedOrg?.name ?? "Organization details"} maxWidth={560}>
         {selectedOrg && (
           <>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{selectedOrg.type} · {selectedOrg.location} · {selectedStudents} students</span>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)", display: "block", margin: "22px 0 10px" }}>Cohorts</span>
+            <span className="ops-record-meta">{selectedOrg.type} · {selectedOrg.location} · {selectedStudents} students</span>
+            <span className="ops-label" style={{ display: "block", margin: "22px 0 10px" }}>Cohorts</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 22 }}>
-              {selectedCohorts.length === 0 && <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)" }}>No cohorts yet.</span>}
+              {selectedCohorts.length === 0 && <span className="ops-body">No cohorts yet.</span>}
               {selectedCohorts.map((c) => (
                 <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "12px 14px", border: "1px solid var(--border-rule)", borderRadius: 5 }}>
                   <div>
                     <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--bow-ink)" }}>{c.name}</span>
-                    <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", display: "block" }}>{`Track ${c.track}`}</span>
+                    <span className="ops-record-meta">{`Track ${c.track}`}</span>
                   </div>
                   <Badge status={cohortStatusBadge[c.status]}>{cohortStatusLabel[c.status]}</Badge>
                 </div>
               ))}
             </div>
-            <button type="button" onClick={() => router.push("/app/admin/cohorts")} style={{ width: "100%", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: 13, border: "none", background: "var(--bow-blue)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>Manage Cohorts</button>
+            <Button onClick={() => router.push("/app/admin/cohorts")} variant="primary" full>Manage Cohorts</Button>
           </>
         )}
       </Modal>
 
       {/* create organization */}
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create Organization" maxWidth={520}>
-            <label htmlFor="new-organization-name" style={label}>Organization name</label>
-            <input id="new-organization-name" value={coName} onChange={(e) => setCoName(e.target.value)} placeholder="e.g. Westview School District" style={{ ...input, marginBottom: 16 }} />
+            <div className="ops-field" style={{ marginBottom: 16 }}>
+              <label htmlFor="new-organization-name">Organization name</label>
+              <input id="new-organization-name" value={coName} onChange={(e) => setCoName(e.target.value)} placeholder="e.g. Westview School District" />
+            </div>
 
             <fieldset style={{ border: 0, padding: 0, margin: "0 0 16px" }}>
-              <legend style={label}>Type</legend>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <legend className="ops-field__label">Type</legend>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 7 }}>
               {ORG_TYPES.map((t) => {
                 const sel = coType === t;
                 return (
@@ -130,11 +135,15 @@ export default function AdminOrganizationsPage() {
               </div>
             </fieldset>
 
-            <label htmlFor="new-organization-location" style={label}>Location</label>
-            <input id="new-organization-location" value={coLocation} onChange={(e) => setCoLocation(e.target.value)} placeholder="City, State" style={input} />
+            <div className="ops-field">
+              <label htmlFor="new-organization-location">Location</label>
+              <input id="new-organization-location" value={coLocation} onChange={(e) => setCoLocation(e.target.value)} placeholder="City, State" />
+            </div>
 
-            <button type="button" onClick={submitCreate} disabled={!coName.trim()} style={{ width: "100%", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", padding: 14, border: "none", background: "var(--bow-positive)", color: "#fff", borderRadius: 4, cursor: coName.trim() ? "pointer" : "not-allowed", opacity: coName.trim() ? 1 : 0.55, marginTop: 20 }}>Create Organization</button>
+            <div className="ops-form-footer" style={{ border: 0, paddingTop: 20 }}>
+              <Button onClick={submitCreate} disabled={!coName.trim()} variant="primary" full>Create Organization</Button>
+            </div>
       </Modal>
-    </div>
+    </main>
   );
 }

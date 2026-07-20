@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { SectionHeader } from "@/components/ds";
 import { getCurrentUser } from "@/lib/dal";
 import CurriculumForm from "@/components/app/curriculum/CurriculumForm";
 
@@ -8,11 +7,15 @@ export default async function NewCurriculumPage() {
   if (me?.role !== "admin") redirect("/app/curriculum");
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="Curriculum" title="New Curriculum" level={1} />
-      <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 }}>
-        <CurriculumForm mode="create" />
-      </div>
-    </div>
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">Curriculum · New</span>
+          <h1 className="ops-title">New Curriculum</h1>
+          <p className="ops-summary">Publish a curriculum so classes have something to build on.</p>
+        </div>
+      </header>
+      <CurriculumForm mode="create" />
+    </main>
   );
 }

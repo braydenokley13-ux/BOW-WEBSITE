@@ -33,37 +33,6 @@ const th: CSSProperties = {
   fontWeight: 600,
 };
 
-const smallBtn: CSSProperties = {
-  fontFamily: "var(--font-display)",
-  fontWeight: 700,
-  fontSize: 10.5,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-  padding: "6px 10px",
-  borderRadius: 4,
-  cursor: "pointer",
-};
-
-const fieldLabel: CSSProperties = {
-  fontFamily: "var(--font-data)",
-  fontSize: 10,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "var(--bow-slate)",
-  display: "block",
-};
-
-const input: CSSProperties = {
-  width: "100%",
-  background: "var(--bow-paper)",
-  border: "1px solid var(--border-rule)",
-  color: "var(--bow-ink)",
-  padding: 12,
-  borderRadius: 4,
-  fontFamily: "var(--font-interface)",
-  fontSize: 14,
-};
-
 export default function AdminInvitationsPage() {
   const router = useRouter();
   const { data, invitations, invStatusOf, askConfirm, showToast, getCohort } = useAppState();
@@ -170,19 +139,24 @@ export default function AdminInvitationsPage() {
   const valid = validEmail && !!cohortId;
 
   return (
-    <div style={{ background: "var(--bow-paper)", minHeight: "calc(100vh - 60px)", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
-      <div style={{ maxWidth: 1040, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 26 }}>
-          <div>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Bring people into BOW</span>
-            <h1 style={{ margin: "8px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(30px,4vw,46px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>Invitations</h1>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" disabled={busyInvitationId !== null || formBusy} onClick={openForm} style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", padding: "12px 20px", border: "none", background: "var(--bow-ink)", color: "#fff", borderRadius: 4, cursor: busyInvitationId !== null || formBusy ? "not-allowed" : "pointer", opacity: busyInvitationId !== null || formBusy ? 0.55 : 1 }}>Invite Students</button>
-          </div>
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">Bring people into BOW</span>
+          <h1 className="ops-title">Invitations</h1>
         </div>
+        <div className="ops-actions">
+          <Button variant="ink" disabled={busyInvitationId !== null || formBusy} onClick={openForm}>Invite Students</Button>
+        </div>
+      </header>
 
-        <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, overflowX: "auto" }}>
+      {invitations.length === 0 ? (
+        <div className="ops-empty">
+          <h2 className="ops-empty__title">No invitations have been issued yet.</h2>
+          <p className="ops-empty__body">Invite a student into an active cohort to get started.</p>
+        </div>
+      ) : (
+        <div className="ops-panel" style={{ padding: 0, overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border-rule)" }}>
@@ -210,78 +184,79 @@ export default function AdminInvitationsPage() {
                     <td style={{ padding: "13px 8px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{iv.expires}</td>
                     <td style={{ padding: "13px 8px" }}><Badge status={statusBadge[status]}>{statusLabel[status]}</Badge></td>
                     <td style={{ padding: "13px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button
-                        type="button"
-                        onClick={async () => token && void (await copyInvitationLink(token))}
-                        disabled={!token || anyRowBusy}
-                        title={token ? "Copy the newly issued link" : "For security, links are shown only when created or resent"}
-                        style={{ ...smallBtn, border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-slate)", opacity: token && !anyRowBusy ? 1 : 0.5, cursor: token && !anyRowBusy ? "pointer" : "not-allowed" }}
-                      >
-                        {token ? "Copy link" : "Link hidden"}
-                      </button>
-                      {(canResend || canRevoke) && (
-                        <>
-                          {canResend && <button type="button" disabled={anyRowBusy} onClick={async () => void (await updateInvitation(iv.id, "pending"))} style={{ ...smallBtn, border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-ink)", marginLeft: 4, opacity: anyRowBusy ? 0.5 : 1 }}>{rowBusy ? "Working…" : "Resend"}</button>}
-                          {canRevoke && (
-                            <button
-                              type="button"
-                              disabled={anyRowBusy}
-                              onClick={() => askConfirm({ title: "Revoke this invitation?", body: `The link to ${iv.email} will stop working immediately.`, confirmLabel: "Revoke Invitation", tone: "negative", onConfirm: async () => void (await updateInvitation(iv.id, "revoked")) })}
-                              style={{ ...smallBtn, border: "1px solid var(--bow-negative)", background: "transparent", color: "var(--bow-negative)", marginLeft: 4, opacity: anyRowBusy ? 0.5 : 1 }}
-                            >
-                              Revoke
-                            </button>
-                          )}
-                        </>
-                      )}
+                      <div style={{ display: "inline-flex", gap: 4 }}>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => token && void copyInvitationLink(token)}
+                          disabled={!token || anyRowBusy}
+                          aria-label={token ? "Copy the newly issued link" : "For security, links are shown only when created or resent"}
+                        >
+                          {token ? "Copy link" : "Link hidden"}
+                        </Button>
+                        {canResend && (
+                          <Button size="sm" variant="secondary" disabled={anyRowBusy} onClick={() => void updateInvitation(iv.id, "pending")}>
+                            {rowBusy ? "Working…" : "Resend"}
+                          </Button>
+                        )}
+                        {canRevoke && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            style={{ color: "var(--bow-negative)", borderColor: "var(--bow-negative)" }}
+                            disabled={anyRowBusy}
+                            onClick={() => askConfirm({ title: "Revoke this invitation?", body: `The link to ${iv.email} will stop working immediately.`, confirmLabel: "Revoke Invitation", tone: "negative", onConfirm: () => void updateInvitation(iv.id, "revoked") })}
+                          >
+                            Revoke
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
               })}
-              {invitations.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ padding: 28, textAlign: "center", fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>
-                    No invitations have been issued yet.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
-      </div>
+      )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="Create Invitation" dismissible={!formBusy}>
-        <form onSubmit={async (event) => void (await submit(event))}>
-          <label htmlFor="invitation-email" style={{ ...fieldLabel, marginBottom: 6 }}>Email</label>
-          <input
-            id="invitation-email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            disabled={formBusy}
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="name@email.com"
-            style={input}
-          />
+        <form onSubmit={(event) => void submit(event)} className="ops-form">
+          <div className="ops-fields">
+            <div className="ops-field ops-field--wide">
+              <label htmlFor="invitation-email">Email</label>
+              <input
+                id="invitation-email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                disabled={formBusy}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="name@email.com"
+              />
+            </div>
 
-          <label htmlFor="invitation-cohort" style={{ ...fieldLabel, margin: "16px 0 8px" }}>Active cohort</label>
-          <select id="invitation-cohort" required disabled={formBusy} value={cohortId} onChange={(event) => setCohortId(event.target.value)} style={input}>
-            <option value="">Choose a cohort</option>
-            {cohortOptions.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
-          </select>
-          {cohortOptions.length === 0 && <p style={{ margin: "8px 0 0", fontFamily: "var(--font-interface)", fontSize: 12, color: "var(--bow-negative)" }}>Create or activate a cohort before inviting students.</p>}
+            <div className="ops-field ops-field--wide">
+              <label htmlFor="invitation-cohort">Active cohort</label>
+              <select id="invitation-cohort" required disabled={formBusy} value={cohortId} onChange={(event) => setCohortId(event.target.value)}>
+                <option value="">Choose a cohort</option>
+                {cohortOptions.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
+              </select>
+              {cohortOptions.length === 0 && <span className="ops-error">Create or activate a cohort before inviting students.</span>}
+            </div>
+          </div>
 
-          {formError && <p role="alert" style={{ margin: "14px 0 0", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-negative)" }}>{formError}</p>}
-          <div style={{ marginTop: 22 }}>
+          <div className="ops-form-footer">
+            {formError && <p role="alert" className="ops-error" style={{ margin: 0 }}>{formError}</p>}
             <Button type="submit" full disabled={!valid || formBusy}>
               {formBusy ? "Creating…" : "Create Invitation"}
             </Button>
           </div>
-          <p style={{ margin: "12px 0 0", fontFamily: "var(--font-interface)", fontSize: 11.5, color: "var(--bow-slate)", lineHeight: 1.5 }}>Creates a 14-day student invitation and queues email delivery when configured. “Queued” does not promise provider delivery, so the secure copy fallback is shown once after creation or resend. Instructor invitations come from an approved hiring record.</p>
+          <p className="ops-field__help" style={{ margin: 0 }}>Creates a 14-day student invitation and queues email delivery when configured. &ldquo;Queued&rdquo; does not promise provider delivery, so the secure copy fallback is shown once after creation or resend. Instructor invitations come from an approved hiring record.</p>
         </form>
       </Modal>
-    </div>
+    </main>
   );
 }

@@ -1,15 +1,11 @@
 import { notFound } from "next/navigation";
-import { Badge, SectionHeader } from "@/components/ds";
+import { Badge } from "@/components/ds";
 import { getDb } from "@/lib/db";
 import { rowToTrainingSession, rowToInstructor, rowToPerson } from "@/lib/db";
 import type { Instructor, Person } from "@/lib/hiring";
 import AttendanceGrid from "@/components/app/training/AttendanceGrid";
 import FacilitatorNotesForm from "@/components/app/training/FacilitatorNotesForm";
 import { formatDateTimeInZone } from "@/lib/timezone";
-
-const cardStyle = { background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 } as const;
-const labelStyle = { fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--bow-slate)" };
-const valueStyle = { fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-ink)" };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export default async function TrainingSessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -51,38 +47,44 @@ export default async function TrainingSessionDetailPage({ params }: { params: Pr
   const attendanceEvidenceVersion = Math.max(0, ...[...attendance.values()].map((evidence) => evidence.recordedAt));
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="Training" title={session.title} level={1} />
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-        {session.required && <Badge status="negative">Required</Badge>}
-        <Badge status="info">{formatDateTimeInZone(session.scheduledAt, session.timeZone)}</Badge>
-        <Badge status="neutral">
-          {attendedCount}/{registered.size} attended
-        </Badge>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px,1fr))", gap: 16 }}>
-        <div style={cardStyle}>
-          <span style={labelStyle}>Location</span>
-          <p style={valueStyle}>{session.location || "—"}</p>
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">Training · Session</span>
+          <h1 className="ops-title">{session.title}</h1>
+          <div className="ops-status-line">
+            {session.required && <Badge status="warning">Required</Badge>}
+            <Badge status="neutral">{formatDateTimeInZone(session.scheduledAt, session.timeZone)}</Badge>
+            <Badge status="neutral">{attendedCount}/{registered.size} attended</Badge>
+          </div>
         </div>
-        <div style={cardStyle}>
-          <span style={labelStyle}>Meeting link</span>
-          <p style={valueStyle}>
-            {session.meetingLink && /^https:\/\//i.test(session.meetingLink)
-              ? <a href={session.meetingLink} target="_blank" rel="noreferrer" style={{ color: "var(--bow-blue)" }}>Open secure meeting link</a>
-              : session.meetingLink || "—"}
-          </p>
-        </div>
-        <div style={cardStyle}>
-          <span style={labelStyle}>Facilitator</span>
-          <p style={valueStyle}>{facilitator?.name || "Unassigned"}</p>
-        </div>
-      </div>
+      </header>
 
-      <div style={cardStyle}>
-        <span style={{ ...labelStyle, display: "block", marginBottom: 14 }}>Attendance</span>
+      <section className="ops-panel ops-panel--flat" aria-label="Session details">
+        <div className="ops-meta-grid">
+          <div className="ops-meta">
+            <span className="ops-label">Location</span>
+            <span className="ops-value">{session.location || "—"}</span>
+          </div>
+          <div className="ops-meta">
+            <span className="ops-label">Meeting link</span>
+            <span className="ops-value">
+              {session.meetingLink && /^https:\/\//i.test(session.meetingLink)
+                ? <a className="ops-inline-link" href={session.meetingLink} target="_blank" rel="noreferrer">Open secure meeting link</a>
+                : session.meetingLink || "—"}
+            </span>
+          </div>
+          <div className="ops-meta">
+            <span className="ops-label">Facilitator</span>
+            <span className="ops-value">{facilitator?.name || "Unassigned"}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="ops-panel ops-panel--flat" aria-labelledby="session-attendance-title">
+        <div className="ops-section-head">
+          <div><h2 id="session-attendance-title" className="ops-section-title">Attendance</h2></div>
+        </div>
         <AttendanceGrid
           key={`${id}:${registered.size}:${attendanceEvidenceVersion}`}
           sessionId={id}
@@ -95,17 +97,19 @@ export default async function TrainingSessionDetailPage({ params }: { params: Pr
                       recordedAt: (await attendance.get(i.id))?.recordedAt ?? null,
                     }))))}
         />
-      </div>
+      </section>
 
-      <div style={cardStyle}>
-        <span style={{ ...labelStyle, display: "block", marginBottom: 14 }}>Facilitator notes</span>
+      <section className="ops-panel ops-panel--flat" aria-labelledby="session-notes-title">
+        <div className="ops-section-head">
+          <div><h2 id="session-notes-title" className="ops-section-title">Facilitator notes</h2></div>
+        </div>
         <FacilitatorNotesForm
           key={`${id}:${session.updatedAt}`}
           sessionId={id}
           initialNotes={session.facilitatorNotes ?? ""}
           initialUpdatedAt={session.updatedAt}
         />
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

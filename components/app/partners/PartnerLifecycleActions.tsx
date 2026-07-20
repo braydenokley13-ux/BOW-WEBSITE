@@ -6,7 +6,7 @@ import {
   transitionPartnerLifecycle,
   type PartnerLifecycleStatus,
 } from "@/app/actions/partners";
-import { Badge } from "@/components/ds";
+import { Badge, Button } from "@/components/ds";
 
 interface LifecycleImpact {
   currentPrograms: number;
@@ -187,58 +187,55 @@ export default function PartnerLifecycleActions({
   }
 
   return (
-    <section aria-labelledby="partner-lifecycle-title" style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 }}>
+    <section aria-labelledby="partner-lifecycle-title" className="ops-panel">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Organization lifecycle</span>
-          <h2 id="partner-lifecycle-title" style={{ margin: "5px 0 0", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 20, textTransform: "uppercase", color: "var(--bow-ink)" }}>
+          <span className="ops-label">Organization lifecycle</span>
+          <h2 id="partner-lifecycle-title" className="ops-section-title" style={{ margin: "5px 0 0" }}>
             {organizationName}
           </h2>
         </div>
         <Badge status={STATUS_TONES[currentStatus]}>{STATUS_LABELS[currentStatus]}</Badge>
       </div>
 
-      <p style={{ margin: "12px 0 0", fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.55, color: "var(--bow-slate)" }}>
+      <p className="ops-body" style={{ margin: "12px 0 0" }}>
         Pausing or closing signs out organization members, revokes pending invitations and password-reset links, and withdraws active public-profile sharing. Those credentials are not silently restored later.
       </p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginTop: 14 }}>
+      <div className="ops-meta-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", marginTop: 14 }}>
         {[
           ["Current Programs", impact.currentPrograms],
           ["Live Cohorts", impact.activeOrEnrollingCohorts],
           ["Current Classes", impact.currentClasses],
         ].map(([label, value]) => (
-          <div key={String(label)} style={{ padding: "10px 11px", border: "1px solid var(--border-rule)", borderRadius: 4, minWidth: 0 }}>
-            <span style={{ display: "block", fontFamily: "var(--font-data)", fontSize: 9, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{label}</span>
-            <strong style={{ display: "block", marginTop: 3, fontFamily: "var(--font-display)", fontSize: 20, color: "var(--bow-ink)" }}>{value}</strong>
+          <div className="ops-meta" key={String(label)}>
+            <span className="ops-label">{label}</span>
+            <span className="ops-value--large">{value}</span>
           </div>
         ))}
       </div>
       {latestLifecycleEvent && (
-        <div style={{ marginTop: 14, padding: "11px 12px", background: "var(--bow-paper)", borderLeft: "3px solid var(--bow-blue)" }}>
-          <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Latest lifecycle reason</span>
-          <p style={{ margin: "4px 0 0", fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.5, color: "var(--bow-ink)" }}>{latestLifecycleEvent}</p>
+        <div className="ops-alert" data-tone="info" style={{ marginTop: 14 }}>
+          <span className="ops-label">Latest lifecycle reason</span>
+          <p className="ops-body" style={{ margin: "4px 0 0", color: "var(--bow-ink)" }}>{latestLifecycleEvent}</p>
         </div>
       )}
 
       {notice && (
-        <p
-          role={notice.tone === "negative" ? "alert" : "status"}
-          style={{ margin: "14px 0 0", color: notice.tone === "negative" ? "var(--bow-negative)" : "var(--bow-positive)", fontFamily: "var(--font-interface)", fontSize: 13 }}
-        >
+        <p role={notice.tone === "negative" ? "alert" : "status"} className={notice.tone === "negative" ? "ops-error" : "ops-success"} style={{ margin: "14px 0 0" }}>
           {notice.message}
         </p>
       )}
 
       {protectedOrganization ? (
-        <p style={{ margin: "16px 0 0", fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>
+        <p className="ops-body" style={{ margin: "16px 0 0" }}>
           BOW&apos;s core operating organization is protected from partner lifecycle changes.
         </p>
       ) : currentStatus === "closed" ? (
-        <p style={{ margin: "16px 0 0", fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>
+        <p className="ops-body" style={{ margin: "16px 0 0" }}>
           This partnership is permanent history. Create a new Organization record if BOW begins a genuinely new relationship.
         </p>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 14, marginTop: 18 }}>
+        <div className="ops-playbook-grid" style={{ marginTop: 18 }}>
           {options.map((option) => {
             const blocked = option.nextStatus === "closed" && closeBlocked;
             const borderColor = option.tone === "negative"
@@ -247,16 +244,16 @@ export default function PartnerLifecycleActions({
                 ? "var(--bow-warning)"
                 : "var(--bow-positive)";
             return (
-              <div key={option.nextStatus} style={{ border: "1px solid var(--border-rule)", borderTop: `3px solid ${borderColor}`, borderRadius: 5, padding: 15 }}>
-                <h3 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15, textTransform: "uppercase", color: "var(--bow-ink)" }}>{option.label}</h3>
-                <p style={{ margin: "6px 0 12px", fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.5, color: "var(--bow-slate)" }}>{option.description}</p>
+              <div key={option.nextStatus} className="ops-playbook" style={{ borderTopColor: borderColor, background: "var(--bow-white)" }}>
+                <h3>{option.label}</h3>
+                <p className="ops-body" style={{ margin: 0 }}>{option.description}</p>
                 {blocked ? (
-                  <p role="status" style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.5, color: "var(--bow-warning-text)" }}>
+                  <p role="status" className="ops-body" style={{ margin: 0, color: "var(--bow-warning-text)" }}>
                     Close is blocked by {closeBlockerSummary}. Finish or retire that operating work first.
                   </p>
                 ) : (
-                  <form onSubmit={(event) => void submit(option, event)}>
-                    <label htmlFor={`partner-lifecycle-${option.nextStatus}`} style={{ display: "block", marginBottom: 5, fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
+                  <form className="ops-field" onSubmit={(event) => void submit(option, event)}>
+                    <label htmlFor={`partner-lifecycle-${option.nextStatus}`}>
                       {option.reasonLabel}
                     </label>
                     <textarea
@@ -266,21 +263,22 @@ export default function PartnerLifecycleActions({
                       maxLength={1000}
                       rows={3}
                       disabled={pendingStatus !== null}
-                      style={{ width: "100%", resize: "vertical", border: "1px solid var(--border-rule)", borderRadius: 4, padding: "9px 10px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-ink)", background: "var(--bow-white)" }}
                     />
                     {option.nextStatus === "closed" && (
-                      <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 9, fontFamily: "var(--font-interface)", fontSize: 12, lineHeight: 1.45, color: "var(--bow-ink)" }}>
+                      <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 2, fontFamily: "var(--font-interface)", fontSize: 12, lineHeight: 1.45, color: "var(--bow-ink)", textTransform: "none", letterSpacing: "normal", fontWeight: 400 }}>
                         <input type="checkbox" name="confirmPermanent" value="yes" required disabled={pendingStatus !== null} style={{ marginTop: 2 }} />
                         I understand that Closed is permanent and this record cannot be reopened.
                       </label>
                     )}
-                    <button
+                    <Button
                       type="submit"
                       disabled={pendingStatus !== null}
-                      style={{ marginTop: 9, border: `1px solid ${borderColor}`, borderRadius: 4, background: option.tone === "positive" ? "var(--bow-positive-solid)" : "transparent", color: option.tone === "positive" ? "var(--bow-white)" : option.tone === "warning" ? "var(--bow-warning-text)" : "var(--bow-ink)", padding: "8px 12px", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", cursor: pendingStatus ? "wait" : "pointer", opacity: pendingStatus ? 0.65 : 1 }}
+                      variant={option.tone === "positive" ? "primary" : "secondary"}
+                      size="sm"
+                      style={{ alignSelf: "flex-start", marginTop: 2, borderColor, color: option.tone === "warning" ? "var(--bow-warning-text)" : undefined }}
                     >
                       {pendingStatus === option.nextStatus ? "Saving…" : option.label}
-                    </button>
+                    </Button>
                   </form>
                 )}
               </div>

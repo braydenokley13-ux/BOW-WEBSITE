@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/dal";
 import { roleHomePath } from "@/lib/account";
-import { Badge, SectionHeader } from "@/components/ds";
+import { Badge, Button } from "@/components/ds";
 import { getLeadershipHomeData } from "@/lib/hiring";
 import { getDb } from "@/lib/db";
 import { listPrograms } from "@/lib/operations";
@@ -12,24 +12,6 @@ import { getInstructorByUserId } from "@/lib/hiring";
 import { getGrowthLeadershipSnapshot } from "@/lib/growth";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const cardStyle = {
-  background: "var(--bow-white)",
-  border: "1px solid var(--border-rule)",
-  borderRadius: 6,
-} as const;
-const labelStyle = {
-  fontFamily: "var(--font-data)",
-  fontSize: 10,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase" as const,
-  color: "var(--bow-slate)",
-};
-const bodyStyle = {
-  fontFamily: "var(--font-interface)",
-  fontSize: 14,
-  lineHeight: 1.55,
-  color: "var(--bow-slate)",
-} as const;
 
 type Severity = "critical" | "high" | "watch";
 type ExceptionDomain = "Programs" | "Delivery" | "Quality" | "People" | "Students" | "Growth" | "Work";
@@ -404,66 +386,67 @@ export default async function AppHome() {
   ];
 
   return (
-    <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 28 }}>
-      <SectionHeader kicker="BOW HQ · Management by exception" title="Founder cockpit" level={1} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, flexWrap: "wrap" }}>
-        <p style={{ ...bodyStyle, fontSize: 15, maxWidth: 690, margin: 0 }}>
-          One ranked view of the decisions and blockers that can change an outcome. Normal operating work stays with the team in its workspace.
-        </p>
-        <Link href="/app/tasks" style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 14, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--bow-blue)", textDecoration: "none" }}>
-          Open all Work →
-        </Link>
-      </div>
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">BOW HQ · Management by exception</span>
+          <h1 className="ops-title">Founder cockpit</h1>
+          <p className="ops-summary">
+            One ranked view of the decisions and blockers that can change an outcome. Normal operating work stays with the team in its workspace.
+          </p>
+        </div>
+        <div className="ops-actions">
+          <Button href="/app/tasks" variant="secondary">Open all Work</Button>
+        </div>
+      </header>
 
       <section aria-label="Operating pulse" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
         {metricCards.map((metric) => (
-          <Link key={metric.label} href={metric.href} style={{ ...cardStyle, padding: 18, textDecoration: "none", borderTop: `4px solid ${metric.tone}` }}>
-            <span style={labelStyle}>{metric.label}</span>
+          <Link key={metric.label} href={metric.href} className="ops-panel" style={{ textDecoration: "none", borderTop: `4px solid ${metric.tone}`, padding: 18 }}>
+            <span className="ops-label">{metric.label}</span>
             <strong style={{ display: "block", margin: "8px 0 4px", fontFamily: "var(--font-display)", fontSize: 36, lineHeight: 1, color: "var(--bow-ink)" }}>
               {metric.value}
             </strong>
-            <span style={{ ...bodyStyle, fontSize: 12.5 }}>{metric.detail}</span>
+            <span className="ops-body" style={{ fontSize: 12.5 }}>{metric.detail}</span>
           </Link>
         ))}
       </section>
 
-      <section id="attention-queue" aria-labelledby="attention-heading" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
+      <section id="attention-queue" aria-labelledby="attention-heading" className="ops-anchor">
+        <div className="ops-section-head">
           <div>
-            <span style={labelStyle}>Ranked by consequence and time</span>
-            <h2 id="attention-heading" style={{ margin: "5px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 24, textTransform: "uppercase", color: "var(--bow-ink)" }}>
-              Attention queue
-            </h2>
+            <span className="ops-label">Ranked by consequence and time</span>
+            <h2 id="attention-heading" className="ops-section-title">Attention queue</h2>
           </div>
-          <span style={{ ...bodyStyle, fontSize: 13 }}>{exceptions.length} open exception{exceptions.length === 1 ? "" : "s"}</span>
+          <span className="ops-section-note">{exceptions.length} open exception{exceptions.length === 1 ? "" : "s"}</span>
         </div>
 
         {visible.length === 0 ? (
-          <div style={{ ...cardStyle, padding: 32, textAlign: "center" }}>
+          <div className="ops-empty">
             <Badge status="positive">Portfolio clear</Badge>
-            <h3 style={{ margin: "14px 0 6px", fontFamily: "var(--font-display)", fontSize: 20, textTransform: "uppercase" }}>No exception work is waiting</h3>
-            <p style={{ ...bodyStyle, margin: 0 }}>The team can stay focused on planned delivery and growth.</p>
+            <h3 className="ops-empty__title" style={{ marginTop: 12 }}>No exception work is waiting</h3>
+            <p className="ops-empty__body">The team can stay focused on planned delivery and growth.</p>
           </div>
         ) : (
-          <ol style={{ ...cardStyle, listStyle: "none", padding: 0, margin: 0, overflow: "hidden" }}>
+          <ol className="ops-list" style={{ listStyle: "none", padding: 0, margin: 0 }}>
             {visible.map((item, index) => (
-              <li key={item.key} style={{ display: "grid", gridTemplateColumns: "42px minmax(0, 1fr)", gap: 12, padding: "18px clamp(14px,3vw,22px)", borderBottom: index === visible.length - 1 ? 0 : "1px solid var(--border-rule)" }}>
+              <li key={item.key} className="ops-list-row" style={{ gridTemplateColumns: "42px minmax(0, 1fr)" }}>
                 <span aria-hidden="true" style={{ fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-slate)", paddingTop: 3 }}>
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
                     <Badge status={severityStatus[item.severity]}>{severityLabel[item.severity]}</Badge>
-                    <Link href={item.domainHref} style={{ ...labelStyle, textDecoration: "none", color: "var(--bow-blue)" }}>{item.domain}</Link>
+                    <Link href={item.domainHref} className="ops-label" style={{ textDecoration: "none", color: "var(--bow-blue)" }}>{item.domain}</Link>
                     {item.unassigned && <Badge status="negative">Owner needed</Badge>}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
                     <div style={{ flex: "1 1 420px", minWidth: 0 }}>
                       <h3 style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.35, color: "var(--bow-ink)" }}>{item.title}</h3>
-                      <p style={{ ...bodyStyle, margin: "5px 0 0" }}>{item.context}</p>
-                      <span style={{ ...labelStyle, display: "block", marginTop: 9 }}>Accountable · {item.owner}</span>
+                      <p className="ops-body" style={{ margin: "5px 0 0" }}>{item.context}</p>
+                      <span className="ops-label" style={{ display: "block", marginTop: 9 }}>Accountable · {item.owner}</span>
                     </div>
-                    <Link href={item.href} style={{ alignSelf: "center", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 13, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--bow-blue)", textDecoration: "none", whiteSpace: "nowrap" }}>
+                    <Link href={item.href} className="ops-inline-link" style={{ alignSelf: "center", textDecoration: "none", whiteSpace: "nowrap" }}>
                       {item.actionLabel} →
                     </Link>
                   </div>
@@ -473,14 +456,14 @@ export default async function AppHome() {
           </ol>
         )}
         {remaining > 0 && (
-          <p style={{ ...bodyStyle, margin: "2px 0 0", fontSize: 12.5 }}>
+          <p className="ops-body" style={{ margin: "10px 0 0", fontSize: 12.5 }}>
             {remaining} lower-ranked exception{remaining === 1 ? " remains" : "s remain"} in the linked operating workspaces.
           </p>
         )}
       </section>
 
-      <nav aria-label="Operating workspaces" style={{ ...cardStyle, padding: 18, display: "flex", alignItems: "center", gap: "12px 24px", flexWrap: "wrap" }}>
-        <span style={labelStyle}>Move the system</span>
+      <nav aria-label="Operating workspaces" className="ops-panel--flat" style={{ display: "flex", alignItems: "center", gap: "12px 24px", flexWrap: "wrap" }}>
+        <span className="ops-label">Move the system</span>
         {[
           ["Programs", "/app/programs"],
           ["Growth", "/app/growth"],
@@ -488,11 +471,11 @@ export default async function AppHome() {
           ["People", me.role === "admin" ? "/app/admin/people" : "/app/instructors"],
           ["Locations", "/app/locations"],
         ].map(([label, href]) => (
-          <Link key={href} href={href} style={{ fontFamily: "var(--font-interface)", fontSize: 14, fontWeight: 700, color: "var(--bow-blue)", textDecoration: "none" }}>
+          <Link key={href} href={href} className="ops-inline-link" style={{ textDecoration: "none" }}>
             {label} →
           </Link>
         ))}
       </nav>
-    </div>
+    </main>
   );
 }

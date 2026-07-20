@@ -1,4 +1,4 @@
-import { Badge, DataTable, SectionHeader, Tabs } from "@/components/ds";
+import { Badge, DataTable, Tabs } from "@/components/ds";
 import { getDb, rowToPerson } from "@/lib/db";
 import { listClassProposals, listCurricula } from "@/lib/hiring";
 import ProposalActions from "@/components/app/classes/ProposalActions";
@@ -24,11 +24,14 @@ export default async function ClassProposalsPage() {
   };
 
   return (
-    <div style={{ maxWidth: 1180, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SectionHeader kicker="BOW HQ" title="Classes" level={1} />
-      <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)", maxWidth: 640 }}>
-        Instructor-submitted class proposals awaiting review, decision, or conversion into a real class.
-      </p>
+    <main className="ops-page">
+      <header className="ops-hero">
+        <div className="ops-hero__copy">
+          <span className="ops-eyebrow">BOW HQ · Classes</span>
+          <h1 className="ops-title">Class proposals</h1>
+          <p className="ops-summary">Instructor-submitted class proposals awaiting review, decision, or conversion into a real class.</p>
+        </div>
+      </header>
 
       <Tabs
         items={[
@@ -43,7 +46,7 @@ export default async function ClassProposalsPage() {
         emptyLabel="No proposals submitted yet."
       >
         {(await Promise.all(proposals.map(async (p) => (
-                        <tr key={p.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
+                        <tr key={p.id}>
                           <td style={{ padding: "11px 12px", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-ink)" }}>{p.title}</td>
                           <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{(await instructorName(p.instructorId))}</td>
                           <td style={{ padding: "11px 12px", fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{p.ageGroup || "—"}</td>
@@ -68,6 +71,6 @@ export default async function ClassProposalsPage() {
                         </tr>
                       ))))}
       </DataTable>
-    </div>
+    </main>
   );
 }

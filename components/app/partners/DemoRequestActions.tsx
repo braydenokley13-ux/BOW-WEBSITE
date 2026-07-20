@@ -42,7 +42,7 @@ export default function DemoRequestActions({ demoRequestId }: { demoRequestId: s
           {busy ? "Creating…" : "Create Follow-up Task"}
         </Button>
       </div>
-      {error && <span role="alert" style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-negative)", maxWidth: 320 }}>{error}</span>}
+      {error && <span role="alert" className="ops-error" style={{ maxWidth: 320, textAlign: "right" }}>{error}</span>}
     </div>
   );
 }

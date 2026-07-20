@@ -1,38 +1,9 @@
 "use client";
 
-import { useState, type CSSProperties, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createTask } from "@/app/actions/tasks";
 import { Button, Modal } from "@/components/ds";
-
-const fieldStyle: CSSProperties = {
-  background: "var(--bow-paper)",
-  border: "1px solid var(--border-rule)",
-  color: "var(--bow-ink)",
-  padding: "10px 12px",
-  fontFamily: "var(--font-interface)",
-  fontSize: 14,
-  width: "100%",
-  borderRadius: 4,
-};
-
-const labelStyle: CSSProperties = {
-  display: "block",
-  marginBottom: 6,
-  fontFamily: "var(--font-data)",
-  fontSize: 10,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "var(--bow-slate)",
-};
-
-const helperStyle: CSSProperties = {
-  margin: "5px 0 0",
-  fontFamily: "var(--font-interface)",
-  fontSize: 12,
-  lineHeight: 1.4,
-  color: "var(--bow-slate)",
-};
 
 interface CreateWorkFormProps {
   staffUsers: { id: string; name: string }[];
@@ -113,15 +84,15 @@ export default function CreateWorkForm({ staffUsers, defaultOwnerId, relatedReco
         <Button variant="primary" onClick={() => { setError(null); setStatus(null); setOpen(true); }}>
           Capture Work
         </Button>
-        <span aria-live="polite" role="status" style={{ ...helperStyle, margin: 0, color: status ? "var(--bow-positive)" : "var(--bow-slate)" }}>
+        <span aria-live="polite" role="status" className="ops-field__help" style={{ color: status ? "var(--bow-positive)" : "var(--bow-slate)" }}>
           {status ?? "Create a commitment, exception, review, or founder decision."}
         </span>
       </div>
 
       <Modal open={open} onClose={close} title="Capture Work" maxWidth={700} dismissible={!busy}>
         <form onSubmit={submit}>
-          <div style={{ marginBottom: 14 }}>
-            <label htmlFor="new-work-title" style={labelStyle}>Outcome or commitment</label>
+          <div className="ops-field" style={{ marginBottom: 14 }}>
+            <label htmlFor="new-work-title">Outcome or commitment</label>
             <input
               id="new-work-title"
               required
@@ -129,16 +100,15 @@ export default function CreateWorkForm({ staffUsers, defaultOwnerId, relatedReco
               disabled={busy}
               autoComplete="off"
               placeholder="Example: Confirm fall Program launch date with Eastside Academy"
-              style={fieldStyle}
               value={fields.title}
               onChange={(event) => setField("title", event.target.value)}
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 14 }}>
-            <div>
-              <label htmlFor="new-work-kind" style={labelStyle}>Work type</label>
-              <select id="new-work-kind" disabled={busy} style={fieldStyle} value={fields.kind} onChange={(event) => setField("kind", event.target.value)}>
+          <div className="ops-fields" style={{ marginBottom: 14 }}>
+            <div className="ops-field">
+              <label htmlFor="new-work-kind">Work type</label>
+              <select id="new-work-kind" disabled={busy} value={fields.kind} onChange={(event) => setField("kind", event.target.value)}>
                 <option value="task">Task</option>
                 <option value="issue">Issue / exception</option>
                 <option value="decision">Decision</option>
@@ -147,65 +117,62 @@ export default function CreateWorkForm({ staffUsers, defaultOwnerId, relatedReco
                 <option value="review">Review</option>
               </select>
             </div>
-            <div>
-              <label htmlFor="new-work-priority" style={labelStyle}>Priority</label>
-              <select id="new-work-priority" disabled={busy} style={fieldStyle} value={fields.priority} onChange={(event) => setField("priority", event.target.value)}>
+            <div className="ops-field">
+              <label htmlFor="new-work-priority">Priority</label>
+              <select id="new-work-priority" disabled={busy} value={fields.priority} onChange={(event) => setField("priority", event.target.value)}>
                 <option value="normal">Normal</option>
                 <option value="high">High</option>
                 <option value="urgent">Urgent</option>
               </select>
             </div>
-            <div>
-              <label htmlFor="new-work-owner" style={labelStyle}>Accountable owner</label>
-              <select id="new-work-owner" disabled={busy} style={fieldStyle} value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
+            <div className="ops-field">
+              <label htmlFor="new-work-owner">Accountable owner</label>
+              <select id="new-work-owner" disabled={busy} value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
                 <option value="">Unassigned</option>
                 {staffUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
               </select>
             </div>
-            <div>
-              <label htmlFor="new-work-due" style={labelStyle}>Due date</label>
-              <input id="new-work-due" type="date" max="2100-12-31" aria-describedby="new-work-due-help" disabled={busy} style={fieldStyle} value={fields.dueDate} onChange={(event) => setField("dueDate", event.target.value)} />
-              <span id="new-work-due-help" style={helperStyle}>Calendar date only; changing device timezone will not change it.</span>
+            <div className="ops-field">
+              <label htmlFor="new-work-due">Due date</label>
+              <input id="new-work-due" type="date" max="2100-12-31" aria-describedby="new-work-due-help" disabled={busy} value={fields.dueDate} onChange={(event) => setField("dueDate", event.target.value)} />
+              <span id="new-work-due-help" className="ops-field__help">Calendar date only; changing device timezone will not change it.</span>
             </div>
           </div>
 
-          <div style={{ marginBottom: 14 }}>
-            <label htmlFor="new-work-context" style={labelStyle}>Operating context</label>
+          <div className="ops-field" style={{ marginBottom: 14 }}>
+            <label htmlFor="new-work-context">Operating context</label>
             <textarea
               id="new-work-context"
               rows={3}
               maxLength={2000}
               disabled={busy}
               placeholder="Why does this matter, what changed, and what constraint should the owner know?"
-              style={{ ...fieldStyle, resize: "vertical" }}
               value={fields.context}
               onChange={(event) => setField("context", event.target.value)}
             />
           </div>
 
-          <div style={{ marginBottom: 14 }}>
-            <label htmlFor="new-work-action" style={labelStyle}>Recommended next action</label>
+          <div className="ops-field" style={{ marginBottom: 14 }}>
+            <label htmlFor="new-work-action">Recommended next action</label>
             <textarea
               id="new-work-action"
               rows={2}
               maxLength={1000}
               disabled={busy}
               placeholder="State the next concrete move so the owner can act without rediscovery."
-              style={{ ...fieldStyle, resize: "vertical" }}
               value={fields.recommendedAction}
               onChange={(event) => setField("recommendedAction", event.target.value)}
             />
           </div>
 
           <fieldset style={{ border: "1px solid var(--border-rule)", borderRadius: 4, padding: 12, margin: "0 0 14px" }}>
-            <legend style={{ ...labelStyle, padding: "0 5px", margin: 0 }}>Related operating record (optional)</legend>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-              <div>
-                <label htmlFor="new-work-entity-type" style={labelStyle}>Record type</label>
+            <legend className="ops-field__label" style={{ padding: "0 5px", margin: 0 }}>Related operating record (optional)</legend>
+            <div className="ops-fields">
+              <div className="ops-field">
+                <label htmlFor="new-work-entity-type">Record type</label>
                 <select
                   id="new-work-entity-type"
                   disabled={busy}
-                  style={fieldStyle}
                   value={fields.entityType}
                   onChange={(event) => setFields((current) => ({ ...current, entityType: event.target.value, entityId: "" }))}
                 >
@@ -219,13 +186,12 @@ export default function CreateWorkForm({ staffUsers, defaultOwnerId, relatedReco
                   <option value="region">Region</option>
                 </select>
               </div>
-              <div>
-                <label htmlFor="new-work-entity-id" style={labelStyle}>Related record</label>
+              <div className="ops-field">
+                <label htmlFor="new-work-entity-id">Related record</label>
                 <select
                   id="new-work-entity-id"
                   disabled={busy || !fields.entityType}
                   required={Boolean(fields.entityType)}
-                  style={fieldStyle}
                   value={fields.entityId}
                   onChange={(event) => setField("entityId", event.target.value)}
                 >
@@ -236,7 +202,7 @@ export default function CreateWorkForm({ staffUsers, defaultOwnerId, relatedReco
                 </select>
               </div>
             </div>
-            <p style={helperStyle}>
+            <p className="ops-field__help" style={{ marginTop: 8 }}>
               {fields.entityType && availableRelatedRecords.length === 0
                 ? "No available record matches this type yet. Create the operating record first, then connect Work to it."
                 : "Choose by operating name; BOW keeps the underlying record connection private and verifies it before saving."}
@@ -257,8 +223,8 @@ export default function CreateWorkForm({ staffUsers, defaultOwnerId, relatedReco
             </span>
           </label>
 
-          {error && <p role="alert" style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-negative)" }}>{error}</p>}
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          {error && <p role="alert" className="ops-error" style={{ margin: "0 0 12px" }}>{error}</p>}
+          <div className="ops-form-footer" style={{ paddingTop: 0, border: 0 }}>
             <Button type="submit" variant="primary" disabled={busy || !fields.title.trim()}>
               {busy ? "Capturing…" : "Add to Work"}
             </Button>
