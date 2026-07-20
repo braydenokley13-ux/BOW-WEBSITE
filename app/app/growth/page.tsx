@@ -10,6 +10,8 @@ import { getGrowthCommandCenter, type CampaignMetric } from "@/lib/growth";
 import { getFlywheelSnapshot, getWeeklyOperatingSummary } from "@/lib/flywheel";
 import { listStaffUsers } from "@/lib/hiring";
 import FlywheelPanel from "@/components/app/growth/FlywheelPanel";
+import ManagementBriefing from "@/components/app/growth/ManagementBriefing";
+import { getManagementBriefing } from "@/lib/management";
 import { addCanonicalDays, canonicalDateInZone } from "@/lib/timezone";
 
 function label(value: string): string {
@@ -48,7 +50,8 @@ function money(cents: number): string {
 }
 
 export default async function GrowthCommandCenterPage() {
-  await requireStaff();
+  const me = await requireStaff();
+  const isLeadership = me.role === "admin";
   const now = Number(((await getDb().prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
   const today = canonicalDateInZone(now);
   const quarterEnd = addCanonicalDays(today, 90);
@@ -56,6 +59,7 @@ export default async function GrowthCommandCenterPage() {
   const flywheel = (await getFlywheelSnapshot(now));
   const weekly = (await getWeeklyOperatingSummary(now));
   const staffUsers = (await listStaffUsers()).map((user) => ({ id: user.id, name: user.name }));
+  const briefing = isLeadership ? (await getManagementBriefing(now)) : null;
   const { funnel } = center;
   const activeGoals = center.goals.filter((goal) => goal.status === "active");
   const closedGoals = center.goals.filter((goal) => goal.status !== "active");
@@ -82,7 +86,77 @@ export default async function GrowthCommandCenterPage() {
         <GrowthCommandActions options={center.options} today={today} quarterEnd={quarterEnd} />
       </header>
 
+      {briefing && <ManagementBriefing issues={briefing.issues} staffUsers={staffUsers} />}
+
       <FlywheelPanel snapshot={flywheel} staffUsers={staffUsers} />
+
+      {briefing && (
+        <section className="ops-panel ops-panel--flat ops-anchor" aria-labelledby="team-heading">
+          <div className="ops-section-head">
+            <div>
+              <span className="ops-label">Team · last 30 days</span>
+              <h2 className="ops-section-title" id="team-heading">Who is producing, who needs help</h2>
+            </div>
+            <span className="ops-section-note">
+              Activity and downstream impact side by side — completions are motion; progressions and conversions are growth.
+            </span>
+          </div>
+          <div className="ops-list">
+            {briefing.contributors.map((person) => (
+              <article className="ops-list-row" key={person.userId}>
+                <div>
+                  <span className="ops-record-name">{person.name}</span>
+                  <span className="ops-record-meta">{person.role === "admin" ? "Founder" : "Growth"} · {person.open} open · {person.dueThisWeek} due this week{person.stale > 0 ? ` · ${person.stale} stale` : ""}</span>
+                </div>
+                <Badge status={person.capacity === "overloaded" ? "negative" : person.capacity === "available" ? "positive" : "neutral"}>
+                  {person.capacity}
+                </Badge>
+                <p className="ops-body" style={{ margin: 0 }}>
+                  {person.completed30} done · {person.progressions30} progressed · {person.conversions30} converted
+                  {person.introsConverted30 > 0 ? ` · ${person.introsConverted30} intro${person.introsConverted30 === 1 ? "" : "s"} → partner` : ""}
+                  {person.noResponse30 >= 3 ? ` · ${person.noResponse30} no-response` : ""}
+                </p>
+                <span className="ops-record-meta" style={{ textAlign: "right" }}>
+                  {person.overdue > 0 ? `${person.overdue} overdue` : "on track"}
+                  {person.onTimeRate != null ? ` · ${person.onTimeRate}% on time` : ""}
+                </span>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {briefing && (briefing.channels.length > 0 || briefing.unattributedStudents90 > 0) && (
+        <section className="ops-panel ops-panel--flat ops-anchor" aria-labelledby="channels-heading">
+          <div className="ops-section-head">
+            <div>
+              <span className="ops-label">Channels · trailing 90 days</span>
+              <h2 className="ops-section-title" id="channels-heading">Where growth actually comes from</h2>
+            </div>
+            <span className="ops-section-note">Leads in → registrations → verified participation. Only attributed records are counted.</span>
+          </div>
+          <div className="ops-meta-grid">
+            {briefing.channels.map((channel) => (
+              <div className="ops-meta" key={channel.channelId}>
+                <span className="ops-label">{channel.name}</span>
+                <span className="ops-value">
+                  {channel.leads90} lead{channel.leads90 === 1 ? "" : "s"} → {channel.registrations90} registered
+                  {channel.conversionPct != null ? ` (${channel.conversionPct}%)` : ""} → {channel.verified90} verified
+                  {channel.medianDaysToRegistration != null ? ` · ~${channel.medianDaysToRegistration}d to register` : ""}
+                </span>
+              </div>
+            ))}
+            {briefing.unattributedStudents90 > 0 && (
+              <div className="ops-meta">
+                <span className="ops-label">Unattributed</span>
+                <span className="ops-value">
+                  {briefing.unattributedStudents90} student{briefing.unattributedStudents90 === 1 ? "" : "s"} joined in 90 days with no recorded source — capture sources at registration or this view understates every channel.
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="ops-panel ops-panel--flat ops-anchor" aria-labelledby="weekly-heading">
         <div className="ops-section-head">

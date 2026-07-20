@@ -23,7 +23,7 @@ import type {
 
 export type QueryRow = Record<string, unknown>;
 export type RunResult = { changes: number; lastInsertRowid: number | bigint };
-type TransactionContext = { client: Sql; release: () => void };
+type TransactionContext = { client: Sql; release: () => void; done?: boolean };
 const transactionContext = new AsyncLocalStorage<TransactionContext | undefined>();
 
 function connectionUrl(): string {
@@ -120,13 +120,15 @@ export class PostgresDatabase {
   }
 
   async query(source: string, parameters: unknown[] = []) {
-    return (transactionContext.getStore()?.client ?? this.client).unsafe(source, parameters as never[]);
+    const active = transactionContext.getStore();
+    const client = active && !active.done ? active.client : this.client;
+    return client.unsafe(source, parameters as never[]);
   }
 
   async exec(source: string): Promise<void> {
     const command = toPostgresSql(source);
     const active = transactionContext.getStore();
-    if (/^BEGIN$/i.test(command) && !active) {
+    if (/^BEGIN$/i.test(command) && (!active || active.done)) {
       const reserved = await this.client.reserve();
       try {
         await reserved.unsafe("BEGIN");
@@ -137,10 +139,15 @@ export class PostgresDatabase {
       }
       return;
     }
-    if (/^(COMMIT|ROLLBACK)$/i.test(command) && active) {
+    if (/^(COMMIT|ROLLBACK)$/i.test(command) && active && !active.done) {
       try {
         await active.client.unsafe(command);
       } finally {
+        // Mark the shared context object finished BEFORE releasing: enterWith()
+        // inside this frame does not reliably propagate back to the caller's
+        // async context, so a caller issuing further queries could otherwise
+        // still route to the released connection and hang forever.
+        active.done = true;
         active.release();
         transactionContext.enterWith(undefined);
       }
@@ -150,7 +157,8 @@ export class PostgresDatabase {
   }
 
   get isTransaction(): boolean {
-    return Boolean(transactionContext.getStore());
+    const active = transactionContext.getStore();
+    return Boolean(active && !active.done);
   }
 
 }
