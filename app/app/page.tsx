@@ -10,6 +10,7 @@ import { programStageLabel } from "@/lib/operations-shared";
 import { entityHref, sessionHref } from "@/lib/routes";
 import { getInstructorByUserId } from "@/lib/hiring";
 import { getGrowthLeadershipSnapshot } from "@/lib/growth";
+import { getGrowthActions } from "@/lib/flywheel";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -89,6 +90,7 @@ export default async function AppHome() {
   const data = (await getLeadershipHomeData());
   const programs = (await listPrograms());
   const growth = (await getGrowthLeadershipSnapshot(now));
+  const growthActions = (await getGrowthActions(now, 3));
   const personNameStatement = db.prepare("SELECT name FROM people WHERE id = ?");
   const userNameStatement = db.prepare("SELECT name FROM users WHERE id = ?");
   const classContextStatement = db.prepare(
@@ -411,6 +413,30 @@ export default async function AppHome() {
           </Link>
         ))}
       </section>
+
+      {growthActions.length > 0 && (
+        <section aria-labelledby="growth-actions-heading" className="ops-anchor">
+          <div className="ops-section-head">
+            <div>
+              <span className="ops-label">Flywheel</span>
+              <h2 id="growth-actions-heading" className="ops-section-title">Growth actions</h2>
+            </div>
+            <Link className="ops-inline-link" href="/app/growth">All growth actions →</Link>
+          </div>
+          <div className="ops-list">
+            {growthActions.map((action) => (
+              <article className="ops-list-row ops-list-row--compact" key={action.key}>
+                <div>
+                  <Link className="ops-record-name" href={action.entityHref}>{action.entityLabel}</Link>
+                  <span className="ops-record-meta">{action.reason} {action.action}</span>
+                </div>
+                <span className="ops-record-meta">{action.ageDays}d</span>
+                <Link className="ops-inline-link" href={action.entityHref}>{action.ctaLabel}</Link>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section id="attention-queue" aria-labelledby="attention-heading" className="ops-anchor">
         <div className="ops-section-head">

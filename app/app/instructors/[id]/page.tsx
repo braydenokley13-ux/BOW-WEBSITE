@@ -7,6 +7,8 @@ import { getInstructorDetail, listActivity, listOpenTasksForEntity, listStaffUse
 import { getInstructorWorkforceDossier, type WorkforceAssignment } from "@/lib/instructor-workforce";
 import InstructorDetailActions from "@/components/app/hiring/InstructorDetailActions";
 import InstructorWorkforceActions from "@/components/app/hiring/InstructorWorkforceActions";
+import IntroductionTracker from "@/components/app/hiring/IntroductionTracker";
+import { listIntroductions } from "@/lib/flywheel";
 import { canonicalDateInZone, formatCanonicalDate, formatDateTimeInZone } from "@/lib/timezone";
 
 const STAGE_LABEL: Record<string, string> = {
@@ -86,6 +88,7 @@ function AssignmentList({ assignments, empty }: { assignments: WorkforceAssignme
 
 export default async function InstructorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const introductions = (await listIntroductions("instructor", id));
   const me = await getCurrentUser();
   const detail = (await getInstructorDetail(id));
   const dossier = (await getInstructorWorkforceDossier(id));
@@ -445,6 +448,7 @@ export default async function InstructorDetailPage({ params }: { params: Promise
           </section>
         </aside>
       </div>
+      <IntroductionTracker introducerType="instructor" introducerId={id} introductions={introductions} />
     </main>
   );
 }

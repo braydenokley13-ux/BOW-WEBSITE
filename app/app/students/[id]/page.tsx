@@ -13,6 +13,21 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
   const { student, guardian, enrollments } = detail;
 
   const db = getDb();
+  const growth = (await db.prepare(
+      `SELECT
+        (SELECT ch.name FROM student_acquisition_attributions a
+           JOIN student_acquisition_touchpoints t ON t.id = a.touchpoint_id
+           JOIN growth_channels ch ON ch.id = t.channel_id
+          WHERE a.student_id = s.id AND a.effective_to IS NULL AND t.voided_at IS NULL
+          LIMIT 1) AS source_channel,
+        (SELECT COUNT(*) FROM student_referrals r
+          WHERE r.referrer_person_id = s.person_id AND r.voided_at IS NULL) AS referrals_made,
+        (SELECT COUNT(*) FROM student_program_outcomes o
+          WHERE o.student_id = s.id AND o.outcome_type IN ('completed','graduated')) AS completions,
+        (SELECT COUNT(*) FROM tasks t
+          WHERE t.entity_type = 'student' AND t.entity_id = s.id AND t.title = 'Referral invite' AND t.status = 'open') AS open_invites
+       FROM students s WHERE s.id = ?`,
+    ).get(id)) as { source_channel: string | null; referrals_made: number; completions: number; open_invites: number } | undefined;
   const classRows = (await Promise.all(enrollments.map(async (e) => {
       const cls = (await db.prepare("SELECT * FROM classes WHERE id = ?").get(e.classId)) as any;
       return { enrollment: e, title: cls?.title ?? e.classId, status: cls?.status ?? "—" };
@@ -37,6 +52,17 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
 
       <section className="ops-panel">
         <div className="ops-meta-grid">
+          <div className="ops-meta">
+            <span className="ops-label">Acquisition source</span>
+            <span className="ops-value">{growth?.source_channel ?? "Unattributed — capture the source"}</span>
+          </div>
+          <div className="ops-meta">
+            <span className="ops-label">Flywheel</span>
+            <span className="ops-value">
+              {Number(growth?.completions ?? 0)} completion{Number(growth?.completions ?? 0) === 1 ? "" : "s"} · {Number(growth?.referrals_made ?? 0)} referral{Number(growth?.referrals_made ?? 0) === 1 ? "" : "s"} made
+              {Number(growth?.open_invites ?? 0) > 0 ? " · referral invite pending" : ""}
+            </span>
+          </div>
           <div className="ops-meta">
             <span className="ops-label">Age / Grade</span>
             <span className="ops-value">{student.age ?? "—"} / {student.grade ?? "—"}</span>

@@ -48,6 +48,13 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
     source_id: string | null;
     outcome_summary: string | null;
   }[];
+  const repeatOpportunities = (await db.prepare(
+      `SELECT p.id, p.name, p.updated_at
+         FROM programs p
+        WHERE p.partner_org_id = ? AND p.stage = 'completed'
+          AND NOT EXISTS (SELECT 1 FROM programs child WHERE child.parent_program_id = p.id)
+        ORDER BY p.updated_at DESC`,
+    ).all(id)) as { id: string; name: string; updated_at: number }[];
   const inquiries = (await db.prepare(
       `SELECT i.id, i.name, i.email, i.type, i.date, i.status, i.summary,
             (
