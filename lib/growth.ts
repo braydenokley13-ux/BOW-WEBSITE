@@ -336,7 +336,7 @@ async function readCampaigns(): Promise<GrowthCampaignSummary[]> {
        LEFT JOIN student_acquisition_touchpoints t ON t.campaign_id = c.id AND t.voided_at IS NULL
          AND t.occurred_on BETWEEN c.starts_on AND c.ends_on
        LEFT JOIN student_acquisition_attributions a ON a.touchpoint_id = t.id AND a.effective_to IS NULL
-      GROUP BY c.id
+      GROUP BY c.id, ch.name, owner.name, l.name, r.name
       ORDER BY CASE c.status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 WHEN 'draft' THEN 2 WHEN 'completed' THEN 3 ELSE 4 END,
                c.ends_on, c.name`,
     ).all()) as unknown as Array<Record<string, unknown>>;
@@ -406,7 +406,7 @@ async function readContributors(): Promise<GrowthContributorSummary[]> {
        LEFT JOIN student_acquisition_touchpoints t ON t.contributor_id = gc.id AND t.voided_at IS NULL
        LEFT JOIN student_acquisition_attributions attr ON attr.touchpoint_id = t.id AND attr.effective_to IS NULL
        LEFT JOIN student_referrals ref ON ref.contributor_id = gc.id AND ref.voided_at IS NULL
-      GROUP BY gc.id, ga.id
+      GROUP BY gc.id, ga.id, p.name, p.email, manager_person.name, l.name, r.name
       ORDER BY CASE gc.status WHEN 'active' THEN 0 WHEN 'candidate' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END,
                CASE ga.role WHEN 'regional_lead' THEN 0 WHEN 'market_lead' THEN 1 WHEN 'growth_captain' THEN 2 ELSE 3 END,
                p.name`,

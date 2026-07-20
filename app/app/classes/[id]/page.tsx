@@ -7,6 +7,8 @@ import { sessionHref } from "@/lib/routes";
 import ClassDetailActions, { RemoveInstructorButton, WithdrawStudentButton } from "@/components/app/classes/ClassDetailActions";
 import { formatDateTimeInZone } from "@/lib/timezone";
 import ConfirmEnrollmentButton from "@/components/app/classes/ConfirmEnrollmentButton";
+import CloseoutPanel from "@/components/app/classes/CloseoutPanel";
+import { getClassCloseout } from "@/lib/flywheel";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export default async function ClassDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -14,6 +16,7 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
   const detail = (await getClassDetail(id));
   if (!detail) notFound();
   const { class: cls, instructors, sessions, enrollments } = detail;
+  const closeout = cls.status === "completed" ? (await getClassCloseout(cls.id)) : null;
 
   const db = getDb();
   const curriculum = (await db.prepare("SELECT title FROM curricula WHERE id = ?").get(cls.curriculumId)) as { title: string } | undefined;
@@ -179,6 +182,8 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
         enrolledCount={enrolled.length}
         scheduleTimezone={cls.scheduleTimezone}
       />
+
+      {closeout && <CloseoutPanel closeout={closeout} />}
 
       <section className="ops-panel--flat">
         <div className="ops-section-head">

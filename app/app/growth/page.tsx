@@ -7,6 +7,8 @@ import { Badge, DataStrip } from "@/components/ds";
 import { requireStaff } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { getGrowthCommandCenter, type CampaignMetric } from "@/lib/growth";
+import { getFlywheelSnapshot } from "@/lib/flywheel";
+import FlywheelPanel from "@/components/app/growth/FlywheelPanel";
 import { addCanonicalDays, canonicalDateInZone } from "@/lib/timezone";
 
 function label(value: string): string {
@@ -50,6 +52,7 @@ export default async function GrowthCommandCenterPage() {
   const today = canonicalDateInZone(now);
   const quarterEnd = addCanonicalDays(today, 90);
   const center = (await getGrowthCommandCenter(now));
+  const flywheel = (await getFlywheelSnapshot(now));
   const { funnel } = center;
   const activeGoals = center.goals.filter((goal) => goal.status === "active");
   const closedGoals = center.goals.filter((goal) => goal.status !== "active");
@@ -75,6 +78,8 @@ export default async function GrowthCommandCenterPage() {
         </div>
         <GrowthCommandActions options={center.options} today={today} quarterEnd={quarterEnd} />
       </header>
+
+      <FlywheelPanel snapshot={flywheel} />
 
       <DataStrip
         dense
