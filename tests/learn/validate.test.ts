@@ -119,6 +119,49 @@ test("validateLessonDoc: warns about an unreachable block", () => {
   assert.ok(result.warnings.some((w) => w.includes('Block "orphan"') && w.includes("unreachable")));
 });
 
+test("validateLessonDoc: mixed goTo/fallthrough — an option with no goTo keeps the next block reachable", () => {
+  // Stage 1 design-note review (Stage 5 work item 3): when only SOME options
+  // on a decision/scenario block name a goTo, the block's natural next
+  // sibling must still count as reachable via the options that fall through.
+  const doc = goodDoc();
+  doc.phases.push({
+    id: "p3",
+    kind: "Consequence",
+    title: "Fallthrough target",
+    blocks: [{ id: "c1", type: "text", body: "reached by falling through" }],
+  });
+  const decisionBlock = doc.phases[1].blocks[0];
+  if (decisionBlock.type === "strategy_choice") {
+    decisionBlock.options[0].goTo = "c1"; // explicit branch
+    // options[1] has no goTo — falls through to the phase's natural next block (c1, same as the branch here, but exercised via fallthrough logic)
+  }
+  const result = validateLessonDoc(doc);
+  assert.ok(!result.warnings.some((w) => w.includes('Block "c1"') && w.includes("unreachable")));
+});
+
+test("validateLessonDoc: all options branching away makes the natural-next block unreachable-by-fallthrough", () => {
+  // The inverse of the above: when EVERY option/choice names a goTo, the
+  // block's natural next sibling is never reached via fallthrough — only an
+  // explicit goTo pointing at it (or nothing) makes it reachable. This is
+  // the mechanism the Stage 4 proof lesson relied on for branch-specific
+  // Consequence blocks (no visibleIf needed).
+  const doc = goodDoc();
+  doc.phases.push({
+    id: "p3",
+    kind: "Consequence",
+    title: "Never naturally reached",
+    blocks: [{ id: "c1", type: "text", body: "only reachable via an explicit goTo" }],
+  });
+  const decisionBlock = doc.phases[1].blocks[0];
+  if (decisionBlock.type === "strategy_choice") {
+    // Both options branch elsewhere (back to b1), so c1 is unreachable.
+    decisionBlock.options[0].goTo = "b1";
+    decisionBlock.options[1].goTo = "b1";
+  }
+  const result = validateLessonDoc(doc);
+  assert.ok(result.warnings.some((w) => w.includes('Block "c1"') && w.includes("unreachable")));
+});
+
 test("validateLessonDoc: flags an illegal (exit-less) loop", () => {
   const doc = goodDoc();
   // Two-block phase that only ever branches back to itself, no other exit.

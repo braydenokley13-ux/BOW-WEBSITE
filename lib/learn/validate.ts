@@ -152,6 +152,22 @@ export function validateLessonDoc(doc: LessonDoc): ValidationResult {
     if (phaseIds.has(phase.id)) errors.push(`Duplicate phase id: ${phase.id}`);
     phaseIds.add(phase.id);
   }
+
+  // ---- likely-accidental duplicate phase (same kind + title, both still at
+  // the auto-seeded single empty text block) — catches a double "Add phase"
+  // click or misclick before it becomes an invisible orphaned phase.
+  const seenPhaseSignatures = new Map<string, string>();
+  for (const phase of doc.phases) {
+    const isUnedited = phase.blocks.length === 1 && phase.blocks[0].type === "text" && phase.blocks[0].body === "";
+    if (!isUnedited) continue;
+    const signature = `${phase.kind}::${phase.title}`;
+    if (seenPhaseSignatures.has(signature)) {
+      warnings.push(
+        `Phase "${phase.title}" (${phase.kind}) looks like a duplicate of another empty ${phase.kind} phase — check you didn't add it twice by accident.`,
+      );
+    }
+    seenPhaseSignatures.set(signature, phase.id);
+  }
   const blockIds = new Set<string>();
   for (const { block } of flat) {
     if (blockIds.has(block.id)) errors.push(`Duplicate block id: ${block.id}`);
