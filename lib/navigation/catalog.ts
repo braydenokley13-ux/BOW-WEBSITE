@@ -108,6 +108,7 @@ export const NAV_CATALOG: NavEntry[] = [
     roles: ["admin"],
     items: [
       link("admin-overview", "Platform Overview", "/app/admin", ["admin"], { match: "exact" }),
+      link("admin-learn", "Playbook Studio", "/app/admin/learn", ["admin"]),
       link("admin-invitations", "Invitations", "/app/admin/invitations", ["admin"]),
       link("admin-accounts", "Account Directory", "/app/admin/people", ["admin"]),
       link("admin-cohorts", "LMS Cohorts", "/app/admin/cohorts", ["admin"]),
