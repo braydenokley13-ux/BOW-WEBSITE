@@ -86,7 +86,10 @@ function SortableRow({
   };
   return (
     <div ref={setNodeRef} style={style}>
-      {children({ attributes: attributes as Record<string, unknown>, listeners: listeners as Record<string, unknown> | undefined })}
+      {children({
+        attributes: attributes as unknown as Record<string, unknown>,
+        listeners: listeners as unknown as Record<string, unknown> | undefined,
+      })}
     </div>
   );
 }
