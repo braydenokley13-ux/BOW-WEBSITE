@@ -41,8 +41,31 @@ export function getSqlLearn(): Sql {
   return globalForLearnDb.__bowPostgresSql;
 }
 
-/** Tagged-template client — `sqlLearn\`select * from learn_tracks\`` etc. */
-export const sqlLearn: Sql = getSqlLearn();
+/**
+ * Tagged-template client — `sqlLearn\`select * from learn_tracks\`` etc.
+ *
+ * Lazy by construction: this must NOT eagerly call `getSqlLearn()` at module
+ * scope, or simply importing this module (e.g. transitively, from any page
+ * or server action) throws whenever POSTGRES_URL is unset — which is exactly
+ * what happens during `next build`'s page-data collection in dev/CI
+ * environments without a live DB. The Proxy defers both calling it as a
+ * tagged template and reading properties off it (e.g. `sqlLearn.begin`)
+ * until the first real request-time use.
+ */
+export const sqlLearn: Sql = new Proxy(
+  ((...args: Parameters<Sql>) => (getSqlLearn() as unknown as (...a: Parameters<Sql>) => ReturnType<Sql>)(...args)) as unknown as Sql,
+  {
+    get(_target, prop) {
+      if (prop === "then") return undefined; // not thenable
+      const client = getSqlLearn() as unknown as Record<PropertyKey, unknown>;
+      const value = client[prop];
+      return typeof value === "function" ? value.bind(client) : value;
+    },
+    apply(_target, _thisArg, args) {
+      return (getSqlLearn() as unknown as (...a: unknown[]) => unknown)(...args);
+    },
+  },
+);
 
 /**
  * Run `fn` inside a native postgres.js transaction (`sql.begin`), which
