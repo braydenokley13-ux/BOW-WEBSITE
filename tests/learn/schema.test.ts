@@ -33,6 +33,27 @@ test("LessonDocSchema: parses a minimal valid doc and applies defaults", () => {
   assert.equal(parsed.scoring.replayPolicy.improvedXpPct, 0.25);
 });
 
+test("LessonDocSchema: VariableDef.visible defaults true for docs authored before the field existed", () => {
+  const parsed = LessonDocSchema.parse(baseDoc());
+  assert.equal(parsed.variables[0].visible, true);
+});
+
+test("LessonDocSchema: VariableDef.visible can be set false to hide from the HUD", () => {
+  const doc = baseDoc();
+  doc.variables[0] = { ...doc.variables[0], visible: false } as typeof doc.variables[0];
+  const parsed = LessonDocSchema.parse(doc);
+  assert.equal(parsed.variables[0].visible, false);
+});
+
+test("LessonDocSchema: results.ctaNextLessonId is optional and round-trips when set", () => {
+  const doc = baseDoc();
+  doc.results = { ctaNextLessonId: "lesson-123" };
+  const parsed = LessonDocSchema.parse(doc);
+  assert.equal(parsed.results.ctaNextLessonId, "lesson-123");
+  const parsedWithout = LessonDocSchema.parse(baseDoc());
+  assert.equal(parsedWithout.results.ctaNextLessonId, undefined);
+});
+
 test("LessonDocSchema: rejects wrong schemaVersion literal", () => {
   const doc = { ...baseDoc(), schemaVersion: 2 };
   assert.throws(() => LessonDocSchema.parse(doc));

@@ -7,7 +7,7 @@ function docWithBranching(): LessonDoc {
   return {
     schemaVersion: 1,
     meta: { title: "Original" },
-    variables: [{ key: "v1", label: "V1", initial: 0, unit: "number" }],
+    variables: [{ key: "v1", label: "V1", initial: 0, unit: "number", visible: true }],
     skills: [],
     phases: [
       {

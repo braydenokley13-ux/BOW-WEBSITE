@@ -117,7 +117,7 @@ export default function LessonPlayer({ lessonId, attemptId, doc, resume }: Lesso
   }
 
   const fraction = progressFraction(doc, state);
-  const variableItems: DataItem[] = doc.variables.map((v) => ({
+  const variableItems: DataItem[] = doc.variables.filter((v) => v.visible !== false).map((v) => ({
     label: v.label,
     value:
       v.unit === "currency"

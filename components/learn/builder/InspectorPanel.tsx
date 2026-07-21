@@ -84,7 +84,14 @@ export default function InspectorPanel({ doc, selection, dispatch }: InspectorPa
           <SkillsPanel skills={doc.skills} onChange={(skills) => dispatch({ type: "SET_SKILLS", skills })} />
         )}
         {tab === "results" && (
-          <ResultsPanel results={doc.results} onChange={(results) => dispatch({ type: "SET_RESULTS", results })} />
+          <ResultsPanel
+            results={doc.results}
+            onChange={(results) => dispatch({ type: "SET_RESULTS", results })}
+            nextLessonId={doc.results.ctaNextLessonId}
+            onChangeNextLessonId={(ctaNextLessonId) =>
+              dispatch({ type: "SET_RESULTS", results: { ...doc.results, ctaNextLessonId } })
+            }
+          />
         )}
       </div>
     </div>

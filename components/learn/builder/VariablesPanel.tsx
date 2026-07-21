@@ -20,7 +20,7 @@ export default function VariablesPanel({ variables, onChange }: VariablesPanelPr
     onChange(variables.filter((_, i) => i !== index));
   }
   function add() {
-    onChange([...variables, { key: newId("var"), label: "New Variable", initial: 0, unit: "number" }]);
+    onChange([...variables, { key: newId("var"), label: "New Variable", initial: 0, unit: "number", visible: true }]);
   }
 
   return (
@@ -71,6 +71,14 @@ export default function VariablesPanel({ variables, onChange }: VariablesPanelPr
               />
             </div>
           </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={v.visible !== false}
+              onChange={(e) => update(i, { visible: e.target.checked })}
+            />
+            Visible in the student HUD while playing
+          </label>
           <Button variant="ghost" size="sm" onClick={() => remove(i)} aria-label={`Remove ${v.label}`}>
             Remove variable
           </Button>

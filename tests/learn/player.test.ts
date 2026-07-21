@@ -21,7 +21,7 @@ function makeDoc(): LessonDoc {
   return {
     schemaVersion: 1,
     meta: { title: "Test Lesson" },
-    variables: [{ key: "sentiment", label: "Sentiment", initial: 50, unit: "number" }],
+    variables: [{ key: "sentiment", label: "Sentiment", initial: 50, unit: "number", visible: true }],
     skills: [],
     phases: [
       {

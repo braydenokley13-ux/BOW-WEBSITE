@@ -29,9 +29,9 @@ const doc: LessonDoc = {
     estMinutes: 10,
   },
   variables: [
-    { key: "attendance", label: "Projected Attendance", initial: 8000, min: 0, unit: "number" },
-    { key: "revenue", label: "Ticket Revenue", initial: 0, unit: "currency" },
-    { key: "fanSentiment", label: "Fan Sentiment", initial: 70, min: 0, max: 100, unit: "percent" },
+    { key: "attendance", label: "Projected Attendance", initial: 8000, min: 0, unit: "number", visible: true },
+    { key: "revenue", label: "Ticket Revenue", initial: 0, unit: "currency", visible: true },
+    { key: "fanSentiment", label: "Fan Sentiment", initial: 70, min: 0, max: 100, unit: "percent", visible: true },
   ],
   // skillId matches learn_skills.id (the FK target), not its slug — see the
   // learn_skills insert below (id: 'skill-pricing-strategy').

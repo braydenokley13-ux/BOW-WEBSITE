@@ -296,7 +296,7 @@ function sampleDoc(): LessonDoc {
   return {
     schemaVersion: 1,
     meta: { title: "Sample", estMinutes: 10 },
-    variables: [{ key: "price", label: "Price", initial: 10, unit: "currency" }],
+    variables: [{ key: "price", label: "Price", initial: 10, unit: "currency", visible: true }],
     skills: [{ skillId: "pricing", maxPoints: 10 }],
     phases: [
       {

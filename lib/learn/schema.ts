@@ -102,6 +102,10 @@ export const VariableDefSchema = z.object({
   min: z.number().optional(),
   max: z.number().optional(),
   unit: z.enum(["number", "currency", "percent", "points"]).default("number"),
+  /** Whether this variable shows in the player's live HUD strip. Defaults true
+   * (matches every doc authored before this field existed). Purely a display
+   * toggle — the variable still tracks and scores identically either way. */
+  visible: z.boolean().default(true),
 });
 export type VariableDef = z.infer<typeof VariableDefSchema>;
 
@@ -426,6 +430,9 @@ export const ResultsSchema = z.object({
   showVariables: z.boolean().default(true),
   showSkillDeltas: z.boolean().default(true),
   celebrationCopy: z.string().optional(),
+  /** Lesson id to promote as "next lesson" on the results screen. Optional —
+   * absent means no CTA is shown (author hasn't set a suggested next step). */
+  ctaNextLessonId: z.string().optional(),
 });
 export type Results = z.infer<typeof ResultsSchema>;
 

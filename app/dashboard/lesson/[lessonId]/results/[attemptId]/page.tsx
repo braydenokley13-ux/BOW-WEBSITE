@@ -38,6 +38,14 @@ export default async function LessonResultsPage({
   const versionRows = await sqlLearn<{ doc: unknown }[]>`SELECT doc FROM learn_lesson_versions WHERE id = ${attempt.version_id}`;
   const doc = migrateLessonDoc(versionRows[0].doc);
 
+  let nextLesson: { id: string; title: string } | null = null;
+  if (doc.results.ctaNextLessonId) {
+    const nextRows = await sqlLearn<{ id: string; title: string }[]>`
+      SELECT id, title FROM learn_lessons WHERE id = ${doc.results.ctaNextLessonId} AND lifecycle = 'active'
+    `;
+    nextLesson = nextRows[0] ?? null;
+  }
+
   const skillRows = await sqlLearn<{ skill_id: string; points: number; label: string }[]>`
     SELECT se.skill_id, se.points, ls.label
     FROM learn_skill_events se
@@ -120,7 +128,12 @@ export default async function LessonResultsPage({
         )}
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Button variant="emphasis" href={`/dashboard/lesson/${lessonId}`} aria-label="Replay lesson">
+          {nextLesson && (
+            <Button variant="emphasis" href={`/dashboard/lesson/${nextLesson.id}`} aria-label={`Continue to ${nextLesson.title}`}>
+              Next: {nextLesson.title}
+            </Button>
+          )}
+          <Button variant={nextLesson ? "secondary" : "emphasis"} href={`/dashboard/lesson/${lessonId}`} aria-label="Replay lesson">
             Replay
           </Button>
           <Button variant="secondary" href="/dashboard" aria-label="Continue to dashboard">
