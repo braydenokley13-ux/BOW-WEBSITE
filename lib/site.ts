@@ -30,6 +30,7 @@ export const NAV: NavItem[] = [
   { label: "Simulations", href: "/simulation" },
   { label: "Podcast", href: "/podcast" },
   { label: "Get Involved", href: "/get-involved" },
+  { label: "Teach", href: "/teach" },
   { label: "About", href: "/about" },
 ];
 

@@ -21,6 +21,11 @@ const initialFields = {
   entityType: "",
   entityId: "",
   founderHandoff: false,
+  expectedResult: "",
+  definitionOfDone: "",
+  evidenceRequirement: "",
+  reviewRequired: true,
+  autonomyLevel: 2,
 };
 
 /** Complete manual-capture path for the universal Work queue. */
@@ -29,6 +34,8 @@ export default function CreateWorkForm({ staffUsers, defaultOwnerId, relatedReco
   const [open, setOpen] = useState(false);
   const [fields, setFields] = useState(initialFields);
   const [ownerId, setOwnerId] = useState(defaultOwnerId);
+  const [doerId, setDoerId] = useState("");
+  const [reviewerId, setReviewerId] = useState(defaultOwnerId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -57,10 +64,17 @@ export default function CreateWorkForm({ staffUsers, defaultOwnerId, relatedReco
         context: fields.context,
         recommendedAction: fields.recommendedAction,
         ownerUserId: ownerId || null,
+        doerUserId: doerId || ownerId || null,
+        reviewerUserId: fields.reviewRequired ? reviewerId || null : null,
         dueDate: fields.dueDate || null,
         entityType: fields.entityType || null,
         entityId: fields.entityId || null,
         handoffToFounder: fields.founderHandoff,
+        expectedResult: fields.expectedResult,
+        definitionOfDone: fields.definitionOfDone,
+        evidenceRequirement: fields.evidenceRequirement,
+        reviewRequired: fields.reviewRequired,
+        autonomyLevel: fields.autonomyLevel,
       });
       if (!result.ok) {
         setError(result.error ?? "Work could not be captured.");
@@ -68,6 +82,8 @@ export default function CreateWorkForm({ staffUsers, defaultOwnerId, relatedReco
       }
       setFields(initialFields);
       setOwnerId(defaultOwnerId);
+      setDoerId("");
+      setReviewerId(defaultOwnerId);
       setOpen(false);
       setStatus("Work captured and added to the queue.");
       router.refresh();
@@ -138,6 +154,50 @@ export default function CreateWorkForm({ staffUsers, defaultOwnerId, relatedReco
               <span id="new-work-due-help" className="ops-field__help">Calendar date only; changing device timezone will not change it.</span>
             </div>
           </div>
+
+          <div className="ops-fields" style={{ marginBottom: 14 }}>
+            <div className="ops-field">
+              <label htmlFor="new-work-doer">Doer / assignee</label>
+              <select id="new-work-doer" disabled={busy} value={doerId} onChange={(event) => setDoerId(event.target.value)}>
+                <option value="">Same as accountable owner</option>
+                {staffUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+              </select>
+              <span className="ops-field__help">Delegation does not remove the accountable owner.</span>
+            </div>
+            <div className="ops-field">
+              <label htmlFor="new-work-reviewer">Reviewer</label>
+              <select id="new-work-reviewer" disabled={busy || !fields.reviewRequired} value={reviewerId} onChange={(event) => setReviewerId(event.target.value)}>
+                <option value="">Choose reviewer</option>
+                {staffUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+              </select>
+            </div>
+            <div className="ops-field">
+              <label htmlFor="new-work-autonomy">Autonomy</label>
+              <select id="new-work-autonomy" disabled={busy} value={fields.autonomyLevel} onChange={(event) => setField("autonomyLevel", Number(event.target.value))}>
+                <option value={1}>Directed</option>
+                <option value={2}>Guided</option>
+                <option value={3}>Owner</option>
+                <option value={4}>Lead</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="ops-field" style={{ marginBottom: 14 }}>
+            <label htmlFor="new-work-result">Expected result</label>
+            <textarea id="new-work-result" required rows={2} maxLength={2000} disabled={busy} value={fields.expectedResult} onChange={(event) => setField("expectedResult", event.target.value)} placeholder="What measurable result should exist?" />
+          </div>
+          <div className="ops-field" style={{ marginBottom: 14 }}>
+            <label htmlFor="new-work-done">Definition of done</label>
+            <textarea id="new-work-done" required rows={2} maxLength={2000} disabled={busy} value={fields.definitionOfDone} onChange={(event) => setField("definitionOfDone", event.target.value)} placeholder="What must be true for approval?" />
+          </div>
+          <div className="ops-field" style={{ marginBottom: 14 }}>
+            <label htmlFor="new-work-evidence">Evidence requirement</label>
+            <textarea id="new-work-evidence" rows={2} maxLength={2000} disabled={busy} value={fields.evidenceRequirement} onChange={(event) => setField("evidenceRequirement", event.target.value)} placeholder="Links, artifacts, or outcome evidence expected with submission." />
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+            <input type="checkbox" checked={fields.reviewRequired} onChange={(event) => setField("reviewRequired", event.target.checked)} />
+            Require submission and approval before this Work is done
+          </label>
 
           <div className="ops-field" style={{ marginBottom: 14 }}>
             <label htmlFor="new-work-context">Operating context</label>

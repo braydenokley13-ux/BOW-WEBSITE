@@ -47,17 +47,17 @@ export default async function HomePage() {
 
         <div className="bow-container-wide" style={{ padding: "clamp(40px,6vw,80px) clamp(18px,4vw,40px) clamp(48px,7vw,96px)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "clamp(32px,5vw,64px)", alignItems: "center", position: "relative" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 640 }}>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 12, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--bow-orange)" }}>Sports Business, Built to Be Played</span>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 12, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--bow-orange)" }}>Sports is the hook. Economics is the lesson.</span>
             <h1 style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(40px,6.4vw,82px)", lineHeight: 0.96, letterSpacing: "-0.015em", textWrap: "balance" }}>
-              The next great sports minds have to start somewhere.
+              Learn to make the decisions behind the game.
             </h1>
             <CapLine weight={7} step={18} stepAt={0.4} style={{ maxWidth: 320 }} />
             <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: "clamp(17px,1.5vw,21px)", lineHeight: 1.55, color: "var(--bow-slate)", maxWidth: 540 }}>
               BOW Sports Capital helps middle and high school students learn economics, finance, leadership, and strategy by making the same decisions that shape teams, leagues, and the business of sports.
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6 }}>
-              <Button href="/programs" variant="primary" size="lg">Explore the Programs</Button>
-              <Button href="/#howitworks" variant="secondary" size="lg">See How BOW Works</Button>
+              <Button href="/programs" variant="primary" size="lg">Explore BOW</Button>
+              <Button href="/teach" variant="secondary" size="lg">Apply to Teach</Button>
             </div>
             <Link href="/podcast" className="bow-link" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)", marginTop: 2 }}>
               Listen to the Podcast →
@@ -99,6 +99,22 @@ export default async function HomePage() {
       </section>
 
       <DataRibbon />
+
+      {/* ===== INSTRUCTOR RECRUITMENT ===== */}
+      <section style={{ background: "var(--bow-ink)", color: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--bow-dark-border)", position: "relative", overflow: "clip" }}>
+        <div aria-hidden className="bow-para-far" style={{ position: "absolute", right: "-4%", bottom: "-12%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(150px,24vw,390px)", lineHeight: .75, color: "rgba(255,255,255,.04)" }}>COACH</div>
+        <div className="bow-container" style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: "clamp(32px,6vw,72px)", alignItems: "center" }}>
+          <div>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--bow-orange)" }}>We&apos;re hiring instructors</span>
+            <h2 style={{ marginTop: 12, fontFamily: "var(--font-editorial)", fontSize: "clamp(36px,5vw,62px)", lineHeight: 1, textWrap: "balance" }}>Help us teach the next generation of sports decision-makers.</h2>
+            <p style={{ marginTop: 22, maxWidth: 620, fontSize: 18, lineHeight: 1.6, color: "#b9bcc4" }}>BOW instructors guide young people through the economics, finance, leadership, and strategy behind sports. We provide the curriculum and training. You bring preparation, judgment, energy, and the willingness to improve.</p>
+            <div style={{ marginTop: 28, display: "flex", flexWrap: "wrap", gap: 12 }}><Button href="/teach" variant="primary" size="lg">Explore Teaching at BOW</Button><Button href="/join/sports-economics-instructor" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}>View the Opening</Button></div>
+          </div>
+          <div style={{ display: "grid", gap: 1, background: "var(--bow-dark-border)", border: "1px solid var(--bow-dark-border)" }}>
+            {["Clear hiring process", "Training before assignment", "Real work with evidence", "Coaching and growth"].map((item, index) => <div key={item} style={{ background: "var(--bow-dark-surface)", padding: "20px 22px", display: "flex", gap: 16, alignItems: "center" }}><span style={{ fontFamily: "var(--font-data)", color: "var(--bow-blue)" }}>{String(index + 1).padStart(2, "0")}</span><span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 22, textTransform: "uppercase" }}>{item}</span></div>)}
+          </div>
+        </div>
+      </section>
 
       {/* ===== WHAT BOW IS ===== */}
       <section id="howitworks" style={{ background: "var(--bow-paper)", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)", position: "relative", overflow: "clip" }}>

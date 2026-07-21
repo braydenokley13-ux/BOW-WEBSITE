@@ -26,11 +26,13 @@ export const metadata: Metadata = {
     title: "BOW Sports Capital — Read the game. Run the business. Make the decision.",
     description: SITE.description,
     url: SITE.url,
+    images: [{ url: "/bow-social-preview.png", width: 1200, height: 630, alt: "Students making sports-business decisions with a BOW instructor" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "BOW Sports Capital",
     description: SITE.description,
+    images: ["/bow-social-preview.png"],
   },
 };
 

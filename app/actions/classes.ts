@@ -558,6 +558,21 @@ export async function updateClassStatus(id: string, status: string, reason?: str
 
 /* ---------------- instructor assignment ---------------- */
 
+async function missingProtectedAssignmentRequirements(instructorId: string): Promise<string[]> {
+  const rows = await getDb().prepare(
+    `SELECT DISTINCT rd.title
+       FROM instructors i
+       JOIN role_assignments ra ON ra.person_id = i.person_id AND ra.status IN ('activating','active')
+       JOIN requirement_rules rr ON rr.scope_type = 'role' AND rr.scope_id = ra.role_id AND rr.required = true
+       JOIN requirement_definitions rd ON rd.id = rr.requirement_id AND rd.status = 'active'
+       LEFT JOIN person_requirement_evidence pre ON pre.person_id = i.person_id
+        AND pre.requirement_id = rr.requirement_id AND pre.status IN ('satisfied','waived')
+      WHERE i.id = ? AND pre.id IS NULL
+      ORDER BY rd.title`,
+  ).all(instructorId) as { title: string }[];
+  return rows.map((row) => row.title);
+}
+
 export async function assignInstructorToClass(classId: string, instructorId: string, role: string): Promise<ActionResult> {
   const me = await requireStaff();
   if (!ROLES.has(role)) return { ok: false, error: "Invalid role." };
@@ -574,6 +589,10 @@ export async function assignInstructorToClass(classId: string, instructorId: str
   if (!["eligible", "active"].includes(instructor.stage) || instructor.eligibility_status !== "eligible") {
     return { ok: false, error: "Only an active, eligible instructor can be assigned." };
   }
+  const missingRequirements = await missingProtectedAssignmentRequirements(instructorId);
+  if (missingRequirements.length) {
+    return { ok: false, error: `Protected teaching assignment blocked. Missing: ${missingRequirements.join(", ")}.` };
+  }
 
   try {
     (await inImmediateTransaction(async () => {
@@ -589,6 +608,7 @@ export async function assignInstructorToClass(classId: string, instructorId: str
             if (!currentInstructor || !["eligible", "active"].includes(currentInstructor.stage) || currentInstructor.eligibility_status !== "eligible") {
               throw new Error("staffing_frozen");
             }
+            if ((await missingProtectedAssignmentRequirements(instructorId)).length) throw new Error("requirements_missing");
             const existing = (await db
                     .prepare("SELECT id, role FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL")
                     .get(classId, instructorId)) as { id: string; role: string } | undefined;
@@ -656,6 +676,9 @@ export async function assignInstructorToClass(classId: string, instructorId: str
   } catch (error) {
     if (error instanceof Error && error.message === "staffing_frozen") {
       return { ok: false, error: "Staffing changed while this assignment was being recorded. Refresh and try again." };
+    }
+    if (error instanceof Error && error.message === "requirements_missing") {
+      return { ok: false, error: "Eligibility requirements changed while staffing was being recorded. Refresh to see what is missing." };
     }
     throw error;
   }
