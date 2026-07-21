@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { Badge } from "@/components/ds";
-import { listStaffUsers, resolveUserNames } from "@/lib/hiring";
+import { resolveUserNames } from "@/lib/hiring";
 import { getDb } from "@/lib/db";
 import { entityHref } from "@/lib/routes";
 import WorkItemActions from "@/components/app/tasks/WorkItemActions";
 import CreateWorkForm from "@/components/app/tasks/CreateWorkForm";
+import ReviewSubmissionControls from "@/components/app/tasks/ReviewSubmissionControls";
+import WorkGovernanceControls from "@/components/app/tasks/WorkGovernanceControls";
 import { requireStaff } from "@/lib/dal";
 import { addCanonicalDays, canonicalDateInZone, formatCanonicalDate } from "@/lib/timezone";
 
@@ -28,6 +30,11 @@ interface TaskRow {
   completion_note: string | null;
   created_at: number;
   updated_at: number;
+  workflow_state: string;
+  expected_result: string | null;
+  definition_of_done: string | null;
+  evidence_requirement: string | null;
+  review_required: boolean;
 }
 
 interface WorkItem {
@@ -47,6 +54,11 @@ interface WorkItem {
   completedAt: number | null;
   completionNote: string | null;
   createdAt: number;
+  workflowState: string;
+  expectedResult: string | null;
+  definitionOfDone: string | null;
+  evidenceRequirement: string | null;
+  reviewRequired: boolean;
 }
 
 interface RelatedRecordOption {
@@ -72,6 +84,11 @@ function toWorkItem(row: TaskRow): WorkItem {
     completedAt: row.completed_at,
     completionNote: row.completion_note,
     createdAt: row.created_at,
+    workflowState: row.workflow_state || (row.status === "done" ? "approved" : "assigned"),
+    expectedResult: row.expected_result,
+    definitionOfDone: row.definition_of_done,
+    evidenceRequirement: row.evidence_requirement,
+    reviewRequired: Boolean(row.review_required),
   };
 }
 
@@ -96,7 +113,7 @@ function urgencyScore(item: WorkItem, now: number, today: string, dueSoonOn: str
   return (overdue ? 1_000 : 0) + priority + (item.handoffToFounder ? 250 : 0) + (!item.ownerUserId ? 180 : 0) + (dueSoon ? 100 : 0);
 }
 
-const VIEWS = ["mine", "all", "unowned", "overdue"] as const;
+const VIEWS = ["mine", "all", "review", "unowned", "overdue"] as const;
 type WorkView = (typeof VIEWS)[number];
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
@@ -110,12 +127,22 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const done = (
     (await db.prepare("SELECT * FROM tasks WHERE status = 'done' ORDER BY completed_at DESC, updated_at DESC LIMIT 25").all()) as unknown as TaskRow[]
   ).map(toWorkItem);
+  const latestSubmissions = new Map(
+    ((await db.prepare(
+      `SELECT DISTINCT ON (ws.task_id) ws.task_id, ws.id, ws.revision, ws.result_summary, ws.submitted_at, u.name AS submitter_name
+         FROM work_submissions ws JOIN users u ON u.id = ws.submitted_by_user_id
+        ORDER BY ws.task_id, ws.revision DESC`,
+    ).all()) as { task_id: string; id: string; revision: number; result_summary: string; submitted_at: number; submitter_name: string }[])
+      .map((row) => [row.task_id, row] as const),
+  );
   const activeStaffIds = new Set(
     ((await db.prepare("SELECT id FROM users WHERE status = 'active'").all()) as { id: string }[]).map((row) => row.id),
   );
   // node:sqlite rows use a null prototype. Client Component props must cross the
   // React boundary as explicit plain view models rather than raw database rows.
-  const staffUsers = (await listStaffUsers())
+  const staffUsers = ((await db.prepare(
+    "SELECT id, name FROM users WHERE status = 'active' AND role IN ('admin','growth','instructor') ORDER BY name",
+  ).all()) as { id: string; name: string }[])
     .filter((user) => activeStaffIds.has(user.id))
     .map((user) => ({ id: user.id, name: user.name }));
   const ownerNames = (await resolveUserNames([...open, ...done].map((item) => item.ownerUserId)));
@@ -148,6 +175,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const dueSoonCount = open.filter(isDueSoon).length;
   const unassignedCount = open.filter((item) => !item.ownerUserId).length;
   const mineCount = open.filter((item) => item.ownerUserId === me.id).length;
+  const reviewCount = open.filter((item) => item.workflowState === "submitted").length;
 
   const view: WorkView = (VIEWS as readonly string[]).includes(viewParam ?? "")
     ? (viewParam as WorkView)
@@ -156,6 +184,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       : "all";
   const inView = (item: WorkItem): boolean => {
     if (view === "mine") return item.ownerUserId === me.id;
+    if (view === "review") return item.workflowState === "submitted";
     if (view === "unowned") return !item.ownerUserId;
     if (view === "overdue") return isOverdue(item);
     return true;
@@ -163,6 +192,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const viewLabels: Record<WorkView, string> = {
     mine: `My work (${mineCount})`,
     all: `Everything (${open.length})`,
+    review: `Review (${reviewCount})`,
     unowned: `Unowned (${unassignedCount})`,
     overdue: `Overdue (${overdueCount})`,
   };
@@ -180,6 +210,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         const overdue = !completed && isOverdue(item);
         const dueSoon = !completed && isDueSoon(item);
         const priorityStatus = item.priority === "urgent" ? "negative" : item.priority === "high" ? "warning" : "neutral";
+        const submission = latestSubmissions.get(item.id);
         return (
           <article
             key={item.id}
@@ -201,6 +232,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                 {overdue && <Badge status="negative">Overdue</Badge>}
                 {!overdue && dueSoon && <Badge status="warning">Due soon</Badge>}
                 {!completed && !item.ownerUserId && <Badge status="negative">Owner needed</Badge>}
+                {!completed && <Badge status={item.workflowState === "submitted" ? "warning" : "info"}>{displayLabel(item.workflowState)}</Badge>}
                 {completed && <Badge status="positive">Completed</Badge>}
               </div>
 
@@ -208,10 +240,18 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                 {href ? (
                   <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>{item.title}</Link>
                 ) : (
-                  item.title
+                  <Link href={`/app/tasks/${item.id}`} style={{ color: "inherit", textDecoration: "none" }}>{item.title}</Link>
                 )}
               </h3>
               {item.context && <p className="ops-body" style={{ margin: "6px 0 0" }}>{item.context}</p>}
+              {item.expectedResult && <p className="ops-body" style={{ margin: "7px 0 0" }}><strong>Expected result:</strong> {item.expectedResult}</p>}
+              {item.definitionOfDone && <p className="ops-body" style={{ margin: "7px 0 0" }}><strong>Done means:</strong> {item.definitionOfDone}</p>}
+              {submission && !completed && (
+                <div className="ops-alert" data-tone="info" style={{ marginTop: 10 }}>
+                  <p className="ops-alert__title">Submission #{submission.revision} · {submission.submitter_name}</p>
+                  <p className="ops-body" style={{ marginTop: 4 }}>{submission.result_summary}</p>
+                </div>
+              )}
               {item.recommendedAction && !completed && (
                 <p className="ops-body" style={{ margin: "7px 0 0", color: "var(--bow-ink)" }}>
                   <strong>Next:</strong> {item.recommendedAction}
@@ -236,18 +276,24 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                     Related · {displayLabel(item.entityType ?? "record")} →
                   </Link>
                 )}
+                <Link href={`/app/tasks/${item.id}`} className="ops-label" style={{ color: "var(--bow-blue)", textDecoration: "none" }}>
+                  Evidence history →
+                </Link>
               </div>
             </div>
 
             {!completed && (
               <div style={{ flex: "0 0 auto", alignSelf: "center" }}>
+                {item.workflowState === "submitted" && submission && <div style={{ marginBottom: 8 }}><ReviewSubmissionControls submissionId={submission.id} /></div>}
                 <WorkItemActions
                   taskId={item.id}
                   currentOwnerId={item.ownerUserId}
                   staffUsers={staffUsers}
                   founderHandoff={item.handoffToFounder}
                   canManageFounderWork={me.role === "admin"}
+                  reviewRequired={item.reviewRequired}
                 />
+                <WorkGovernanceControls taskId={item.id} currentDueOn={item.dueOn} />
               </div>
             )}
           </article>

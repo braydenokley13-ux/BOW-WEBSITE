@@ -27,11 +27,21 @@ async function recordDeliveryActivity(
   kind: "email_delivered" | "email_delivery_failed",
   body: string,
 ): Promise<void> {
-  (await getDb().prepare(
+  const db = getDb();
+  (await db.prepare(
         `INSERT OR IGNORE INTO crm_activity
       (id, entity_type, entity_id, kind, body, actor_user_id, created_at)
      VALUES (?, 'invitation', ?, ?, ?, ?, ?)`,
       ).run(`pfx-invite-${kind}-${credentialKey}`, invitationId, kind, body, actorUserId, Date.now()));
+  await db.prepare(
+    `UPDATE candidate_communications SET status = ?, failure_detail = ?, sent_at = ?
+      WHERE idempotency_key = ? AND status IN ('queued','failed')`,
+  ).run(
+    kind === "email_delivered" ? "sent" : "failed",
+    kind === "email_delivery_failed" ? body : null,
+    kind === "email_delivered" ? Date.now() : null,
+    `accepted-invitation:${invitationId}`,
+  );
 }
 
 async function notifyDeliveryFailure(

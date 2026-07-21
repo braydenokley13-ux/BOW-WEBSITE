@@ -12,6 +12,7 @@ interface WorkItemActionsProps {
   staffUsers: { id: string; name: string }[];
   founderHandoff: boolean;
   canManageFounderWork: boolean;
+  reviewRequired?: boolean;
 }
 
 /** Named-owner controls for the universal Work queue. */
@@ -21,6 +22,7 @@ export default function WorkItemActions({
   staffUsers,
   founderHandoff,
   canManageFounderWork,
+  reviewRequired = false,
 }: WorkItemActionsProps) {
   const router = useRouter();
   const [modal, setModal] = useState<"complete" | "owner" | "outcome" | null>(null);
@@ -78,9 +80,9 @@ export default function WorkItemActions({
         <Button size="sm" variant="primary" disabled={busy} onClick={() => { setError(null); setModal("outcome"); }}>
           Record outcome
         </Button>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setError(null); setModal("complete"); }}>
+        {!reviewRequired && <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setError(null); setModal("complete"); }}>
           Complete
-        </Button>
+        </Button>}
       </div>
 
       <Modal open={modal === "complete"} onClose={close} title="Complete Work" dismissible={!busy}>

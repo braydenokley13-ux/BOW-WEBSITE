@@ -81,6 +81,7 @@ export const NAV_CATALOG: NavEntry[] = [
     label: "People",
     roles: STAFF,
     items: [
+      link("hiring", "Hiring", "/app/hiring", STAFF),
       link("instructors", "Instructors", "/app/instructors", STAFF),
       link("students", "Students", "/app/students", STAFF),
       link("training", "Training", "/app/training", STAFF),

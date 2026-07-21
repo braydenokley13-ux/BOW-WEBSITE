@@ -1,11 +1,12 @@
 import { Badge, SectionHeader } from "@/components/ds";
 import { requireInstructorSelf } from "@/lib/dal";
 import { getDb } from "@/lib/db";
-import { getInstructorDetail, listTrainingModules, listTrainingSessions, type Task } from "@/lib/hiring";
+import { getInstructorDetail, listTrainingModules, listTrainingSessions } from "@/lib/hiring";
 import TrainingModuleCard from "@/components/app/teach/TrainingModuleCard";
 import RegisterSessionButton from "@/components/app/teach/RegisterSessionButton";
 import AvailabilityEditor from "@/components/app/hiring/AvailabilityEditor";
 import { formatDateTimeInZone } from "@/lib/timezone";
+import SubmitWorkControls from "@/components/app/tasks/SubmitWorkControls";
 
 const STAGE_LABEL: Record<string, string> = {
   accepted: "Accepted",
@@ -50,8 +51,8 @@ export default async function TeachHomePage() {
     ),
   );
 
-  const openTasks = ((await db.prepare("SELECT * FROM tasks WHERE owner_user_id = ? AND status = 'open' ORDER BY due_at").all(user.id)) as any[]).map(
-    (r): Task => ({
+  const openTasks = ((await db.prepare("SELECT * FROM tasks WHERE (owner_user_id = ? OR doer_user_id = ?) AND status = 'open' ORDER BY due_at").all(user.id, user.id)) as any[]).map(
+    (r) => ({
       id: r.id,
       title: r.title,
       kind: r.kind ?? "task",
@@ -66,6 +67,10 @@ export default async function TeachHomePage() {
       completionNote: r.completion_note ?? null,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      workflowState: r.workflow_state ?? "assigned",
+      expectedResult: r.expected_result ?? null,
+      definitionOfDone: r.definition_of_done ?? null,
+      evidenceRequirement: r.evidence_requirement ?? null,
     }),
   );
 
@@ -134,12 +139,16 @@ export default async function TeachHomePage() {
 
       {openTasks.length > 0 && (
         <section style={cardStyle}>
-          <span style={{ ...labelStyle, display: "block", marginBottom: 12 }}>Your open tasks</span>
+          <span style={{ ...labelStyle, display: "block", marginBottom: 12 }}>Your Work</span>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {openTasks.map((t) => (
-              <p key={t.id} style={valueStyle}>
-                {t.title}
-              </p>
+              <article key={t.id} style={{ border: "1px solid var(--border-rule)", padding: 14, borderRadius: 4 }}>
+                <p style={{ ...valueStyle, fontWeight: 700 }}>{t.title}</p>
+                {t.expectedResult && <p style={{ ...valueStyle, marginTop: 6 }}><strong>Expected result:</strong> {t.expectedResult}</p>}
+                {t.definitionOfDone && <p style={{ ...valueStyle, marginTop: 6 }}><strong>Done means:</strong> {t.definitionOfDone}</p>}
+                {t.evidenceRequirement && <p style={{ ...valueStyle, marginTop: 6 }}><strong>Evidence:</strong> {t.evidenceRequirement}</p>}
+                <div style={{ marginTop: 12 }}><SubmitWorkControls taskId={t.id} workflowState={t.workflowState} /></div>
+              </article>
             ))}
           </div>
         </section>

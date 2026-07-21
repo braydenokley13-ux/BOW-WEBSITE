@@ -1318,6 +1318,19 @@ export async function assignInstructorToProgramClass(
   if (instructor.eligibility_status !== "eligible" || !["eligible", "active"].includes(instructor.stage)) {
     return { ok: false, error: "Only an eligible instructor in the BOW network can be assigned." };
   }
+  const missingRequirements = await db.prepare(
+    `SELECT DISTINCT rd.title
+       FROM instructors i
+       JOIN role_assignments ra ON ra.person_id = i.person_id AND ra.status IN ('activating','active')
+       JOIN requirement_rules rr ON rr.scope_type = 'role' AND rr.scope_id = ra.role_id AND rr.required = true
+       JOIN requirement_definitions rd ON rd.id = rr.requirement_id AND rd.status = 'active'
+       LEFT JOIN person_requirement_evidence pre ON pre.person_id = i.person_id
+        AND pre.requirement_id = rr.requirement_id AND pre.status IN ('satisfied','waived')
+      WHERE i.id = ? AND pre.id IS NULL ORDER BY rd.title`,
+  ).all(instructorId) as { title: string }[];
+  if (missingRequirements.length) {
+    return { ok: false, error: `Protected teaching assignment blocked. Missing: ${missingRequirements.map((row) => row.title).join(", ")}.` };
+  }
   if (role !== "lead" && role !== "additional") return { ok: false, error: "Invalid instructor role." };
   const recommendation = (await getClassStaffingRecommendation(programId, classId, instructorId, role));
   if (!recommendation || recommendation.tier === "blocked") {
@@ -1358,6 +1371,17 @@ export async function assignInstructorToProgramClass(
           if (!liveInstructor || liveInstructor.eligibility_status !== "eligible" || !["eligible", "active"].includes(liveInstructor.stage)) {
             throw new Error("staffing_changed");
           }
+          const requirementsMissing = await db.prepare(
+            `SELECT 1 FROM instructors i
+              JOIN role_assignments ra ON ra.person_id = i.person_id AND ra.status IN ('activating','active')
+              JOIN requirement_rules rr ON rr.scope_type = 'role' AND rr.scope_id = ra.role_id AND rr.required = true
+             WHERE i.id = ? AND NOT EXISTS (
+               SELECT 1 FROM person_requirement_evidence pre
+                WHERE pre.person_id = i.person_id AND pre.requirement_id = rr.requirement_id
+                  AND pre.status IN ('satisfied','waived')
+             ) LIMIT 1`,
+          ).get(instructorId);
+          if (requirementsMissing) throw new Error("staffing_changed");
           const liveRecommendation = await getClassStaffingRecommendation(programId, classId, instructorId, role);
           if (!liveRecommendation || liveRecommendation.tier === "blocked") throw new Error("staffing_changed");
           const liveRecommendationFingerprint = classStaffingRecommendationFingerprint({
