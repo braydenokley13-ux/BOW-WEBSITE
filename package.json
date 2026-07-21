@@ -10,6 +10,7 @@
     "ingest": "tsx scripts/nba-ingest.ts",
     "db:migrate:supabase": "tsx scripts/migrate-sqlite-to-supabase.ts",
     "migrate": "tsx scripts/run-migrations.ts",
+    "seed:learn-demo": "tsx scripts/seed-learn-demo.ts",
     "test": "tsx --test tests/learn/*.test.ts"
   },
   "dependencies": {
