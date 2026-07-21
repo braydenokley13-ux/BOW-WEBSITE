@@ -85,6 +85,7 @@ export default function EffectsEditor({ effects, variables, onChange }: EffectsE
               style={fieldStyle}
               type="number"
               placeholder="Scale"
+              title="Multiplier applied to the student's response value. E.g. a $70 price response with scale 180 produces $12,600."
               value={effect.scale ?? 1}
               onChange={(e) => update(i, { scale: Number(e.target.value) })}
             />

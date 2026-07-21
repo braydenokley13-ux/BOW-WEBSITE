@@ -81,6 +81,18 @@ export function useBuilderStore(lessonId: string, initialDoc: LessonDoc, initial
     };
   }, [state.doc, state.dirty, conflict, doSave]);
 
+  // Warn on tab close/navigation away with unsaved edits — autosave is
+  // debounced ~3s, so a fast close/navigate can otherwise lose work silently.
+  useEffect(() => {
+    function handler(e: BeforeUnloadEvent) {
+      if (!state.dirty) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [state.dirty]);
+
   const resolveConflictLoadNewest = useCallback((serverDoc: LessonDoc, serverRevision: number) => {
     dispatch({ type: "REPLACE_DOC", doc: serverDoc, baseRevision: serverRevision });
     setConflict(null);

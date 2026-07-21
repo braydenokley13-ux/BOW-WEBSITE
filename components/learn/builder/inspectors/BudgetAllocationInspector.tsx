@@ -44,7 +44,12 @@ export default function BudgetAllocationInspector({ block, onChange, variables }
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {block.categories.map((cat, i) => (
             <div key={cat.id} style={rowStyle}>
-              <input style={fieldStyle} value={cat.label} onChange={(e) => updateCategory(i, { label: e.target.value })} />
+              <input
+                style={fieldStyle}
+                placeholder="e.g. Social Media Ads"
+                value={cat.label}
+                onChange={(e) => updateCategory(i, { label: e.target.value })}
+              />
               <Button variant="ghost" size="sm" onClick={() => removeCategory(i)}>
                 Remove
               </Button>

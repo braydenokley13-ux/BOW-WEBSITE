@@ -87,6 +87,7 @@ export default function BuilderShell({ lessonId, initialDoc, initialRevision, pu
         saving={store.saving}
         dirty={state.dirty}
         saveError={store.saveError}
+        onSaveNow={() => void store.saveNow()}
         publishedVersion={publishedVersionLocal}
         onPreview={() => setPreviewOpen(true)}
         onPublish={handlePublishClick}
@@ -162,6 +163,7 @@ function BuilderToolbar({
   saving,
   dirty,
   saveError,
+  onSaveNow,
   publishedVersion,
   onPreview,
   onPublish,
@@ -176,6 +178,7 @@ function BuilderToolbar({
   saving: boolean;
   dirty: boolean;
   saveError: string | null;
+  onSaveNow: () => void;
   publishedVersion: number | null;
   onPreview: () => void;
   onPublish: () => void;
@@ -210,6 +213,11 @@ function BuilderToolbar({
       <span style={{ fontSize: 12, color: "var(--bow-muted-text, #767a85)" }}>
         {saveError ? <span style={{ color: "var(--bow-negative, #b3261e)" }}>Save failed: {saveError}</span> : saving ? "Saving…" : dirty ? "Unsaved changes" : "Saved"}
       </span>
+      {dirty && !saving && (
+        <Button variant="ghost" size="sm" onClick={onSaveNow} aria-label="Save now">
+          Save now
+        </Button>
+      )}
       <span style={{ fontSize: 12, color: "var(--bow-muted-text, #767a85)" }}>
         {publishedVersion ? `Published V${publishedVersion}` : "Never published"}
       </span>
