@@ -297,13 +297,13 @@ async function main() {
 
   await sqlLearn`
     INSERT INTO learn_lessons (id, module_id, slug, title, lifecycle, draft_doc, draft_revision, est_minutes, sort, is_template, created_at, updated_at)
-    VALUES (${lessonId}, ${moduleId}, 'rivalry-ticket-pricing', ${parsed.meta.title}, 'active', ${docJson}::jsonb, 1, ${parsed.meta.estMinutes ?? null}, 0, false, ${now}, ${now})
+    VALUES (${lessonId}, ${moduleId}, 'rivalry-ticket-pricing', ${parsed.meta.title}, 'active', ${sqlLearn.json(parsed as never)}, 1, ${parsed.meta.estMinutes ?? null}, 0, false, ${now}, ${now})
     ON CONFLICT (id) DO NOTHING
   `;
 
   await sqlLearn`
     INSERT INTO learn_lesson_versions (id, lesson_id, version, doc, doc_hash, published_at, changelog)
-    VALUES (${versionId}, ${lessonId}, 1, ${docJson}::jsonb, ${docHash}, ${now}, 'Stage 2 demo seed — v1')
+    VALUES (${versionId}, ${lessonId}, 1, ${sqlLearn.json(parsed as never)}, ${docHash}, ${now}, 'Stage 2 demo seed — v1')
     ON CONFLICT (lesson_id, version) DO NOTHING
   `;
 

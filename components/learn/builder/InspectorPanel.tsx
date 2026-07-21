@@ -11,11 +11,12 @@ import type { LessonDoc } from "@/lib/learn/types";
 import InspectorRouter from "./inspectors/InspectorRouter";
 import VariablesPanel from "./VariablesPanel";
 import ScoringPanel from "./ScoringPanel";
+import SkillsPanel from "./SkillsPanel";
 import ResultsPanel from "./ResultsPanel";
 import { fieldStyle, labelStyle } from "./formStyles";
 import type { BuilderAction, Selection } from "./builderReducer";
 
-type Tab = "block" | "variables" | "scoring" | "results";
+type Tab = "block" | "variables" | "scoring" | "skills" | "results";
 
 export interface InspectorPanelProps {
   doc: LessonDoc;
@@ -31,7 +32,7 @@ export default function InspectorPanel({ doc, selection, dispatch }: InspectorPa
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--bow-border, #e4e4e7)", padding: "0 8px" }}>
-        {(["block", "variables", "scoring", "results"] as Tab[]).map((id) => (
+        {(["block", "variables", "scoring", "skills", "results"] as Tab[]).map((id) => (
           <button
             key={id}
             type="button"
@@ -78,6 +79,9 @@ export default function InspectorPanel({ doc, selection, dispatch }: InspectorPa
         )}
         {tab === "scoring" && (
           <ScoringPanel scoring={doc.scoring} onChange={(scoring) => dispatch({ type: "SET_SCORING", scoring })} />
+        )}
+        {tab === "skills" && (
+          <SkillsPanel skills={doc.skills} onChange={(skills) => dispatch({ type: "SET_SKILLS", skills })} />
         )}
         {tab === "results" && (
           <ResultsPanel results={doc.results} onChange={(results) => dispatch({ type: "SET_RESULTS", results })} />

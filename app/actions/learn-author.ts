@@ -128,7 +128,7 @@ export async function createLesson(input: z.infer<typeof LessonInputSchema>): Pr
   const sortRows = await sqlLearn<{ m: number }[]>`SELECT COALESCE(MAX(sort), -1) AS m FROM learn_lessons WHERE module_id = ${parsed.data.moduleId}`;
   await sqlLearn`
     INSERT INTO learn_lessons (id, module_id, slug, title, draft_doc, draft_revision, draft_updated_at, draft_updated_by, sort, created_at, created_by, updated_at)
-    VALUES (${id}, ${parsed.data.moduleId}, ${slugify(parsed.data.title)}, ${parsed.data.title}, ${JSON.stringify(doc)}::jsonb, 1, ${now}, ${user.id}, ${sortRows[0].m + 1}, ${now}, ${user.id}, ${now})
+    VALUES (${id}, ${parsed.data.moduleId}, ${slugify(parsed.data.title)}, ${parsed.data.title}, ${sqlLearn.json(doc as never)}, 1, ${now}, ${user.id}, ${sortRows[0].m + 1}, ${now}, ${user.id}, ${now})
   `;
   revalidatePath("/app/admin/learn");
   return { ok: true, id };
@@ -220,7 +220,7 @@ export async function saveDraft(lessonId: string, doc: LessonDoc, baseRevision: 
   const newRevision = baseRevision + 1;
   const updated = await sqlLearn<{ draft_revision: number }[]>`
     UPDATE learn_lessons
-    SET draft_doc = ${JSON.stringify(parsed.data)}::jsonb, draft_revision = ${newRevision},
+    SET draft_doc = ${sqlLearn.json(parsed.data as never)}, draft_revision = ${newRevision},
         draft_updated_at = ${now}, draft_updated_by = ${user.id}, title = ${parsed.data.meta.title}, updated_at = ${now}
     WHERE id = ${lessonId} AND draft_revision = ${baseRevision}
     RETURNING draft_revision
@@ -272,7 +272,7 @@ export async function publishLesson(lessonId: string, baseRevision: number): Pro
     const version = maxRows[0].m + 1;
     await tx`
       INSERT INTO learn_lesson_versions (id, lesson_id, version, doc, doc_hash, published_at, published_by)
-      VALUES (${versionId}, ${lessonId}, ${version}, ${JSON.stringify(parsed.data)}::jsonb, ${docHash}, ${now}, ${user.id})
+      VALUES (${versionId}, ${lessonId}, ${version}, ${tx.json(parsed.data as never)}, ${docHash}, ${now}, ${user.id})
     `;
     await tx`UPDATE learn_lessons SET published_version_id = ${versionId}, updated_at = ${now} WHERE id = ${lessonId}`;
   });
@@ -301,7 +301,7 @@ export async function duplicateLesson(lessonId: string, opts: { title?: string; 
   const sortRows = await sqlLearn<{ m: number }[]>`SELECT COALESCE(MAX(sort), -1) AS m FROM learn_lessons WHERE module_id = ${moduleId}`;
   await sqlLearn`
     INSERT INTO learn_lessons (id, module_id, slug, title, draft_doc, draft_revision, draft_updated_at, draft_updated_by, sort, created_at, created_by, updated_at)
-    VALUES (${id}, ${moduleId}, ${slugify(title)}, ${title}, ${JSON.stringify(doc)}::jsonb, 1, ${now}, ${user.id}, ${sortRows[0].m + 1}, ${now}, ${user.id}, ${now})
+    VALUES (${id}, ${moduleId}, ${slugify(title)}, ${title}, ${sqlLearn.json(doc as never)}, 1, ${now}, ${user.id}, ${sortRows[0].m + 1}, ${now}, ${user.id}, ${now})
   `;
   revalidatePath("/app/admin/learn");
   return { ok: true, id };
@@ -405,4 +405,26 @@ export async function listBadges(): Promise<ActionResult<{ badges: { id: string;
   await requireAdmin();
   const rows = await sqlLearn<{ id: string; name: string }[]>`SELECT id, name FROM badges ORDER BY name ASC`;
   return { ok: true, badges: rows };
+}
+
+/** Progression attributes (Strategy, Analytics, …), not psychometrics — see
+ * plan §5. No dedicated skills management page exists yet (Stage 7), so the
+ * Scoring/Skills tab of the builder is also the only place to create one. */
+export async function listSkills(): Promise<ActionResult<{ skills: { id: string; label: string }[] }>> {
+  await requireAdmin();
+  const rows = await sqlLearn<{ id: string; label: string }[]>`SELECT id, label FROM learn_skills ORDER BY sort ASC, label ASC`;
+  return { ok: true, skills: rows };
+}
+
+export async function createSkill(label: string): Promise<ActionResult<{ id: string; label: string }>> {
+  await requireAdmin();
+  const trimmed = label.trim();
+  if (!trimmed) return { ok: false, error: "Skill label is required." };
+  const id = `skill-${slugify(trimmed)}`;
+  await sqlLearn`
+    INSERT INTO learn_skills (id, slug, label)
+    VALUES (${id}, ${slugify(trimmed)}, ${trimmed})
+    ON CONFLICT (id) DO NOTHING
+  `;
+  return { ok: true, id, label: trimmed };
 }

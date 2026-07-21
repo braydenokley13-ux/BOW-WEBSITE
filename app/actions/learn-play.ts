@@ -181,9 +181,16 @@ export async function submitResponse(
 
   const now = Date.now();
   const id = `resp-${randomUUID().slice(0, 12)}`;
+  // A block committed without ever touching its input (e.g. locking in a
+  // budget_allocation while every category is still at its displayed-but-
+  // never-set default) can legitimately reach here with `response ===
+  // undefined`. jsonb columns accept JSON `null` but the native postgres.js
+  // client throws UNDEFINED_VALUE on a bare `undefined` parameter — coalesce
+  // once here so no block type has to special-case "untouched" itself.
+  const storedResponse = response === undefined ? null : (response as never);
   await sqlLearn`
     INSERT INTO learn_responses (id, attempt_id, block_id, instance_key, response, outcome, committed_at, answered_at)
-    VALUES (${id}, ${attemptId}, ${blockId}, ${instanceKey}, ${JSON.stringify(response)}::jsonb, ${JSON.stringify(outcome)}::jsonb, ${now}, ${now})
+    VALUES (${id}, ${attemptId}, ${blockId}, ${instanceKey}, ${sqlLearn.json(storedResponse)}, ${sqlLearn.json(outcome as never)}, ${now}, ${now})
     ON CONFLICT (attempt_id, block_id, instance_key) DO NOTHING
   `;
 
@@ -248,7 +255,7 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
     await tx`
       UPDATE learn_attempts
       SET status = 'completed', completed_at = ${now}, score = ${results.score0to100}, stars = ${results.stars},
-          variables = ${JSON.stringify(results.variables)}::jsonb, path = ${JSON.stringify(path)}::jsonb,
+          variables = ${tx.json(results.variables as never)}, path = ${tx.json(path as never)},
           duration_ms = ${now - attempt.started_at}
       WHERE id = ${attemptId}
     `;
