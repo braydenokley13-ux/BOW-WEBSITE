@@ -253,3 +253,20 @@ CREATE TABLE IF NOT EXISTS concept_map (
 INSERT INTO organizations (id, name, type, location, status)
 VALUES ('org-bow', 'BOW Self-Paced', 'BOW', 'Online', 'active')
 ON CONFLICT (id) DO NOTHING;
+
+-- Stage 8 cohort-parity fixtures: an instructor, a cohort they own, and an
+-- enrolled student — needed to exercise learn-release.ts's ownership gate
+-- and learn-play.ts's enrollment_context stamping / learn_assignment_progress
+-- upsert against a fresh local cluster (docs/learn/stage8-cohort-parity.md).
+-- Passwords match the Stage 4 proof convention; not used outside local dev.
+INSERT INTO users (id, name, first, email, role, org_id, created_at)
+VALUES ('user-instr-1', 'Ivy Instructor', 'Ivy', 'instructor@bow.test', 'instructor', 'org-bow', extract(epoch from now())*1000)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO cohorts (id, name, org_id, instructor_id, status)
+VALUES ('cohort-1', 'Test Cohort', 'org-bow', 'user-instr-1', 'active')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO enrollments (user_id, cohort_id, enroll)
+SELECT id, 'cohort-1', 'active' FROM users WHERE email = 'student@bow.test'
+ON CONFLICT (user_id, cohort_id) DO NOTHING;

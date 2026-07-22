@@ -52,6 +52,21 @@ export interface StudentUnlockBasis {
   cohortId: string | null;
 }
 
+/**
+ * A student's active cohort(s) from `enrollments` (legacy dev-bootstrap
+ * schema — see docs/learn/stage0-audit.md §3). A student can in principle be
+ * enrolled in more than one cohort; release-state resolution treats them as
+ * an OR (released in ANY of the student's active cohorts unlocks the node).
+ * Returns the first active cohort id for the single-scope call sites
+ * (buildUnlockBasis.cohortId) and the full list for release resolution.
+ */
+export async function loadActiveCohortIds(userId: string): Promise<string[]> {
+  const rows = await sqlLearn<{ cohort_id: string }[]>`
+    SELECT cohort_id FROM enrollments WHERE user_id = ${userId} AND enroll <> 'inactive'
+  `;
+  return rows.map((r) => r.cohort_id);
+}
+
 /** Node ids the student has completed, keyed by lesson_id -> node_id via the map. */
 async function loadCompletedNodeIds(userId: string, nodes: MapNodeRow[]): Promise<Set<string>> {
   const lessonIds = nodes.filter((n) => n.lesson_id).map((n) => n.lesson_id as string);
@@ -78,16 +93,24 @@ async function loadBadgeIds(userId: string): Promise<Set<string>> {
 /** Build the (mostly) node-independent unlock basis for one student. */
 export async function buildUnlockBasis(userId: string, nodes: MapNodeRow[]): Promise<StudentUnlockBasis> {
   const xp = await getUserXp(userId);
-  const [completedNodes, starsTotal, badges] = await Promise.all([
+  const [completedNodes, starsTotal, badges, cohortIds] = await Promise.all([
     loadCompletedNodeIds(userId, nodes),
     loadStarsTotal(userId),
     loadBadgeIds(userId),
+    loadActiveCohortIds(userId),
   ]);
-  return { completedNodes, starsTotal, level: careerTitleFor(xp).index, badges, cohortId: null };
+  return { completedNodes, starsTotal, level: careerTitleFor(xp).index, badges, cohortId: cohortIds[0] ?? null };
 }
 
-/** Resolve requiresInstructorRelease for the nodes that actually need it (batched). */
-async function loadReleasedNodeIds(nodeIds: string[], scopeId: string | null): Promise<Set<string>> {
+/**
+ * Resolve requiresInstructorRelease for the nodes that actually need it
+ * (batched). `userId` drives the student-scoped override
+ * (`scope_type='student', scope_id=userId`); `cohortIds` drives cohort-wide
+ * releases (`scope_type='cohort', scope_id IN cohortIds`) — a node is
+ * released if EITHER matches (student override always wins over a locked
+ * cohort; a cohort release is not narrowed by the absence of a student row).
+ */
+async function loadReleasedNodeIds(nodeIds: string[], userId: string, cohortIds: string[]): Promise<Set<string>> {
   if (nodeIds.length === 0) return new Set();
   const now = Date.now();
   const rows = await sqlLearn<{ node_id: string }[]>`
@@ -95,8 +118,8 @@ async function loadReleasedNodeIds(nodeIds: string[], scopeId: string | null): P
     WHERE node_id = ANY(${nodeIds})
       AND (opens_at IS NULL OR opens_at <= ${now})
       AND (
-        scope_type = 'student' AND scope_id = ${scopeId ?? "__none__"}
-        ${scopeId ? sqlLearn`OR (scope_type = 'cohort' AND scope_id = ${scopeId})` : sqlLearn``}
+        (scope_type = 'student' AND scope_id = ${userId})
+        OR (scope_type = 'cohort' AND scope_id = ANY(${cohortIds.length ? cohortIds : ["__none__"]}))
       )
   `;
   return new Set(rows.map((r) => r.node_id));
@@ -139,15 +162,11 @@ export async function checkNodeUnlockForLesson(
 
   // A lesson can in principle sit on more than one node; require at least
   // one reachable placement to unlock play.
-  const cohort = await sqlLearn<{ cohort_id: string }[]>`
-    SELECT enrollment_context->>'cohortId' AS cohort_id FROM learn_attempts
-    WHERE user_id = ${userId} LIMIT 1
-  `;
-  const scopeId = cohort[0]?.cohort_id ?? null;
+  const cohortIds = await loadActiveCohortIds(userId);
 
   const basis = await buildUnlockBasis(userId, nodeRows);
   const needsRelease = nodeRows.filter((n) => n.unlock?.requiresInstructorRelease).map((n) => n.id);
-  const releasedNodeIds = await loadReleasedNodeIds(needsRelease, scopeId);
+  const releasedNodeIds = await loadReleasedNodeIds(needsRelease, userId, cohortIds);
 
   let lastReason = "This lesson isn't unlocked yet.";
   for (const node of nodeRows) {
@@ -222,7 +241,8 @@ export async function loadStudentHome(userId: string, firstName: string): Promis
 
   const basis = await buildUnlockBasis(userId, nodeRows);
   const needsRelease = nodeRows.filter((n) => n.unlock?.requiresInstructorRelease).map((n) => n.id);
-  const releasedNodeIds = await loadReleasedNodeIds(needsRelease, null);
+  const cohortIds = await loadActiveCohortIds(userId);
+  const releasedNodeIds = await loadReleasedNodeIds(needsRelease, userId, cohortIds);
   const unlockResults = evaluateAllNodes(nodeRows, basis, releasedNodeIds);
 
   const lessonIds = nodeRows.filter((n) => n.lesson_id).map((n) => n.lesson_id as string);

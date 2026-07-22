@@ -19,7 +19,7 @@ import { computeResults, gradeBlock, type CommittedResponse } from "@/lib/learn/
 import type { LessonDoc } from "@/lib/learn/types";
 import { recordDailyVisit } from "@/lib/streak";
 import { checkAndAwardBadges } from "@/lib/badges";
-import { checkNodeUnlockForLesson } from "@/lib/learn/home";
+import { checkNodeUnlockForLesson, loadActiveCohortIds } from "@/lib/learn/home";
 import type { ResponseEntry } from "@/components/learn/player/playerState";
 
 /* ---------------- shared helpers ---------------- */
@@ -46,6 +46,7 @@ interface AttemptRow {
   xp_awarded: number | null;
   variables: Record<string, number>;
   path: string[];
+  enrollment_context: { cohortId: string } | null;
 }
 
 async function loadVersionDoc(versionId: string): Promise<LessonDoc> {
@@ -95,7 +96,7 @@ export async function startAttempt(lessonId: string, mode: "play" | "test" = "pl
   // Resume an existing in_progress attempt on the SAME published version.
   const existing = await sqlLearn<AttemptRow[]>`
     SELECT id, user_id, lesson_id, version_id, mode, status, started_at, completed_at,
-           score, stars, xp_awarded, variables, path
+           score, stars, xp_awarded, variables, path, enrollment_context
     FROM learn_attempts
     WHERE user_id = ${user.id} AND lesson_id = ${lessonId} AND version_id = ${lesson.published_version_id}
       AND mode = ${mode} AND status = 'in_progress'
@@ -106,13 +107,28 @@ export async function startAttempt(lessonId: string, mode: "play" | "test" = "pl
   if (!attempt) {
     const id = `atmpt-${randomUUID().slice(0, 12)}`;
     const now = Date.now();
+    // Stamp the student's active cohort as enrollment_context so
+    // completeAttempt can upsert learn_assignment_progress for the same
+    // scope the CareerMap/instructor console read (docs plan §1). A student
+    // in multiple cohorts is stamped with the first active one; this
+    // mirrors buildUnlockBasis's single-cohort simplification.
+    const cohortIds = mode === "play" ? await loadActiveCohortIds(user.id) : [];
+    const enrollmentContext = cohortIds[0] ? { cohortId: cohortIds[0] } : null;
     const inserted = await sqlLearn<AttemptRow[]>`
-      INSERT INTO learn_attempts (id, user_id, lesson_id, version_id, mode, status, started_at, variables, path)
-      VALUES (${id}, ${user.id}, ${lessonId}, ${lesson.published_version_id}, ${mode}, 'in_progress', ${now}, '{}'::jsonb, '[]'::jsonb)
+      INSERT INTO learn_attempts (id, user_id, lesson_id, version_id, mode, status, started_at, variables, path, enrollment_context)
+      VALUES (${id}, ${user.id}, ${lessonId}, ${lesson.published_version_id}, ${mode}, 'in_progress', ${now}, '{}'::jsonb, '[]'::jsonb, ${enrollmentContext ? sqlLearn.json(enrollmentContext as never) : null})
       RETURNING id, user_id, lesson_id, version_id, mode, status, started_at, completed_at,
-                score, stars, xp_awarded, variables, path
+                score, stars, xp_awarded, variables, path, enrollment_context
     `;
     attempt = inserted[0];
+
+    if (mode === "play" && enrollmentContext) {
+      await sqlLearn`
+        INSERT INTO learn_assignment_progress (user_id, context_type, context_id, lesson_id, status)
+        VALUES (${user.id}, 'cohort', ${enrollmentContext.cohortId}, ${lessonId}, 'in_progress')
+        ON CONFLICT (user_id, context_type, context_id, lesson_id) DO NOTHING
+      `;
+    }
   }
 
   // Reconstruct resume state from persisted responses, if any.
@@ -161,7 +177,7 @@ export async function submitResponse(
 
   const attemptRows = await sqlLearn<AttemptRow[]>`
     SELECT id, user_id, lesson_id, version_id, mode, status, started_at, completed_at,
-           score, stars, xp_awarded, variables, path
+           score, stars, xp_awarded, variables, path, enrollment_context
     FROM learn_attempts WHERE id = ${attemptId}
   `;
   const attempt = attemptRows[0];
@@ -228,7 +244,7 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
     result = await withTransaction(async (tx) => {
     const rows = await tx<AttemptRow[]>`
       SELECT id, user_id, lesson_id, version_id, mode, status, started_at, completed_at,
-             score, stars, xp_awarded, variables, path
+             score, stars, xp_awarded, variables, path, enrollment_context
       FROM learn_attempts WHERE id = ${attemptId} FOR UPDATE
     `;
     const attempt = rows[0];
@@ -259,6 +275,24 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
     `;
     const committed: CommittedResponse[] = committedRows.map((r) => ({ blockId: r.block_id, response: r.response }));
     const path = committedRows.map((r) => r.block_id);
+
+    // Server-side gating (Stage 8 parity item 5): media completion
+    // thresholds and reflection min_words are enforced HERE, not just in the
+    // player UI — a client that skipped/bypassed the gate cannot force a
+    // completion. Any committed media/long_text response whose own grading
+    // outcome is `correct: false` blocks completeAttempt outright. This
+    // mirrors the legacy runner's podcast >=80% / reflection >=75-word gates
+    // (docs/learn/stage0-audit.md).
+    for (const cr of committed) {
+      const block = findBlock(doc, cr.blockId);
+      if (!block || (block.type !== "media" && block.type !== "long_text")) continue;
+      const outcome = gradeBlock(block, cr.response);
+      if (outcome.correct === false) {
+        const label = block.type === "media" ? "A media block hasn't met its completion requirement yet" : "A reflection response is too short";
+        throw new Error(`${label} — this lesson can't be completed yet.`);
+      }
+    }
+
     const results = computeResults(doc, committed, path);
     const now = Date.now();
 
@@ -364,6 +398,25 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
             updated_at = ${now}
         `;
       }
+    }
+
+    // ---- enrollment-aware assignment progress (Stage 8 parity item 2) ----
+    // Upserts learn_assignment_progress for the cohort stamped on this
+    // attempt at startAttempt time, so instructor rosters and cohort pacing
+    // read completion scoped to that cohort rather than only lifetime
+    // mastery. A student with no active cohort (self-paced/no enrollment)
+    // has no context to stamp — nothing to upsert, mastery already covers
+    // the lifetime record.
+    const cohortId = attempt.enrollment_context?.cohortId;
+    if (cohortId) {
+      await tx`
+        INSERT INTO learn_assignment_progress (user_id, context_type, context_id, lesson_id, status, completed_attempt_id, completed_at)
+        VALUES (${user.id}, 'cohort', ${cohortId}, ${attempt.lesson_id}, 'completed', ${attemptId}, ${now})
+        ON CONFLICT (user_id, context_type, context_id, lesson_id) DO UPDATE SET
+          status = 'completed',
+          completed_attempt_id = EXCLUDED.completed_attempt_id,
+          completed_at = EXCLUDED.completed_at
+      `;
     }
 
     return {
