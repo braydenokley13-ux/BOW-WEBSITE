@@ -264,6 +264,257 @@ const doc: LessonDoc = {
   },
 };
 
+/* ============================================================
+ * Stage 6 demo lesson — "Draft Night Analytics" — exercises every block
+ * added/completed in the interaction expansion: multi_select, true_false,
+ * numeric, short_response, long_text (manual_review), strategy_choice,
+ * rank, categorize, drag_drop, match, tradeoff_matrix, forecast, table,
+ * chart, timeline. Composed from existing primitives per the plan's "data
+ * interactions" note — no bespoke engine:
+ *   - "interpret graph" -> chart block followed by a numeric/mc question
+ *     referencing the same data.
+ *   - "identify trend" -> chart + true_false about the trend direction.
+ *   - "adjust variables" -> slider bound to a variable, feeding a stat/
+ *     chart shown afterward.
+ *   - "compare scenarios" -> tradeoff_matrix (reference table + choice).
+ * ============================================================ */
+const stage6Doc: LessonDoc = {
+  schemaVersion: 1,
+  meta: {
+    title: "Draft Night Analytics",
+    description: "Stage 6 interaction-expansion demo: every new block type in one lesson.",
+    estMinutes: 12,
+  },
+  variables: [{ key: "cap_space", label: "Cap Space", initial: 20, min: 0, unit: "currency", visible: true }],
+  skills: [],
+  phases: [
+    {
+      id: "s6-briefing",
+      kind: "Briefing",
+      title: "Draft Night",
+      blocks: [
+        { id: "s6-heading", type: "heading", text: "Draft Night Analytics", level: 2 },
+        {
+          id: "s6-chart",
+          type: "chart",
+          chartKind: "bar",
+          title: "Ticket revenue by quarter ($M)",
+          unit: "currency",
+          series: [
+            { label: "Q1", value: 4 },
+            { label: "Q2", value: 6 },
+            { label: "Q3", value: 5 },
+            { label: "Q4", value: 9 },
+          ],
+        },
+        {
+          id: "s6-trend-tf",
+          type: "true_false",
+          prompt: "True or false: revenue trended upward across the season.",
+          correctAnswer: true,
+          grading: "correct",
+          points: 2,
+        },
+        {
+          id: "s6-table",
+          type: "table",
+          caption: "Roster cap hits",
+          columns: [{ key: "player", label: "Player" }, { key: "cap", label: "Cap Hit ($M)" }],
+          rows: [{ player: "Vet Starter", cap: 8 }, { player: "Rookie", cap: 1 }],
+        },
+        {
+          id: "s6-timeline",
+          type: "timeline",
+          events: [
+            { label: "Free agency opens", when: "Day 1" },
+            { label: "Draft", when: "Day 3", description: "First round picks locked in." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "s6-learn",
+      kind: "Learn",
+      title: "Know the Numbers",
+      blocks: [
+        {
+          id: "s6-multi",
+          type: "multi_select",
+          prompt: "Which of these increase cap space? (select all that apply)",
+          options: [
+            { id: "a", label: "Restructuring a veteran contract" },
+            { id: "b", label: "Signing a max free agent" },
+            { id: "c", label: "Releasing an underperforming veteran" },
+          ],
+          correctOptionIds: ["a", "c"],
+          grading: "correct",
+          points: 2,
+        },
+        {
+          id: "s6-numeric",
+          type: "numeric",
+          prompt: "If cap space is $20M and you restructure a $6M deal for $2M in savings, what's the new cap space?",
+          correctValue: 22,
+          tolerance: 0,
+          unit: "$M",
+          grading: "correct",
+          points: 2,
+        },
+        {
+          id: "s6-short",
+          type: "short_response",
+          prompt: "What's the term for a contract designed to lower current-year cap hit?",
+          acceptedAnswers: ["restructure", "restructuring"],
+          caseSensitive: false,
+          grading: "correct",
+          points: 1,
+        },
+      ],
+    },
+    {
+      id: "s6-decision",
+      kind: "Decision",
+      title: "Make the Calls",
+      blocks: [
+        {
+          id: "s6-rank",
+          type: "rank",
+          prompt: "Rank these draft needs from most to least urgent.",
+          items: [
+            { id: "line", label: "Offensive line" },
+            { id: "corner", label: "Cornerback depth" },
+            { id: "kicker", label: "Backup kicker" },
+          ],
+          correctOrder: ["line", "corner", "kicker"],
+          grading: "weighted",
+          effects: [],
+          bands: [],
+          points: 3,
+        },
+        {
+          id: "s6-categorize",
+          type: "categorize",
+          prompt: "Sort each move into Cap-Positive or Cap-Negative.",
+          categories: [{ id: "positive", label: "Cap-Positive" }, { id: "negative", label: "Cap-Negative" }],
+          items: [
+            { id: "release", label: "Release a veteran", correctCategoryId: "positive" },
+            { id: "extend", label: "Extend a star early", correctCategoryId: "negative" },
+          ],
+          grading: "weighted",
+          effects: [],
+          bands: [],
+          points: 2,
+        },
+        {
+          id: "s6-dragdrop",
+          type: "drag_drop",
+          prompt: "Place each position group into its unit.",
+          categories: [{ id: "offense", label: "Offense" }, { id: "defense", label: "Defense" }],
+          items: [
+            { id: "qb", label: "Quarterback", correctCategoryId: "offense" },
+            { id: "de", label: "Defensive End", correctCategoryId: "defense" },
+          ],
+          grading: "weighted",
+          effects: [],
+          bands: [],
+          points: 2,
+        },
+        {
+          id: "s6-match",
+          type: "match",
+          prompt: "Match each term to its definition.",
+          pairs: [
+            { id: "p1", left: "Dead cap", right: "Cap hit from a player no longer on the roster" },
+            { id: "p2", left: "Void year", right: "A contract year added only to spread cap hit" },
+          ],
+          grading: "weighted",
+          effects: [],
+          bands: [],
+          points: 2,
+        },
+        {
+          id: "s6-slider",
+          type: "slider",
+          prompt: "How much cap space do you commit to free agency this offseason?",
+          min: 0,
+          max: 20,
+          step: 1,
+          unit: "currency",
+          grading: "variable_effects",
+          effects: [{ variable: "cap_space", verb: "from_response", scale: -1 }],
+          bands: [],
+          points: 0,
+        },
+        {
+          id: "s6-forecast",
+          type: "forecast",
+          prompt: "Predict next season's home attendance average (thousands).",
+          unit: "number",
+          correctValue: 62,
+          tolerance: 5,
+          grading: "weighted",
+          effects: [],
+          bands: [],
+          points: 3,
+        },
+        {
+          id: "s6-tradeoff",
+          type: "tradeoff_matrix",
+          prompt: "Compare two free-agent targets and choose one.",
+          criteria: [{ id: "cost", label: "Cost ($M)" }, { id: "impact", label: "Projected Win Impact" }],
+          options: [
+            { id: "targetA", label: "Veteran All-Pro", values: { cost: 18, impact: 9 }, effects: [], points: 3 },
+            { id: "targetB", label: "Rising Second-Contract Player", values: { cost: 9, impact: 6 }, effects: [], points: 2 },
+          ],
+          grading: "weighted",
+          effects: [],
+          bands: [],
+          points: 3,
+        },
+        {
+          id: "s6-strategy",
+          type: "strategy_choice",
+          prompt: "How do you approach the remaining cap space?",
+          options: [
+            { id: "spend", label: "Spend it all in free agency", effects: [{ variable: "cap_space", verb: "set_to", amount: 0 }], points: 2 },
+            { id: "hold", label: "Hold cap space for in-season moves", effects: [], points: 3 },
+          ],
+          grading: "weighted",
+          effects: [],
+          bands: [],
+          points: 3,
+        },
+      ],
+    },
+    {
+      id: "s6-followup",
+      kind: "FollowUp",
+      title: "Reflect",
+      blocks: [
+        {
+          id: "s6-reflection",
+          type: "long_text",
+          prompt: "Which decision tonight do you feel least confident about, and why?",
+          placeholder: "Type your reflection...",
+          reflection: { mode: "manual_review" },
+        },
+      ],
+    },
+  ],
+  scoring: {
+    mode: "points",
+    starThresholds: [50, 70, 90],
+    xp: { base: 100, perStar: 20, firstCompletionBonus: 50 },
+    replayPolicy: { improvedXpPct: 0.25, noImprovementXpFloor: 0 },
+    badges: [],
+  },
+  results: {
+    showVariables: true,
+    showSkillDeltas: true,
+    celebrationCopy: "Draft night is in the books.",
+  },
+};
+
 async function main() {
   // Validate before touching the DB — correct by construction.
   const parsed = LessonDocSchema.parse(doc);
@@ -321,6 +572,40 @@ async function main() {
   `;
 
   console.log(`[seed-learn-demo] Seeded lesson "${lessonId}" as published v1 (${versionId}).`);
+
+  // ---- Stage 6 second seed lesson ----
+  const parsed6 = LessonDocSchema.parse(stage6Doc);
+  const validation6 = validateLessonDoc(parsed6);
+  if (validation6.errors.length > 0) {
+    throw new Error(`[seed-learn-demo] Stage 6 LessonDoc failed validation:\n${validation6.errors.join("\n")}`);
+  }
+  if (validation6.warnings.length > 0) {
+    console.warn(`[seed-learn-demo] Stage 6 validation warnings:\n${validation6.warnings.join("\n")}`);
+  }
+
+  const lessonId6 = "lesson-draft-night-analytics";
+  const versionId6 = `lv-${randomUUID().slice(0, 12)}`;
+  const docJson6 = JSON.stringify(parsed6);
+  const docHash6 = createHash("sha256").update(docJson6).digest("hex");
+
+  await sqlLearn`
+    INSERT INTO learn_lessons (id, module_id, slug, title, lifecycle, draft_doc, draft_revision, est_minutes, sort, is_template, created_at, updated_at)
+    VALUES (${lessonId6}, ${moduleId}, 'draft-night-analytics', ${parsed6.meta.title}, 'active', ${sqlLearn.json(parsed6 as never)}, 1, ${parsed6.meta.estMinutes ?? null}, 1, false, ${now}, ${now})
+    ON CONFLICT (id) DO NOTHING
+  `;
+
+  await sqlLearn`
+    INSERT INTO learn_lesson_versions (id, lesson_id, version, doc, doc_hash, published_at, changelog)
+    VALUES (${versionId6}, ${lessonId6}, 1, ${sqlLearn.json(parsed6 as never)}, ${docHash6}, ${now}, 'Stage 6 interaction-expansion demo seed — v1')
+    ON CONFLICT (lesson_id, version) DO NOTHING
+  `;
+
+  await sqlLearn`
+    UPDATE learn_lessons SET published_version_id = ${versionId6}
+    WHERE id = ${lessonId6} AND published_version_id IS NULL
+  `;
+
+  console.log(`[seed-learn-demo] Seeded lesson "${lessonId6}" as published v1 (${versionId6}).`);
   process.exit(0);
 }
 
