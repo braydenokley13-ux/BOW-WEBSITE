@@ -23,7 +23,13 @@ import type {
 
 export type QueryRow = Record<string, unknown>;
 export type RunResult = { changes: number; lastInsertRowid: number | bigint };
-type TransactionContext = { client: Sql; release: () => void; done?: boolean };
+type TransactionContext = {
+  client: Sql | null;
+  ready: Promise<Sql>;
+  release: (() => void) | null;
+  unlock: (() => void) | null;
+  done: boolean;
+};
 const transactionContext = new AsyncLocalStorage<TransactionContext | undefined>();
 
 function connectionUrl(): string {
@@ -113,7 +119,19 @@ export class PostgresStatement {
 }
 
 export class PostgresDatabase {
+  private queryQueue = Promise.resolve();
+
   constructor(private readonly client: Sql) {}
+
+  private async acquireQueryLock(): Promise<() => void> {
+    const previous = this.queryQueue;
+    let unlock!: () => void;
+    this.queryQueue = new Promise<void>((resolve) => {
+      unlock = resolve;
+    });
+    await previous;
+    return unlock;
+  }
 
   prepare(source: string): PostgresStatement {
     return new PostgresStatement(this, source);
@@ -121,34 +139,71 @@ export class PostgresDatabase {
 
   async query(source: string, parameters: unknown[] = []) {
     const active = transactionContext.getStore();
-    const client = active && !active.done ? active.client : this.client;
-    return client.unsafe(source, parameters as never[]);
+    if (active && !active.done) {
+      const client = active.client ?? (await active.ready);
+      return client.unsafe(source, parameters as never[]);
+    }
+
+    // Supabase's transaction pooler is most reliable when a single app
+    // socket receives one query at a time. Queue here instead of letting the
+    // driver accumulate overlapping promises that can strand a response.
+    const unlock = await this.acquireQueryLock();
+    try {
+      return await this.client.unsafe(source, parameters as never[]);
+    } finally {
+      unlock();
+    }
   }
 
   async exec(source: string): Promise<void> {
     const command = toPostgresSql(source);
     const active = transactionContext.getStore();
     if (/^BEGIN$/i.test(command) && (!active || active.done)) {
-      const reserved = await this.client.reserve();
-      try {
-        await reserved.unsafe("BEGIN");
-        transactionContext.enterWith({ client: reserved, release: () => reserved.release() });
-      } catch (error) {
-        reserved.release();
-        throw error;
-      }
+      const context: TransactionContext = {
+        client: null,
+        release: null,
+        unlock: null,
+        done: false,
+        ready: Promise.resolve(null as unknown as Sql),
+      };
+
+      // Enter the context synchronously, before the first await. Async-local
+      // changes made after awaiting reserve() stay inside this method and are
+      // invisible to the action that called `await db.exec("BEGIN")`. That
+      // made its later COMMIT miss the reserved client and permanently leaked
+      // one pool connection per action.
+      transactionContext.enterWith(context);
+      context.ready = (async () => {
+        try {
+          context.unlock = await this.acquireQueryLock();
+          const reserved = await this.client.reserve();
+          context.client = reserved;
+          context.release = () => reserved.release();
+          await reserved.unsafe("BEGIN");
+          return reserved;
+        } catch (error) {
+          context.done = true;
+          context.release?.();
+          context.unlock?.();
+          throw error;
+        }
+      })();
+
+      await context.ready;
       return;
     }
     if (/^(COMMIT|ROLLBACK)$/i.test(command) && active && !active.done) {
+      const client = active.client ?? (await active.ready);
       try {
-        await active.client.unsafe(command);
+        await client.unsafe(command);
       } finally {
         // Mark the shared context object finished BEFORE releasing: enterWith()
         // inside this frame does not reliably propagate back to the caller's
         // async context, so a caller issuing further queries could otherwise
         // still route to the released connection and hang forever.
         active.done = true;
-        active.release();
+        active.release?.();
+        active.unlock?.();
         transactionContext.enterWith(undefined);
       }
       return;
@@ -169,7 +224,10 @@ export function getDb(): PostgresDatabase {
   if (!globalForDb.__bowPostgres) {
     const client = postgres(connectionUrl(), {
       prepare: false,
-      max: 5,
+      // Supavisor already multiplexes connections. One ordered local socket
+      // avoids response stalls when concurrent Server Components initialize
+      // several pooler connections at the same time.
+      max: 1,
       idle_timeout: 20,
       connect_timeout: 15,
     });
@@ -306,19 +364,22 @@ export function rowToTask(r: any): import("@/lib/hiring").Task {
 /** Read the full LMS dataset from Supabase as a typed snapshot. */
 export async function readAppData(): Promise<AppData> {
   const db = getDb();
-  const [attendanceRows, progressRows, cohortRows, enrollmentRows, noteRows, deletionRows, users, organizations, invitations, inquiries, activity] = await Promise.all([
-    db.prepare("SELECT * FROM attendance").all(),
-    db.prepare("SELECT * FROM lesson_progress").all(),
-    db.prepare("SELECT * FROM cohorts").all(),
-    db.prepare("SELECT * FROM enrollments").all(),
-    db.prepare("SELECT n.*, u.name AS author_name FROM session_notes n LEFT JOIN users u ON u.id = n.author_id ORDER BY n.created_ts DESC").all(),
-    db.prepare("SELECT id FROM users WHERE deletion_requested = 1").all(),
-    db.prepare("SELECT * FROM users").all(),
-    db.prepare("SELECT * FROM organizations").all(),
-    db.prepare("SELECT * FROM invitations ORDER BY created DESC").all(),
-    db.prepare("SELECT * FROM inquiries").all(),
-    db.prepare("SELECT * FROM activity").all(),
-  ]);
+  // These tables are small. Reading them in order prevents the app shell from
+  // opening eleven queries while a route starts its own work, which can flood
+  // the five-connection Supabase pool during the post-sign-in render.
+  const attendanceRows = await db.prepare("SELECT * FROM attendance").all();
+  const progressRows = await db.prepare("SELECT * FROM lesson_progress").all();
+  const cohortRows = await db.prepare("SELECT * FROM cohorts").all();
+  const enrollmentRows = await db.prepare("SELECT * FROM enrollments").all();
+  const noteRows = await db.prepare(
+    "SELECT n.*, u.name AS author_name FROM session_notes n LEFT JOIN users u ON u.id = n.author_id ORDER BY n.created_ts DESC",
+  ).all();
+  const deletionRows = await db.prepare("SELECT id FROM users WHERE deletion_requested = 1").all();
+  const users = await db.prepare("SELECT * FROM users").all();
+  const organizations = await db.prepare("SELECT * FROM organizations").all();
+  const invitations = await db.prepare("SELECT * FROM invitations ORDER BY created DESC").all();
+  const inquiries = await db.prepare("SELECT * FROM inquiries").all();
+  const activity = await db.prepare("SELECT * FROM activity").all();
   const attendance: Record<string, Record<string, string>> = {};
   for (const a of attendanceRows as any[]) (attendance[a.cohort_id] ??= {})[a.user_id] = a.state;
   const progress: Record<string, Record<string, LessonProgressDetail>> = {};

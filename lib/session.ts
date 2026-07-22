@@ -12,9 +12,10 @@
 import { cookies } from "next/headers";
 import { createHash, randomBytes } from "node:crypto";
 import { getDb, rowToUser } from "@/lib/db";
+import { SESSION_COOKIE } from "@/lib/session-cookie";
 import type { User } from "@/lib/account";
 
-export const SESSION_COOKIE = "bow_session";
+export { SESSION_COOKIE } from "@/lib/session-cookie";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // one week
 
 const digestSessionToken = (token: string): string => createHash("sha256").update(token).digest("hex");

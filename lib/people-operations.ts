@@ -146,6 +146,26 @@ export async function getPeopleOperationsData(input: {
   const now = input.now ?? Date.now();
   const weekStart = currentWeekStart(now);
   const today = canonicalDateInZone(now);
+  const schemaState = (await db.prepare(
+    `SELECT
+       to_regclass('public.people_weekly_cycles') IS NOT NULL
+       AND to_regclass('public.people_weekly_cycle_tasks') IS NOT NULL
+       AND to_regclass('public.people_accountability_events') IS NOT NULL
+       AND to_regclass('public.role_activation_requirements') IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'role_assignments'
+            AND column_name = 'availability_status'
+       ) AS ready`,
+  ).get()) as { ready: boolean } | undefined;
+
+  // A deployment can briefly precede migration 008. Keep the founder home and
+  // shared app shell usable while that additive migration is pending; the
+  // People workspace will populate automatically once the schema is present.
+  if (!schemaState?.ready) {
+    return { currentWeekStart: weekStart, people: [], outcomes: [], tasks: [] };
+  }
+
   const peopleRows = (await db.prepare(
     `SELECT p.id AS person_id, p.user_id, p.name, p.email,
             ra.id AS role_assignment_id, ra.status AS assignment_status,

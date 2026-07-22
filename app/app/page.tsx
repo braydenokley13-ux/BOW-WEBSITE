@@ -88,11 +88,13 @@ export default async function AppHome() {
 
   const db = getDb();
   const now = Number(((await db.prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
-  const data = (await getLeadershipHomeData());
-  const programs = (await listPrograms());
-  const growth = (await getGrowthLeadershipSnapshot(now));
-  const growthActions = (await getGrowthActions(now, 3));
-  const peopleOperations = await getPeopleOperationsData({ userId: me.id, role: me.role, now });
+  const [data, programs, growth, growthActions, peopleOperations] = await Promise.all([
+    getLeadershipHomeData(),
+    listPrograms(),
+    getGrowthLeadershipSnapshot(now),
+    getGrowthActions(now, 3),
+    getPeopleOperationsData({ userId: me.id, role: me.role, now }),
+  ]);
   const personNameStatement = db.prepare("SELECT name FROM people WHERE id = ?");
   const userNameStatement = db.prepare("SELECT name FROM users WHERE id = ?");
   const classContextStatement = db.prepare(

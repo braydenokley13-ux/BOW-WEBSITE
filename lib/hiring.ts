@@ -753,24 +753,31 @@ export async function getLeadershipHomeData() {
             .all()) as any[]
   ).map(rowToClass);
 
-  const activeClasses = ((await db.prepare("SELECT * FROM classes WHERE status NOT IN ('completed','cancelled')").all()) as any[]).map(rowToClass);
-  const classesLaunchingSoonIncomplete: Class[] = activeClasses.filter(async (cls) => {
-    const enrollmentCount = (
-      (await db.prepare(
-                `SELECT COUNT(*) AS n
-           FROM class_enrollments ce
-           JOIN students s ON s.id = ce.student_id
-          WHERE ce.class_id = ? AND ce.status = 'enrolled' AND s.enrollment_status = 'active'`,
-              ).get(cls.id)) as { n: number }
-    ).n;
-    const hasEligibleLead = !!(
-      cls.leadInstructorId &&
-      ((await db
-                .prepare("SELECT 1 FROM instructors WHERE id = ? AND eligibility_status = 'eligible' AND stage IN ('eligible','active')")
-                .get(cls.leadInstructorId)) as { 1: number } | undefined)
-    );
-    return classStatusFlags(cls, hasEligibleLead, enrollmentCount).launchingSoonIncomplete;
-  });
+  const [activeClassRows, enrollmentCountRows, eligibleLeadRows] = await Promise.all([
+    db.prepare("SELECT * FROM classes WHERE status NOT IN ('completed','cancelled')").all(),
+    db.prepare(
+      `SELECT ce.class_id, COUNT(*) AS n
+         FROM class_enrollments ce
+         JOIN students s ON s.id = ce.student_id
+        WHERE ce.status = 'enrolled' AND s.enrollment_status = 'active'
+        GROUP BY ce.class_id`,
+    ).all(),
+    db.prepare(
+      "SELECT id FROM instructors WHERE eligibility_status = 'eligible' AND stage IN ('eligible','active')",
+    ).all(),
+  ]);
+  const activeClasses = (activeClassRows as any[]).map(rowToClass);
+  const enrollmentCounts = new Map(
+    (enrollmentCountRows as { class_id: string; n: number }[]).map((row) => [row.class_id, Number(row.n)]),
+  );
+  const eligibleLeadIds = new Set((eligibleLeadRows as { id: string }[]).map((row) => row.id));
+  const classesLaunchingSoonIncomplete: Class[] = activeClasses.filter((cls) =>
+    classStatusFlags(
+      cls,
+      Boolean(cls.leadInstructorId && eligibleLeadIds.has(cls.leadInstructorId)),
+      enrollmentCounts.get(cls.id) ?? 0,
+    ).launchingSoonIncomplete,
+  );
 
   const missingStudentForms = (
     (await db.prepare("SELECT * FROM students WHERE enrollment_status = 'active' AND form_status != 'complete' ORDER BY updated_at").all()) as any[]
