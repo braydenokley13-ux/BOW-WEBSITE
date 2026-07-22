@@ -4,10 +4,9 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { randomBytes, randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
-import { DUMMY_PASSWORD_HASH, hashPassword, isPublicDemoPassword, verifyPassword } from "@/lib/password";
+import { hashPassword, isPublicDemoPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession } from "@/lib/session";
 import { getCurrentUser } from "@/lib/dal";
-import { isEnrolledSelfPaced } from "@/lib/self-paced";
 import { roleHomePath, SELF_PACED_COHORT_ID, SELF_PACED_ORG_ID, type Role } from "@/lib/account";
 import { hashOpaqueToken } from "@/lib/security-tokens";
 import { clearRateLimit, clientAddressBucket, consumeRateLimit } from "@/lib/rate-limit";
@@ -20,76 +19,6 @@ import {
 
 export interface AuthState {
   error?: string;
-}
-
-/* ---------------- Sign in ---------------- */
-
-export async function signIn(_prev: AuthState, formData: FormData): Promise<AuthState> {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "");
-
-  if (!email || !password) {
-    return { error: "Enter your email and password." };
-  }
-  if (password.length > 256) return { error: "That email and password don't match an account." };
-
-  const address = await clientAddressBucket();
-  if (address) {
-    const networkLimit = (await consumeRateLimit("auth-login-network", address, {
-          limit: 40,
-          windowMs: 15 * 60 * 1000,
-          blockMs: 15 * 60 * 1000,
-        }));
-    if (!networkLimit.allowed) return { error: "Too many sign-in attempts. Wait a few minutes and try again." };
-  }
-  const identityLimit = (await consumeRateLimit("auth-login-identity", email, {
-      limit: 8,
-      windowMs: 15 * 60 * 1000,
-      blockMs: 15 * 60 * 1000,
-    }));
-  if (!identityLimit.allowed) return { error: "Too many sign-in attempts. Wait a few minutes and try again." };
-
-  const db = getDb();
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  const user = (await db.prepare("SELECT * FROM users WHERE email = ?").get(email)) as any;
-
-  // Same message whether the account is missing or the password is
-  // wrong, so we don't leak which emails exist.
-  const passwordMatches = verifyPassword(password, user?.password_hash ?? DUMMY_PASSWORD_HASH);
-  if (!user || !passwordMatches) {
-    return { error: "That email and password don't match an account." };
-  }
-  if (user.status === "suspended") {
-    return { error: "This account is suspended. Contact your BOW administrator." };
-  }
-  if (user.status === "invited") {
-    return { error: "Finish setting up your account from your invitation link first." };
-  }
-
-  try {
-    await createSession(user.id);
-  } catch {
-    // The password was already proven, so this can be specific enough to help
-    // a real owner without becoming an account-enumeration oracle. createSession
-    // rechecks both account and organization state under its writer lock.
-    return { error: "Sign-in is unavailable for this account or organization. Contact your BOW administrator." };
-  }
-  (await clearRateLimit("auth-login-identity", email));
-
-  if (user.password_change_required) redirect("/change-password");
-
-  // Honor an explicit ?next, otherwise send self-paced students to their
-  // async dashboard and everyone else to their role's front-office home.
-  let dest: string;
-  if (next && (next.startsWith("/app") || next === "/dashboard" || next === "/instructor")) {
-    dest = next;
-  } else if (user.role === "student" && (await isEnrolledSelfPaced(user.id))) {
-    dest = "/dashboard";
-  } else {
-    dest = roleHomePath(user.role as Role);
-  }
-  redirect(dest);
 }
 
 /* ---------------- Self-paced sign-up (/join) ---------------- */

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { CSSProperties } from "react";
-import { signIn, type AuthState } from "@/app/actions/auth";
+import { signIn, type SignInState } from "@/app/actions/sign-in";
 
 const labelStyle: CSSProperties = {
   fontFamily: "var(--font-data)",
@@ -28,7 +28,7 @@ const inputStyle: CSSProperties = {
 export default function SignInForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "";
-  const [state, action, pending] = useActionState<AuthState, FormData>(signIn, {});
+  const [state, action, pending] = useActionState<SignInState, FormData>(signIn, {});
 
   return (
     <div

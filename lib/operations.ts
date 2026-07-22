@@ -90,7 +90,7 @@ async function loadSnapshot(): Promise<OperationsSnapshot> {
     feedback: (await db.prepare("SELECT * FROM instructor_feedback ORDER BY created_at DESC").all()) as any[],
     development: (await db.prepare("SELECT * FROM instructor_development_items ORDER BY created_at DESC").all()) as any[],
     activity: (await db.prepare("SELECT * FROM crm_activity ORDER BY created_at DESC").all()) as any[],
-    inquiries: (await db.prepare("SELECT * FROM inquiries ORDER BY rowid DESC").all()) as any[],
+    inquiries: (await db.prepare("SELECT * FROM inquiries ORDER BY date DESC").all()) as any[],
   };
 }
 

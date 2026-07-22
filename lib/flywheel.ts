@@ -49,50 +49,27 @@ import type {
 
 let schemaReady: Promise<void> | null = null;
 
-/** Idempotent — safe on every boot; the only DDL the flywheel needs. */
+/**
+ * Verify the migration once per server process. Runtime reads must never run
+ * DDL: doing so held database connections and made the first founder request
+ * pay for a dozen CREATE/ALTER/INDEX round trips.
+ */
 export function ensureFlywheelSchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
       const db = getDb();
-      await db.exec(`CREATE TABLE IF NOT EXISTS class_closeouts (
-        class_id text PRIMARY KEY,
-        attendance_finalized double precision NOT NULL DEFAULT 0,
-        feedback_collected double precision NOT NULL DEFAULT 0,
-        testimonial_captured double precision NOT NULL DEFAULT 0,
-        referrals_prompted double precision NOT NULL DEFAULT 0,
-        partner_followed_up double precision NOT NULL DEFAULT 0,
-        repeat_planned double precision NOT NULL DEFAULT 0,
-        instructor_followed_up double precision NOT NULL DEFAULT 0,
-        asset_captured double precision NOT NULL DEFAULT 0,
-        note text NOT NULL DEFAULT '',
-        completed_at double precision,
-        updated_at double precision NOT NULL
-      )`);
-      await db.exec(`CREATE TABLE IF NOT EXISTS growth_introductions (
-        id text PRIMARY KEY,
-        introducer_type text NOT NULL CHECK (introducer_type IN ('instructor','student','partner','contributor')),
-        introducer_id text NOT NULL,
-        target_kind text NOT NULL CHECK (target_kind IN ('student','instructor','partner','community')),
-        target_name text NOT NULL,
-        status text NOT NULL DEFAULT 'suggested' CHECK (status IN ('suggested','contacted','converted','declined')),
-        note text NOT NULL DEFAULT '',
-        owner_user_id text,
-        created_at double precision NOT NULL,
-        resolved_at double precision
-      )`);
-      await db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_growth_intros_introducer ON growth_introductions (introducer_type, introducer_id)",
-      );
-      // Execution-layer columns on existing primitives (idempotent).
-      await db.exec("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS outcome text");
-      await db.exec("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_key text");
-      await db.exec("ALTER TABLE growth_introductions ADD COLUMN IF NOT EXISTS converted_organization_id text");
-      // Indexes that keep the flywheel fast at thousands of records.
-      await db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_open_source_key ON tasks (source_key) WHERE status = 'open'");
-      await db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_status_entity ON tasks (status, entity_type, entity_id)");
-      await db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks (status, due_on)");
-      await db.exec("CREATE INDEX IF NOT EXISTS idx_spo_student_outcome ON student_program_outcomes (student_id, outcome_type)");
-      await db.exec("CREATE INDEX IF NOT EXISTS idx_intros_status_created ON growth_introductions (status, created_at)");
+      const state = (await db.prepare(
+        `SELECT
+           to_regclass('public.class_closeouts') IS NOT NULL
+           AND to_regclass('public.growth_introductions') IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'tasks' AND column_name = 'source_key'
+           ) AS ready`,
+      ).get()) as { ready: boolean } | undefined;
+      if (!state?.ready) {
+        throw new Error("Flywheel schema is missing. Apply scripts/migrations/010_flywheel_schema.sql.");
+      }
     })().catch((error) => {
       schemaReady = null;
       throw error;

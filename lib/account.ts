@@ -11,8 +11,10 @@
  * ============================================================ */
 
 import { lessons, getLessonById, type Lesson } from "@/lib/lessons";
+import { SELF_PACED_COHORT_ID, SELF_PACED_ORG_ID, type Role } from "@/lib/account-identity";
 
-export type Role = "student" | "instructor" | "admin" | "growth";
+export { roleHomePath, SELF_PACED_COHORT_ID, SELF_PACED_ORG_ID } from "@/lib/account-identity";
+export type { Role } from "@/lib/account-identity";
 export type UserStatus = "active" | "invited" | "suspended";
 
 export interface User {
@@ -269,9 +271,6 @@ export const cohortLesson = (c: Cohort): Lesson | null => (c.currentLessonId ? g
 /* default signed-in user per role (prototype) */
 export const defaultUserForRole = (role: Role): string =>
   role === "admin" ? "u-admin" : role === "instructor" ? "u-coach" : role === "growth" ? "u-growth" : "u-s1";
-
-export const roleHomePath = (role: Role): string =>
-  role === "admin" || role === "growth" ? "/app" : role === "instructor" ? "/app/instructor" : "/app/student";
 
 export const roleLabel = (role: Role | null): string =>
   role === "admin" ? "BOW Administration" : role === "instructor" ? "Instructor" : role === "student" ? "Student" : role === "growth" ? "Growth Lead" : "Not signed in";
@@ -583,10 +582,6 @@ export const seedAppData = (): AppData => ({
  * record in the `self_progress` table, read through lib/self-paced.ts.
  * ============================================================ */
 
-/** Org the self-paced cohort belongs to (BOW runs it directly). */
-export const SELF_PACED_ORG_ID = "org-bow";
-/** The default async cohort every /join signup is placed in. */
-export const SELF_PACED_COHORT_ID = "coh-self";
 export const SELF_PACED_COHORT_NAME = "BOW Self-Paced";
 /** Lessons counted for the instructor attendance rate — one per module. */
 export const SELF_PACED_SESSIONS = 4;
