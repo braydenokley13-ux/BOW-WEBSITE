@@ -19,6 +19,7 @@ import { computeResults, gradeBlock, type CommittedResponse } from "@/lib/learn/
 import type { LessonDoc } from "@/lib/learn/types";
 import { recordDailyVisit } from "@/lib/streak";
 import { checkAndAwardBadges } from "@/lib/badges";
+import { evaluateBadgeRules, type AchievementContext, type RuleBadgeCandidate } from "@/lib/learn/achievements";
 import { checkNodeUnlockForLesson, loadActiveCohortIds } from "@/lib/learn/home";
 import { applyApprovedReviews } from "@/lib/learn/review";
 import type { ResponseEntry } from "@/components/learn/player/playerState";
@@ -252,6 +253,8 @@ export interface CompleteAttemptResult {
   skillDeltas: Record<string, number>;
   firstCompletion: boolean;
   mode: "play" | "test";
+  /** Rule-based badges newly awarded by this completion (Stage 9), for the BadgeToast pathway. Empty on replay/idempotent returns. */
+  newBadges: { id: string; name: string; icon: string }[];
 }
 
 export async function completeAttempt(attemptId: string): Promise<ActionResult<CompleteAttemptResult>> {
@@ -282,6 +285,7 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
         skillDeltas: {},
         firstCompletion: false,
         mode: attempt.mode,
+        newBadges: [],
       };
     }
 
@@ -350,6 +354,7 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
         skillDeltas: results.skillPoints,
         firstCompletion: false,
         mode: "test" as const,
+        newBadges: [],
       };
     }
 
@@ -453,6 +458,81 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
       `;
     }
 
+    // ---- rule-based achievement badges (Stage 9) ----
+    // Declarative badges (badges.rule jsonb, evaluated by
+    // lib/learn/achievements.ts) are checked inside this same transaction so
+    // award + XP are as atomic/idempotent as the rest of completion: sticky
+    // INSERT ... ON CONFLICT DO NOTHING into student_badges, and XP via
+    // learn_xp_events with a unique source_key of `badge:<badgeId>:<userId>`
+    // (distinct from the attempt-completion XP's `attempt:<id>:completion`
+    // key, and from checkAndAwardBadges' legacy Daily-Question badges, which
+    // have no rule and are skipped by the WHERE clause below).
+    const newBadges: { id: string; name: string; icon: string }[] = [];
+    const ruleBadgeRows = await tx<{ id: string; name: string; icon: string; rule: unknown; xp_reward: number }[]>`
+      SELECT id, name, icon, rule, xp_reward FROM badges WHERE rule IS NOT NULL
+    `;
+    if (ruleBadgeRows.length > 0) {
+      const masteryAllRows = await tx<{ lesson_id: string; best_stars: number }[]>`
+        SELECT lesson_id, best_stars FROM learn_lesson_mastery WHERE user_id = ${user.id}
+      `;
+      const completedLessonIds = new Set(masteryAllRows.map((r) => r.lesson_id));
+      const totalStarsEarned = masteryAllRows.reduce((sum, r) => sum + (Number(r.best_stars) || 0), 0);
+      const totalLessonsCompleted = masteryAllRows.length;
+
+      const trackModuleRows = await tx<{ lesson_id: string; module_id: string; track_id: string }[]>`
+        SELECT l.id AS lesson_id, l.module_id, m.track_id
+        FROM learn_lessons l JOIN learn_modules m ON m.id = l.module_id
+      `;
+      const trackLessonIds: Record<string, string[]> = {};
+      const moduleLessonIds: Record<string, string[]> = {};
+      for (const r of trackModuleRows) {
+        (trackLessonIds[r.track_id] ??= []).push(r.lesson_id);
+        (moduleLessonIds[r.module_id] ??= []).push(r.lesson_id);
+      }
+
+      const ctx: AchievementContext = {
+        lessonId: attempt.lesson_id,
+        score: results.score0to100,
+        stars: results.stars,
+        variables: results.variables,
+        completedLessonIds,
+        totalStarsEarned,
+        totalLessonsCompleted,
+        trackLessonIds,
+        moduleLessonIds,
+      };
+
+      const candidates: RuleBadgeCandidate[] = ruleBadgeRows.map((r) => ({ id: r.id, rule: r.rule }));
+      const satisfiedIds = evaluateBadgeRules(candidates, ctx);
+
+      for (const badgeId of satisfiedIds) {
+        const badgeRow = ruleBadgeRows.find((r) => r.id === badgeId);
+        if (!badgeRow) continue;
+        const awarded = await tx<{ badge_id: string }[]>`
+          INSERT INTO student_badges (student_id, badge_id, earned_at)
+          VALUES (${user.id}, ${badgeId}, ${now})
+          ON CONFLICT (student_id, badge_id) DO NOTHING
+          RETURNING badge_id
+        `;
+        if (awarded.length === 0) continue; // already earned — not newly awarded, no XP re-bank.
+        newBadges.push({ id: badgeRow.id, name: badgeRow.name, icon: badgeRow.icon });
+
+        const xpAmount = Number(badgeRow.xp_reward) || 0;
+        if (xpAmount > 0) {
+          const badgeXpKey = `badge:${badgeId}:${user.id}`;
+          const badgeXpInserted = await tx<{ id: string }[]>`
+            INSERT INTO learn_xp_events (id, user_id, source_key, amount, created_at)
+            VALUES (${`xpe-${randomUUID().slice(0, 12)}`}, ${user.id}, ${badgeXpKey}, ${xpAmount}, ${now})
+            ON CONFLICT (source_key) DO NOTHING
+            RETURNING id
+          `;
+          if (badgeXpInserted.length > 0) {
+            await tx`UPDATE users SET xp = COALESCE(xp, 0) + ${xpAmount} WHERE id = ${user.id}`;
+          }
+        }
+      }
+    }
+
     return {
       ok: true as const,
       score: results.score0to100,
@@ -462,6 +542,7 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
       skillDeltas,
       firstCompletion,
       mode: "play" as const,
+      newBadges,
     };
     });
   } catch (err) {

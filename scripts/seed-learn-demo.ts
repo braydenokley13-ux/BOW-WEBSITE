@@ -650,6 +650,29 @@ async function main() {
   `;
 
   console.log(`[seed-learn-demo] Seeded demo map: 2 sections, 4 nodes.`);
+
+  // ---- Stage 9: one custom rule-based badge ----
+  // "Pricing Strategist" — lesson_complete on the pricing lesson with
+  // minStars 3. source='custom' (not 'system') so the achievement editor
+  // treats it as fully editable rather than copy-only.
+  await sqlLearn`
+    INSERT INTO badges (id, name, description, icon, category, threshold, xp_reward, ordinal, source, rule)
+    VALUES (
+      'pricing_strategist',
+      'Pricing Strategist',
+      'Nailed the Ticket Pricing lesson with a perfect 3-star run.',
+      '💰',
+      'special',
+      0,
+      40,
+      12,
+      'custom',
+      ${sqlLearn.json({ type: "lesson_complete", lessonId, minStars: 3 } as never)}
+    )
+    ON CONFLICT (id) DO NOTHING
+  `;
+  console.log(`[seed-learn-demo] Seeded custom rule badge "pricing_strategist".`);
+
   process.exit(0);
 }
 

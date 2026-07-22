@@ -88,6 +88,17 @@ export default function LessonPlayer({ lessonId, attemptId, doc, resume }: Lesso
         setFinishError(result.error);
         return;
       }
+      // Stash any newly-earned rule-based badges (Stage 9) in sessionStorage
+      // keyed by attemptId so the results page's BadgeToast pathway can pick
+      // them up client-side — mirrors how DailyQuestionCard surfaces
+      // checkAndAwardBadges' newly-earned badges, just across a navigation.
+      if (result.newBadges.length > 0 && typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem(`bow-new-badges:${attemptId}`, JSON.stringify(result.newBadges));
+        } catch {
+          // Non-fatal — the badge is already durably awarded, just no toast.
+        }
+      }
       router.push(`/dashboard/lesson/${lessonId}/results/${attemptId}`);
     });
   }, [attemptId, lessonId, router]);

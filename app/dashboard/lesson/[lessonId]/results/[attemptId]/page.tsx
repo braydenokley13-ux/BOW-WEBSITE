@@ -4,6 +4,7 @@ import { sqlLearn } from "@/lib/db-sql";
 import { migrateLessonDoc } from "@/lib/learn/compat";
 import Button from "@/components/ds/Button";
 import DataStrip, { type DataItem } from "@/components/ds/DataStrip";
+import NewBadgeToastFromSession from "@/components/learn/player/NewBadgeToastFromSession";
 
 interface AttemptRow {
   id: string;
@@ -83,6 +84,7 @@ export default async function LessonResultsPage({
 
   return (
     <div className="bow-front-office" style={{ minHeight: "100vh", background: "var(--bow-ink)", color: "#fff", padding: "clamp(24px,4vw,48px) clamp(16px,4vw,24px) 96px" }}>
+      <NewBadgeToastFromSession attemptId={attemptId} />
       <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 28 }}>
         <div>
           <span style={{ fontFamily: "var(--font-display)", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9a9da6" }}>
