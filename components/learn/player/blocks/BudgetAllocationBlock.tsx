@@ -6,7 +6,7 @@
  * over-budget allocation (lib/learn/engine.ts gradeBlock case "budget_allocation").
  * ============================================================ */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Button from "@/components/ds/Button";
 import type { BlockPlayerProps } from "../types";
 import type { Block } from "@/lib/learn/types";
@@ -20,6 +20,17 @@ export default function BudgetAllocationBlock({ block, value, committed, feedbac
   const sum = Object.values(current).reduce((s, v) => s + (Number(v) || 0), 0);
   const remaining = block.totalBudget - sum;
   const overBudget = remaining < 0;
+
+  // Seed the reducer's response with the displayed default (all-zero
+  // allocation) the moment this block mounts uncommitted — otherwise a
+  // student who locks in without touching any field commits `undefined`,
+  // which the server rejects with a DB not-null-constraint 500 instead of
+  // grading the (valid, all-zero) allocation. Mirrors the same fix in
+  // SliderBlock.
+  useEffect(() => {
+    if (!committed && value === undefined) onChange(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setCategory = (id: string, amount: number) => {
     const next = { ...current, [id]: amount };

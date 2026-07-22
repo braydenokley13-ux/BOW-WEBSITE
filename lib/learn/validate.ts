@@ -29,7 +29,17 @@ function branchTargets(block: Block): string[] {
     case "slider":
     case "price_set":
     case "budget_allocation":
+    case "rank":
+    case "categorize":
+    case "drag_drop":
+    case "match":
+    case "forecast":
       return Object.values(block.branch ?? {});
+    case "tradeoff_matrix":
+      return [
+        ...block.options.map((o) => o.goTo).filter((x): x is string => Boolean(x)),
+        ...Object.values(block.branch ?? {}),
+      ];
     default:
       return [];
   }
@@ -85,6 +95,8 @@ function hasFallthroughPath(block: Block): boolean {
       return block.options.some((o) => !o.goTo);
     case "scenario":
       return block.choices.some((c) => !c.goTo);
+    case "tradeoff_matrix":
+      return block.options.some((o) => !o.goTo);
     default:
       return true;
   }
@@ -133,6 +145,12 @@ function pointsPossibleFor(block: Block): number {
     case "slider":
     case "price_set":
     case "budget_allocation":
+    case "rank":
+    case "categorize":
+    case "drag_drop":
+    case "match":
+    case "tradeoff_matrix":
+    case "forecast":
       return block.points;
     case "scenario":
       return Math.max(...block.choices.map((c) => c.points ?? 0), 0);
@@ -197,6 +215,45 @@ export function validateLessonDoc(doc: LessonDoc): ValidationResult {
         if (!ids.has(id)) errors.push(`multi_select block "${block.id}" correctOptionIds includes unknown option "${id}"`);
       }
     }
+    if (block.type === "rank") {
+      const ids = new Set(block.items.map((i) => i.id));
+      if (block.correctOrder.length !== block.items.length) {
+        errors.push(`rank block "${block.id}" correctOrder length must match items length`);
+      }
+      for (const id of block.correctOrder) {
+        if (!ids.has(id)) errors.push(`rank block "${block.id}" correctOrder references unknown item "${id}"`);
+      }
+      if (new Set(block.correctOrder).size !== block.correctOrder.length) {
+        errors.push(`rank block "${block.id}" correctOrder has duplicate item ids`);
+      }
+    }
+    if (block.type === "categorize" || block.type === "drag_drop") {
+      const categoryIds = new Set(block.categories.map((c) => c.id));
+      for (const item of block.items) {
+        if (!categoryIds.has(item.correctCategoryId)) {
+          errors.push(`${block.type} block "${block.id}" item "${item.id}" correctCategoryId "${item.correctCategoryId}" is not one of its categories`);
+        }
+      }
+    }
+    if (block.type === "match") {
+      const leftIds = new Set(block.pairs.map((p) => p.id));
+      if (leftIds.size !== block.pairs.length) {
+        errors.push(`match block "${block.id}" has duplicate pair ids`);
+      }
+    }
+    if (block.type === "tradeoff_matrix") {
+      const criteriaIds = new Set(block.criteria.map((c) => c.id));
+      for (const option of block.options) {
+        for (const key of Object.keys(option.values)) {
+          if (!criteriaIds.has(key)) {
+            errors.push(`tradeoff_matrix block "${block.id}" option "${option.id}" has a value for unknown criterion "${key}"`);
+          }
+        }
+      }
+    }
+    if (block.type === "forecast") {
+      if (block.tolerance < 0) errors.push(`forecast block "${block.id}" tolerance must be non-negative`);
+    }
   }
 
   // ---- variable / response refs declared ----
@@ -211,8 +268,21 @@ export function validateLessonDoc(doc: LessonDoc): ValidationResult {
       checkEffects(block.effects, `strategy_choice "${block.id}"`);
       for (const opt of block.options) checkEffects(opt.effects, `strategy_choice "${block.id}" option "${opt.id}"`);
     }
-    if (block.type === "slider" || block.type === "price_set" || block.type === "budget_allocation") {
+    if (
+      block.type === "slider" ||
+      block.type === "price_set" ||
+      block.type === "budget_allocation" ||
+      block.type === "rank" ||
+      block.type === "categorize" ||
+      block.type === "drag_drop" ||
+      block.type === "match" ||
+      block.type === "forecast"
+    ) {
       checkEffects(block.effects, `${block.type} "${block.id}"`);
+    }
+    if (block.type === "tradeoff_matrix") {
+      checkEffects(block.effects, `tradeoff_matrix "${block.id}"`);
+      for (const option of block.options) checkEffects(option.effects, `tradeoff_matrix "${block.id}" option "${option.id}"`);
     }
     if (block.type === "scenario") {
       for (const choice of block.choices) checkEffects(choice.effects, `scenario "${block.id}" choice "${choice.id}"`);

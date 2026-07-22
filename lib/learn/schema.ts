@@ -343,6 +343,103 @@ export const BudgetAllocationBlockSchema = z.object({
   ...DecisionCommon,
 });
 
+export const RankBlockSchema = z.object({
+  ...BlockBaseSchema,
+  type: z.literal("rank"),
+  prompt: z.string().min(1),
+  items: z.array(z.object({ id: z.string().min(1), label: z.string().min(1) })).min(2),
+  /** Item ids in the correct order (top to bottom). */
+  correctOrder: z.array(z.string().min(1)).min(2),
+  ...DecisionCommon,
+});
+
+/** Shared by categorize + drag_drop — buckets students drop items into. */
+export const CategorizeBlockSchema = z.object({
+  ...BlockBaseSchema,
+  type: z.literal("categorize"),
+  prompt: z.string().min(1),
+  categories: z.array(z.object({ id: z.string().min(1), label: z.string().min(1) })).min(2),
+  items: z.array(z.object({ id: z.string().min(1), label: z.string().min(1), correctCategoryId: z.string().min(1) })).min(2),
+  ...DecisionCommon,
+});
+
+export const DragDropBlockSchema = z.object({
+  ...BlockBaseSchema,
+  type: z.literal("drag_drop"),
+  prompt: z.string().min(1),
+  categories: z.array(z.object({ id: z.string().min(1), label: z.string().min(1) })).min(2),
+  items: z.array(z.object({ id: z.string().min(1), label: z.string().min(1), correctCategoryId: z.string().min(1) })).min(2),
+  ...DecisionCommon,
+});
+
+export const MatchBlockSchema = z.object({
+  ...BlockBaseSchema,
+  type: z.literal("match"),
+  prompt: z.string().min(1),
+  pairs: z
+    .array(z.object({ id: z.string().min(1), left: z.string().min(1), right: z.string().min(1) }))
+    .min(2),
+  ...DecisionCommon,
+});
+
+export const TradeoffMatrixBlockSchema = z.object({
+  ...BlockBaseSchema,
+  type: z.literal("tradeoff_matrix"),
+  prompt: z.string().min(1),
+  criteria: z.array(z.object({ id: z.string().min(1), label: z.string().min(1) })).min(2),
+  options: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+        /** Reference values shown to the student for each criterion (informational, not graded). */
+        values: z.record(z.string(), z.number()),
+        effects: z.array(EffectRuleSchema).default([]),
+        points: z.number().optional(),
+        feedback: z.string().optional(),
+        goTo: z.string().optional(),
+      }),
+    )
+    .min(2),
+  ...DecisionCommon,
+});
+
+export const ForecastBlockSchema = z.object({
+  ...BlockBaseSchema,
+  type: z.literal("forecast"),
+  prompt: z.string().min(1),
+  unit: z.enum(["number", "currency", "percent"]).default("number"),
+  correctValue: z.number(),
+  tolerance: z.number().nonnegative(),
+  ...DecisionCommon,
+});
+
+/* ---- content: table / chart / timeline ---- */
+
+export const TableBlockSchema = z.object({
+  ...BlockBaseSchema,
+  type: z.literal("table"),
+  caption: z.string().optional(),
+  columns: z.array(z.object({ key: z.string().min(1), label: z.string().min(1) })).min(1),
+  rows: z.array(z.record(z.string(), z.union([z.string(), z.number()]))).min(1),
+});
+
+export const ChartBlockSchema = z.object({
+  ...BlockBaseSchema,
+  type: z.literal("chart"),
+  chartKind: z.enum(["bar", "line"]).default("bar"),
+  title: z.string().optional(),
+  unit: z.enum(["number", "currency", "percent"]).default("number"),
+  /** Static data points, or a variable ref per point for live-bound series. */
+  series: z.array(z.object({ label: z.string().min(1), value: z.union([z.number(), RefSchema]) })).min(1),
+});
+
+export const TimelineBlockSchema = z.object({
+  ...BlockBaseSchema,
+  type: z.literal("timeline"),
+  events: z.array(z.object({ label: z.string().min(1), when: z.string().min(1), description: z.string().optional() })).min(1),
+});
+
 /* ---- scenario block ---- */
 
 export const ScenarioChoiceSchema = z.object({
@@ -381,6 +478,15 @@ export const BlockSchema = z.discriminatedUnion("type", [
   SliderBlockSchema,
   PriceSetBlockSchema,
   BudgetAllocationBlockSchema,
+  RankBlockSchema,
+  CategorizeBlockSchema,
+  DragDropBlockSchema,
+  MatchBlockSchema,
+  TradeoffMatrixBlockSchema,
+  ForecastBlockSchema,
+  TableBlockSchema,
+  ChartBlockSchema,
+  TimelineBlockSchema,
   ScenarioBlockSchema,
 ]);
 export type Block = z.infer<typeof BlockSchema>;

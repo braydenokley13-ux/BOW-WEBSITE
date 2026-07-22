@@ -203,7 +203,16 @@ export function resolveBranch(block: Block, response: unknown): string | undefin
     case "slider":
     case "price_set":
     case "budget_allocation":
+    case "rank":
+    case "categorize":
+    case "drag_drop":
+    case "match":
+    case "forecast":
       return block.branch?.[String(response)];
+    case "tradeoff_matrix": {
+      const option = block.options.find((o) => o.id === response);
+      return option?.goTo ?? block.branch?.[String(response)];
+    }
     default:
       return undefined;
   }
@@ -352,6 +361,62 @@ export function gradeBlock(block: Block, response: unknown, ctx?: EvalContext): 
         feedback: choice?.feedback,
       };
     }
+
+    case "rank": {
+      const order = Array.isArray(response) ? (response as string[]) : [];
+      const exact = order.length === block.correctOrder.length && order.every((id, i) => id === block.correctOrder[i]);
+      // Partial credit: fraction of items in their correct position (Kendall-ish, cheap + explainable).
+      const correctPositions = order.filter((id, i) => block.correctOrder[i] === id).length;
+      const fraction = block.correctOrder.length > 0 ? correctPositions / block.correctOrder.length : 0;
+      const { deltas } = applyEffects(ctx?.variables ?? {}, block.effects, response, ctx);
+      const pointsEarned = block.grading === "weighted" ? roundPoints(block.points * (exact ? 1 : fraction)) : 0;
+      return { ...gradeDecision(block, response, exact ? block.points : pointsEarned, deltas), correct: exact };
+    }
+
+    case "categorize":
+    case "drag_drop": {
+      const placements = (response ?? {}) as Record<string, string>;
+      const total = block.items.length;
+      const correctCount = block.items.filter((item) => placements[item.id] === item.correctCategoryId).length;
+      const exact = total > 0 && correctCount === total;
+      const fraction = total > 0 ? correctCount / total : 0;
+      const { deltas } = applyEffects(ctx?.variables ?? {}, block.effects, response, ctx);
+      const weightedPoints = roundPoints(block.points * fraction);
+      return { ...gradeDecision(block, response, weightedPoints, deltas), correct: exact };
+    }
+
+    case "match": {
+      const pairing = (response ?? {}) as Record<string, string>;
+      const total = block.pairs.length;
+      const correctCount = block.pairs.filter((p) => pairing[p.id] === p.right).length;
+      const exact = total > 0 && correctCount === total;
+      const fraction = total > 0 ? correctCount / total : 0;
+      const { deltas } = applyEffects(ctx?.variables ?? {}, block.effects, response, ctx);
+      const weightedPoints = roundPoints(block.points * fraction);
+      return { ...gradeDecision(block, response, weightedPoints, deltas), correct: exact };
+    }
+
+    case "tradeoff_matrix": {
+      const option = block.options.find((o) => o.id === response);
+      const { deltas } = applyEffects(ctx?.variables ?? {}, [...block.effects, ...(option?.effects ?? [])], response, ctx);
+      return gradeDecision(block, response, option?.points, deltas);
+    }
+
+    case "forecast": {
+      const value = typeof response === "number" ? response : Number(response);
+      const diff = Math.abs(value - block.correctValue);
+      const withinTolerance = diff <= block.tolerance;
+      const span = block.tolerance > 0 ? block.tolerance : Math.max(Math.abs(block.correctValue), 1);
+      const fraction = Math.max(0, 1 - diff / (span * 2));
+      const { deltas } = applyEffects(ctx?.variables ?? {}, block.effects, response, ctx);
+      const weightedPoints = roundPoints(block.points * fraction);
+      return { ...gradeDecision(block, response, weightedPoints, deltas), correct: withinTolerance };
+    }
+
+    case "table":
+    case "chart":
+    case "timeline":
+      return noScore;
 
     default:
       return noScore;

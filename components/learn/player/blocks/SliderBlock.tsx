@@ -7,7 +7,7 @@
  * drives variable effects shown on the Consequence phase.
  * ============================================================ */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Button from "@/components/ds/Button";
 import type { BlockPlayerProps } from "../types";
 import type { Block } from "@/lib/learn/types";
@@ -27,6 +27,16 @@ export default function SliderBlock({ block, value, committed, feedback, onChang
   const initial = typeof value === "number" ? value : block.type === "slider" ? (block.defaultValue ?? block.min) : block.min;
   const [local, setLocal] = useState(initial);
   const current = typeof value === "number" ? value : local;
+
+  // Seed the reducer's response with the displayed default the moment this
+  // block mounts uncommitted — otherwise a student who locks in without ever
+  // touching the handle commits `undefined` as their response, which the
+  // server rejects with a DB not-null-constraint 500 instead of grading the
+  // (perfectly valid) default value.
+  useEffect(() => {
+    if (!committed && typeof value !== "number") onChange(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
