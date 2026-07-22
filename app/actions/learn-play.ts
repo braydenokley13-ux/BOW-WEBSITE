@@ -19,6 +19,7 @@ import { computeResults, gradeBlock, type CommittedResponse } from "@/lib/learn/
 import type { LessonDoc } from "@/lib/learn/types";
 import { recordDailyVisit } from "@/lib/streak";
 import { checkAndAwardBadges } from "@/lib/badges";
+import { checkNodeUnlockForLesson } from "@/lib/learn/home";
 import type { ResponseEntry } from "@/components/learn/player/playerState";
 
 /* ---------------- shared helpers ---------------- */
@@ -79,6 +80,15 @@ export async function startAttempt(lessonId: string, mode: "play" | "test" = "pl
   const lesson = lessonRows[0];
   if (!lesson) return { ok: false, error: "Lesson not found" };
   if (!lesson.published_version_id) return { ok: false, error: "This lesson has no published version yet" };
+
+  // Enforce the same unlock policy the CareerMap shows the student, so a
+  // direct deep-link (or replay of an old URL) can't bypass a locked node.
+  // Admin "Test as Student" runs (mode='test') intentionally skip this —
+  // authors need to test locked content without unlocking it for real.
+  if (mode === "play" && user.role !== "admin") {
+    const unlockCheck = await checkNodeUnlockForLesson(user.id, lessonId);
+    if (!unlockCheck.ok) return { ok: false, error: unlockCheck.reason };
+  }
 
   const doc = await loadVersionDoc(lesson.published_version_id);
 
