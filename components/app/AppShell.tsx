@@ -13,13 +13,15 @@ import ConfirmModal from "./ConfirmModal";
 export default function AppShell({
   children,
   instructorCanDeliver = true,
+  cutoverEnabled = true,
 }: {
   children: React.ReactNode;
   instructorCanDeliver?: boolean;
+  cutoverEnabled?: boolean;
 }) {
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "100vh" }}>
-      <AuthHeader instructorCanDeliver={instructorCanDeliver} />
+      <AuthHeader instructorCanDeliver={instructorCanDeliver} cutoverEnabled={cutoverEnabled} />
       <div className="bow-app-main">{children}</div>
       <Toast />
       <ConfirmModal />
