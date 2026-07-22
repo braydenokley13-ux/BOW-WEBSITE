@@ -12,17 +12,19 @@
  * a refresh of the results page doesn't re-toast.
  * ============================================================ */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import BadgeToast, { type ToastBadge } from "@/components/selfpaced/BadgeToast";
 
-/** Read + clear the sessionStorage stash once, synchronously, before first paint. */
-function readStash(attemptId: string): ToastBadge[] {
+/** Read (never write) the sessionStorage stash for the initial render value.
+ * Deliberately side-effect-free: React's Strict Mode invokes a lazy
+ * useState initializer twice in dev, so clearing storage here would make
+ * the second invocation see nothing and silently drop the toast — the
+ * clear happens once, safely, in the mount effect below instead. */
+function peekStash(attemptId: string): ToastBadge[] {
   if (typeof window === "undefined") return [];
-  const key = `bow-new-badges:${attemptId}`;
   try {
-    const raw = window.sessionStorage.getItem(key);
+    const raw = window.sessionStorage.getItem(`bow-new-badges:${attemptId}`);
     if (!raw) return [];
-    window.sessionStorage.removeItem(key);
     const parsed = JSON.parse(raw) as ToastBadge[];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -32,8 +34,16 @@ function readStash(attemptId: string): ToastBadge[] {
 }
 
 export default function NewBadgeToastFromSession({ attemptId }: { attemptId: string }) {
-  const [badges, setBadges] = useState<ToastBadge[]>(() => readStash(attemptId));
+  const [badges] = useState<ToastBadge[]>(() => peekStash(attemptId));
+  const [dismissed, setDismissed] = useState(false);
 
-  if (badges.length === 0) return null;
-  return <BadgeToast badges={badges} onDone={() => setBadges([])} />;
+  // Clear the stash on mount so a refresh of the results page doesn't
+  // re-toast. Idempotent (removeItem on an already-removed key is a no-op),
+  // so Strict Mode's double effect-fire in dev is harmless.
+  useEffect(() => {
+    window.sessionStorage.removeItem(`bow-new-badges:${attemptId}`);
+  }, [attemptId]);
+
+  if (dismissed || badges.length === 0) return null;
+  return <BadgeToast badges={badges} onDone={() => setDismissed(true)} />;
 }
