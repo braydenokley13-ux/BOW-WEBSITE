@@ -63,9 +63,13 @@ export default function BuilderShell({ lessonId, initialDoc, initialRevision, pu
     setPublishing(true);
     setPublishError(null);
     // Force-save first so publish validates the exact doc the author sees.
-    const savedRevision = await store.saveNow();
-    const revisionForPublish = savedRevision ?? state.baseRevision;
-    const result = await publishLesson(lessonId, revisionForPublish);
+    const saveResult = await store.saveNow();
+    if (!saveResult.ok) {
+      setPublishing(false);
+      setPublishError(saveResult.error);
+      return;
+    }
+    const result = await publishLesson(lessonId, saveResult.revision);
     setPublishing(false);
     if (result.ok) {
       setPublishedVersionLocal(result.version);

@@ -14,6 +14,9 @@ import { builderReducer, initBuilderState, type BuilderAction, type BuilderState
 const AUTOSAVE_IDLE_MS = 3000;
 
 export type ConflictState = { serverRevision: number; serverUpdatedAt: number | null } | null;
+export type SaveNowResult =
+  | { ok: true; revision: number }
+  | { ok: false; reason: "conflict" | "validation" | "error"; error: string };
 
 export interface UseBuilderStore {
   state: BuilderState;
@@ -24,8 +27,8 @@ export interface UseBuilderStore {
   saveError: string | null;
   conflict: ConflictState;
   lastSavedAt: number | null;
-  /** Force an immediate save (e.g. right before publish). Returns the resulting revision, or null on failure/conflict. */
-  saveNow: () => Promise<number | null>;
+  /** Force an immediate save. A successful result identifies the exact synchronized server revision. */
+  saveNow: () => Promise<SaveNowResult>;
   resolveConflictLoadNewest: (serverDoc: LessonDoc, serverRevision: number) => void;
   resolveConflictKeepWorking: () => Promise<number | null>;
   clearConflict: () => void;
@@ -44,7 +47,7 @@ export function useBuilderStore(lessonId: string, initialDoc: LessonDoc, initial
   }, [state]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const doSave = useCallback(async (): Promise<number | null> => {
+  const doSave = useCallback(async (): Promise<SaveNowResult> => {
     const current = stateRef.current;
     setSaving(true);
     setSaveError(null);
@@ -53,17 +56,19 @@ export function useBuilderStore(lessonId: string, initialDoc: LessonDoc, initial
       if (result.ok) {
         dispatch({ type: "MARK_SAVED", baseRevision: result.newRevision });
         setLastSavedAt(Date.now());
-        return result.newRevision;
+        return { ok: true, revision: result.newRevision };
       }
       if ("conflict" in result && result.conflict) {
         setConflict({ serverRevision: result.serverRevision, serverUpdatedAt: result.serverUpdatedAt });
-        return null;
+        return { ok: false, reason: "conflict", error: "This lesson changed in another tab. Resolve the conflict before publishing." };
       }
-      setSaveError("error" in result ? result.error : "Failed to save draft");
-      return null;
+      const error = "error" in result ? result.error : "Failed to save draft";
+      setSaveError(error);
+      return { ok: false, reason: error.startsWith("Invalid lesson document") ? "validation" : "error", error };
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save draft");
-      return null;
+      const error = err instanceof Error ? err.message : "Failed to save draft";
+      setSaveError(error);
+      return { ok: false, reason: "error", error };
     } finally {
       setSaving(false);
     }
@@ -103,7 +108,10 @@ export function useBuilderStore(lessonId: string, initialDoc: LessonDoc, initial
     // again against that base so this becomes a normal (non-conflicting) save.
     setConflict(null);
     const current = stateRef.current;
-    if (!conflict) return doSave();
+    if (!conflict) {
+      const result = await doSave();
+      return result.ok ? result.revision : null;
+    }
     dispatch({ type: "MARK_SAVED", baseRevision: conflict.serverRevision });
     setSaving(true);
     try {

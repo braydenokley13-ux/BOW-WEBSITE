@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { CUTOVER_ENABLED } from "@/lib/learn/cutover";
+import { getLearnCutoverEnabled } from "@/lib/learn/cutover";
 import LegacyStudentLesson from "./LegacyStudentLesson";
 
 /**
@@ -14,7 +14,7 @@ import LegacyStudentLesson from "./LegacyStudentLesson";
  * where StudentHome's Continue card and CareerMap resolve the correct
  * next/in-progress lesson on the new platform.
  */
-export default function StudentLessonEntry() {
-  if (CUTOVER_ENABLED) redirect("/dashboard");
+export default async function StudentLessonEntry() {
+  if (await getLearnCutoverEnabled()) redirect("/dashboard");
   return <LegacyStudentLesson />;
 }

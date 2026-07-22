@@ -99,6 +99,7 @@ export function buildNavCatalog(cutoverEnabled: boolean): NavEntry[] {
     label: "People",
     roles: STAFF,
     items: [
+      link("my-people", "My People", "/app/people", STAFF),
       link("hiring", "Hiring", "/app/hiring", STAFF),
       link("instructors", "Instructors", "/app/instructors", STAFF),
       link("students", "Students", "/app/students", STAFF),
@@ -138,9 +139,9 @@ export function buildNavCatalog(cutoverEnabled: boolean): NavEntry[] {
 }
 
 // Default export for callers that don't yet thread the cutover flag —
-// reflects the flag's default (ON). Prefer navForRole's cutoverEnabled
+// reflects the fail-safe default (OFF). Prefer navForRole's cutoverEnabled
 // option when a request-scoped value is available.
-export const NAV_CATALOG: NavEntry[] = buildNavCatalog(true);
+export const NAV_CATALOG: NavEntry[] = buildNavCatalog(false);
 
 export function navForRole(
   role: Role,
@@ -149,7 +150,7 @@ export function navForRole(
   const hiddenInstructorDeliveryIds = options.instructorCanDeliver === false
     ? new Set(["instructor-today", "instructor-classes", "instructor-proposals", "instructor-cohorts"])
     : null;
-  return buildNavCatalog(options.cutoverEnabled ?? true)
+  return buildNavCatalog(options.cutoverEnabled ?? false)
     .filter((entry) => entry.roles.includes(role) && !(entry.kind === "link" && hiddenInstructorDeliveryIds?.has(entry.id)))
     .map((entry) =>
     entry.kind === "group"

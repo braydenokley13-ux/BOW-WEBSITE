@@ -41,10 +41,19 @@ function listMigrationFiles(): string[] {
 async function ensureMigrationsTable(sql: postgres.Sql): Promise<void> {
   await sql`
     CREATE TABLE IF NOT EXISTS schema_migrations (
-      key text PRIMARY KEY,
-      applied_at bigint NOT NULL
+      id text PRIMARY KEY,
+      key text UNIQUE,
+      applied_at double precision NOT NULL
     )
   `;
+  // Older Playbook installs created key-only rows; the People & Work runner
+  // created id-only rows. Make either historical shape compatible in place.
+  await sql`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS id text`;
+  await sql`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS key text`;
+  await sql`UPDATE schema_migrations SET id = key WHERE id IS NULL`;
+  await sql`UPDATE schema_migrations SET key = id WHERE key IS NULL`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS schema_migrations_id_unique ON schema_migrations(id)`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS schema_migrations_key_unique ON schema_migrations(key)`;
 }
 
 async function alreadyApplied(sql: postgres.Sql, key: string): Promise<boolean> {
@@ -58,7 +67,7 @@ async function applyMigration(sql: postgres.Sql, file: string): Promise<void> {
   console.log(`[migrate] applying ${file}...`);
   await sql.begin(async (tx) => {
     await tx.unsafe(contents);
-    await tx`INSERT INTO schema_migrations (key, applied_at) VALUES (${file}, ${Date.now()})`;
+    await tx`INSERT INTO schema_migrations (id, key, applied_at) VALUES (${file}, ${file}, ${Date.now()})`;
   });
   console.log(`[migrate] applied ${file}`);
 }

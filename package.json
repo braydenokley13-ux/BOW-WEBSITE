@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:people-work": "tsx --test tests/people-work-architecture.test.ts",
+    "test:people-work": "tsx --test tests/people-work-architecture.test.ts tests/people-operations-architecture.test.ts",
     "ingest": "tsx scripts/nba-ingest.ts",
     "db:migrate:supabase": "tsx scripts/migrate-sqlite-to-supabase.ts",
     "db:migrate:people-work": "tsx scripts/migrate-people-work-os.ts",

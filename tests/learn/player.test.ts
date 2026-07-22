@@ -6,6 +6,7 @@ import {
   isBlockVisible,
   playerReducer,
   progressFraction,
+  replayCommittedAttempt,
 } from "../../components/learn/player/playerState";
 import type { LessonDoc } from "../../lib/learn/types";
 
@@ -185,4 +186,52 @@ test("flattenBlocks preserves phase/block order", () => {
   const doc = makeDoc();
   const flat = flattenBlocks(doc);
   assert.deepEqual(flat.map((f) => f.block.id), ["b1", "b2", "b3", "conseq-x", "conseq-y"]);
+});
+
+test("authoritative replay rejects an attempt that has not reached lesson end", () => {
+  const replay = replayCommittedAttempt(makeDoc(), [
+    { blockId: "b1", response: null },
+    { blockId: "b2", response: "b" },
+  ]);
+  assert.equal(replay.error, null);
+  assert.equal(replay.state.finished, false);
+  assert.equal(replay.state.cursorBlockId, "b3");
+});
+
+test("authoritative replay accepts one legitimate terminal branch without requiring the alternate", () => {
+  const replay = replayCommittedAttempt(makeDoc(), [
+    { blockId: "b1", response: null },
+    { blockId: "b2", response: "b" },
+    { blockId: "b3", response: "x" },
+    { blockId: "conseq-x", response: null },
+  ]);
+  assert.equal(replay.error, null);
+  assert.equal(replay.state.finished, true);
+  assert.deepEqual(replay.state.path, ["b1", "b2", "b3", "conseq-x"]);
+  assert.equal(replay.state.variables.sentiment, 60);
+});
+
+test("authoritative replay rejects skipped or out-of-branch rows", () => {
+  const skipped = replayCommittedAttempt(makeDoc(), [{ blockId: "b2", response: "b" }]);
+  assert.match(skipped.error ?? "", /Expected reachable block "b1"/);
+
+  const wrongBranch = replayCommittedAttempt(makeDoc(), [
+    { blockId: "b1", response: null },
+    { blockId: "b2", response: "b" },
+    { blockId: "b3", response: "x" },
+    { blockId: "conseq-y", response: null },
+  ]);
+  assert.match(wrongBranch.error ?? "", /Expected reachable block "conseq-x"/);
+});
+
+test("authoritative replay reconstructs resume variables and cursor from committed effects", () => {
+  const replay = replayCommittedAttempt(makeDoc(), [
+    { blockId: "b1", response: null },
+    { blockId: "b2", response: "b" },
+    { blockId: "b3", response: "y" },
+  ]);
+  assert.equal(replay.error, null);
+  assert.equal(replay.state.variables.sentiment, 40);
+  assert.equal(replay.state.cursorBlockId, "conseq-y");
+  assert.equal(isBlockVisible(makeDoc().phases[3].blocks[1], replay.state.variables, replay.state.responses), true);
 });

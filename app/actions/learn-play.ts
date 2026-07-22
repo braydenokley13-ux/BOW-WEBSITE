@@ -22,7 +22,7 @@ import { checkAndAwardBadges } from "@/lib/badges";
 import { evaluateBadgeRules, type AchievementContext, type RuleBadgeCandidate } from "@/lib/learn/achievements";
 import { checkNodeUnlockForLesson, loadActiveCohortIds } from "@/lib/learn/home";
 import { applyApprovedReviews } from "@/lib/learn/review";
-import type { ResponseEntry } from "@/components/learn/player/playerState";
+import { replayCommittedAttempt, type ResponseEntry } from "@/components/learn/player/playerState";
 
 /* ---------------- shared helpers ---------------- */
 
@@ -69,6 +69,8 @@ export interface StartAttemptResult {
     responses: Record<string, ResponseEntry>;
     variables: Record<string, number>;
     path: string[];
+    cursorBlockId: string;
+    finished: boolean;
   };
 }
 
@@ -138,27 +140,30 @@ export async function startAttempt(lessonId: string, mode: "play" | "test" = "pl
     SELECT block_id, instance_key, response, outcome, committed_at
     FROM learn_responses
     WHERE attempt_id = ${attempt.id}
-    ORDER BY answered_at ASC
+    ORDER BY answered_at ASC, id ASC
   `;
 
-  const resumeResponses: Record<string, ResponseEntry> = {};
-  const path: string[] = [];
-  for (const row of responseRows) {
-    if (row.committed_at) {
-      resumeResponses[row.block_id] = {
-        value: row.response,
-        committed: true,
-        outcome: (row.outcome as ResponseEntry["outcome"]) ?? undefined,
-      };
-      path.push(row.block_id);
-    }
+  const committedRows = responseRows
+    .filter((row) => row.committed_at)
+    .map((row) => ({ blockId: row.block_id, response: row.response }));
+  const replay = replayCommittedAttempt(doc, committedRows);
+  if (replay.error || replay.consumed !== committedRows.length) {
+    return { ok: false, error: "This saved attempt has an invalid traversal. Start a new attempt or contact support." };
   }
 
   return {
     ok: true,
     attemptId: attempt.id,
     doc,
-    resume: responseRows.length > 0 ? { responses: resumeResponses, variables: attempt.variables ?? {}, path } : undefined,
+    resume: committedRows.length > 0
+      ? {
+          responses: replay.state.responses,
+          variables: replay.state.variables,
+          path: replay.state.path,
+          cursorBlockId: replay.state.cursorBlockId,
+          finished: replay.state.finished,
+        }
+      : undefined,
   };
 }
 
@@ -176,70 +181,75 @@ export async function submitResponse(
   response: unknown,
 ): Promise<ActionResult<SubmitResponseResult>> {
   const user = await requireRole("student", "admin");
-
-  const attemptRows = await sqlLearn<AttemptRow[]>`
-    SELECT id, user_id, lesson_id, version_id, mode, status, started_at, completed_at,
-           score, stars, xp_awarded, variables, path, enrollment_context
-    FROM learn_attempts WHERE id = ${attemptId}
-  `;
-  const attempt = attemptRows[0];
-  if (!attempt || attempt.user_id !== user.id) return { ok: false, error: "Attempt not found" };
-  if (attempt.status !== "in_progress") return { ok: false, error: "This attempt is no longer in progress" };
-
-  // Commit-once: an instance_key that's already committed is immutable.
-  const already = await sqlLearn<{ committed_at: number | null }[]>`
-    SELECT committed_at FROM learn_responses
-    WHERE attempt_id = ${attemptId} AND block_id = ${blockId} AND instance_key = ${instanceKey}
-  `;
-  if (already[0]?.committed_at) {
-    return { ok: false, error: "This response is already committed and cannot be changed" };
-  }
-
-  const doc = await loadVersionDoc(attempt.version_id);
-  const block = findBlock(doc, blockId);
-  if (!block) return { ok: false, error: `Unknown block "${blockId}" for this lesson version` };
-
-  // Build grading context from previously committed responses on this attempt.
-  const priorRows = await sqlLearn<{ block_id: string; response: unknown }[]>`
-    SELECT block_id, response FROM learn_responses WHERE attempt_id = ${attemptId} AND committed_at IS NOT NULL
-  `;
-  const priorCommitted: CommittedResponse[] = priorRows.map((r) => ({ blockId: r.block_id, response: r.response }));
-  const priorResults = computeResults(doc, priorCommitted);
-  const outcome = gradeBlock(block, response, { variables: priorResults.variables, responses: Object.fromEntries(priorRows.map((r) => [r.block_id, r.response])) });
-
-  const now = Date.now();
-  const id = `resp-${randomUUID().slice(0, 12)}`;
-  // A block committed without ever touching its input (e.g. locking in a
-  // budget_allocation while every category is still at its displayed-but-
-  // never-set default) can legitimately reach here with `response ===
-  // undefined`. jsonb columns accept JSON `null` but the native postgres.js
-  // client throws UNDEFINED_VALUE on a bare `undefined` parameter — coalesce
-  // once here so no block type has to special-case "untouched" itself.
-  const storedResponse = response === undefined ? null : (response as never);
-  await sqlLearn`
-    INSERT INTO learn_responses (id, attempt_id, block_id, instance_key, response, outcome, committed_at, answered_at)
-    VALUES (${id}, ${attemptId}, ${blockId}, ${instanceKey}, ${sqlLearn.json(storedResponse)}, ${sqlLearn.json(outcome as never)}, ${now}, ${now})
-    ON CONFLICT (attempt_id, block_id, instance_key) DO NOTHING
-  `;
-
-  // Manual-review queue (Stage 8 follow-up): a committed long_text response
-  // in manual_review mode never scores itself (gradeBlock always returns
-  // 0/0 for it) — it queues a pending row here instead, picked up by
-  // app/actions/learn-review.ts's instructor queue. One row per
-  // (attempt, block); a resubmit within the same instance_key can't happen
-  // (commit-once above), so ON CONFLICT DO NOTHING is just defensive.
-  if (block.type === "long_text" && block.reflection.mode === "manual_review") {
-    const reviewId = `rev-${randomUUID().slice(0, 12)}`;
-    await sqlLearn`
-      INSERT INTO learn_manual_reviews (id, attempt_id, block_id, user_id, lesson_id, prompt, response_text, status, points_possible, created_at)
-      VALUES (${reviewId}, ${attemptId}, ${blockId}, ${user.id}, ${attempt.lesson_id}, ${block.prompt},
-              ${typeof response === "string" ? response : String(response ?? "")}, 'pending',
-              ${block.reflection.pointsPossible ?? 0}, ${now})
-      ON CONFLICT (attempt_id, block_id) DO NOTHING
+  return withTransaction(async (tx) => {
+    // Lock the attempt so parallel or retried server-action calls cannot both
+    // validate against the same old cursor and append contradictory rows.
+    const attemptRows = await tx<AttemptRow[]>`
+      SELECT id, user_id, lesson_id, version_id, mode, status, started_at, completed_at,
+             score, stars, xp_awarded, variables, path, enrollment_context
+      FROM learn_attempts WHERE id = ${attemptId} FOR UPDATE
     `;
-  }
+    const attempt = attemptRows[0];
+    if (!attempt || attempt.user_id !== user.id) return { ok: false, error: "Attempt not found" };
+    if (attempt.status !== "in_progress") return { ok: false, error: "This attempt is no longer in progress" };
 
-  return { ok: true, outcome };
+    const already = await tx<{ committed_at: number | null }[]>`
+      SELECT committed_at FROM learn_responses
+      WHERE attempt_id = ${attemptId} AND block_id = ${blockId} AND instance_key = ${instanceKey}
+    `;
+    if (already[0]?.committed_at) {
+      return { ok: false, error: "This response is already committed and cannot be changed" };
+    }
+
+    const doc = await loadVersionDoc(attempt.version_id);
+    const block = findBlock(doc, blockId);
+    if (!block) return { ok: false, error: `Unknown block "${blockId}" for this lesson version` };
+
+    const priorRows = await tx<{ block_id: string; response: unknown }[]>`
+      SELECT block_id, response FROM learn_responses
+      WHERE attempt_id = ${attemptId} AND committed_at IS NOT NULL
+      ORDER BY answered_at ASC, id ASC
+    `;
+    const priorTraversal = priorRows.map((row) => ({ blockId: row.block_id, response: row.response }));
+    const replay = replayCommittedAttempt(doc, priorTraversal);
+    if (replay.error || replay.consumed !== priorTraversal.length) {
+      return { ok: false, error: "The saved lesson path is invalid and cannot accept another response" };
+    }
+    if (replay.state.finished) return { ok: false, error: "This lesson path has already reached its end" };
+    if (replay.state.cursorBlockId !== blockId) {
+      return { ok: false, error: "Complete the current lesson block before moving ahead" };
+    }
+    const committedResponseMap = Object.fromEntries(
+      Object.entries(replay.state.responses)
+        .filter(([, entry]) => entry.committed)
+        .map(([id, entry]) => [id, entry.value]),
+    );
+    const outcome = gradeBlock(block, response, { variables: replay.state.variables, responses: committedResponseMap });
+
+    const now = Date.now();
+    const id = `resp-${randomUUID().slice(0, 12)}`;
+    const storedResponse = response === undefined ? null : (response as never);
+    const inserted = await tx<{ id: string }[]>`
+      INSERT INTO learn_responses (id, attempt_id, block_id, instance_key, response, outcome, committed_at, answered_at)
+      VALUES (${id}, ${attemptId}, ${blockId}, ${instanceKey}, ${tx.json(storedResponse)}, ${tx.json(outcome as never)}, ${now}, ${now})
+      ON CONFLICT (attempt_id, block_id, instance_key) DO NOTHING
+      RETURNING id
+    `;
+    if (inserted.length === 0) return { ok: false, error: "This response was already submitted. Refresh to continue." };
+
+    if (block.type === "long_text" && block.reflection.mode === "manual_review") {
+      const reviewId = `rev-${randomUUID().slice(0, 12)}`;
+      await tx`
+        INSERT INTO learn_manual_reviews (id, attempt_id, block_id, user_id, lesson_id, prompt, response_text, status, points_possible, created_at)
+        VALUES (${reviewId}, ${attemptId}, ${blockId}, ${user.id}, ${attempt.lesson_id}, ${block.prompt},
+                ${typeof response === "string" ? response : String(response ?? "")}, 'pending',
+                ${block.reflection.pointsPossible ?? 0}, ${now})
+        ON CONFLICT (attempt_id, block_id) DO NOTHING
+      `;
+    }
+
+    return { ok: true, outcome };
+  });
 }
 
 /* ---------------- completeAttempt ---------------- */
@@ -293,10 +303,14 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
     const committedRows = await tx<{ block_id: string; response: unknown }[]>`
       SELECT block_id, response FROM learn_responses
       WHERE attempt_id = ${attemptId} AND committed_at IS NOT NULL
-      ORDER BY answered_at ASC
+      ORDER BY answered_at ASC, id ASC
     `;
     const committed: CommittedResponse[] = committedRows.map((r) => ({ blockId: r.block_id, response: r.response }));
-    const path = committedRows.map((r) => r.block_id);
+    const replay = replayCommittedAttempt(doc, committed);
+    if (replay.error || replay.consumed !== committed.length || !replay.state.finished) {
+      throw new Error("This lesson has not reached a valid ending yet. Complete every block on your path before viewing results.");
+    }
+    const path = replay.state.path;
 
     // Server-side gating (Stage 8 parity item 5): media completion
     // thresholds and reflection min_words are enforced HERE, not just in the

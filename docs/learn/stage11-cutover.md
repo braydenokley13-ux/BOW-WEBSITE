@@ -1,9 +1,10 @@
 # Stage 11 — Controlled Cutover
 
-Status: **switched, verified, not deleted.** Per plan §6, this stage ships the
-route cutover + rollback flag + observation checklist. Dead-code removal is a
-follow-up after Brayden's observation window in production, executed from
-the inventory in §5 below — nothing is deleted in this pass.
+Status: **implemented, verified in a disposable environment, not activated in
+production, and not deleted.** Per plan §6, this stage ships the route cutover,
+the runtime rollback control, and the observation checklist. Dead-code removal
+is a follow-up after Brayden's production observation window, executed from the
+inventory in §5 below — nothing is deleted in this pass.
 
 ## 1. What switched
 
@@ -39,21 +40,21 @@ When the flag is off, nav reverts to the pre-Stage-11 links
 
 ## 2. Rollback flag
 
-`lib/learn/cutover.ts`:
+`lib/learn/cutover.ts` now reads the runtime flag from Postgres:
 
 ```ts
-export const CUTOVER_ENABLED = process.env.BOW_LEARN_CUTOVER !== "off";
+await getLearnCutoverEnabled();
 ```
 
-- Env var: `BOW_LEARN_CUTOVER`, default **on** (any value other than the
-  literal `"off"` counts as on — so an unset var, `"on"`, `"1"`, etc. are all
-  on). Documented in `.env.example`.
-- **Rollback mechanics**: set `BOW_LEARN_CUTOVER=off` in the host's env store
-  and let the next server restart/deploy pick it up — no code change, no
-  redeploy of a new build required (the flag is a plain server-side
-  `process.env` read, evaluated per request in the page server components and
-  per-render in `app/app/layout.tsx`, not inlined at build time). Flip it
-  back to remove the value (or `on`) to re-enable.
+- Migration `009_runtime_feature_flags.sql` seeds `learn_cutover` **off** in
+  `app_feature_flags`. The database value is authoritative after migration.
+- **Rollback mechanics**: an admin uses the Student Cutover control at
+  `/app/admin/learn`. Every change requires a reason and appends an
+  `app_feature_flag_events` audit row. The next request sees the change; no
+  rebuild or deployment is required.
+- `BOW_LEARN_CUTOVER` remains a fail-safe pre-migration fallback only. Before
+  migration 009 exists, only the exact value `"on"` enables cutover. Unset,
+  blank, `"off"`, `"1"`, and invalid values remain on legacy.
 - The new platform (`/dashboard`, the lesson player) is **not** gated by this
   flag — it works regardless. The flag only controls (a) whether the three
   legacy routes redirect, and (b) what the student nav's Home entry points
@@ -62,8 +63,8 @@ export const CUTOVER_ENABLED = process.env.BOW_LEARN_CUTOVER !== "off";
 - Threading note: `lib/navigation/catalog.ts` is imported by a client
   component (`AuthHeader.tsx`), so the flag is **not** read from
   `process.env` inside that module (non-`NEXT_PUBLIC_` vars aren't reliably
-  inlined into client bundles). Instead `CUTOVER_ENABLED` is read once,
-  server-side, in `app/app/layout.tsx` and threaded down as a prop:
+  inlined into client bundles). Instead the database flag is read server-side
+  in `app/app/layout.tsx` on each request and threaded down as a prop:
   `AppLayout → AppShell → AuthHeader → navForRole({ cutoverEnabled })` →
   `buildNavCatalog(cutoverEnabled)`.
 
@@ -130,7 +131,7 @@ this in Stage 11.
 | Item | Path(s) | Becomes removable when | Gotchas |
 |---|---|---|---|
 | Legacy student pages | `app/app/student/LegacyStudentHome.tsx`, `app/app/student/track/LegacyStudentTrack.tsx`, `app/app/student/lesson/LegacyStudentLesson.tsx`, plus their thin `page.tsx` wrappers | Flag has been on in prod through the full observation window with no rollback | Removing the wrappers also removes the rollback path — don't delete until the flag itself is retired, not just left on |
-| Cutover flag + threading | `lib/learn/cutover.ts`, `CUTOVER_ENABLED` prop threading through `app/app/layout.tsx` → `AppShell` → `AuthHeader` → `navForRole`/`buildNavCatalog` in `lib/navigation/catalog.ts` | Same as above — once legacy pages are gone the flag has nothing left to gate | Removing `buildNavCatalog`'s cutoverEnabled branch also means deleting the legacy nav entries (`student-home` → `/app/student`, `student-track`) |
+| Cutover flag + threading | `app_feature_flags`, `lib/learn/cutover.ts`, and cutover prop threading through `app/app/layout.tsx` → `AppShell` → `AuthHeader` → `navForRole`/`buildNavCatalog` in `lib/navigation/catalog.ts` | Same as above — once legacy pages are gone the flag has nothing left to gate | Preserve `app_feature_flag_events` as release history; removing `buildNavCatalog`'s branch also means deleting the legacy nav entries (`student-home` → `/app/student`, `student-track`) |
 | `components/app/AppState.tsx` legacy student data paths | `activeEnrollmentFor`, `cohortCurrentLessonId`, `lessonProgressFor`, `setSelectedLessonId`, and the cohort/lesson-progress slices of `scopeAppDataForUser` in `lib/account.ts` | Once nothing under `app/app/student/Legacy*` reads them | `AppState` is also consumed by instructor/admin surfaces (cohorts, classes) that are untouched by this stage — audit call sites per-symbol, don't delete the whole file/context |
 | `components/selfpaced/StudentDashboard.tsx` | same file | **Partially, never fully** — `DailyQuestionCard` and the streak tile inside it were reused directly by `components/learn/home/StudentHome.tsx` (Stage 7). Only the track/module progress list, weekly challenge, discussion scenarios, and Front Office Lab sections (the parts `LegacyStudentHome` still renders) become removable | Do not delete `DailyQuestionCard` or its streak-tile logic — grep every import before touching this file; a full-file delete will break `/dashboard` |
 | `lib/lessons.ts` | whole file | Only after **all 24** legacy lessons are redesigned and published in Studio (`learn_lessons.published_version_id is not null` for all 24 slugs) — currently 1/24 (`t101-m1-l1`, per Stage 10) | Until then it's the only source for the 23 still-draft lessons' legacy content reference and is read by `LegacyStudentHome`/`LegacyStudentTrack`/`LegacyStudentLesson` |
@@ -143,9 +144,9 @@ Watch for, roughly in priority order:
 
 1. **Redirect errors.** Any 5xx or unexpected blank page hitting
    `/app/student`, `/app/student/track`, or `/app/student/lesson` — should
-   always land cleanly on `/dashboard`. If you see errors here, flip
-   `BOW_LEARN_CUTOVER=off` immediately (§2) and it's a config change, not a
-   deploy.
+   always land cleanly on `/dashboard`. If you see errors here, disable
+   **Student Cutover** in `/app/admin/learn` immediately (§2). The next request
+   uses the legacy path; no deploy or rebuild is required.
 2. **Students finding "Continue."** Watch whether returning students
    actually land on and use the Continue card / CareerMap on `/dashboard`
    rather than looking confused or bouncing — this is the core UX bet of the
@@ -166,38 +167,29 @@ Watch for, roughly in priority order:
 If everything above is clean for the agreed observation period, the dead-code
 inventory in §5 becomes the next stage's work — not part of this one.
 
-## 7. Verification (this pass)
+## 7. Verification (final integration pass)
 
-- `npm run test`: **143/143 passing**.
-- `tsc --noEmit`: clean.
-- `eslint` on touched files: clean.
-- `npm run build`: succeeds through compile/typecheck; the only prerender
-  failure is the pre-existing `/demo` page's `quiz_questions` relation error
-  (unrelated to this stage — that table isn't part of migrations 001-007 and
-  the failure reproduces on `main` before this stage's changes).
-- Live Playwright pass against the local Postgres cluster
-  (`scratchpad/pg`, port 55432), seeded accounts:
-  - Student login → `/app/student`, `/app/student/track`, `/app/student/lesson`
-    all redirect to `/dashboard` with the flag on (default). Screenshots:
-    `scratchpad/proof11/01-student-app-student-redirected.png`,
-    `02-dashboard-desktop.png`, `03-dashboard-mobile-390.png` (390px width).
-  - Flag-off check: restarted dev with `BOW_LEARN_CUTOVER=off`; student
-    login lands on `/app/student` directly and the legacy portal renders in
-    full (cohort card, progress, recent activity) — confirmed via page
-    text, not just a 200 status. Screenshot: `scratchpad/proof11/07-flagoff-legacy-portal.png`.
-    Flipped back to default (on) afterward.
-  - Instructor: `/app/instructor` shows two links to `/app/instructor/learn`
-    (the pre-existing inline link plus the new nav entry); the console
-    renders. Screenshot: `scratchpad/proof11/04-instructor-learn-console.png`.
-  - Admin: `/app/admin/learn` (Studio hub), `/app/admin/learn/map` (map
-    editor), `/app/admin/learn/achievements` (achievements editor) all
-    render for the admin account. Screenshots:
-    `scratchpad/proof11/05-admin-studio-hub.png`,
-    `06-admin-achievements.png`.
-  - Highway World untouched: `git diff --stat -- 'app/(marketing)/highway-world' lib/highway.ts` empty.
-
-(Screenshots are throwaway proof artifacts in `scratchpad/proof11/`, not
-committed, matching the Stage 4/6/9/10 convention.)
+- `npm run test`: **150/150 passing**.
+- `npm run test:people-work`: **19/19 passing**.
+- `npx tsc --noEmit`: clean.
+- `npm run lint`: clean.
+- `npm run build`: complete, including typecheck and **119/119** static pages,
+  against a disposable database carrying the full legacy schema plus People &
+  Work and Learn migrations 001–009.
+- The migration runner applied all Learn migrations to an empty disposable
+  Postgres database, then completed a second time as a no-op.
+- Authenticated HTTP system checks against the production build verified:
+  `/teach`, `/app/people`, `/app/tasks`, `/dashboard`, `/app/teach`, and
+  `/highway-world` all render for their intended audiences.
+- Runtime cutover was exercised **off → on → off against the same compiled
+  server** by changing only `app_feature_flags`. Off rendered the legacy portal;
+  on returned Next's streamed `/dashboard` redirect; disabling it restored the
+  legacy portal on the next request without a rebuild.
+- A focused authenticated HTTP pass was used because this repository does not
+  install Playwright as a dependency. No production environment, database, or
+  feature flag was changed.
+- Highway World remains untouched:
+  `git diff --stat -- 'app/(marketing)/highway-world' lib/highway.ts` is empty.
 
 ## 8. Final project status — Stages 0 through 11
 
@@ -212,16 +204,16 @@ committed, matching the Stage 4/6/9/10 convention.)
 | 8 | Cohort parity: release-state plumbing, enrollment-aware attempts, manual-review queue | `docs/learn/stage8-cohort-parity.md` |
 | 9 | Achievements + competition: declarative badge rules, leaderboard | `docs/learn/stage9-achievements.md` |
 | 10 | Curriculum migration: all 24 legacy lessons imported as drafts, 1 redesigned+published (`t101-m1-l1`) | `docs/learn/stage10-migration.md` |
-| 11 | Controlled cutover: legacy student routes redirect to `/dashboard` behind `BOW_LEARN_CUTOVER`, instructor/admin continuity verified, dead-code inventoried (not deleted) | this memo |
+| 11 | Controlled cutover: legacy student routes redirect to `/dashboard` behind the audited runtime `learn_cutover` flag, instructor/admin continuity verified, dead-code inventoried (not deleted) | this memo |
 
-**Where things stand:** the new learn platform is the canonical student
-surface in production (flag on by default), with an instant, deploy-free
-rollback available. Instructor and admin tooling (Playbook Studio, Career
-Map editor, achievements editor, release controls) is fully live and
-unaffected by the cutover. 23 of 24 legacy lessons remain to be redesigned
-and published by Brayden in Studio — the legacy portal keeps serving that
-content read-only in the interim via the rollback path, and `lib/lessons.ts`
-stays in the repo until that work is done. No historical progress data has
-been migrated; §4 sketches the backfill for whenever that's prioritized.
-Dead-code removal (§5) is explicitly deferred to a follow-up stage after
-Brayden's observation window closes clean.
+**Where things stand:** the code is ready for a controlled deployment, but this
+pass did not merge, deploy, migrate production, import production curriculum,
+or enable cutover. Migration 009 starts the runtime flag off. Keep it off while
+the remaining 23 imported drafts are interactively redesigned and the pilot is
+run. Instructor and admin tooling (Playbook Studio, Career Map editor,
+achievements editor, release controls) is unaffected by the switch. The legacy
+portal continues serving its content through the rollback path, and
+`lib/lessons.ts` stays until the redesign and observation gates are complete.
+No historical progress data has been migrated; §4 sketches the backfill for a
+later deliberate decision. Dead-code removal (§5) remains deferred until the
+production observation window closes cleanly.

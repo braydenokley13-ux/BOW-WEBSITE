@@ -146,15 +146,16 @@ export function evaluateAllNodes(
   return result;
 }
 
-/** Full unlock check for ONE node (used by startAttempt — avoids loading the whole map). */
+/** Full unlock check for a lesson using the same complete map basis as CareerMap. */
 export async function checkNodeUnlockForLesson(
   userId: string,
   lessonId: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const nodeRows = await sqlLearn<MapNodeRow[]>`
+  const allNodeRows = await sqlLearn<MapNodeRow[]>`
     SELECT id, section_id, sort, kind, lesson_id, layout, unlock
-    FROM learn_map_nodes WHERE lesson_id = ${lessonId}
+    FROM learn_map_nodes
   `;
+  const nodeRows = allNodeRows.filter((node) => node.lesson_id === lessonId);
   // Lessons with no map placement (not yet added to a section) are
   // unrestricted by map policy — the map editor's "unplaced" tray handles
   // authoring visibility; play access is not blocked by placement itself.
@@ -164,7 +165,7 @@ export async function checkNodeUnlockForLesson(
   // one reachable placement to unlock play.
   const cohortIds = await loadActiveCohortIds(userId);
 
-  const basis = await buildUnlockBasis(userId, nodeRows);
+  const basis = await buildUnlockBasis(userId, allNodeRows);
   const needsRelease = nodeRows.filter((n) => n.unlock?.requiresInstructorRelease).map((n) => n.id);
   const releasedNodeIds = await loadReleasedNodeIds(needsRelease, userId, cohortIds);
 

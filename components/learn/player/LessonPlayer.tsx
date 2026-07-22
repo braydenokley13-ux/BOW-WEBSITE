@@ -36,6 +36,8 @@ export interface LessonPlayerProps {
     responses?: Record<string, ResponseEntry>;
     variables?: Record<string, number>;
     path?: string[];
+    cursorBlockId?: string;
+    finished?: boolean;
   };
 }
 
@@ -50,6 +52,7 @@ export default function LessonPlayer({ lessonId, attemptId, doc, resume }: Lesso
   const [state, dispatch] = useReducer(playerReducer, undefined, () => initPlayerState(doc, resume));
   const [instanceKeys, setInstanceKeys] = useState<Record<string, number>>({});
   const [isPending, startTransition] = useTransition();
+  const [savingBlockId, setSavingBlockId] = useState<string | null>(null);
   const [finishError, setFinishError] = useState<string | null>(null);
 
   const flat = useMemo(() => flattenBlocks(doc), [doc]);
@@ -59,47 +62,84 @@ export default function LessonPlayer({ lessonId, attemptId, doc, resume }: Lesso
 
   const commitResponse = useCallback(
     (blockId: string, value: unknown) => {
-      dispatch({ type: "SET_RESPONSE", doc, blockId, value });
-      dispatch({ type: "COMMIT", doc, blockId });
+      if (savingBlockId) return;
       const instanceKey = instanceKeys[blockId] ?? 0;
-      setInstanceKeys((prev) => ({ ...prev, [blockId]: instanceKey + 1 }));
-      // Server-authoritative persistence — fire and forget from the player's
-      // perspective; completeAttempt recomputes from persisted responses
-      // regardless of what the client believed, so a transient failure here
-      // is caught at completion time, not silently trusted.
-      startTransition(() => {
-        void submitResponse(attemptId, blockId, instanceKey, value);
+      setSavingBlockId(blockId);
+      setFinishError(null);
+      // Persist first, then advance the optimistic player. This keeps rapid
+      // clicks or slow networks from displaying a later block before the
+      // server has durably accepted the current cursor.
+      startTransition(async () => {
+        try {
+          const result = await submitResponse(attemptId, blockId, instanceKey, value);
+          if (!result.ok) {
+            setFinishError(result.error);
+            return;
+          }
+          dispatch({ type: "SET_RESPONSE", doc, blockId, value });
+          dispatch({ type: "COMMIT", doc, blockId });
+          setInstanceKeys((prev) => ({ ...prev, [blockId]: instanceKey + 1 }));
+        } catch {
+          setFinishError("This response could not be saved. Check your connection and try again.");
+        } finally {
+          setSavingBlockId(null);
+        }
       });
     },
-    [doc, attemptId, instanceKeys],
+    [doc, attemptId, instanceKeys, savingBlockId],
   );
 
   const advanceContent = useCallback(
     (blockId: string) => {
-      dispatch({ type: "ADVANCE", doc, blockId });
+      if (savingBlockId) return;
+      const instanceKey = instanceKeys[blockId] ?? 0;
+      setSavingBlockId(blockId);
+      setFinishError(null);
+      // Content traversal is persisted before the client advances. Without
+      // this server-side evidence, completeAttempt cannot prove the student
+      // reached the lesson end.
+      startTransition(async () => {
+        try {
+          const result = await submitResponse(attemptId, blockId, instanceKey, null);
+          if (!result.ok) {
+            setFinishError(result.error);
+            return;
+          }
+          dispatch({ type: "ADVANCE", doc, blockId });
+          setInstanceKeys((prev) => ({ ...prev, [blockId]: instanceKey + 1 }));
+        } catch {
+          setFinishError("This lesson step could not be saved. Check your connection and try again.");
+        } finally {
+          setSavingBlockId(null);
+        }
+      });
     },
-    [doc],
+    [doc, attemptId, instanceKeys, savingBlockId],
   );
 
   const handleFinish = useCallback(() => {
     startTransition(async () => {
-      const result = await completeAttempt(attemptId);
-      if (!result.ok) {
-        setFinishError(result.error);
-        return;
-      }
-      // Stash any newly-earned rule-based badges (Stage 9) in sessionStorage
-      // keyed by attemptId so the results page's BadgeToast pathway can pick
-      // them up client-side — mirrors how DailyQuestionCard surfaces
-      // checkAndAwardBadges' newly-earned badges, just across a navigation.
-      if (result.newBadges.length > 0 && typeof window !== "undefined") {
-        try {
-          window.sessionStorage.setItem(`bow-new-badges:${attemptId}`, JSON.stringify(result.newBadges));
-        } catch {
-          // Non-fatal — the badge is already durably awarded, just no toast.
+      try {
+        const result = await completeAttempt(attemptId);
+        if (!result.ok) {
+          setFinishError(result.error);
+          return;
         }
+        // Stash any newly-earned rule-based badges (Stage 9) in sessionStorage
+        // keyed by attemptId so the results page's BadgeToast pathway can pick
+        // them up client-side — mirrors how DailyQuestionCard surfaces
+        // checkAndAwardBadges' newly-earned badges, just across a navigation.
+        if (result.newBadges.length > 0 && typeof window !== "undefined") {
+          try {
+            window.sessionStorage.setItem(`bow-new-badges:${attemptId}`, JSON.stringify(result.newBadges));
+          } catch {
+            // Non-fatal — the badge is already durably awarded, just no toast.
+          }
+        }
+        router.push(`/dashboard/lesson/${lessonId}/results/${attemptId}`);
+      } catch {
+        setFinishError("Results could not be loaded. Your saved progress is safe; please try again.");
       }
-      router.push(`/dashboard/lesson/${lessonId}/results/${attemptId}`);
     });
   }, [attemptId, lessonId, router]);
 
@@ -194,7 +234,7 @@ export default function LessonPlayer({ lessonId, attemptId, doc, resume }: Lesso
                 {finishError}
               </p>
             )}
-            <Button variant="emphasis" onClick={handleFinish} disabled={isPending} aria-label="See results">
+            <Button variant="emphasis" onClick={handleFinish} disabled={isPending || savingBlockId !== null} aria-label="See results">
               {isPending ? "Scoring…" : "See Results"}
             </Button>
           </div>
@@ -205,8 +245,14 @@ export default function LessonPlayer({ lessonId, attemptId, doc, resume }: Lesso
             onChangeResponse={(value) => dispatch({ type: "SET_RESPONSE", doc, blockId: currentEntry.block.id, value })}
             onCommit={() => commitResponse(currentEntry.block.id, state.responses[currentEntry.block.id]?.value)}
             onAdvance={() => advanceContent(currentEntry.block.id)}
+            busy={savingBlockId === currentEntry.block.id}
           />
         ) : null}
+        {finishError && !state.finished && (
+          <p role="alert" style={{ color: "var(--bow-negative)", fontSize: 14, marginTop: 16 }}>
+            {finishError}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -218,12 +264,14 @@ function BlockFrame({
   onChangeResponse,
   onCommit,
   onAdvance,
+  busy,
 }: {
   entry: ReturnType<typeof flattenBlocks>[number];
   state: ReturnType<typeof initPlayerState>;
   onChangeResponse: (value: unknown) => void;
   onCommit: () => void;
   onAdvance: () => void;
+  busy: boolean;
 }) {
   const { block } = entry;
   const Player = getPlayerComponent(block.type);
@@ -233,20 +281,20 @@ function BlockFrame({
     // Graceful malformed-doc fallback: an unregistered block type never
     // crashes the player — it renders a skip control instead.
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <fieldset disabled={busy} aria-busy={busy} style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
         <p style={{ color: "#9a9da6", fontSize: 14 }}>
           This block type (“{block.type}”) isn’t supported in this build yet.
         </p>
         <Button variant="secondary" onClick={onAdvance} aria-label="Skip">
           Continue
         </Button>
-      </div>
+      </fieldset>
     );
   }
 
   if (isAutoAdvanceType(block.type)) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <fieldset disabled={busy} aria-busy={busy} style={{ border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 20 }}>
         {/* eslint-disable-next-line react-hooks/static-components -- Player
             is a stable lookup into blockRegistry.PLAYER_COMPONENTS, not a
             component created per render. */}
@@ -263,23 +311,24 @@ function BlockFrame({
         <Button variant="primary" onClick={onAdvance} aria-label="Continue">
           Continue
         </Button>
-      </div>
+      </fieldset>
     );
   }
 
   return (
-    // Player is a stable lookup into blockRegistry.PLAYER_COMPONENTS, not a
-    // component created per render.
-    // eslint-disable-next-line react-hooks/static-components
-    <Player
-      block={block as never}
-      value={responseEntry?.value}
-      committed={Boolean(responseEntry?.committed)}
-      feedback={responseEntry?.outcome?.feedback}
-      variables={state.variables}
-      onChange={onChangeResponse}
-      onCommit={onCommit}
-      onAdvance={onAdvance}
-    />
+    <fieldset disabled={busy} aria-busy={busy} style={{ border: 0, padding: 0, margin: 0 }}>
+      {/* eslint-disable-next-line react-hooks/static-components -- Player is a
+          stable registry lookup, not a component created during render. */}
+      <Player
+        block={block as never}
+        value={responseEntry?.value}
+        committed={Boolean(responseEntry?.committed)}
+        feedback={responseEntry?.outcome?.feedback}
+        variables={state.variables}
+        onChange={onChangeResponse}
+        onCommit={onCommit}
+        onAdvance={onAdvance}
+      />
+    </fieldset>
   );
 }

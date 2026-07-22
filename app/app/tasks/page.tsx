@@ -6,8 +6,11 @@ import { entityHref } from "@/lib/routes";
 import WorkItemActions from "@/components/app/tasks/WorkItemActions";
 import CreateWorkForm from "@/components/app/tasks/CreateWorkForm";
 import ReviewSubmissionControls from "@/components/app/tasks/ReviewSubmissionControls";
+import SubmitWorkControls from "@/components/app/tasks/SubmitWorkControls";
 import WorkGovernanceControls from "@/components/app/tasks/WorkGovernanceControls";
+import WeeklyCommitmentEditor from "@/components/app/people/WeeklyCommitmentEditor";
 import { requireStaff } from "@/lib/dal";
+import { currentWeekStart, getWeeklyCycleForPerson } from "@/lib/people-operations";
 import { addCanonicalDays, canonicalDateInZone, formatCanonicalDate } from "@/lib/timezone";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -16,6 +19,7 @@ interface TaskRow {
   id: string;
   title: string;
   owner_user_id: string | null;
+  doer_user_id: string | null;
   due_at: number | null;
   due_on: string | null;
   status: "open" | "done";
@@ -41,6 +45,7 @@ interface WorkItem {
   id: string;
   title: string;
   ownerUserId: string | null;
+  doerUserId: string | null;
   dueAt: number | null;
   dueOn: string | null;
   status: "open" | "done";
@@ -71,6 +76,7 @@ function toWorkItem(row: TaskRow): WorkItem {
     id: row.id,
     title: row.title,
     ownerUserId: row.owner_user_id,
+    doerUserId: row.doer_user_id,
     dueAt: row.due_at,
     dueOn: row.due_on,
     status: row.status,
@@ -174,7 +180,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const overdueCount = open.filter(isOverdue).length;
   const dueSoonCount = open.filter(isDueSoon).length;
   const unassignedCount = open.filter((item) => !item.ownerUserId).length;
-  const mineCount = open.filter((item) => item.ownerUserId === me.id).length;
+  const mineCount = open.filter((item) => item.ownerUserId === me.id || item.doerUserId === me.id).length;
   const reviewCount = open.filter((item) => item.workflowState === "submitted").length;
 
   const view: WorkView = (VIEWS as readonly string[]).includes(viewParam ?? "")
@@ -183,7 +189,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       ? "mine"
       : "all";
   const inView = (item: WorkItem): boolean => {
-    if (view === "mine") return item.ownerUserId === me.id;
+    if (view === "mine") return item.ownerUserId === me.id || item.doerUserId === me.id;
     if (view === "review") return item.workflowState === "submitted";
     if (view === "unowned") return !item.ownerUserId;
     if (view === "overdue") return isOverdue(item);
@@ -202,6 +208,16 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     const resolved = ownerNames.get(item.ownerUserId);
     return resolved && resolved !== item.ownerUserId ? resolved : "Owner record unavailable";
   };
+
+  const myPerson = (await db.prepare("SELECT id, name FROM people WHERE user_id = ? ORDER BY created_at LIMIT 1").get(me.id)) as { id: string; name: string } | undefined;
+  const weekStart = currentWeekStart(now);
+  const myWeek = myPerson ? await getWeeklyCycleForPerson(myPerson.id, weekStart) : null;
+  const weeklyOutcomes = ((await db.prepare(
+    "SELECT id, title FROM outcomes WHERE status = 'active' ORDER BY due_on NULLS LAST, created_at LIMIT 200",
+  ).all()) as { id: string; title: string }[]).map((outcome) => ({ id: outcome.id, title: outcome.title }));
+  const myWeeklyTasks = open.filter((item) => item.ownerUserId === me.id || item.doerUserId === me.id).map((item) => ({
+    id: item.id, title: item.title, workflowState: item.workflowState, dueOn: item.dueOn,
+  }));
 
   const renderItems = (items: WorkItem[], completed = false) => (
     <div className="ops-panel" style={{ padding: 0, overflow: "hidden" }}>
@@ -285,6 +301,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             {!completed && (
               <div style={{ flex: "0 0 auto", alignSelf: "center" }}>
                 {item.workflowState === "submitted" && submission && <div style={{ marginBottom: 8 }}><ReviewSubmissionControls submissionId={submission.id} /></div>}
+                {item.reviewRequired
+                  && ["assigned", "in_progress", "revision_requested"].includes(item.workflowState)
+                  && (me.role === "admin" || item.ownerUserId === me.id || item.doerUserId === me.id) && (
+                    <div style={{ marginBottom: 8 }}>
+                      <SubmitWorkControls taskId={item.id} workflowState={item.workflowState} />
+                    </div>
+                  )}
                 <WorkItemActions
                   taskId={item.id}
                   currentOwnerId={item.ownerUserId}
@@ -334,6 +357,22 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           </Link>
         ))}
       </nav>
+
+      {myPerson && (
+        <section className="ops-panel" style={{ padding: 20 }} aria-labelledby="my-week-heading">
+          <span className="ops-label">One result before the queue</span>
+          <h2 id="my-week-heading" className="ops-section-title">My Week</h2>
+          <WeeklyCommitmentEditor
+            personId={myPerson.id}
+            personName={myPerson.name}
+            weekStart={weekStart}
+            cycle={myWeek}
+            tasks={myWeeklyTasks}
+            outcomes={weeklyOutcomes}
+            managerMode={false}
+          />
+        </section>
+      )}
 
       <CreateWorkForm
         staffUsers={staffUsers}

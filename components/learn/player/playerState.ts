@@ -21,6 +21,7 @@ import {
   type GradeOutcome,
   type Variables,
 } from "@/lib/learn/engine";
+import { BLOCK_REGISTRY } from "@/lib/learn/registry";
 
 export interface FlatBlock {
   block: Block;
@@ -61,25 +62,90 @@ const MAX_TRANSITIONS = 500;
 /** Build the initial state for a fresh (or resumed) attempt. */
 export function initPlayerState(
   doc: LessonDoc,
-  resume?: { responses?: Record<string, ResponseEntry>; variables?: Variables; path?: string[] },
+  resume?: {
+    responses?: Record<string, ResponseEntry>;
+    variables?: Variables;
+    path?: string[];
+    cursorBlockId?: string;
+    finished?: boolean;
+  },
 ): PlayerState {
   const flat = flattenBlocks(doc);
   const variables: Variables = { ...resume?.variables };
   if (!resume?.variables) {
     for (const v of doc.variables) variables[v.key] = v.initial;
   }
+  const responses = resume?.responses ?? {};
   const path = resume?.path ?? [];
-  const cursorBlockId =
-    (path.length > 0 ? nextAfter(flat, path[path.length - 1]) : undefined) ?? flat[0]?.block.id ?? "";
+  let cursorBlockId = resume?.cursorBlockId
+    ?? (path.length > 0 ? nextAfter(flat, path[path.length - 1]) : undefined)
+    ?? flat[0]?.block.id
+    ?? "";
+  if (!resume?.cursorBlockId && path.length === 0) {
+    const firstVisible = flat.find((entry) => isBlockVisible(entry.block, variables, responses));
+    cursorBlockId = firstVisible?.block.id ?? "";
+  }
+  const initiallyFinished = flat.length === 0 || (!cursorBlockId && flat.length > 0);
   return {
     cursorBlockId,
     variables,
-    responses: resume?.responses ?? {},
+    responses,
     path,
-    finished: flat.length === 0,
+    finished: resume?.finished ?? initiallyFinished,
     transitionCount: 0,
     error: flat.length === 0 ? "Lesson has no blocks" : null,
   };
+}
+
+export interface PersistedTraversalEntry {
+  blockId: string;
+  response: unknown;
+}
+
+export interface ReplayTraversalResult {
+  state: PlayerState;
+  consumed: number;
+  error: string | null;
+}
+
+/**
+ * Rebuild an attempt from the immutable document plus ordered committed rows.
+ * This is the shared authority for server resume, submission order, and
+ * completion. Every row must match the state machine's current reachable
+ * cursor; a client cannot skip a block or invent a different branch.
+ */
+export function replayCommittedAttempt(
+  doc: LessonDoc,
+  entries: PersistedTraversalEntry[],
+): ReplayTraversalResult {
+  let state = initPlayerState(doc);
+  let consumed = 0;
+
+  for (const entry of entries) {
+    if (state.error) return { state, consumed, error: state.error };
+    if (state.finished) {
+      return { state, consumed, error: `Committed traversal continues after lesson end at "${entry.blockId}"` };
+    }
+    if (state.cursorBlockId !== entry.blockId) {
+      return {
+        state,
+        consumed,
+        error: `Expected reachable block "${state.cursorBlockId}" but received "${entry.blockId}"`,
+      };
+    }
+    const flatEntry = findFlat(flattenBlocks(doc), entry.blockId);
+    if (!flatEntry) return { state, consumed, error: `Unknown block id "${entry.blockId}"` };
+
+    if (BLOCK_REGISTRY[flatEntry.block.type].capabilities.collectsResponse) {
+      state = playerReducer(state, { type: "SET_RESPONSE", doc, blockId: entry.blockId, value: entry.response });
+      state = playerReducer(state, { type: "COMMIT", doc, blockId: entry.blockId });
+    } else {
+      state = playerReducer(state, { type: "ADVANCE", doc, blockId: entry.blockId });
+    }
+    consumed += 1;
+  }
+
+  return { state, consumed, error: state.error };
 }
 
 function findFlat(flat: FlatBlock[], blockId: string): FlatBlock | undefined {

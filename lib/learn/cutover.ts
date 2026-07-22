@@ -3,11 +3,11 @@
  *
  * A single env-driven flag gates the student route cutover from the legacy
  * cohort portal (`/app/student*`) to the new learn platform (`/dashboard`).
- * Default is ON so a fresh deploy ships the cutover. Production rollback is
- * a single env var flip (BOW_LEARN_CUTOVER=off) — no redeploy required,
- * since Vercel/host env changes take effect on the next request (Next.js
- * reads process.env per-request in server components/actions, no build-time
- * inlining for server-only reads).
+ * Default is OFF so a missing or malformed value cannot cut students over
+ * accidentally. Once migration 009 is applied, the database-backed flag is
+ * authoritative and can be changed safely from Playbook Studio without a
+ * rebuild or deployment. The environment variable is a pre-migration
+ * fallback only.
  *
  * When ON:
  *   - /app/student, /app/student/track, /app/student/lesson redirect to
@@ -23,4 +23,23 @@
  * only controls where the *legacy entry points* send people and what the
  * nav advertises as Home.
  */
-export const CUTOVER_ENABLED = process.env.BOW_LEARN_CUTOVER !== "off";
+export function isLearnCutoverEnabled(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === "on";
+}
+
+/** Read inside the request, never at module initialization/build time. */
+export async function getLearnCutoverEnabled(): Promise<boolean> {
+  try {
+    const { getDb } = await import("@/lib/db");
+    const row = (await getDb().prepare(
+      "SELECT enabled FROM app_feature_flags WHERE key = 'learn_cutover'",
+    ).get()) as { enabled: boolean } | undefined;
+    if (row) return Boolean(row.enabled);
+  } catch (error) {
+    // A deploy may briefly precede migration 009. Only the missing-table case
+    // falls back; real database failures remain visible instead of silently
+    // changing student routing.
+    if (!(error && typeof error === "object" && "code" in error && error.code === "42P01")) throw error;
+  }
+  return isLearnCutoverEnabled(process.env.BOW_LEARN_CUTOVER);
+}
