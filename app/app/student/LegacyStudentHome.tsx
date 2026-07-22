@@ -37,7 +37,7 @@ const LABEL: Record<LessonState, string> = {
   locked: "Locked",
 };
 
-export default function StudentHomePage() {
+export default function LegacyStudentHome() {
   const { me, getCohort, getOrg, getUser, activeEnrollmentFor, cohortCurrentLessonId, lessonProgressFor, setSelectedLessonId } = useAppState();
   const enr = activeEnrollmentFor(me.id);
   const cohort = enr ? getCohort(enr.cohortId) : null;
