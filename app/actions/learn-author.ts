@@ -19,6 +19,8 @@ import { LessonDocSchema, type LessonDoc } from "@/lib/learn/schema";
 import { migrateLessonDoc } from "@/lib/learn/compat";
 import { validateLessonDoc, type ValidationResult } from "@/lib/learn/validate";
 import { regenerateLessonDocIds } from "@/lib/learn/regenerateIds";
+import type { UnlockPolicy } from "@/lib/learn/unlock";
+import { reorderWithinList, moveBetweenLists } from "@/lib/learn/mapOrder";
 
 export type ActionResult<T> = (T & { ok: true }) | { ok: false; error: string };
 export type VoidActionResult = { ok: true } | { ok: false; error: string };
@@ -427,4 +429,279 @@ export async function createSkill(label: string): Promise<ActionResult<{ id: str
     ON CONFLICT (id) DO NOTHING
   `;
   return { ok: true, id, label: trimmed };
+}
+
+/* ================= career map CRUD (Stage 7 follow-up) ================= */
+
+const ThemeInputSchema = z.object({
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Pick a color swatch").optional(),
+});
+
+const MapSectionInputSchema = z.object({
+  trackId: z.string().min(1),
+  title: z.string().min(1),
+  subtitle: z.string().optional(),
+  theme: ThemeInputSchema.optional(),
+});
+
+const MapSectionUpdateSchema = z.object({
+  title: z.string().min(1),
+  subtitle: z.string().optional(),
+  theme: ThemeInputSchema.optional(),
+});
+
+/** Mirrors lib/learn/unlock.ts's UnlockPolicy — validated at the authoring
+ * boundary so a malformed policy can never reach learn_map_nodes.unlock. */
+const UnlockPolicyInputSchema = z.object({
+  requiresNodes: z.array(z.string().min(1)).optional(),
+  minStarsTotal: z.number().int().min(0).optional(),
+  minLevel: z.number().int().min(0).optional(),
+  badgeId: z.string().min(1).optional(),
+  requiresInstructorRelease: z.boolean().optional(),
+  opensAt: z.number().int().optional(),
+});
+
+const MAP_NODE_KINDS = ["lesson", "bonus_challenge", "checkpoint", "reward"] as const;
+
+const MapNodeInputSchema = z
+  .object({
+    sectionId: z.string().min(1),
+    kind: z.enum(MAP_NODE_KINDS),
+    lessonId: z.string().min(1).optional(),
+    branchGroup: z.string().min(1).optional(),
+  })
+  .refine((v) => (v.kind === "lesson" ? Boolean(v.lessonId) : true), {
+    message: "A lesson node needs a lesson selected.",
+    path: ["lessonId"],
+  });
+
+export interface MapEditorSection {
+  id: string;
+  trackId: string;
+  title: string;
+  subtitle: string | null;
+  sort: number;
+  theme: Record<string, unknown>;
+}
+
+export interface MapEditorNode {
+  id: string;
+  sectionId: string;
+  sort: number;
+  kind: (typeof MAP_NODE_KINDS)[number];
+  lessonId: string | null;
+  lessonTitle: string | null;
+  layout: Record<string, unknown>;
+  unlock: UnlockPolicy;
+}
+
+export interface MapEditorData {
+  tracks: { id: string; title: string }[];
+  sections: MapEditorSection[];
+  nodes: MapEditorNode[];
+  unplacedLessons: { id: string; title: string }[];
+}
+
+/** Everything the map editor page needs, in a handful of batched queries. */
+export async function getMapEditorData(): Promise<ActionResult<MapEditorData>> {
+  await requireAdmin();
+
+  const tracks = await sqlLearn<{ id: string; title: string }[]>`
+    SELECT id, title FROM learn_tracks ORDER BY sort ASC
+  `;
+  const sectionRows = await sqlLearn<MapEditorSection[]>`
+    SELECT id, track_id AS "trackId", title, subtitle, sort, theme
+    FROM learn_map_sections ORDER BY sort ASC
+  `;
+  const nodeRows = await sqlLearn<{
+    id: string; section_id: string; sort: number; kind: MapEditorNode["kind"];
+    lesson_id: string | null; layout: Record<string, unknown>; unlock: UnlockPolicy;
+    lesson_title: string | null;
+  }[]>`
+    SELECT n.id, n.section_id, n.sort, n.kind, n.lesson_id, n.layout, n.unlock, l.title AS lesson_title
+    FROM learn_map_nodes n LEFT JOIN learn_lessons l ON l.id = n.lesson_id
+    ORDER BY n.sort ASC
+  `;
+
+  // "Unplaced published lessons": lesson has a published version but no
+  // learn_map_nodes row references it — surfaced as a tray, never
+  // auto-placed (plan §5: no silent auto-placement).
+  const unplacedRows = await sqlLearn<{ id: string; title: string }[]>`
+    SELECT l.id, l.title FROM learn_lessons l
+    WHERE l.published_version_id IS NOT NULL AND l.lifecycle = 'active'
+      AND NOT EXISTS (SELECT 1 FROM learn_map_nodes n WHERE n.lesson_id = l.id)
+    ORDER BY l.title ASC
+  `;
+
+  return {
+    ok: true,
+    tracks,
+    sections: sectionRows.map((s) => ({ ...s, subtitle: s.subtitle ?? null })),
+    nodes: nodeRows.map((n) => ({
+      id: n.id,
+      sectionId: n.section_id,
+      sort: n.sort,
+      kind: n.kind,
+      lessonId: n.lesson_id,
+      lessonTitle: n.lesson_title,
+      layout: n.layout || {},
+      unlock: n.unlock || {},
+    })),
+    unplacedLessons: unplacedRows,
+  };
+}
+
+/** Published lessons pickable for a new map node (any lifecycle-active
+ * lesson with a published version — placing the same lesson twice is
+ * allowed, e.g. a lesson reachable from two department paths). */
+export async function listPublishedLessonsForMapPicker(): Promise<ActionResult<{ lessons: { id: string; title: string }[] }>> {
+  await requireAdmin();
+  const rows = await sqlLearn<{ id: string; title: string }[]>`
+    SELECT id, title FROM learn_lessons
+    WHERE published_version_id IS NOT NULL AND lifecycle = 'active'
+    ORDER BY title ASC
+  `;
+  return { ok: true, lessons: rows };
+}
+
+export async function createMapSection(input: z.infer<typeof MapSectionInputSchema>): Promise<ActionResult<{ id: string }>> {
+  await requireAdmin();
+  const parsed = MapSectionInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.message };
+  const id = `map-section-${randomUUID().slice(0, 10)}`;
+  const sortRows = await sqlLearn<{ m: number }[]>`
+    SELECT COALESCE(MAX(sort), -1) AS m FROM learn_map_sections WHERE track_id = ${parsed.data.trackId}
+  `;
+  await sqlLearn`
+    INSERT INTO learn_map_sections (id, track_id, title, subtitle, sort, theme)
+    VALUES (${id}, ${parsed.data.trackId}, ${parsed.data.title}, ${parsed.data.subtitle ?? null}, ${sortRows[0].m + 1}, ${sqlLearn.json((parsed.data.theme ?? {}) as never)})
+  `;
+  revalidatePath("/app/admin/learn/map");
+  revalidatePath("/dashboard");
+  return { ok: true, id };
+}
+
+export async function updateMapSection(id: string, input: z.infer<typeof MapSectionUpdateSchema>): Promise<VoidActionResult> {
+  await requireAdmin();
+  const parsed = MapSectionUpdateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.message };
+  await sqlLearn`
+    UPDATE learn_map_sections
+    SET title = ${parsed.data.title}, subtitle = ${parsed.data.subtitle ?? null},
+        theme = COALESCE(${parsed.data.theme ? sqlLearn.json(parsed.data.theme as never) : null}, theme)
+    WHERE id = ${id}
+  `;
+  revalidatePath("/app/admin/learn/map");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+/** Deletes a section and every node in it (learn_map_nodes FK is ON DELETE
+ * CASCADE) — the caller's UI must confirm before calling this. */
+export async function deleteMapSection(id: string): Promise<VoidActionResult> {
+  await requireAdmin();
+  await sqlLearn`DELETE FROM learn_map_sections WHERE id = ${id}`;
+  revalidatePath("/app/admin/learn/map");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function reorderMapSections(trackId: string, orderedIds: string[]): Promise<VoidActionResult> {
+  await requireAdmin();
+  await withTransaction(async (tx) => {
+    for (let i = 0; i < orderedIds.length; i += 1) {
+      await tx`UPDATE learn_map_sections SET sort = ${i} WHERE id = ${orderedIds[i]} AND track_id = ${trackId}`;
+    }
+  });
+  revalidatePath("/app/admin/learn/map");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function createMapNode(input: z.infer<typeof MapNodeInputSchema>): Promise<ActionResult<{ id: string }>> {
+  await requireAdmin();
+  const parsed = MapNodeInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues.map((i) => i.message).join(", ") };
+  const id = `map-node-${randomUUID().slice(0, 10)}`;
+  const sortRows = await sqlLearn<{ m: number }[]>`
+    SELECT COALESCE(MAX(sort), -1) AS m FROM learn_map_nodes WHERE section_id = ${parsed.data.sectionId}
+  `;
+  const layout = parsed.data.branchGroup ? { branchGroup: parsed.data.branchGroup } : {};
+  await sqlLearn`
+    INSERT INTO learn_map_nodes (id, section_id, sort, kind, lesson_id, layout, unlock)
+    VALUES (${id}, ${parsed.data.sectionId}, ${sortRows[0].m + 1}, ${parsed.data.kind}, ${parsed.data.lessonId ?? null}, ${sqlLearn.json(layout as never)}, '{}'::jsonb)
+  `;
+  revalidatePath("/app/admin/learn/map");
+  revalidatePath("/dashboard");
+  return { ok: true, id };
+}
+
+export async function deleteMapNode(id: string): Promise<VoidActionResult> {
+  await requireAdmin();
+  await sqlLearn`DELETE FROM learn_map_nodes WHERE id = ${id}`;
+  revalidatePath("/app/admin/learn/map");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function updateMapNodeUnlock(id: string, unlock: z.infer<typeof UnlockPolicyInputSchema>): Promise<VoidActionResult> {
+  await requireAdmin();
+  const parsed = UnlockPolicyInputSchema.safeParse(unlock);
+  if (!parsed.success) return { ok: false, error: parsed.error.message };
+  await sqlLearn`UPDATE learn_map_nodes SET unlock = ${sqlLearn.json(parsed.data as never)} WHERE id = ${id}`;
+  revalidatePath("/app/admin/learn/map");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function updateMapNodeBranchGroup(id: string, branchGroup: string): Promise<VoidActionResult> {
+  await requireAdmin();
+  const trimmed = branchGroup.trim();
+  const rows = await sqlLearn<{ layout: Record<string, unknown> }[]>`SELECT layout FROM learn_map_nodes WHERE id = ${id}`;
+  if (!rows[0]) return { ok: false, error: "Node not found" };
+  const nextLayout = { ...rows[0].layout, branchGroup: trimmed || "main" };
+  await sqlLearn`UPDATE learn_map_nodes SET layout = ${sqlLearn.json(nextLayout as never)} WHERE id = ${id}`;
+  revalidatePath("/app/admin/learn/map");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+/**
+ * Moves a node to `toSectionId` at position `toIndex` and resequences sort
+ * for both the origin and destination sections — single action covers both
+ * within-section reorder (toSectionId === current section) and
+ * cross-section drag (plan: "drag-reorder within/between sections").
+ */
+export async function moveMapNode(nodeId: string, toSectionId: string, toIndex: number): Promise<VoidActionResult> {
+  await requireAdmin();
+  const rows = await sqlLearn<{ section_id: string }[]>`SELECT section_id FROM learn_map_nodes WHERE id = ${nodeId}`;
+  const fromSectionId = rows[0]?.section_id;
+  if (!fromSectionId) return { ok: false, error: "Node not found" };
+
+  await withTransaction(async (tx) => {
+    const fromNodes = await tx<{ id: string }[]>`
+      SELECT id FROM learn_map_nodes WHERE section_id = ${fromSectionId} AND id != ${nodeId} ORDER BY sort ASC
+    `;
+    if (fromSectionId === toSectionId) {
+      const ids = reorderWithinList(fromNodes.map((n) => n.id), nodeId, toIndex);
+      for (let i = 0; i < ids.length; i += 1) {
+        await tx`UPDATE learn_map_nodes SET sort = ${i} WHERE id = ${ids[i]}`;
+      }
+    } else {
+      const toNodes = await tx<{ id: string }[]>`
+        SELECT id FROM learn_map_nodes WHERE section_id = ${toSectionId} ORDER BY sort ASC
+      `;
+      const { fromIds, toIds } = moveBetweenLists(fromNodes.map((n) => n.id), toNodes.map((n) => n.id), nodeId, toIndex);
+      for (let i = 0; i < fromIds.length; i += 1) {
+        await tx`UPDATE learn_map_nodes SET sort = ${i} WHERE id = ${fromIds[i]}`;
+      }
+      for (let i = 0; i < toIds.length; i += 1) {
+        await tx`UPDATE learn_map_nodes SET section_id = ${toSectionId}, sort = ${i} WHERE id = ${toIds[i]}`;
+      }
+    }
+  });
+
+  revalidatePath("/app/admin/learn/map");
+  revalidatePath("/dashboard");
+  return { ok: true };
 }
