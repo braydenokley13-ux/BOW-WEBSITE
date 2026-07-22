@@ -469,7 +469,7 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
     // have no rule and are skipped by the WHERE clause below).
     const newBadges: { id: string; name: string; icon: string }[] = [];
     const ruleBadgeRows = await tx<{ id: string; name: string; icon: string; rule: unknown; xp_reward: number }[]>`
-      SELECT id, name, icon, rule, xp_reward FROM badges WHERE rule IS NOT NULL
+      SELECT id, name, icon, rule, xp_reward FROM badges WHERE rule IS NOT NULL AND active = 1
     `;
     if (ruleBadgeRows.length > 0) {
       const masteryAllRows = await tx<{ lesson_id: string; best_stars: number }[]>`
