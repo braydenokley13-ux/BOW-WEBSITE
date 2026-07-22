@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAdmin } from "@/lib/dal";
 import { getCurriculumTree } from "@/app/actions/learn-author";
 import CurriculumManagerClient from "./CurriculumManagerClient";
@@ -14,10 +15,33 @@ export default async function LearnAdminPage() {
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 20px" }}>
-      <h1 style={{ marginBottom: 4 }}>Playbook Studio</h1>
-      <p style={{ marginBottom: 24, color: "var(--bow-muted-text, #767a85)" }}>
-        Tracks, modules, and lessons for the Playbook Engine. Open a lesson to build it visually.
-      </p>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ marginBottom: 4 }}>Playbook Studio</h1>
+          <p style={{ marginBottom: 24, color: "var(--bow-muted-text, #767a85)" }}>
+            Tracks, modules, and lessons for the Playbook Engine. Open a lesson to build it visually.
+          </p>
+        </div>
+        <Link
+          href="/app/admin/learn/map"
+          style={{
+            fontFamily: "var(--font-data)",
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--bow-white)",
+            background: "var(--bow-orange-solid)",
+            border: "1px solid var(--bow-orange-solid)",
+            borderRadius: 999,
+            padding: "10px 18px",
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Career Map Editor →
+        </Link>
+      </div>
       {tree.ok ? (
         <CurriculumManagerClient tree={tree} />
       ) : (
