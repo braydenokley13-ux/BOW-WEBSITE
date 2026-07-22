@@ -259,7 +259,7 @@ async function eligibleStudentIds(orgId: string | null): Promise<string[]> {
          JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
          JOIN enrollments e ON e.user_id = u.id
         WHERE u.role = 'student' AND u.status = 'active' AND e.enroll = 'active'
-          AND (? IS NULL OR u.org_id = ?)`,
+          AND (?::text IS NULL OR u.org_id = ?::text)`,
       )
       .all(orgId, orgId)) as any[];
   return rows.map((r) => r.id as string);
@@ -304,7 +304,7 @@ export async function getLeaderboardCohorts(orgId: string | null = null): Promis
        FROM cohorts c JOIN enrollments e ON e.cohort_id = c.id JOIN users u ON u.id = e.user_id
        JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
        WHERE u.role = 'student' AND u.status = 'active' AND e.enroll = 'active'
-         AND (? IS NULL OR u.org_id = ?)
+         AND (?::text IS NULL OR u.org_id = ?::text)
        ORDER BY c.name ASC`,
       )
       .all(orgId, orgId)) as any[];

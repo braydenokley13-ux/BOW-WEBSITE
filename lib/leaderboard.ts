@@ -59,7 +59,7 @@ async function eligibleOrdered(type: LeaderboardType, orgId: string | null = nul
        FROM users u
        JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
        WHERE u.role = 'student' AND u.status = 'active'
-         AND (? IS NULL OR u.org_id = ?)
+         AND (?::text IS NULL OR u.org_id = ?::text)
          AND EXISTS (SELECT 1 FROM enrollments e WHERE e.user_id = u.id AND e.enroll = 'active')`,
       )
       .all(orgId, orgId)) as any[];

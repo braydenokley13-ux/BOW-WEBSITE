@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/dal";
 import { getDailyQuestionView } from "@/lib/daily-question";
 import { loadStudentHome } from "@/lib/learn/home";
+import { getXPLeaderboard, getStudentRank, getStudentLeaderboardRow } from "@/lib/leaderboard";
 import StudentHome from "@/components/learn/home/StudentHome";
 
 /**
@@ -16,10 +17,27 @@ import StudentHome from "@/components/learn/home/StudentHome";
 export default async function DashboardPage() {
   const me = await requireRole("student");
 
-  const [home, dailyQuestion] = await Promise.all([
+  const orgScope = me.orgId ?? null;
+
+  const [home, dailyQuestion, top5, myRank] = await Promise.all([
     loadStudentHome(me.id, me.first),
     getDailyQuestionView(me.id),
+    getXPLeaderboard(orgScope),
+    getStudentRank(me.id, "xp", orgScope),
   ]);
+  const top5Rows = top5.slice(0, 5);
+  // Only fetch the viewer's own row when they're not already visible in the
+  // top 5 shown on the tile — keeps this compact, links to /leaderboard for
+  // the full board (plan: competition stays clean, doesn't overwhelm the
+  // main UI).
+  const myRow = myRank > 0 && myRank > 5 ? (await getStudentLeaderboardRow(me.id, "xp", orgScope)) : null;
 
-  return <StudentHome firstName={me.first} home={home} dailyQuestion={dailyQuestion} />;
+  return (
+    <StudentHome
+      firstName={me.first}
+      home={home}
+      dailyQuestion={dailyQuestion}
+      leaderboard={{ top5: top5Rows, myRank, myRow }}
+    />
+  );
 }

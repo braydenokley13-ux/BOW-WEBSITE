@@ -4,11 +4,13 @@ import type { DailyQuestionView } from "@/lib/daily-question";
 import DailyQuestionCard from "@/components/selfpaced/DailyQuestionCard";
 import IdentityPanel from "@/components/learn/home/IdentityPanel";
 import CareerMap from "@/components/learn/home/CareerMap";
+import LeaderboardTile, { type LeaderboardTileProps } from "@/components/learn/home/LeaderboardTile";
 
 interface Props {
   firstName: string;
   home: StudentHomeData;
   dailyQuestion: DailyQuestionView | null;
+  leaderboard: LeaderboardTileProps;
 }
 
 function ContinueCard({ home }: { home: StudentHomeData }) {
@@ -92,7 +94,7 @@ function ContinueCard({ home }: { home: StudentHomeData }) {
   );
 }
 
-export default function StudentHome({ firstName, home, dailyQuestion }: Props) {
+export default function StudentHome({ firstName, home, dailyQuestion, leaderboard }: Props) {
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "100vh", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
       <div style={{ maxWidth: 1080, margin: "0 auto" }}>
@@ -119,8 +121,9 @@ export default function StudentHome({ firstName, home, dailyQuestion }: Props) {
               <CareerMap sections={home.sections} />
             </div>
           </div>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 20 }}>
             <IdentityPanel identity={home.identity} />
+            <LeaderboardTile {...leaderboard} />
           </div>
         </div>
       </div>
