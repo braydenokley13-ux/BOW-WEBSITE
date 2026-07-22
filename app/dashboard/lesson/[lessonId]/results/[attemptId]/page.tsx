@@ -53,6 +53,17 @@ export default async function LessonResultsPage({
     WHERE se.attempt_id = ${attemptId}
   `;
 
+  // Manual-review feedback (Stage 8 follow-up): if this attempt had any
+  // long_text manual_review blocks, show their review status here — pending
+  // ones read "awaiting instructor review", approved ones show the points +
+  // feedback note the instructor left.
+  const reviewRows = await sqlLearn<{
+    status: string; points_awarded: number | null; points_possible: number; feedback: string | null; prompt: string | null;
+  }[]>`
+    SELECT status, points_awarded, points_possible, feedback, prompt
+    FROM learn_manual_reviews WHERE attempt_id = ${attemptId} ORDER BY created_at ASC
+  `;
+
   const score = attempt.score ?? 0;
   const stars = attempt.stars ?? 0;
   const xp = attempt.xp_awarded ?? 0;
@@ -117,6 +128,30 @@ export default async function LessonResultsPage({
               {skillRows.map((s) => (
                 <li key={s.skill_id} style={{ fontSize: 15 }}>
                   {s.label}: <strong>+{s.points}</strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {reviewRows.length > 0 && (
+          <div>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 14, letterSpacing: "0.06em", textTransform: "uppercase", color: "#9a9da6", marginBottom: 10 }}>
+              Instructor review
+            </h2>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+              {reviewRows.map((r, i) => (
+                <li key={i} style={{ background: "rgba(255,255,255,0.06)", borderRadius: 6, padding: 14 }}>
+                  {r.status === "pending" ? (
+                    <p style={{ margin: 0, fontSize: 14, color: "#c7c9cf" }}>Awaiting instructor review.</p>
+                  ) : (
+                    <>
+                      <p style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 700 }}>
+                        {r.points_awarded ?? 0} / {r.points_possible} points
+                      </p>
+                      {r.feedback && <p style={{ margin: 0, fontSize: 14, color: "#c7c9cf" }}>{r.feedback}</p>}
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

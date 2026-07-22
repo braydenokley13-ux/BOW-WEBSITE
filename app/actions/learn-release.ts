@@ -34,8 +34,12 @@ async function instructorOwnsCohort(instructorUserId: string, cohortId: string):
   return Boolean(row);
 }
 
-/** True if the instructor owns at least one cohort the student is actively enrolled in. */
-async function instructorOwnsStudentViaCohort(instructorUserId: string, studentUserId: string): Promise<boolean> {
+/**
+ * True if the instructor owns at least one cohort the student is actively
+ * enrolled in. Exported for app/actions/learn-review.ts's manual-review
+ * queue, which gates on the same "my student" relationship.
+ */
+export async function instructorOwnsStudentViaCohort(instructorUserId: string, studentUserId: string): Promise<boolean> {
   const db = getDb();
   const row = await db.prepare(
     `SELECT 1 FROM enrollments e

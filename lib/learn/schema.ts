@@ -263,7 +263,11 @@ export const ShortResponseBlockSchema = z.object({
 const LongTextModeSchema = z.union([
   z.object({ mode: z.literal("completion_only") }),
   z.object({ mode: z.literal("min_words"), minWords: z.number().int().positive() }),
-  z.object({ mode: z.literal("manual_review") }),
+  // pointsPossible is optional/additive (default 0) so older published docs
+  // authored before this field existed still validate/migrate cleanly — no
+  // schemaVersion bump needed (docs plan §2). It caps what an instructor can
+  // award in app/actions/learn-review.ts approveReview.
+  z.object({ mode: z.literal("manual_review"), pointsPossible: z.number().nonnegative().default(0) }),
 ]);
 
 export const LongTextBlockSchema = z.object({

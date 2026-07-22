@@ -496,7 +496,7 @@ const stage6Doc: LessonDoc = {
           type: "long_text",
           prompt: "Which decision tonight do you feel least confident about, and why?",
           placeholder: "Type your reflection...",
-          reflection: { mode: "manual_review" },
+          reflection: { mode: "manual_review", pointsPossible: 10 },
         },
       ],
     },

@@ -157,7 +157,14 @@ export function LongTextInspector({ block, onChange }: BlockInspectorProps<Extra
           value={mode}
           onChange={(e) => {
             const next = e.target.value as "completion_only" | "min_words" | "manual_review";
-            onChange({ reflection: next === "min_words" ? { mode: "min_words", minWords: 30 } : { mode: next } });
+            onChange({
+              reflection:
+                next === "min_words"
+                  ? { mode: "min_words", minWords: 30 }
+                  : next === "manual_review"
+                    ? { mode: "manual_review", pointsPossible: 10 }
+                    : { mode: "completion_only" },
+            });
           }}
         >
           <option value="completion_only">Completion only</option>
@@ -177,9 +184,19 @@ export function LongTextInspector({ block, onChange }: BlockInspectorProps<Extra
         </div>
       )}
       {mode === "manual_review" && (
-        <p style={{ fontSize: 12, color: "var(--bow-muted-text, #767a85)", margin: 0 }}>
-          Manual-review reflections are excluded from auto score — outcome is marked pending until an instructor reviews it.
-        </p>
+        <div>
+          <span style={labelStyle}>Points possible (instructor caps their award to this)</span>
+          <input
+            style={fieldStyle}
+            type="number"
+            min={0}
+            value={block.reflection.mode === "manual_review" ? block.reflection.pointsPossible : 10}
+            onChange={(e) => onChange({ reflection: { mode: "manual_review", pointsPossible: Number(e.target.value) } })}
+          />
+          <p style={{ fontSize: 12, color: "var(--bow-muted-text, #767a85)", margin: "6px 0 0" }}>
+            Manual-review reflections are excluded from auto score until an instructor approves them from the review queue.
+          </p>
+        </div>
       )}
     </div>
   );

@@ -20,6 +20,7 @@ import type { LessonDoc } from "@/lib/learn/types";
 import { recordDailyVisit } from "@/lib/streak";
 import { checkAndAwardBadges } from "@/lib/badges";
 import { checkNodeUnlockForLesson, loadActiveCohortIds } from "@/lib/learn/home";
+import { applyApprovedReviews } from "@/lib/learn/review";
 import type { ResponseEntry } from "@/components/learn/player/playerState";
 
 /* ---------------- shared helpers ---------------- */
@@ -220,6 +221,23 @@ export async function submitResponse(
     ON CONFLICT (attempt_id, block_id, instance_key) DO NOTHING
   `;
 
+  // Manual-review queue (Stage 8 follow-up): a committed long_text response
+  // in manual_review mode never scores itself (gradeBlock always returns
+  // 0/0 for it) — it queues a pending row here instead, picked up by
+  // app/actions/learn-review.ts's instructor queue. One row per
+  // (attempt, block); a resubmit within the same instance_key can't happen
+  // (commit-once above), so ON CONFLICT DO NOTHING is just defensive.
+  if (block.type === "long_text" && block.reflection.mode === "manual_review") {
+    const reviewId = `rev-${randomUUID().slice(0, 12)}`;
+    await sqlLearn`
+      INSERT INTO learn_manual_reviews (id, attempt_id, block_id, user_id, lesson_id, prompt, response_text, status, points_possible, created_at)
+      VALUES (${reviewId}, ${attemptId}, ${blockId}, ${user.id}, ${attempt.lesson_id}, ${block.prompt},
+              ${typeof response === "string" ? response : String(response ?? "")}, 'pending',
+              ${block.reflection.pointsPossible ?? 0}, ${now})
+      ON CONFLICT (attempt_id, block_id) DO NOTHING
+    `;
+  }
+
   return { ok: true, outcome };
 }
 
@@ -293,8 +311,24 @@ export async function completeAttempt(attemptId: string): Promise<ActionResult<C
       }
     }
 
-    const results = computeResults(doc, committed, path);
+    const baseResults = computeResults(doc, committed, path);
     const now = Date.now();
+
+    // Fold in any manual-review points already approved before this attempt
+    // finished (an instructor reviewing mid-play, or a retried
+    // completeAttempt after a crash) — see lib/learn/review.ts. The common
+    // case is zero approved rows here (reviews land after completion), in
+    // which case this is a no-op and score/stars equal baseResults exactly.
+    const approvedReviewRows = await tx<{ points_awarded: number | null; points_possible: number }[]>`
+      SELECT points_awarded, points_possible FROM learn_manual_reviews
+      WHERE attempt_id = ${attemptId} AND status = 'approved'
+    `;
+    const adjusted = applyApprovedReviews(
+      baseResults,
+      approvedReviewRows.map((r) => ({ pointsAwarded: r.points_awarded ?? 0, pointsPossible: r.points_possible })),
+      doc.scoring.starThresholds,
+    );
+    const results = { ...baseResults, score0to100: adjusted.score0to100, stars: adjusted.stars };
 
     await tx`
       UPDATE learn_attempts

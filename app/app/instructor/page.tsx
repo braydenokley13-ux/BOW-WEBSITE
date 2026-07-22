@@ -74,9 +74,12 @@ export default function InstructorTodayPage() {
         <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
           Today · {me.name}
         </span>
-        <h1 style={{ margin: "8px 0 28px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
+        <h1 style={{ margin: "8px 0 12px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.5vw,52px)", lineHeight: 0.94, letterSpacing: "-0.02em", textTransform: "uppercase", color: "var(--bow-ink)" }}>
           Your delivery workspace.
         </h1>
+        <Link href="/app/instructor/learn" style={{ display: "inline-block", marginBottom: 24, fontFamily: "var(--font-data)", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--bow-blue)", textDecoration: "none" }}>
+          Playbook Engine cohort console →
+        </Link>
 
         {!today && (
           <div style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 28 }}>

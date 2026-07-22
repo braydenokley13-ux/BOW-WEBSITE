@@ -76,3 +76,53 @@ test("gating: long_text manual_review mode is completion-gated only by non-empty
   assert.equal(gradeBlock(block, "").correct, false);
   assert.equal(gradeBlock(block, "a real reflection").correct, true);
 });
+
+/* ---------------- manual-review score adjustment (lib/learn/review.ts) ---------------- */
+
+import { applyApprovedReviews } from "../../lib/learn/review";
+
+test("review: pending (unapproved) reviews contribute nothing — excluded from auto-score", () => {
+  // Base already excludes manual_review points (gradeBlock always returns 0/0 for them);
+  // no approved reviews passed in simulates "still pending".
+  const adjusted = applyApprovedReviews({ totalPoints: 40, pointsPossible: 50 }, [], [50, 75, 90]);
+  assert.equal(adjusted.totalPoints, 40);
+  assert.equal(adjusted.pointsPossible, 50);
+  assert.equal(adjusted.score0to100, 80);
+  assert.equal(adjusted.stars, 2);
+});
+
+test("review: an approved review adds its points/possible into the total and can change stars", () => {
+  const adjusted = applyApprovedReviews(
+    { totalPoints: 40, pointsPossible: 50 },
+    [{ pointsAwarded: 9, pointsPossible: 10 }],
+    [50, 75, 90],
+  );
+  assert.equal(adjusted.totalPoints, 49);
+  assert.equal(adjusted.pointsPossible, 60);
+  // 49/60 = 81.67 -> rounds to 82
+  assert.equal(adjusted.score0to100, 82);
+  assert.equal(adjusted.stars, 2);
+});
+
+test("review: before-vs-after-completion order doesn't change the converged result (same formula, same inputs)", () => {
+  const base = { totalPoints: 20, pointsPossible: 30 };
+  const reviews = [{ pointsAwarded: 5, pointsPossible: 10 }];
+  const beforeCompletion = applyApprovedReviews(base, reviews, [40, 70, 90]);
+  const afterCompletion = applyApprovedReviews(base, reviews, [40, 70, 90]);
+  assert.deepEqual(beforeCompletion, afterCompletion);
+});
+
+test("review: multiple approved reviews across multiple manual_review blocks sum correctly", () => {
+  const adjusted = applyApprovedReviews(
+    { totalPoints: 0, pointsPossible: 0 },
+    [
+      { pointsAwarded: 8, pointsPossible: 10 },
+      { pointsAwarded: 3, pointsPossible: 5 },
+    ],
+    [50, 75, 90],
+  );
+  assert.equal(adjusted.totalPoints, 11);
+  assert.equal(adjusted.pointsPossible, 15);
+  assert.equal(adjusted.score0to100, 73);
+  assert.equal(adjusted.stars, 1);
+});
