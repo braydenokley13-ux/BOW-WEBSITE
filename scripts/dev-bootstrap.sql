@@ -104,8 +104,48 @@ CREATE TABLE IF NOT EXISTS badges (
 CREATE TABLE IF NOT EXISTS student_badges (
   student_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   badge_id text NOT NULL REFERENCES badges(id) ON DELETE CASCADE,
-  awarded_at bigint,
+  earned_at bigint,
   PRIMARY KEY (student_id, badge_id)
+);
+
+-- Daily Question feature (lib/daily-question.ts). Falls back to the
+-- in-code seed bank (DAILY_QUESTIONS) when this table is empty, so it does
+-- not need to be pre-seeded — it only needs to exist so the SELECT succeeds.
+CREATE TABLE IF NOT EXISTS daily_questions (
+  id text PRIMARY KEY,
+  ordinal integer NOT NULL DEFAULT 0,
+  question_text text,
+  type text NOT NULL DEFAULT 'mc',
+  choice_a text,
+  choice_b text,
+  choice_c text,
+  choice_d text,
+  correct_answer text,
+  explanation text,
+  concept_tag text,
+  difficulty integer NOT NULL DEFAULT 1,
+  track text,
+  points integer,
+  active integer NOT NULL DEFAULT 1,
+  active_date text
+);
+
+-- Referenced by lib/daily-question.ts (Pro-difficulty gate) and
+-- lib/scoring.ts (legacy rank ladder) — minimal shape for both read paths.
+CREATE TABLE IF NOT EXISTS certificates (
+  id text PRIMARY KEY,
+  student_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  track text,
+  issued_at bigint
+);
+
+CREATE TABLE IF NOT EXISTS daily_responses (
+  id text PRIMARY KEY,
+  student_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  question_id text NOT NULL,
+  selected_choice text,
+  is_correct integer NOT NULL DEFAULT 0,
+  responded_at bigint
 );
 
 CREATE TABLE IF NOT EXISTS notifications (

@@ -606,6 +606,50 @@ async function main() {
   `;
 
   console.log(`[seed-learn-demo] Seeded lesson "${lessonId6}" as published v1 (${versionId6}).`);
+
+  // ---- Stage 7 demo map: 2 franchise-department sections, 4+ nodes ----
+  // Ticket Operations (department 1): the two demo lessons plus a
+  // checkpoint. Front Office (department 2): one bonus_challenge node
+  // gated on stars earned in department 1 — the "locked-by-stars" case —
+  // so the CareerMap renders a meaningful locked state out of the box.
+  const section1 = "map-section-ticket-ops";
+  const section2 = "map-section-front-office";
+
+  await sqlLearn`
+    INSERT INTO learn_map_sections (id, track_id, title, subtitle, sort, theme)
+    VALUES (${section1}, ${trackId}, 'Ticket Operations', 'Pricing & demand fundamentals', 0, '{"color":"#ff5a36"}'::jsonb)
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sqlLearn`
+    INSERT INTO learn_map_sections (id, track_id, title, subtitle, sort, theme)
+    VALUES (${section2}, ${trackId}, 'Front Office', 'Draft strategy & analytics', 1, '{"color":"#2f6fed"}'::jsonb)
+    ON CONFLICT (id) DO NOTHING
+  `;
+
+  await sqlLearn`
+    INSERT INTO learn_map_nodes (id, section_id, sort, kind, lesson_id, layout, unlock)
+    VALUES ('map-node-1', ${section1}, 0, 'lesson', ${lessonId}, '{"branchGroup":"main"}'::jsonb, '{}'::jsonb)
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sqlLearn`
+    INSERT INTO learn_map_nodes (id, section_id, sort, kind, lesson_id, layout, unlock)
+    VALUES ('map-node-2', ${section1}, 1, 'checkpoint', null, '{"branchGroup":"main"}'::jsonb, ${sqlLearn.json({ requiresNodes: ["map-node-1"] } as never)})
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sqlLearn`
+    INSERT INTO learn_map_nodes (id, section_id, sort, kind, lesson_id, layout, unlock)
+    VALUES ('map-node-3', ${section2}, 0, 'lesson', ${lessonId6}, '{"branchGroup":"main"}'::jsonb, ${sqlLearn.json({ requiresNodes: ["map-node-1"] } as never)})
+    ON CONFLICT (id) DO NOTHING
+  `;
+  // Locked-by-stars bonus node: requires 3 lifetime stars, which a fresh
+  // seeded student won't have yet, so this renders locked out of the box.
+  await sqlLearn`
+    INSERT INTO learn_map_nodes (id, section_id, sort, kind, lesson_id, layout, unlock)
+    VALUES ('map-node-4', ${section2}, 1, 'bonus_challenge', null, '{"branchGroup":"bonus"}'::jsonb, ${sqlLearn.json({ minStarsTotal: 3 } as never)})
+    ON CONFLICT (id) DO NOTHING
+  `;
+
+  console.log(`[seed-learn-demo] Seeded demo map: 2 sections, 4 nodes.`);
   process.exit(0);
 }
 
