@@ -1,9 +1,75 @@
 # Stage 7 — Student Home + Progression
 
-Status: **partial completion**. Deliverables 1–4 and 6 are built, tested, and live-verified.
-Deliverable 3 (the map editor / admin CRUD UI) is **deferred to a follow-up pass** — see
-§Deferred below. Nothing here is claimed done that wasn't actually run against the live
-local Postgres cluster and screenshotted.
+Status: **complete**, including the map-editor follow-up pass. All six deliverables are
+built, tested, and live-verified. Nothing here is claimed done that wasn't actually run
+against the live local Postgres cluster and screenshotted.
+
+## 0. Follow-up pass: the map editor (deliverable 3)
+
+Added after the initial Stage 7 commit, approved by the coordinator to proceed while
+context was warm:
+
+- `app/app/admin/learn/map/page.tsx` + `components/learn/builder/MapEditor.tsx` — section
+  CRUD (title/subtitle/department-color swatch picker, 6 curated token colors), node CRUD
+  (pick a published lesson via `listPublishedLessonsForMapPicker`, or add a
+  bonus/checkpoint/reward stop), drag-reorder within and between sections, a plain-language
+  unlock-policy inspector ("Must finish these first" checkboxes, "Needs at least N total
+  stars", "Needs at least career level N", "Only unlock when an instructor releases it",
+  "Opens on" date/time — no jsonb, no field names), and a `branchGroup` lane text field.
+- `components/learn/dnd/SectionedSortable.tsx` — a new multi-container dnd-kit wrapper
+  (single `DndContext`, one `SortableContext` per section, empty-section droppables) since
+  the existing `SortableList` only handled one flat list. Still the only files besides it
+  that import `@dnd-kit` directly.
+- `app/actions/learn-author.ts` — zod-validated, admin-gated map CRUD: `getMapEditorData`,
+  `listPublishedLessonsForMapPicker`, `createMapSection`/`updateMapSection`/
+  `deleteMapSection`/`reorderMapSections`, `createMapNode`/`deleteMapNode`,
+  `updateMapNodeUnlock` (validated against a zod mirror of `UnlockPolicy`),
+  `updateMapNodeBranchGroup`, and `moveMapNode` (single action covers both within- and
+  cross-section drag, resequencing both origin and destination sections in one transaction).
+- `lib/learn/mapOrder.ts` — the reorder math (`reorderWithinList`, `moveBetweenLists`,
+  `clampIndex`) extracted from `moveMapNode` into a pure, unit-tested module (8 tests) rather
+  than left inline in the server action.
+- **Unplaced-lessons tray**: `getMapEditorData` finds published, lifecycle-active lessons
+  with no `learn_map_nodes` row via `NOT EXISTS`, surfaced at the top of the editor with an
+  explicit per-lesson "pick a department, then Add to Map" control — placement is never
+  automatic.
+- Nav entry: the Playbook Studio hub (`app/app/admin/learn/page.tsx`) now has a
+  "Career Map Editor →" button linking to `/app/admin/learn/map`.
+
+**Live verification** (same local PG cluster, fresh Playwright run after clearing a stale
+`.next` cache that was 404ing the new route — see note below):
+- Confirmed the new nav link navigates from the Playbook Studio hub to the map editor.
+- Authored a new department section ("Verification Wing", green swatch, subtitle) through
+  the UI form — appeared immediately with the correct accent color.
+- Added a checkpoint node to it via the add-node control.
+- Opened its unlock-rule inspector, set "Needs at least career level 2" via the plain-number
+  input, saved — the editor immediately showed a "Locked by rule" badge on that node.
+- Removed an existing lesson node (Draft Night Analytics) from its section — the unplaced
+  tray appeared listing it, with a department picker and "Add to Map" button, exactly as
+  designed (no silent auto-placement at any point).
+- Placed it back onto the map via the tray's explicit control — tray emptied again.
+- Logged in as the student and reloaded `/dashboard`: the CareerMap showed the new
+  "Verification Wing" section, and its checkpoint node correctly rendered **locked**, with
+  the reason "Reach level 2 to unlock this." — proving the unlock rule set through the plain-
+  language editor round-trips all the way to the student-facing evaluator
+  (`lib/learn/unlock.ts`, unchanged from the initial Stage 7 pass).
+- Drag-reorder: used dnd-kit's keyboard sensor (focus handle → Space to pick up → ArrowDown →
+  Space to drop) to swap two nodes within a section; screenshots before/after confirm the
+  order persisted through `moveMapNode`.
+- Screenshots (scratchpad, not committed): `me-01` through `me-07`, `rule-01`–`rule-03`,
+  `drag-01`/`drag-02`.
+
+**Note — unrelated flake found and worked around, not fixed**: after restarting the dev
+server mid-session, `/app/admin/learn/map` 404'd even though the file existed; a stale
+Turbopack `.next` cache from before the route was created was the cause (`rm -rf .next` and
+restart fixed it). Not a code defect — a dev-loop gotcha worth knowing if this happens again.
+Also observed, not fixed (unrelated to map editor, same category as the dev-bootstrap gaps
+from the first Stage 7 pass): `/app` errors on a missing `training_session_registrations`
+table. Verification routed around it by navigating directly to target admin URLs instead of
+waiting on `/app`'s own render.
+
+**Tests after this pass**: 111/111 green (103 from the first Stage 7 commit + 8 new
+`lib/learn/mapOrder.ts` tests). `tsc --noEmit` clean. `eslint` clean on every touched file.
 
 ## 1. Map comp decision
 
@@ -136,16 +202,17 @@ Screenshots (scratchpad, not committed): `home-desktop.png`, `home-mobile-390.pn
 
 ## 6. Deferred
 
-- **Map editor** (`app/app/admin/learn/map/page.tsx`, `components/learn/builder/MapEditor.tsx`,
-  map-CRUD actions in `app/actions/learn-author.ts`, unplaced-lessons tray) — **not built**
-  in this pass, per the coordinator's explicit triage instruction to defer it rather than
-  ship it half-verified. The demo map above was seeded directly via SQL in
-  `scripts/seed-learn-demo.ts`, not authored through any UI. Section/node CRUD, drag-reorder,
-  theme picker, unlock-policy inspector, branch-lane assignment, and the auto-map
-  "unplaced lessons" tray all remain to be built.
+- **Map editor**: built in the follow-up pass (see §0) — no longer deferred.
 - The full 3-comp Playwright exercise for deliverable 1 (see §1) — a reasoned decision was
-  made and documented instead of the full build-screenshot-delete cycle.
-- `CareerMap`'s `layout.branchGroup` field is seeded and rendered-through but the current
-  vertical-floors treatment doesn't yet do anything visually distinct with parallel branch
-  lanes (single column per section) — revisit once the map editor exists to actually author
-  branching content.
+  made and documented instead of the full build-screenshot-delete cycle. Approved by the
+  coordinator as-is.
+- `CareerMap`'s `layout.branchGroup` field is now author-editable (a text input per node in
+  the map editor) but the vertical-floors treatment still doesn't render parallel lanes
+  visually distinctly (single column per section) — the data is there, the visual is not;
+  revisit if a lesson actually needs branching departments.
+- Section CRUD has no reorder-sections drag UI yet (`reorderMapSections` exists as an action
+  but nothing in `MapEditor.tsx` calls it — sections are created in append order only).
+- `training_session_registrations` missing from `scripts/dev-bootstrap.sql`, breaking `/app`
+  — noted during this pass's live verification, not fixed (out of Stage 7 scope; same
+  category as the daily-question/certificates gaps fixed in the first pass, but this one
+  didn't block verifying the map editor itself, so it was routed around instead).
