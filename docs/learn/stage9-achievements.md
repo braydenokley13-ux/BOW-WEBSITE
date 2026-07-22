@@ -252,13 +252,171 @@ NOTHING`, idempotent re-run like the rest of the script.
 - `scripts/seed-learn-demo.ts` — seeds the `pricing_strategist` custom
   badge.
 
-## Deferred (committed follow-up, per main's explicit instruction)
+## Follow-up pass: achievement editor UI (shipped)
 
-- **Achievement editor UI** — `app/app/admin/learn/achievements/page.tsx` +
-  `components/learn/builder/AchievementEditor.tsx`, with create/edit/disable
-  server actions (zod-validated, admin-gated) and a dropdown-based rule
-  builder (no raw JSON editing for admins). This is the guaranteed next
-  piece of work, not optional.
-- Playwright screenshots of that editor (moot until it exists).
-- BOW Score tab's unrelated `self_progress` table-missing error in this dev
-  environment — flagged, not fixed (out of Stage 9's scope).
+The deferred item above is now shipped. Also folded in the two small,
+explicitly-optional asks from main's follow-up message: a `self_progress`/
+`self_modules` dev-bootstrap stub, and this memo update.
+
+### Editor
+
+- `app/app/admin/learn/achievements/page.tsx` — server page, admin-gated,
+  fetches `listAchievementBadges()` and renders the editor.
+- `components/learn/builder/AchievementEditor.tsx` — lists system badges
+  (flagged `System`, copy-editable only: name/description/icon/locked hint)
+  and custom badges (full edit + disable) in two sections. "+ New badge"
+  opens the shared `Modal`/form for both create and edit. The rule builder
+  is entirely dropdown-driven — a `<select>` for rule type, then
+  type-specific controls: lesson/module/track pickers are `<select>`s
+  populated from new admin actions (`listLessonsForRulePicker`,
+  `listModulesForRulePicker`, `listTracksForRulePicker`) that return
+  `{id, title}` pairs, so an admin only ever picks a human title, never
+  types an id. `variable_threshold`'s variable picker
+  (`listVariablesForRulePicker`) walks every active lesson's `draft_doc`
+  variables and labels each option with its lesson title, since variable
+  keys aren't globally unique. Icon picker is a row of 12 emoji buttons plus
+  a free-text fallback input (either satisfies the plan's "emoji picker or
+  free text").
+- `app/actions/learn-achievements.ts` (new file, per the "your call" in
+  main's message — kept separate from `learn-author.ts` since it's a
+  distinct admin surface with its own zod schema, mirroring how
+  `learn-play.ts` and `learn-author.ts` are already split by concern) — all
+  actions `requireAdmin()`-gated. `createAchievementBadge`/
+  `updateAchievementBadge` validate the full form with
+  `AchievementBadgeInputSchema`, whose `rule` field reuses
+  `lib/learn/achievements.ts`'s `AchievementRuleSchema` directly — the exact
+  same schema `completeAttempt` parses at award time, so a rule that saves
+  successfully can never be malformed when the engine reads it back.
+  `updateAchievementBadge` branches on `badges.source`: a system badge only
+  gets its copy columns updated (category/threshold/xp_reward/rule are
+  load-bearing for `lib/badges.ts`'s legacy condition engine and are never
+  touched); a custom badge gets the full update including `rule`/`xpReward`.
+  `setAchievementBadgeActive` disables/enables a custom badge (rejects
+  system badges) — `completeAttempt`'s award query now filters
+  `WHERE rule IS NOT NULL AND active = 1`, so a disabled badge stops being
+  awarded going forward while already-earned `student_badges` rows (and a
+  student's badge cabinet) are untouched.
+- Nav: `app/app/admin/learn/page.tsx` (Playbook Studio hub) got an
+  "Achievements →" link next to the existing "Career Map Editor →" link.
+- `listBadges()` in `learn-author.ts` (the lesson builder's ScoringPanel
+  badge multiselect) verified still works unchanged — it's a separate,
+  simpler `{id, name}` query that naturally includes new custom badges the
+  moment they're created (confirmed via the DB row check below).
+
+### Schema change
+
+`badges` needed three columns the original catalog shape didn't have:
+`locked_hint`, `rarity`, `active` (default 1). Added via
+`scripts/migrations/007_badge_editor_fields.sql`
+(`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, idempotent) for real/Supabase
+environments, and mirrored in `scripts/dev-bootstrap.sql`'s `CREATE TABLE
+badges` for fresh local databases. Applied locally via `npm run migrate`
+(applied cleanly, 1 migration) — verified `007` is the only new migration
+this pass; 001-006 still no-op.
+
+### Bug found and fixed while live-verifying: BadgeToast + React Strict Mode
+
+`NewBadgeToastFromSession`'s first draft (Stage 9 core pass) read the
+sessionStorage stash **and cleared it** inside a `useState` lazy
+initializer. That passed lint and the earlier UI smoke-check, but a
+byte-accurate toast-rendering proof this pass (sessionStorage seeded via
+Playwright's `addInitScript`, then loading the real results page) showed
+the toast never appearing, and the stash surviving unread. Root cause:
+Next.js dev runs React Strict Mode, which intentionally invokes a
+component's lazy `useState` initializer twice to surface exactly this kind
+of bug — the first invocation read the badge and deleted the sessionStorage
+key; the second invocation (whose *return value* is what could end up as
+the actual initial state, invocation order/selection isn't guaranteed) read
+an already-emptied key and returned `[]`. Production builds don't
+double-invoke, so this specific case might have limped along in prod, but
+it's exactly the kind of latent bug Strict Mode exists to catch before it
+does bite (e.g. under a future React version, or a dev-mode demo).
+
+Fixed by separating the read from the clear: the initializer now only
+*peeks* (no side effect), and a `useEffect` on mount clears the
+sessionStorage key — effects double-fire in Strict Mode too, but
+`removeItem` on an already-removed key is a harmless no-op, so double-firing
+is safe where double-invoking a value-producing initializer wasn't.
+
+### Live verification (this pass, local PG port 55432, db `bow`)
+
+- `npm run migrate` — applied `007_badge_editor_fields.sql` cleanly (001-006
+  still no-op).
+- **Editor UI** (Playwright, Chromium, signed in as `admin@bow.test`):
+  screenshots of the achievements list (system badges flagged `SYSTEM`,
+  copy-editable-only note), the "+ New badge" modal fully filled in (name,
+  description, icon picker, locked hint, XP, rarity, rule-type dropdown →
+  `score_gte` → lesson picker showing human titles "Draft Night Analytics"/
+  "Rivalry Night: Price the Tickets", minimum-score field), and the list
+  after save showing the new "Draft Night Star" badge alongside the
+  Stage-9-core-seeded "Pricing Strategist" badge. Confirmed via `psql`:
+  ```
+  id                          | name              | source | active | rule
+  badge-draft-night-star-7c2a | Draft Night Star  | custom |   1    | {"type":"score_gte","score":1,"lessonId":"lesson-draft-night-analytics"}
+  ```
+- **Award + idempotency proof for the UI-created badge** (same direct-DB
+  method as the Stage 9 core pass, reproducing `completeAttempt`'s exact
+  award transaction — see that section above for why this method was used
+  over a blind UI playthrough of a Stage-6 kitchen-sink lesson with
+  drag/drop, rank, categorize, match, etc. blocks not worth scripting blind
+  against the remaining budget):
+  ```
+  XP before: 170
+  Pass 1 (fresh completion, score 56) newly awarded: [{ id: 'badge-draft-night-star-7c2a', name: 'Draft Night Star', icon: '🏅' }]
+  Pass 2 (simulated retry/replay) newly awarded: []
+  student_badges rows: exactly 1
+  learn_xp_events rows: exactly 1 (amount 25)
+  XP after: 195   -- +25 exactly once
+  ```
+- **Toast rendering proof** (Playwright, real results page, real login):
+  seeded `sessionStorage['bow-new-badges:<attemptId>']` via
+  `addInitScript` (mirroring exactly what `LessonPlayer` writes before
+  navigating) against a completed attempt, then loaded
+  `/dashboard/lesson/lesson-draft-night-analytics/results/<attemptId>`.
+  Screenshot shows the real `BadgeToast` in the bottom-right corner: "GOLD-
+  bordered card, medal icon, 'ACHIEVEMENT UNLOCKED' / 'Draft Night Star'" —
+  pixel-identical to the Daily Question toast surface. Confirmed the stash
+  was cleared from sessionStorage after mount (no re-toast on a page
+  refresh). This is what caught the Strict Mode bug above; re-verified
+  after the fix.
+- All test data (the `Draft Night Star` badge, its `student_badges`/
+  `learn_xp_events` rows, the scratch `learn_attempts` row, and the +25 XP)
+  cleaned up afterward — `user-student-1` back to exactly 170 XP.
+
+### self_progress / self_modules dev stub (optional ask, done)
+
+Added `self_modules`/`self_progress` table stubs to `scripts/dev-bootstrap.sql`
+(same empty-stub convention as the existing `people`/`instructors`/
+`training_sessions` stubs) and applied them to the local DB — the BOW Score
+tab's `/leaderboard?tab=score` no longer 500s on `relation "self_progress"
+does not exist` (flagged as a known gap in the Stage 9 core pass, not fixed
+there since it was out of that pass's scope; now closed).
+
+### Tests / build (this pass)
+
+- `npm test` — 137/137 green, unchanged (no new pure logic added this pass
+  beyond what Stage 9 core already covered — the editor is CRUD +
+  zod-validated actions over the same `AchievementRuleSchema`, already
+  unit-tested).
+- `npx tsc --noEmit` — clean.
+- `npx eslint` on all touched/added files — clean.
+- `git diff --stat` — no Highway World paths touched.
+
+### Files touched/added (this pass)
+
+- `app/actions/learn-achievements.ts` (new) — admin CRUD actions + pickers.
+- `app/app/admin/learn/achievements/page.tsx` (new) — editor page.
+- `components/learn/builder/AchievementEditor.tsx` (new) — editor UI.
+- `app/app/admin/learn/page.tsx` — nav link to the new page.
+- `app/actions/learn-play.ts` — award query now filters `active = 1`.
+- `components/learn/player/NewBadgeToastFromSession.tsx` — Strict Mode fix
+  (peek-in-initializer, clear-in-effect).
+- `scripts/migrations/007_badge_editor_fields.sql` (new) — `badges.locked_hint`/
+  `rarity`/`active`.
+- `scripts/dev-bootstrap.sql` — mirrors the three new `badges` columns;
+  adds `self_modules`/`self_progress` stubs.
+
+## Deferred — nothing remaining from the original plan
+
+Every Stage 9 deliverable (rule engine, editor UI, scoped leaderboards,
+streak integration, seed badge) has now shipped across the two passes.
