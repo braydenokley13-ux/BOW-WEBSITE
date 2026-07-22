@@ -98,7 +98,13 @@ CREATE TABLE IF NOT EXISTS badges (
   xp_reward integer NOT NULL DEFAULT 0,
   ordinal integer NOT NULL DEFAULT 0,
   source text NOT NULL DEFAULT 'system',
-  rule jsonb
+  rule jsonb,
+  -- Stage 9 achievement-editor fields (also added by migration
+  -- 007_badge_editor_fields.sql for environments whose badges table
+  -- predates this script revision):
+  locked_hint text,
+  rarity text,
+  active integer NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS student_badges (
@@ -270,6 +276,29 @@ CREATE TABLE IF NOT EXISTS training_session_attendance (
 CREATE TABLE IF NOT EXISTS concept_map (
   id text PRIMARY KEY, ordinal integer NOT NULL DEFAULT 0, concept_name text, track text,
   module_name text, frontoffice_application text, real_example text, category text
+);
+
+-- Stubs for the legacy self-paced module tracker (lib/self-paced.ts,
+-- lib/scoring.ts's BOW Score board, lib/admin.ts's admin dashboard tiles) —
+-- a dev-bootstrap gap found while live-verifying Stage 9's /leaderboard
+-- (BOW Score tab 500ing on "relation self_progress does not exist"). Empty
+-- is fine, matching the people/instructors/training_sessions stub
+-- convention above — these queries just need to succeed, not return rows.
+CREATE TABLE IF NOT EXISTS self_modules (
+  id text PRIMARY KEY, title text, track text, ordinal integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS self_progress (
+  student_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  module_id text NOT NULL,
+  completed integer NOT NULL DEFAULT 0,
+  completed_at bigint,
+  reflection text NOT NULL DEFAULT '',
+  reflection_words integer NOT NULL DEFAULT 0,
+  instructor_unlocked integer NOT NULL DEFAULT 0,
+  track text,
+  updated_at bigint,
+  PRIMARY KEY (student_id, module_id)
 );
 
 -- Seed orgs -----------------------------------------------------------------
