@@ -40,6 +40,13 @@ export interface CreateTaskInput {
   entityType?: string | null;
   entityId?: string | null;
   handoffToFounder?: boolean;
+  doerUserId?: string | null;
+  reviewerUserId?: string | null;
+  expectedResult?: string | null;
+  definitionOfDone?: string | null;
+  evidenceRequirement?: string | null;
+  reviewRequired?: boolean;
+  autonomyLevel?: number;
 }
 
 export interface ActionResult {
@@ -69,9 +76,16 @@ function isWorkEntityType(value: string): value is WorkEntityType {
 async function assertActiveStaffOwner(db: ReturnType<typeof getDb>, userId: string | null): Promise<void> {
   if (!userId) return;
   const owner = (await db
-      .prepare("SELECT 1 FROM users WHERE id = ? AND role IN ('admin','growth') AND status = 'active'")
+      .prepare("SELECT 1 FROM users WHERE id = ? AND status = 'active'")
       .get(userId));
-  if (!owner) throw new WorkActionError("Choose an active BOW staff owner.");
+  if (!owner) throw new WorkActionError("Choose an active BOW owner.");
+}
+
+async function assertActiveUser(db: ReturnType<typeof getDb>, userId: string | null, label: string): Promise<void> {
+  if (!userId) return;
+  if (!(await db.prepare("SELECT 1 FROM users WHERE id = ? AND status = 'active'").get(userId))) {
+    throw new WorkActionError(`Choose an active ${label}.`);
+  }
 }
 
 async function assertRelatedEntity(db: ReturnType<typeof getDb>, entityType: WorkEntityType | null, entityId: string | null): Promise<void> {
@@ -83,11 +97,11 @@ async function assertRelatedEntity(db: ReturnType<typeof getDb>, entityType: Wor
   }
 }
 
-async function runImmediate<T>(operation: (db: ReturnType<typeof getDb>) => T): Promise<T> {
+async function runImmediate<T>(operation: (db: ReturnType<typeof getDb>) => Promise<T>): Promise<T> {
   const db = getDb();
   (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const result = operation(db);
+    const result = await operation(db);
     (await db.exec("COMMIT"));
     return result;
   } catch (error) {
@@ -112,6 +126,11 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
   const context = cleanOptionalText(input?.context);
   const recommendedAction = cleanOptionalText(input?.recommendedAction);
   const ownerUserId = cleanOptionalText(input?.ownerUserId);
+  const doerUserId = cleanOptionalText(input?.doerUserId);
+  const reviewerUserId = cleanOptionalText(input?.reviewerUserId);
+  const expectedResult = cleanOptionalText(input?.expectedResult);
+  const definitionOfDone = cleanOptionalText(input?.definitionOfDone);
+  const evidenceRequirement = cleanOptionalText(input?.evidenceRequirement);
   const entityTypeValue = cleanOptionalText(input?.entityType);
   const entityId = cleanOptionalText(input?.entityId);
   const kindValue = cleanOptionalText(input?.kind) ?? "task";
@@ -146,6 +165,14 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
     return { ok: false, error: "Choose a valid founder handoff setting." };
   }
   if (ownerUserId && ownerUserId.length > 100) return { ok: false, error: "Choose a valid owner." };
+  if (doerUserId && doerUserId.length > 100) return { ok: false, error: "Choose a valid doer." };
+  if (reviewerUserId && reviewerUserId.length > 100) return { ok: false, error: "Choose a valid reviewer." };
+  if (expectedResult && expectedResult.length > 2000) return { ok: false, error: "Expected result is too long." };
+  if (definitionOfDone && definitionOfDone.length > 2000) return { ok: false, error: "Definition of done is too long." };
+  if (evidenceRequirement && evidenceRequirement.length > 2000) return { ok: false, error: "Evidence requirement is too long." };
+  const autonomyLevel = Number(input?.autonomyLevel ?? 2);
+  if (![1, 2, 3, 4].includes(autonomyLevel)) return { ok: false, error: "Choose an autonomy level from 1 to 4." };
+  if (input?.reviewRequired && !reviewerUserId) return { ok: false, error: "Review-required Work needs a reviewer." };
   if (entityId && entityId.length > 100) return { ok: false, error: "Related record ID is too long." };
   const entityType = entityTypeValue as WorkEntityType | null;
   const id = `wrk-${randomUUID().slice(0, 12)}`;
@@ -154,22 +181,34 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
   try {
     (await runImmediate(async (db) => {
             (await assertActiveStaffOwner(db, ownerUserId));
+            (await assertActiveUser(db, doerUserId, "doer"));
+            (await assertActiveUser(db, reviewerUserId, "reviewer"));
             (await assertRelatedEntity(db, entityType, entityId));
             (await db.prepare(
                       `INSERT INTO tasks
-          (id, title, owner_user_id, due_at, due_on, status, kind, priority, context, recommended_action,
+          (id, title, owner_user_id, doer_user_id, assigner_user_id, reviewer_user_id,
+           due_at, due_on, status, workflow_state, kind, priority, context, recommended_action,
+           expected_result, definition_of_done, evidence_requirement, review_required, autonomy_level,
            entity_type, entity_id, handoff_to_founder, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     ).run(
                       id,
                       title,
                       ownerUserId,
+                      doerUserId,
+                      me.id,
+                      reviewerUserId,
                       dueAt ?? null,
                       dueDateResolution?.ok ? dueDateResolution.canonicalDate : null,
                       kindValue,
                       priorityValue,
                       context,
                       recommendedAction,
+                      expectedResult,
+                      definitionOfDone,
+                      evidenceRequirement,
+                      input?.reviewRequired ? true : false,
+                      autonomyLevel,
                       entityType,
                       entityId,
                       input?.handoffToFounder ? 1 : 0,
@@ -214,9 +253,9 @@ export async function completeTask(idValue: string, noteValue?: string): Promise
   try {
     (await runImmediate(async (db) => {
             const task = (await db.prepare(
-                    "SELECT status, owner_user_id, handoff_to_founder, updated_at FROM tasks WHERE id = ?",
+                    "SELECT status, owner_user_id, handoff_to_founder, review_required, updated_at FROM tasks WHERE id = ?",
                   ).get(id)) as
-              | { status: string; owner_user_id: string | null; handoff_to_founder: number; updated_at: number }
+              | { status: string; owner_user_id: string | null; handoff_to_founder: number; review_required: boolean; updated_at: number }
               | undefined;
             if (!task || task.status !== "open") {
               throw new WorkActionError("This Work item was already completed or no longer exists.");
@@ -224,9 +263,12 @@ export async function completeTask(idValue: string, noteValue?: string): Promise
             if (task.handoff_to_founder === 1 && me.role !== "admin") {
               throw new WorkActionError("Only an admin can resolve founder-decision Work.");
             }
+            if (task.review_required) {
+              throw new WorkActionError("Submit this Work for review instead of completing it directly.");
+            }
             const completed = (await db.prepare(
                     `UPDATE tasks
-            SET status = 'done', completed_at = ?, completion_note = ?, updated_at = ?
+            SET status = 'done', workflow_state = 'approved', completed_at = ?, completion_note = ?, updated_at = ?
           WHERE id = ? AND status = 'open' AND updated_at = ? AND handoff_to_founder = ?`,
                   ).run(now, note, now, id, task.updated_at, task.handoff_to_founder));
             if (completed.changes !== 1) throw new WorkActionError("This Work item changed. Refresh and try again.");

@@ -30,6 +30,7 @@ const ROUTES = [
   "/get-involved/families",
   "/get-involved/youth-organizations",
   "/get-involved/partners",
+  "/teach",
   "/sign-up",
   "/sign-in",
 ];

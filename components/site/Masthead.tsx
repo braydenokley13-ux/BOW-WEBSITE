@@ -90,8 +90,8 @@ export default function Masthead() {
           <Link href="/sign-up" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", color: "#fff" }}>
             Sign Up
           </Link>
-          <Button href="/programs" variant="primary" size="sm" style={{ height: 36 }}>
-            Explore Programs
+          <Button href="/teach" variant="primary" size="sm" style={{ height: 36 }}>
+            Apply to Teach
           </Button>
         </div>
 
@@ -151,8 +151,8 @@ export default function Masthead() {
             Sign In
           </Link>
           <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <Button href="/programs" variant="primary" size="md" full onClick={closeMenu} style={{ height: 44 }}>
-              Explore Programs
+            <Button href="/teach" variant="primary" size="md" full onClick={closeMenu} style={{ height: 44 }}>
+              Apply to Teach
             </Button>
             <Button href="/sign-up" variant="secondary" size="md" full onClick={closeMenu} style={{ height: 44, color: "#fff", borderColor: "var(--bow-dark-border)" }}>
               Sign Up

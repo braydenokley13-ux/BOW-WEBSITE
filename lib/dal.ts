@@ -41,6 +41,16 @@ export async function requireAdmin(): Promise<User> {
   return (await requireRole("admin"));
 }
 
+/** Capability guard for new People & Work actions; existing role guards remain compatible. */
+export async function requireCapability(capability: string): Promise<User> {
+  const user = await requireUser();
+  const granted = await getDb().prepare(
+    "SELECT 1 FROM app_role_capabilities WHERE app_role = ? AND capability_key = ?",
+  ).get(user.role, capability);
+  if (!granted) redirect("/app");
+  return user;
+}
+
 /**
  * Community access is intentionally stricter than course access. A student
  * must have entered through a staff-issued, accepted invitation and still
