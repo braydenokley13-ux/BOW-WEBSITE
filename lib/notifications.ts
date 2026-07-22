@@ -24,7 +24,8 @@ export type NotificationType =
   | "instructor_pipeline"
   | "partner_pipeline"
   | "class_ops"
-  | "quality";
+  | "quality"
+  | "reflection_reviewed";
 
 /** A notification as the bell dropdown renders it (fully serializable). */
 export interface NotificationView {

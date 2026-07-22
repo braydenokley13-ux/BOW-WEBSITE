@@ -61,8 +61,15 @@ async function main() {
   await sql.begin(async (tx) => {
     await tx.unsafe(`CREATE TABLE IF NOT EXISTS schema_migrations (
       id text PRIMARY KEY,
+      key text UNIQUE,
       applied_at double precision NOT NULL
     )`);
+    await tx.unsafe("ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS id text");
+    await tx.unsafe("ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS key text");
+    await tx.unsafe("UPDATE schema_migrations SET id = key WHERE id IS NULL");
+    await tx.unsafe("UPDATE schema_migrations SET key = id WHERE key IS NULL");
+    await tx.unsafe("CREATE UNIQUE INDEX IF NOT EXISTS schema_migrations_id_unique ON schema_migrations(id)");
+    await tx.unsafe("CREATE UNIQUE INDEX IF NOT EXISTS schema_migrations_key_unique ON schema_migrations(key)");
     const applied = await tx.unsafe<{ id: string }[]>(
       "SELECT id FROM schema_migrations WHERE id = $1",
       [MIGRATION_ID],
@@ -670,7 +677,7 @@ async function main() {
         i.owner_user_id,
         CASE WHEN i.stage IN ('rejected','accepted','onboarding','training','practice_evaluation','eligible','active') THEN NULL
              ELSE i.updated_at + 172800000 END,
-        i.source, i.answers, 1, i.created_at, i.updated_at
+        i.source, COALESCE(i.answers, '{}'), 1, i.created_at, i.updated_at
       FROM instructors i`);
     await tx.unsafe(`INSERT INTO application_stage_events
       (id, application_id, from_stage_version_id, to_stage_version_id, event_type, note, actor_user_id, created_at)
@@ -689,7 +696,7 @@ async function main() {
     ];
     for (const table of newTables) await tx.unsafe(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`);
 
-    await tx.unsafe("INSERT INTO schema_migrations (id, applied_at) VALUES ($1, $2)", [MIGRATION_ID, now]);
+    await tx.unsafe("INSERT INTO schema_migrations (id, key, applied_at) VALUES ($1, $1, $2)", [MIGRATION_ID, now]);
   });
 }
 

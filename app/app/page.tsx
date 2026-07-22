@@ -11,6 +11,7 @@ import { entityHref, sessionHref } from "@/lib/routes";
 import { getInstructorByUserId } from "@/lib/hiring";
 import { getGrowthLeadershipSnapshot } from "@/lib/growth";
 import { getGrowthActions } from "@/lib/flywheel";
+import { getPeopleOperationsData } from "@/lib/people-operations";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -91,6 +92,7 @@ export default async function AppHome() {
   const programs = (await listPrograms());
   const growth = (await getGrowthLeadershipSnapshot(now));
   const growthActions = (await getGrowthActions(now, 3));
+  const peopleOperations = await getPeopleOperationsData({ userId: me.id, role: me.role, now });
   const personNameStatement = db.prepare("SELECT name FROM people WHERE id = ?");
   const userNameStatement = db.prepare("SELECT name FROM users WHERE id = ?");
   const classContextStatement = db.prepare(
@@ -372,11 +374,31 @@ export default async function AppHome() {
     });
   }
 
+  // The People layer raises only real execution/recovery exceptions. Normal
+  // weekly work remains with the person and their manager in My People.
+  for (const person of peopleOperations.people.filter((candidate) => candidate.standing === "at_risk")) {
+    const severe = person.openAccountability > 0 || person.overdueWork > 1;
+    add({
+      key: `people-ops:${person.personId}`,
+      title: `${person.name}: leadership attention`,
+      domain: "People",
+      domainHref: "/app/people",
+      severity: severe ? "critical" : "high",
+      score: severe ? 315 : 245,
+      context: person.attentionReasons.slice(0, 3).join(" · ") || "A manager-owned recovery decision is waiting.",
+      owner: person.managerName ?? "Founder",
+      unassigned: !person.managerName,
+      href: `/app/people/${person.personId}`,
+      actionLabel: "Review person",
+    });
+  }
+
   exceptions.sort((a, b) => b.score - a.score || (a.dueAt ?? Number.MAX_SAFE_INTEGER) - (b.dueAt ?? Number.MAX_SAFE_INTEGER) || a.title.localeCompare(b.title));
 
   const criticalCount = exceptions.filter((item) => item.severity === "critical").length;
   const unassignedCount = exceptions.filter((item) => item.unassigned).length;
   const founderDecisionCount = data.awaitingFounderReview.length + data.openFounderHandoffTasks.length;
+  const peopleAttentionCount = peopleOperations.people.filter((person) => person.standing === "at_risk" || person.openAccountability > 0).length;
   const visible = exceptions.slice(0, 15);
   const remaining = Math.max(0, exceptions.length - visible.length);
   const metricCards = [
@@ -384,6 +406,7 @@ export default async function AppHome() {
     { label: "Programs at risk", value: programRisks.length, detail: "Readiness blockers across the portfolio", href: "/app/programs", tone: programRisks.length > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
     { label: "Founder decisions", value: founderDecisionCount, detail: "Reviews and handoffs waiting", href: "/app/tasks", tone: founderDecisionCount > 0 ? "var(--bow-blue)" : "var(--bow-positive)" },
     { label: "Growth exceptions", value: growth.exceptions.length, detail: "Evidence, ownership, or market decisions", href: "/app/growth", tone: growth.exceptions.length > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
+    { label: "People requiring attention", value: peopleAttentionCount, detail: "Recovery, role review, or execution risk", href: "/app/people", tone: peopleAttentionCount > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
     { label: "Without a named owner", value: unassignedCount, detail: "Exceptions needing accountability", href: "/app/tasks", tone: unassignedCount > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
   ];
 
@@ -494,7 +517,7 @@ export default async function AppHome() {
           ["Programs", "/app/programs"],
           ["Growth", "/app/growth"],
           ["Work", "/app/tasks"],
-          ["People", me.role === "admin" ? "/app/admin/people" : "/app/instructors"],
+          ["People", "/app/people"],
           ["Locations", "/app/locations"],
         ].map(([label, href]) => (
           <Link key={href} href={href} className="ops-inline-link" style={{ textDecoration: "none" }}>

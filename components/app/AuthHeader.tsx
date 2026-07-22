@@ -13,17 +13,32 @@ import {
   type NavLink,
 } from "@/lib/navigation/catalog";
 
-export default function AuthHeader({ instructorCanDeliver = true }: { instructorCanDeliver?: boolean }) {
+export default function AuthHeader({
+  instructorCanDeliver = true,
+  cutoverEnabled = true,
+}: {
+  instructorCanDeliver?: boolean;
+  cutoverEnabled?: boolean;
+}) {
   const pathname = usePathname();
-  return <AuthHeaderForPath key={pathname} pathname={pathname} instructorCanDeliver={instructorCanDeliver} />;
+  return (
+    <AuthHeaderForPath
+      key={pathname}
+      pathname={pathname}
+      instructorCanDeliver={instructorCanDeliver}
+      cutoverEnabled={cutoverEnabled}
+    />
+  );
 }
 
 function AuthHeaderForPath({
   pathname,
   instructorCanDeliver,
+  cutoverEnabled,
 }: {
   pathname: string;
   instructorCanDeliver: boolean;
+  cutoverEnabled: boolean;
 }) {
   const { role, me, data, signOut } = useAppState();
   const headerRef = useRef<HTMLElement>(null);
@@ -40,7 +55,7 @@ function AuthHeaderForPath({
         ? data.cohorts.some((cohort) => cohort.id === SELF_PACED_COHORT_ID)
         : false;
   const selfPacedHref = role === "student" ? "/dashboard" : "/instructor";
-  const navigation = navForRole(role, { instructorCanDeliver });
+  const navigation = navForRole(role, { instructorCanDeliver, cutoverEnabled });
   const activeId = activeNavId(pathname, navigation);
   const accent = roleAccentFor(role);
 

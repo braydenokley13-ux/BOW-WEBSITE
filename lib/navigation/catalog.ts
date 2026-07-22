@@ -42,12 +42,29 @@ const link = (
   options: Pick<NavLink, "match" | "aliases"> = {},
 ): NavLink => ({ kind: "link", id, label, href, roles, ...options });
 
-export const NAV_CATALOG: NavEntry[] = [
+// Stage 11: student Home points at the new learn platform once the cutover
+// flag is on; legacy entries stay reachable under the flag for rollback.
+// See lib/learn/cutover.ts. This is a function (not a module-level env
+// read) because catalog.ts is imported by client components (AuthHeader);
+// the flag must be threaded down as a prop from a server component
+// (app/app/layout.tsx -> AppShell -> AuthHeader) rather than read from
+// process.env inside client-bundled code, where non-NEXT_PUBLIC_ vars are
+// not reliably inlined.
+function studentNavFor(cutoverEnabled: boolean): NavLink[] {
+  return cutoverEnabled
+    ? [link("student-home", "Home", "/dashboard", ["student"], { match: "exact" })]
+    : [
+        link("student-home", "Home", "/app/student", ["student"], { match: "exact" }),
+        link("student-track", "My Track", "/app/student/track", ["student"], {
+          aliases: ["/app/student/lesson"],
+        }),
+      ];
+}
+
+export function buildNavCatalog(cutoverEnabled: boolean): NavEntry[] {
+  return [
   // Student workspace.
-  link("student-home", "Home", "/app/student", ["student"], { match: "exact" }),
-  link("student-track", "My Track", "/app/student/track", ["student"], {
-    aliases: ["/app/student/lesson"],
-  }),
+  ...studentNavFor(cutoverEnabled),
 
   // Instructor workspace. Today and Training are exact so their deeper sibling
   // routes can own the active state.
@@ -58,6 +75,7 @@ export const NAV_CATALOG: NavEntry[] = [
   link("instructor-training", "Training", "/app/teach", ["instructor"], { match: "exact" }),
   link("instructor-proposals", "Proposals", "/app/teach/proposals", ["instructor"]),
   link("instructor-cohorts", "Cohorts", "/app/instructor/cohort", ["instructor"]),
+  link("instructor-learn", "Playbook Console", "/app/instructor/learn", ["instructor"]),
 
   // BOW HQ. Core workflows remain directly visible; related systems are
   // grouped so the header can scale without becoming a wall of links.
@@ -81,6 +99,7 @@ export const NAV_CATALOG: NavEntry[] = [
     label: "People",
     roles: STAFF,
     items: [
+      link("my-people", "My People", "/app/people", STAFF),
       link("hiring", "Hiring", "/app/hiring", STAFF),
       link("instructors", "Instructors", "/app/instructors", STAFF),
       link("students", "Students", "/app/students", STAFF),
@@ -109,19 +128,29 @@ export const NAV_CATALOG: NavEntry[] = [
     roles: ["admin"],
     items: [
       link("admin-overview", "Platform Overview", "/app/admin", ["admin"], { match: "exact" }),
+      link("admin-learn", "Playbook Studio", "/app/admin/learn", ["admin"]),
       link("admin-invitations", "Invitations", "/app/admin/invitations", ["admin"]),
       link("admin-accounts", "Account Directory", "/app/admin/people", ["admin"]),
       link("admin-cohorts", "LMS Cohorts", "/app/admin/cohorts", ["admin"]),
       link("admin-organizations", "Organization Admin", "/app/admin/organizations", ["admin"]),
     ],
   },
-];
+  ];
+}
 
-export function navForRole(role: Role, options: { instructorCanDeliver?: boolean } = {}): NavEntry[] {
+// Default export for callers that don't yet thread the cutover flag —
+// reflects the fail-safe default (OFF). Prefer navForRole's cutoverEnabled
+// option when a request-scoped value is available.
+export const NAV_CATALOG: NavEntry[] = buildNavCatalog(false);
+
+export function navForRole(
+  role: Role,
+  options: { instructorCanDeliver?: boolean; cutoverEnabled?: boolean } = {},
+): NavEntry[] {
   const hiddenInstructorDeliveryIds = options.instructorCanDeliver === false
     ? new Set(["instructor-today", "instructor-classes", "instructor-proposals", "instructor-cohorts"])
     : null;
-  return NAV_CATALOG
+  return buildNavCatalog(options.cutoverEnabled ?? false)
     .filter((entry) => entry.roles.includes(role) && !(entry.kind === "link" && hiddenInstructorDeliveryIds?.has(entry.id)))
     .map((entry) =>
     entry.kind === "group"

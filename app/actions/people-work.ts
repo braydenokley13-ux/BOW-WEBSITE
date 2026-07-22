@@ -14,6 +14,10 @@ import { queueCandidateCommunication } from "@/lib/candidate-communication";
 
 type ActionResult = { ok: boolean; error?: string; id?: string; invitationToken?: string };
 const TERMINAL_APPLICATIONS = new Set(["accepted", "rejected", "withdrawn"]);
+const STANDARD_SCORECARD_VERSION_IDS = {
+  interview: "scv-instructor-interview-v1",
+  teachingDemo: "scv-mini-teach-v1",
+} as const;
 
 function clean(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -436,6 +440,18 @@ export async function decideApplication(input: {
       ).run(assignmentId, application.person_id, opening.role_id, opening.organization_unit_id, input.engagementType ?? "volunteer",
         new Date(now).toISOString().slice(0, 10), now, now);
       await db.prepare(
+        `INSERT INTO role_activation_requirements
+         (id, role_assignment_id, requirement_key, label, requirement_type, status, created_at, updated_at)
+         VALUES (?, ?, 'onboarding', 'Complete onboarding', 'onboarding', 'pending', ?, ?),
+                (?, ?, 'first_approved_work', 'Complete first approved Work', 'first_approved_work', 'pending', ?, ?),
+                (?, ?, 'manager_review', 'Manager activation review', 'manager_review', 'pending', ?, ?)
+         ON CONFLICT (role_assignment_id, requirement_key) DO NOTHING`,
+      ).run(
+        `rar-${randomUUID().slice(0, 12)}`, assignmentId, now, now,
+        `rar-${randomUUID().slice(0, 12)}`, assignmentId, now, now,
+        `rar-${randomUUID().slice(0, 12)}`, assignmentId, now, now,
+      );
+      await db.prepare(
         `INSERT INTO person_requirement_evidence
          (id, person_id, requirement_id, status, created_at, updated_at)
          SELECT 'pre-' || replace(gen_random_uuid()::text, '-', ''), ?, rr.requirement_id, 'pending', ?, ?
@@ -553,7 +569,11 @@ export async function createHiringPackage(input: {
       ).run(
         `hsv-${key}-${stages[index][0]}`, processVersionId, stages[index][0], stages[index][1], stages[index][2], index + 1,
         stages[index][2] === "application" ? questionSetId : null,
-        stages[index][2] === "interview" ? "sc-interview-v1" : stages[index][2] === "teaching_demo" ? "sc-mini-v1" : null,
+        stages[index][2] === "interview"
+          ? STANDARD_SCORECARD_VERSION_IDS.interview
+          : stages[index][2] === "teaching_demo"
+            ? STANDARD_SCORECARD_VERSION_IDS.teachingDemo
+            : null,
       );
     }
     await db.prepare(
@@ -754,6 +774,39 @@ export async function reviewWork(input: {
     if (!submission) throw new Error("missing");
     if (submission.reviewer_user_id && submission.reviewer_user_id !== me.id && me.role !== "admin") throw new Error("forbidden");
     if (submission.workflow_state !== "submitted") throw new Error("state");
+    let personId = typeof submission.person_id === "string" ? submission.person_id : null;
+    if (!personId) {
+      // Serialize identity repair on the submitting user so concurrent reviews
+      // cannot create two canonical Person rows for the same account.
+      const submittingUser = (await db.prepare(
+        "SELECT id, name, email FROM users WHERE id = ? FOR UPDATE",
+      ).get(submission.submitted_by_user_id)) as { id: string; name: string; email: string } | undefined;
+      if (!submittingUser) throw new Error("identity_missing");
+      const normalizedEmail = submittingUser.email.trim().toLowerCase();
+      const matches = (await db.prepare(
+        `SELECT id, user_id FROM people
+          WHERE user_id = ? OR lower(trim(email)) = ?
+          ORDER BY CASE WHEN user_id = ? THEN 0 ELSE 1 END, created_at
+          FOR UPDATE`,
+      ).all(submittingUser.id, normalizedEmail, submittingUser.id)) as { id: string; user_id: string | null }[];
+      const distinctIds = new Set(matches.map((match) => match.id));
+      if (distinctIds.size > 1) throw new Error("identity_ambiguous");
+      const existing = matches[0];
+      if (existing) {
+        if (existing.user_id && existing.user_id !== submittingUser.id) throw new Error("identity_ambiguous");
+        personId = existing.id;
+        if (!existing.user_id) {
+          await db.prepare("UPDATE people SET user_id = ?, identity_status = 'active', updated_at = ? WHERE id = ? AND user_id IS NULL")
+            .run(submittingUser.id, now, personId);
+        }
+      } else {
+        personId = `person-${randomUUID().slice(0, 12)}`;
+        await db.prepare(
+          `INSERT INTO people (id, name, email, phone, user_id, identity_status, created_at, updated_at)
+           VALUES (?, ?, ?, '', ?, 'active', ?, ?)`,
+        ).run(personId, submittingUser.name, normalizedEmail, submittingUser.id, now, now);
+      }
+    }
     const approved = ["excellent", "meets_standard"].includes(input.decision);
     const revision = input.decision === "needs_revision";
     await db.prepare(
@@ -775,13 +828,13 @@ export async function reviewWork(input: {
         `INSERT INTO performance_events
          (id, person_id, role_assignment_id, source_type, source_id, dimension, signal, detail, actor_user_id, created_at)
          VALUES (?, ?, ?, 'work_approval', ?, 'output', 'approved', ?, ?, ?)`,
-      ).run(`pe-${randomUUID().slice(0, 12)}`, submission.person_id, submission.role_assignment_id ?? null,
+      ).run(`pe-${randomUUID().slice(0, 12)}`, personId, submission.role_assignment_id ?? null,
         input.submissionId, `Approved Work: ${String(submission.title)}`, me.id, now);
       await db.prepare(
         `INSERT INTO performance_events
          (id, person_id, role_assignment_id, source_type, source_id, dimension, signal, detail, actor_user_id, created_at)
          VALUES (?, ?, ?, 'work_review', ?, 'quality', ?, ?, ?, ?)`,
-      ).run(`pe-${randomUUID().slice(0, 12)}`, submission.person_id, submission.role_assignment_id ?? null,
+      ).run(`pe-${randomUUID().slice(0, 12)}`, personId, submission.role_assignment_id ?? null,
         input.submissionId, input.decision, feedback, me.id, now);
       if (submission.promised_due_on) {
         const submittedOn = new Date(Number(submission.submitted_at)).toISOString().slice(0, 10);
@@ -790,8 +843,15 @@ export async function reviewWork(input: {
           `INSERT INTO performance_events
            (id, person_id, role_assignment_id, source_type, source_id, dimension, signal, detail, actor_user_id, created_at)
            VALUES (?, ?, ?, 'system_reliability', ?, 'reliability', ?, ?, NULL, ?)`,
-        ).run(`pe-${randomUUID().slice(0, 12)}`, submission.person_id, submission.role_assignment_id ?? null,
+        ).run(`pe-${randomUUID().slice(0, 12)}`, personId, submission.role_assignment_id ?? null,
           input.submissionId, onTime ? "on_time" : "late", `Submission compared with the promised date in force at submission: ${String(submission.promised_due_on)}.`, now);
+      }
+      if (submission.role_assignment_id) {
+        await db.prepare(
+          `UPDATE role_activation_requirements
+              SET status = 'satisfied', decided_by_user_id = NULL, decided_at = ?, updated_at = ?
+            WHERE role_assignment_id = ? AND requirement_key = 'first_approved_work' AND status = 'pending'`,
+        ).run(now, now, submission.role_assignment_id);
       }
     }
     await createNotification({
@@ -806,6 +866,12 @@ export async function reviewWork(input: {
   } catch (error) {
     if (db.isTransaction) await db.exec("ROLLBACK");
     if (error instanceof Error && error.message === "forbidden") return { ok: false, error: "Only the designated reviewer can review this submission." };
+    if (error instanceof Error && error.message === "identity_ambiguous") {
+      return { ok: false, error: "This submitter matches more than one People record. Reconcile their identity before approving Work." };
+    }
+    if (error instanceof Error && error.message === "identity_missing") {
+      return { ok: false, error: "This submitter no longer has an account. Restore or reconcile their People record before approving Work." };
+    }
     return { ok: false, error: "The review could not be recorded." };
   }
   revalidatePath("/app/tasks");

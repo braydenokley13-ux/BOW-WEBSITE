@@ -7,17 +7,25 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:people-work": "tsx --test tests/people-work-architecture.test.ts",
+    "test:people-work": "tsx --test tests/people-work-architecture.test.ts tests/people-operations-architecture.test.ts",
     "ingest": "tsx scripts/nba-ingest.ts",
     "db:migrate:supabase": "tsx scripts/migrate-sqlite-to-supabase.ts",
-    "db:migrate:people-work": "tsx scripts/migrate-people-work-os.ts"
+    "db:migrate:people-work": "tsx scripts/migrate-people-work-os.ts",
+    "migrate": "tsx scripts/run-migrations.ts",
+    "seed:learn-demo": "tsx scripts/seed-learn-demo.ts",
+    "import:legacy-lessons": "tsx scripts/import-legacy-lessons.ts",
+    "test": "tsx --test tests/learn/*.test.ts"
   },
   "dependencies": {
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@dnd-kit/utilities": "3.2.2",
     "lenis": "^1.3.23",
     "next": "16.2.9",
     "postgres": "^3.4.9",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.19.21",

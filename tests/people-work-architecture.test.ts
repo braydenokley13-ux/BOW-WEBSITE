@@ -4,6 +4,8 @@ import test from "node:test";
 
 const migration = readFileSync(new URL("../scripts/migrate-people-work-os.ts", import.meta.url), "utf8");
 const actions = readFileSync(new URL("../app/actions/people-work.ts", import.meta.url), "utf8");
+const tasksPage = readFileSync(new URL("../app/app/tasks/page.tsx", import.meta.url), "utf8");
+const learnMigrations = readFileSync(new URL("../scripts/run-migrations.ts", import.meta.url), "utf8");
 
 test("independent lifecycles and optional positions are frozen into the migration", () => {
   assert.match(migration, /identity_status IN \('active','inactive','alumni','removed'\)/);
@@ -56,4 +58,40 @@ test("migration records ambiguous identities and duplicate active application co
   assert.match(migration, /people_work_migration_conflicts/);
   assert.match(migration, /ambiguous_identity/);
   assert.match(migration, /duplicate_active_application/);
+});
+
+test("legacy instructor applications cannot violate the non-null answers contract", () => {
+  assert.match(migration, /COALESCE\(i\.answers, '\{\}'\)/);
+});
+
+test("new hiring packages reference the seeded scorecard version ids", () => {
+  assert.match(actions, /scv-instructor-interview-v1/);
+  assert.match(actions, /scv-mini-teach-v1/);
+  assert.doesNotMatch(actions, /["']sc-interview-v1["']/);
+  assert.doesNotMatch(actions, /["']sc-mini-v1["']/);
+});
+
+test("review-required Work has the canonical staff submission controls", () => {
+  assert.match(tasksPage, /SubmitWorkControls/);
+  assert.match(tasksPage, /item\.reviewRequired/);
+  assert.match(tasksPage, /item\.doerUserId === me\.id/);
+  assert.match(tasksPage, /revision_requested/);
+});
+
+test("approval resolves a canonical Person before inserting performance evidence", () => {
+  assert.match(actions, /SELECT id, name, email FROM users WHERE id = \? FOR UPDATE/);
+  assert.match(actions, /identity_ambiguous/);
+  assert.match(actions, /identity_missing/);
+  assert.match(actions, /INSERT INTO people \(id, name, email, phone, user_id, identity_status/);
+  assert.doesNotMatch(actions, /\.run\(`pe-[^\n]+`, submission\.person_id/);
+});
+
+test("Playbook and People runners share a backward-compatible migration ledger", () => {
+  for (const source of [migration, learnMigrations]) {
+    assert.match(source, /ADD COLUMN IF NOT EXISTS id text/);
+    assert.match(source, /ADD COLUMN IF NOT EXISTS key text/);
+    assert.match(source, /SET id = key WHERE id IS NULL/);
+    assert.match(source, /SET key = id WHERE key IS NULL/);
+    assert.match(source, /INSERT INTO schema_migrations \(id, key, applied_at\)/);
+  }
 });

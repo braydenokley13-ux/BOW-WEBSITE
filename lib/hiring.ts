@@ -420,7 +420,7 @@ async function refreshNewlyMissedRequiredTrainingStatuses(instructorId?: string,
           AND s.required = 1
           AND s.scheduled_at <= ?
           AND (a.attended IS NULL OR a.attended = 0)
-          AND (? IS NULL OR i.id = ?)
+          AND (?::text IS NULL OR i.id = ?)
         ORDER BY i.id`,
       )
       .all(now, instructorId ?? null, instructorId ?? null)) as { id: string }[];
