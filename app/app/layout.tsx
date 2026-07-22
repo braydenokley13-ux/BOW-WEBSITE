@@ -4,6 +4,7 @@ import AppShell from "@/components/app/AppShell";
 import { requireUser, loadAppData } from "@/lib/dal";
 import { scopeAppDataForUser, EMPTY_APP_DATA } from "@/lib/account";
 import { getInstructorByUserId } from "@/lib/hiring";
+import { CUTOVER_ENABLED } from "@/lib/learn/cutover";
 
 export const metadata: Metadata = {
   title: "Front Office",
@@ -26,7 +27,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AppStateProvider me={me} data={scoped}>
-      <AppShell instructorCanDeliver={instructorCanReceiveDeliveryData}>{children}</AppShell>
+      <AppShell instructorCanDeliver={instructorCanReceiveDeliveryData} cutoverEnabled={CUTOVER_ENABLED}>{children}</AppShell>
     </AppStateProvider>
   );
 }
