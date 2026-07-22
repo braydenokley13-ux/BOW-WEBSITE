@@ -120,6 +120,11 @@ export const LessonMetaSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   estMinutes: z.number().positive().optional(),
+  /** Optional free-form labels (e.g. legacy concept names, "imported-draft").
+   * Additive/optional so pre-existing docs without it still validate/migrate
+   * cleanly — no schemaVersion bump needed (docs plan §2), matching the
+   * pattern used by LongTextBlockSchema's manual_review.pointsPossible. */
+  tags: z.array(z.string()).optional(),
 });
 export type LessonMeta = z.infer<typeof LessonMetaSchema>;
 

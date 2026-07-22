@@ -154,6 +154,11 @@ function pointsPossibleFor(block: Block): number {
       return block.points;
     case "scenario":
       return Math.max(...block.choices.map((c) => c.points ?? 0), 0);
+    case "long_text":
+      // Only manual_review carries a points budget (approveReview caps
+      // instructor-awarded points at reflection.pointsPossible); completion_only
+      // and min_words reflections never contribute to the lesson's score.
+      return block.reflection.mode === "manual_review" ? block.reflection.pointsPossible : 0;
     default:
       return 0;
   }
