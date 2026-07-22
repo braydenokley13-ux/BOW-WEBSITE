@@ -29,7 +29,10 @@ const statusColor: Record<RosterStudent["lessons"][number]["status"], string> = 
 
 function fmtTime(ts: number | null): string {
   if (!ts) return "No activity yet";
-  return new Date(ts).toLocaleString();
+  // sqlLearn returns bigint columns as strings (postgres.js default) — Date
+  // must be constructed from a Number, never the raw string, or it's
+  // misparsed as a date-literal instead of an epoch-ms timestamp.
+  return new Date(Number(ts)).toLocaleString();
 }
 
 export default function CohortRoster({

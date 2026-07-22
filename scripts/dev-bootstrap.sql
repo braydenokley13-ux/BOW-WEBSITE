@@ -241,6 +241,29 @@ CREATE TABLE IF NOT EXISTS instructors (
   created_at bigint, updated_at bigint
 );
 
+-- Stubs for lib/hiring.ts's training pipeline (getInstructorByUserId calls
+-- refreshNewlyMissedRequiredTrainingStatuses on every instructor page load
+-- via requireTeachingUser, which joins these — a genuine dev-bootstrap gap
+-- found while live-verifying Stage 8's instructor console; Stage 7's memo
+-- already flagged this file as accreting fixes as new instructor-facing
+-- pages get exercised locally). Empty is fine, matching the people/
+-- instructors stub convention below.
+CREATE TABLE IF NOT EXISTS training_sessions (
+  id text PRIMARY KEY, title text, scheduled_at bigint, timezone text, location text,
+  meeting_link text, facilitator_user_id text, required integer NOT NULL DEFAULT 0,
+  facilitator_notes text, created_at bigint, updated_at bigint
+);
+
+CREATE TABLE IF NOT EXISTS training_session_registrations (
+  session_id text, instructor_id text, registered_at bigint,
+  PRIMARY KEY (session_id, instructor_id)
+);
+
+CREATE TABLE IF NOT EXISTS training_session_attendance (
+  session_id text, instructor_id text, attended integer NOT NULL DEFAULT 0, recorded_at bigint,
+  PRIMARY KEY (session_id, instructor_id)
+);
+
 -- Stub for lib/concept-map.ts (falls back to its in-code seed bank when this
 -- table is empty; `npm run build` prerenders /concept-map and /demo, which
 -- need the table to at least exist locally).
@@ -270,3 +293,15 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO enrollments (user_id, cohort_id, enroll)
 SELECT id, 'cohort-1', 'active' FROM users WHERE email = 'student@bow.test'
 ON CONFLICT (user_id, cohort_id) DO NOTHING;
+
+-- requireTeachingUser (lib/dal.ts) gates /app/instructor/* on a live
+-- `instructors` row (the hiring-pipeline table, unrelated to the cohort
+-- ownership modeled above) joined through `people.user_id` — without this,
+-- the seeded instructor bounces to /app/settings instead of the console.
+INSERT INTO people (id, name, email, user_id, created_at, updated_at)
+VALUES ('person-instr-1', 'Ivy Instructor', 'instructor@bow.test', 'user-instr-1', extract(epoch from now())*1000, extract(epoch from now())*1000)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO instructors (id, person_id, stage, eligibility_status, created_at, updated_at)
+VALUES ('instr-1', 'person-instr-1', 'active', 'eligible', extract(epoch from now())*1000, extract(epoch from now())*1000)
+ON CONFLICT (id) DO NOTHING;
