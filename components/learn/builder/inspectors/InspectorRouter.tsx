@@ -24,6 +24,24 @@ import SliderPriceInspector from "./SliderPriceInspector";
 import BudgetAllocationInspector from "./BudgetAllocationInspector";
 import ScenarioInspector from "./ScenarioInspector";
 import GenericQuestionInspector from "./GenericQuestionInspector";
+import {
+  MultiSelectInspector,
+  TrueFalseInspector,
+  NumericInspector,
+  ShortResponseInspector,
+  LongTextInspector,
+  StrategyChoiceInspector,
+} from "./QuestionInspector";
+import {
+  RankInspector,
+  CategorizeInspector,
+  MatchInspector,
+  TradeoffMatrixInspector,
+  ForecastInspector,
+  TableInspector,
+  ChartInspector,
+  TimelineInspector,
+} from "./Stage6Inspectors";
 
 export interface InspectorRouterProps {
   block: Block;
@@ -57,6 +75,35 @@ export default function InspectorRouter({ block, doc, variables, onChange }: Ins
       return <BudgetAllocationInspector block={block} onChange={onChange} variables={variables} />;
     case "scenario":
       return <ScenarioInspector block={block} onChange={onChange} variables={variables} doc={doc} />;
+    case "multi_select":
+      return <MultiSelectInspector block={block} onChange={onChange} />;
+    case "true_false":
+      return <TrueFalseInspector block={block} onChange={onChange} />;
+    case "numeric":
+      return <NumericInspector block={block} onChange={onChange} />;
+    case "short_response":
+      return <ShortResponseInspector block={block} onChange={onChange} />;
+    case "long_text":
+      return <LongTextInspector block={block} onChange={onChange} />;
+    case "strategy_choice":
+      return <StrategyChoiceInspector block={block} onChange={onChange} />;
+    case "rank":
+      return <RankInspector block={block} onChange={onChange} />;
+    case "categorize":
+    case "drag_drop":
+      return <CategorizeInspector block={block} onChange={onChange} />;
+    case "match":
+      return <MatchInspector block={block} onChange={onChange} />;
+    case "tradeoff_matrix":
+      return <TradeoffMatrixInspector block={block} onChange={onChange} />;
+    case "forecast":
+      return <ForecastInspector block={block} onChange={onChange} />;
+    case "table":
+      return <TableInspector block={block} onChange={onChange} />;
+    case "chart":
+      return <ChartInspector block={block} onChange={onChange} />;
+    case "timeline":
+      return <TimelineInspector block={block} onChange={onChange} />;
     default:
       return <GenericQuestionInspector block={block} onChange={onChange} />;
   }
