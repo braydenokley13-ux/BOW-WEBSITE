@@ -189,11 +189,30 @@ export function canonicalDateToUtcNoon(value: unknown): CanonicalDateResolution 
   return { ok: true, canonicalDate, epoch };
 }
 
+/**
+ * Coerce a bigint-column-as-string (or already-numeric) epoch value to a
+ * finite number, returning null for anything unusable (null/undefined,
+ * empty string, non-numeric). Several read paths pass Postgres `bigint`
+ * columns straight through without a driver-side numeric cast, so a raw
+ * `new Date(value)` on the un-coerced string produces "Invalid Date"
+ * instead of a real timestamp — callers should route through this (or
+ * formatDateTimeInZone, which already does) instead of constructing a
+ * Date directly from a value read off the database.
+ */
+export function coerceEpochMs(value: number | string | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const numeric = typeof value === "string" ? Number(value) : value;
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export function formatDateTimeInZone(
-  epoch: number,
+  epoch: number | string,
   timeZone: string | null | undefined,
 ): string {
-  if (!Number.isFinite(epoch)) return "Invalid date";
+  // Some drivers/paths return bigint columns as strings; coerce before
+  // validating so a numeric string doesn't fall through as "Invalid date".
+  const numericEpoch = typeof epoch === "string" ? Number(epoch) : epoch;
+  if (!Number.isFinite(numericEpoch)) return "Invalid date";
   const normalizedTimeZone = typeof timeZone === "string" ? timeZone.trim() : "";
   // Legacy rows predate timezone persistence. Render those in one declared
   // BOW operating zone instead of whichever device/server happens to read it.
@@ -206,7 +225,7 @@ export function formatDateTimeInZone(
     hour: "numeric",
     minute: "2-digit",
     timeZoneName: "short",
-  }).format(new Date(epoch));
+  }).format(new Date(numericEpoch));
 }
 
 export function canonicalDateInZone(

@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge } from "@/components/ds";
+import { Badge, PageSection, RecordShell } from "@/components/ds";
 import { getDb, rowToPerson } from "@/lib/db";
 import { getClassDetail, listEligibleInstructors, listStudents, listActivity, classStatusFlags } from "@/lib/hiring";
 import { sessionHref } from "@/lib/routes";
 import ClassDetailActions, { RemoveInstructorButton, WithdrawStudentButton } from "@/components/app/classes/ClassDetailActions";
-import { formatDateTimeInZone } from "@/lib/timezone";
+import { coerceEpochMs, formatDateTimeInZone } from "@/lib/timezone";
 import ConfirmEnrollmentButton from "@/components/app/classes/ConfirmEnrollmentButton";
 import CloseoutPanel from "@/components/app/classes/CloseoutPanel";
 import { getClassCloseout } from "@/lib/flywheel";
+import { resolveInstructorPersonId, resolveStudentPersonId } from "@/lib/people-directory";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export default async function ClassDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -25,7 +26,8 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
   const instructorRows = (await Promise.all(instructors.map(async (ci: any) => {
       const instructorRow = (await db.prepare("SELECT * FROM instructors WHERE id = ?").get(ci.instructor_id)) as any;
       const personRow = instructorRow ? ((await db.prepare("SELECT * FROM people WHERE id = ?").get(instructorRow.person_id)) as any) : null;
-      return { ...ci, name: personRow ? rowToPerson(personRow).name : ci.instructor_id };
+      const personId = await resolveInstructorPersonId(ci.instructor_id);
+      return { ...ci, name: personRow ? rowToPerson(personRow).name : ci.instructor_id, personId };
     })));
 
   const enrolled = enrollments.filter(
@@ -35,7 +37,8 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
   );
   const enrolledStudentRows = (await Promise.all(enrolled.map(async (e) => {
       const s = (await db.prepare("SELECT * FROM students WHERE id = ?").get(e.studentId)) as any;
-      return { enrollment: e, name: s?.name ?? e.studentId };
+      const personId = await resolveStudentPersonId(e.studentId);
+      return { enrollment: e, name: s?.name ?? e.studentId, personId };
     })));
 
   const eligibleInstructors = (await listEligibleInstructors());
@@ -54,20 +57,28 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
   const activity = (await listActivity("class", id));
 
   return (
-    <main className="ops-page" style={{ maxWidth: 1000 }}>
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">Classes</span>
-          <h1 className="ops-title">{cls.title}</h1>
-          <div className="ops-status-line">
-            <Badge status="info">{cls.status.replace(/_/g, " ")}</Badge>
-            {flags.needsInstructor && <Badge status="warning">No eligible lead</Badge>}
-            {flags.launchingSoonIncomplete && <Badge status="negative">Launching soon, incomplete</Badge>}
-          </div>
+    <RecordShell
+      eyebrow={
+        <>
+          Classes
+          {cls.programId && (
+            <>
+              {" · "}
+              <Link href={`/app/programs/${cls.programId}`} style={{ color: "var(--bow-blue)" }}>Back to Program</Link>
+            </>
+          )}
+        </>
+      }
+      title={cls.title}
+      status={
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <Badge status="info">{cls.status.replace(/_/g, " ")}</Badge>
+          {flags.needsInstructor && <Badge status="warning">No eligible lead</Badge>}
+          {flags.launchingSoonIncomplete && <Badge status="negative">Launching soon, incomplete</Badge>}
         </div>
-      </header>
-
-      <section className="ops-panel">
+      }
+    >
+      <PageSection title="Details" noRule>
         <div className="ops-meta-grid">
           <div className="ops-meta">
             <span className="ops-label">Curriculum</span>
@@ -106,30 +117,24 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
             <span className="ops-value" style={{ whiteSpace: "pre-wrap" }}>{cls.internalNotes}</span>
           </div>
         )}
-      </section>
+      </PageSection>
 
-      <section className="ops-panel--flat">
-        <div className="ops-section-head">
-          <h2 className="ops-section-title">Instructors</h2>
-        </div>
+      <PageSection title="Instructors">
         {instructorRows.length === 0 && <p className="ops-body">No instructors assigned.</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {instructorRows.map((ir: any) => (
             <div key={ir.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
-                <Link href={`/app/instructors/${ir.instructor_id}`} className="ops-inline-link">{ir.name}</Link>{" "}
+                <Link href={ir.personId ? `/app/people/${ir.personId}?tab=instructor` : `/app/instructors/${ir.instructor_id}`} className="ops-inline-link">{ir.name}</Link>{" "}
                 <Badge status={ir.role === "lead" ? "positive" : "neutral"}>{ir.role}</Badge>
               </div>
               {!cls.programId && <RemoveInstructorButton classId={id} instructorId={ir.instructor_id} />}
             </div>
           ))}
         </div>
-      </section>
+      </PageSection>
 
-      <section className="ops-panel--flat">
-        <div className="ops-section-head">
-          <h2 className="ops-section-title">Sessions</h2>
-        </div>
+      <PageSection title="Sessions">
         {sessions.length === 0 && <p className="ops-body">No sessions scheduled.</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sessions.map((s) => (
@@ -138,22 +143,22 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
             </Link>
           ))}
         </div>
-      </section>
+      </PageSection>
 
-      <section className="ops-panel--flat">
-        <div className="ops-section-head">
-          <h2 className="ops-section-title">Enrolled students</h2>
-        </div>
+      <PageSection title="Enrolled students">
         {enrolledStudentRows.length === 0 && <p className="ops-body">No students enrolled.</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {enrolledStudentRows.map((row) => (
             <div key={row.enrollment.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
-                <Link href={`/app/students/${row.enrollment.studentId}`} className="ops-inline-link">{row.name}</Link>
+                <Link href={row.personId ? `/app/people/${row.personId}?tab=student` : `/app/students/${row.enrollment.studentId}`} className="ops-inline-link">{row.name}</Link>
                 <span className="ops-record-meta" style={{ display: "block", marginTop: 3 }}>
-                  {row.enrollment.confirmedAt
-                    ? `Confirmed by ${row.enrollment.confirmationSource?.replace(/_/g, " ") ?? "recorded source"} · ${new Date(row.enrollment.confirmedAt).toLocaleDateString()}`
-                    : "Confirmation not yet recorded"}
+                  {(() => {
+                    const confirmedMs = coerceEpochMs(row.enrollment.confirmedAt);
+                    const source = row.enrollment.confirmationSource?.replace(/_/g, " ") ?? "recorded source";
+                    if (confirmedMs == null) return "Confirmation not yet recorded";
+                    return `Confirmed by ${source} · ${new Date(confirmedMs).toLocaleDateString()}`;
+                  })()}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -169,7 +174,7 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
             </div>
           ))}
         </div>
-      </section>
+      </PageSection>
 
       <ClassDetailActions
         classId={id}
@@ -185,22 +190,19 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
 
       {closeout && <CloseoutPanel closeout={closeout} />}
 
-      <section className="ops-panel--flat">
-        <div className="ops-section-head">
-          <h2 className="ops-section-title">Activity</h2>
-        </div>
+      <PageSection title="Activity">
         <div className="ops-timeline">
           {activity.length === 0 && <span className="ops-body">No activity yet.</span>}
           {activity.map((a) => (
             <div key={a.id} className="ops-timeline__item">
               <span className="ops-record-meta">
-                {new Date(a.createdAt).toLocaleString()} · {a.kind}
+                {(() => { const ms = coerceEpochMs(a.createdAt); return ms == null ? "Date not recorded" : new Date(ms).toLocaleString(); })()} · {a.kind}
               </span>
               <p className="ops-body" style={{ margin: "2px 0 0" }}>{a.body}</p>
             </div>
           ))}
         </div>
-      </section>
-    </main>
+      </PageSection>
+    </RecordShell>
   );
 }

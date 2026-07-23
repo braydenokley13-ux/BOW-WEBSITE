@@ -16,3 +16,7 @@ export { default as Tabs } from "./Tabs";
 export type { TabItem } from "./Tabs";
 export { default as DataTable } from "./DataTable";
 export type { DataTableColumn } from "./DataTable";
+export { default as PageHeader } from "./PageHeader";
+export type { PageHeaderMetaItem } from "./PageHeader";
+export { default as PageSection } from "./PageSection";
+export { default as RecordShell } from "./RecordShell";

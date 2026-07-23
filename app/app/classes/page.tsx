@@ -1,4 +1,4 @@
-import { Badge, Button, Tabs } from "@/components/ds";
+import { Badge, Button, PageHeader, Tabs } from "@/components/ds";
 import { getDb, rowToClass } from "@/lib/db";
 import { classStatusFlags, listClassProposals, type Class, type ClassStatus } from "@/lib/hiring";
 
@@ -55,16 +55,12 @@ export default async function ClassesPage() {
 
   return (
     <main className="ops-page">
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">BOW HQ · Classes</span>
-          <h1 className="ops-title">Class scheduling, staffing, and rosters.</h1>
-          <p className="ops-summary">{classes.length} class{classes.length === 1 ? "" : "es"} total.</p>
-        </div>
-        <div className="ops-actions">
-          <Button href="/app/classes/new" variant="emphasis">New Class</Button>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Classes · all delivery, by status"
+        title="Every class across every Program, triaged by status."
+        context={`${classes.length} class${classes.length === 1 ? "" : "es"} total. Most work starts on the owning Program — open a Program's Classes tab for the full operating context.`}
+        action={<Button href="/app/classes/new" variant="emphasis">New Class</Button>}
+      />
 
       <Tabs
         items={[

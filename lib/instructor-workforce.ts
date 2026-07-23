@@ -597,7 +597,7 @@ export async function getInstructorWorkforceDossier(instructorId: string): Promi
   const priorCutoff = now - 180 * 24 * 60 * 60 * 1000;
   const qualityAggregate = (await db
       .prepare(
-        `WITH bounds AS (SELECT ? AS recent_cutoff, ? AS prior_cutoff)
+        `WITH bounds AS (SELECT ?::bigint AS recent_cutoff, ?::bigint AS prior_cutoff)
        SELECT
          AVG(f.curriculum_delivery) AS curriculum_all,
          AVG(CASE WHEN f.created_at >= b.recent_cutoff THEN f.curriculum_delivery END) AS curriculum_recent,
@@ -765,7 +765,7 @@ export async function getInstructorWorkforceDossier(instructorId: string): Promi
 
   const classOptions = (await db
       .prepare(
-        `SELECT DISTINCT c.id, c.title || ' · ' || COALESCE(p.name, 'No Program') || ' · ' || replace(c.status, '_', ' ') AS label
+        `SELECT DISTINCT c.id, c.title || ' · ' || COALESCE(p.name, 'No Program') || ' · ' || replace(c.status, '_', ' ') AS label, c.updated_at
          FROM class_instructors ci
          JOIN classes c ON c.id = ci.class_id
          LEFT JOIN programs p ON p.id = c.program_id
@@ -775,7 +775,7 @@ export async function getInstructorWorkforceDossier(instructorId: string): Promi
       .all(instructorId)) as unknown as NamedOption[];
   const programOptions = (await db
       .prepare(
-        `SELECT DISTINCT p.id, p.name || ' · ' || replace(p.stage, '_', ' ') AS label
+        `SELECT DISTINCT p.id, p.name || ' · ' || replace(p.stage, '_', ' ') AS label, p.name
          FROM class_instructors ci
          JOIN classes c ON c.id = ci.class_id
          JOIN programs p ON p.id = c.program_id

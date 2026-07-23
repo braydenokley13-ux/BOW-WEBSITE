@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Button, DataStrip } from "@/components/ds";
+import { Badge, Button, DataStrip, PageHeader } from "@/components/ds";
 import { requireStaff } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 
@@ -74,19 +74,17 @@ export default async function RegionsPage({
 
   return (
     <main className="ops-page" data-accent="blue">
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">Network · Operating Regions</span>
-          <h1 className="ops-title">Give every market a clear leadership layer.</h1>
-          <p className="ops-summary">
-            Regions group Locations under one accountable operator, default timezone, and lifecycle record. They are the coordination layer between BOW HQ and local delivery.
-          </p>
-        </div>
-        <div className="ops-actions">
-          <Button href="/app/locations" variant="secondary">Locations</Button>
-          <Button href="/app/regions/new" variant="emphasis">Create Region</Button>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Programs · Network · Operating Regions"
+        title="Give every market a clear leadership layer."
+        context="Regions group Locations under one accountable operator, default timezone, and lifecycle record. They are the coordination layer between BOW HQ and local delivery."
+        action={
+          <div className="ops-actions" style={{ margin: 0 }}>
+            <Button href="/app/locations" variant="secondary">Locations</Button>
+            <Button href="/app/regions/new" variant="emphasis">Create Region</Button>
+          </div>
+        }
+      />
 
       <DataStrip
         dense

@@ -2,10 +2,16 @@
  * Authenticated application navigation.
  *
  * The catalog describes information architecture, role visibility, and route
- * matching in one browser-safe module. AuthHeader owns only interaction and
- * presentation. A route can match several parent paths, so activeNavId always
- * chooses the most-specific visible leaf and prevents multiple "current"
- * links (for example Home + Programs, or Admin + Inquiries).
+ * matching in one browser-safe module. The shell (PortalSidebar/AppShell)
+ * owns only interaction and presentation. A route can match several parent
+ * paths, so activeNavId always chooses the most-specific visible leaf and
+ * prevents multiple "current" links (for example Home + Programs, or Admin +
+ * a nested admin page).
+ *
+ * Stage 1 IA (see docs/redesign/route-disposition.md + ux-baseline.md):
+ * Staff:      Home / Growth / Programs / People / Work (+ Admin, admin-only)
+ * Instructor: Home (/app/teach) / Classes / Playbook
+ * Student:    Home (/dashboard) — cutover is permanent, no branching
  * ============================================================ */
 
 import type { Role } from "@/lib/account";
@@ -28,6 +34,8 @@ export interface NavGroup {
   label: string;
   roles: Role[];
   items: NavLink[];
+  /** Groups flagged secondary render visually de-emphasized in the shell. */
+  secondary?: boolean;
 }
 
 export type NavEntry = NavLink | NavGroup;
@@ -42,115 +50,69 @@ const link = (
   options: Pick<NavLink, "match" | "aliases"> = {},
 ): NavLink => ({ kind: "link", id, label, href, roles, ...options });
 
-// Stage 11: student Home points at the new learn platform once the cutover
-// flag is on; legacy entries stay reachable under the flag for rollback.
-// See lib/learn/cutover.ts. This is a function (not a module-level env
-// read) because catalog.ts is imported by client components (AuthHeader);
-// the flag must be threaded down as a prop from a server component
-// (app/app/layout.tsx -> AppShell -> AuthHeader) rather than read from
-// process.env inside client-bundled code, where non-NEXT_PUBLIC_ vars are
-// not reliably inlined.
-function studentNavFor(cutoverEnabled: boolean): NavLink[] {
-  return cutoverEnabled
-    ? [link("student-home", "Home", "/dashboard", ["student"], { match: "exact" })]
-    : [
-        link("student-home", "Home", "/app/student", ["student"], { match: "exact" }),
-        link("student-track", "My Track", "/app/student/track", ["student"], {
-          aliases: ["/app/student/lesson"],
-        }),
-      ];
-}
-
-export function buildNavCatalog(cutoverEnabled: boolean): NavEntry[] {
+export function buildNavCatalog(): NavEntry[] {
   return [
-  // Student workspace.
-  ...studentNavFor(cutoverEnabled),
+    // Student workspace. Learn cutover is permanent — always /dashboard.
+    link("student-home", "Home", "/dashboard", ["student"]),
 
-  // Instructor workspace. Today and Training are exact so their deeper sibling
-  // routes can own the active state.
-  link("instructor-today", "Today", "/app/instructor", ["instructor"], { match: "exact" }),
-  link("instructor-classes", "My Classes", "/app/teach/classes", ["instructor"], {
-    aliases: ["/app/instructor/session"],
-  }),
-  link("instructor-training", "Training", "/app/teach", ["instructor"], { match: "exact" }),
-  link("instructor-proposals", "Proposals", "/app/teach/proposals", ["instructor"]),
-  link("instructor-cohorts", "Cohorts", "/app/instructor/cohort", ["instructor"]),
-  link("instructor-learn", "Playbook Console", "/app/instructor/learn", ["instructor"]),
+    // Instructor workspace. /app/instructor stays an alias of Home for
+    // active-state purposes only; it becomes a redirect in Stage 2 (page
+    // itself is unchanged this stage).
+    link("instructor-home", "Home", "/app/teach", ["instructor"], {
+      match: "exact",
+      aliases: ["/app/instructor", "/app/teach/proposals"],
+    }),
+    link("instructor-classes", "Classes", "/app/teach/classes", ["instructor"], {
+      aliases: ["/app/instructor/session", "/app/instructor/cohort"],
+    }),
+    link("instructor-playbook", "Playbook", "/app/instructor/learn", ["instructor"]),
 
-  // BOW HQ. Core workflows remain directly visible; related systems are
-  // grouped so the header can scale without becoming a wall of links.
-  link("staff-home", "Home", "/app", STAFF, { match: "exact" }),
-  link("demand-inbox", "Demand", "/app/inquiries", STAFF, { aliases: ["/app/admin/inquiries"] }),
-  link("growth", "Growth", "/app/growth", STAFF),
-  link("programs", "Programs", "/app/programs", STAFF),
-  {
-    kind: "group",
-    id: "delivery",
-    label: "Delivery",
-    roles: STAFF,
-    items: [
-      link("classes", "Classes", "/app/classes", STAFF),
-      link("curriculum", "Curriculum", "/app/curriculum", STAFF),
-    ],
-  },
-  {
-    kind: "group",
-    id: "people",
-    label: "People",
-    roles: STAFF,
-    items: [
-      link("my-people", "My People", "/app/people", STAFF),
-      link("hiring", "Hiring", "/app/hiring", STAFF),
-      link("instructors", "Instructors", "/app/instructors", STAFF),
-      link("students", "Students", "/app/students", STAFF),
-      link("training", "Training", "/app/training", STAFF),
-    ],
-  },
-  {
-    kind: "group",
-    id: "network",
-    label: "Network",
-    roles: STAFF,
-    items: [
-      link("partners", "Partners", "/app/partners", STAFF),
-      link("regions", "Regions", "/app/regions", STAFF),
-      link("locations", "Locations", "/app/locations", STAFF),
-    ],
-  },
-  link("work", "Work", "/app/tasks", STAFF),
+    // BOW HQ (staff). Five primary destinations; every currently-routable
+    // portal page resolves to exactly one of these via aliases/segment match.
+    link("staff-home", "Home", "/app", STAFF, { match: "exact" }),
+    link("growth", "Growth", "/app/growth", STAFF, {
+      aliases: ["/app/inquiries", "/app/admin/inquiries", "/app/partners"],
+    }),
+    link("programs", "Programs", "/app/programs", STAFF, {
+      aliases: ["/app/classes", "/app/curriculum", "/app/regions", "/app/locations"],
+    }),
+    link("people", "People", "/app/people", STAFF, {
+      aliases: ["/app/instructors", "/app/students", "/app/hiring", "/app/training"],
+    }),
+    link("work", "Work", "/app/tasks", STAFF),
 
-  // Platform administration remains available without competing with the
-  // canonical BOW HQ workflows. Growth staff never see these links.
-  {
-    kind: "group",
-    id: "platform-admin",
-    label: "Admin",
-    roles: ["admin"],
-    items: [
-      link("admin-overview", "Platform Overview", "/app/admin", ["admin"], { match: "exact" }),
-      link("admin-learn", "Playbook Studio", "/app/admin/learn", ["admin"]),
-      link("admin-invitations", "Invitations", "/app/admin/invitations", ["admin"]),
-      link("admin-accounts", "Account Directory", "/app/admin/people", ["admin"]),
-      link("admin-cohorts", "LMS Cohorts", "/app/admin/cohorts", ["admin"]),
-      link("admin-organizations", "Organization Admin", "/app/admin/organizations", ["admin"]),
-    ],
-  },
+    // Platform administration remains available without competing visually
+    // with the canonical BOW HQ workflows. Growth staff never see this group.
+    {
+      kind: "group",
+      id: "platform-admin",
+      label: "Admin",
+      roles: ["admin"],
+      secondary: true,
+      items: [
+        link("admin-overview", "Platform Overview", "/app/admin", ["admin"], { match: "exact" }),
+        link("admin-invitations", "Invitations", "/app/admin/invitations", ["admin"]),
+        link("admin-organizations", "Organizations", "/app/admin/organizations", ["admin"]),
+        link("admin-accounts", "Account Directory", "/app/admin/people", ["admin"]),
+        link("admin-cohorts", "LMS Cohorts", "/app/admin/cohorts", ["admin"]),
+        link("admin-learn", "Playbook Studio", "/app/admin/learn", ["admin"]),
+      ],
+    },
   ];
 }
 
-// Default export for callers that don't yet thread the cutover flag —
-// reflects the fail-safe default (OFF). Prefer navForRole's cutoverEnabled
-// option when a request-scoped value is available.
-export const NAV_CATALOG: NavEntry[] = buildNavCatalog(false);
+export const NAV_CATALOG: NavEntry[] = buildNavCatalog();
 
 export function navForRole(
   role: Role,
   options: { instructorCanDeliver?: boolean; cutoverEnabled?: boolean } = {},
 ): NavEntry[] {
+  // cutoverEnabled is accepted for backward call-site compatibility but no
+  // longer branches navigation — the learn cutover is permanent (Stage 1).
   const hiddenInstructorDeliveryIds = options.instructorCanDeliver === false
-    ? new Set(["instructor-today", "instructor-classes", "instructor-proposals", "instructor-cohorts"])
+    ? new Set(["instructor-classes"])
     : null;
-  return buildNavCatalog(options.cutoverEnabled ?? false)
+  return buildNavCatalog()
     .filter((entry) => entry.roles.includes(role) && !(entry.kind === "link" && hiddenInstructorDeliveryIds?.has(entry.id)))
     .map((entry) =>
     entry.kind === "group"

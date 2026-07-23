@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge } from "@/components/ds";
+import { Badge, PageHeader } from "@/components/ds";
 import { getDb } from "@/lib/db";
 import { formatDateTimeInZone } from "@/lib/timezone";
 import { parseLessonSnapshot, resolveAttendanceStatus } from "@/lib/session-evidence";
@@ -74,18 +75,16 @@ export default async function StaffSessionDetailPage({ params }: { params: Promi
 
   return (
     <main className="ops-page" style={{ maxWidth: 720 }}>
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">{cls?.title ?? "Session"}</span>
-          <h1 className="ops-title">{formatDateTimeInZone(session.session_date, sessionTimeZone)}</h1>
-          {session.location && <p className="ops-summary">{session.location}</p>}
-          {report?.flagged === 1 && (
-            <div className="ops-status-line">
-              <Badge status="negative">Flagged: {report.flag_reason || "See notes"}</Badge>
-            </div>
-          )}
+      <PageHeader
+        eyebrow={<Link href={`/app/classes/${id}`} style={{ color: "var(--bow-blue)" }}>{cls?.title ?? "Session"}</Link>}
+        title={formatDateTimeInZone(session.session_date, sessionTimeZone)}
+        context={session.location ?? undefined}
+      />
+      {report?.flagged === 1 && (
+        <div className="ops-status-line" style={{ marginTop: -8 }}>
+          <Badge status="negative">Flagged: {report.flag_reason || "See notes"}</Badge>
         </div>
-      </header>
+      )}
       <div className="ops-panel">
         <SessionAttendanceForm
           key={`${sid}:${report?.reported_at ?? "new"}`}

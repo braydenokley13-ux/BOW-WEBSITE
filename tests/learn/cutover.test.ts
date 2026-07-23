@@ -24,11 +24,15 @@ test("learn cutover is request-time and database-backed rather than a build-time
   assert.match(cutoverMigration, /app_feature_flag_events/);
 });
 
-test("student navigation follows the explicit cutover value", () => {
-  const legacy = navForRole("student", { cutoverEnabled: false });
-  const cutover = navForRole("student", { cutoverEnabled: true });
-  assert.equal(legacy[0]?.kind, "link");
-  assert.equal(legacy[0]?.kind === "link" ? legacy[0].href : "", "/app/student");
-  assert.equal(cutover[0]?.kind, "link");
-  assert.equal(cutover[0]?.kind === "link" ? cutover[0].href : "", "/dashboard");
+test("student navigation always points at /dashboard — cutover is permanent, no branching", () => {
+  // Stage 1: the learn cutover is a permanent product decision, not a runtime
+  // toggle. navForRole still accepts cutoverEnabled for call-site
+  // compatibility but must ignore it entirely.
+  const withFlagOff = navForRole("student", { cutoverEnabled: false });
+  const withFlagOn = navForRole("student", { cutoverEnabled: true });
+  const withNoFlag = navForRole("student");
+  for (const nav of [withFlagOff, withFlagOn, withNoFlag]) {
+    assert.equal(nav[0]?.kind, "link");
+    assert.equal(nav[0]?.kind === "link" ? nav[0].href : "", "/dashboard");
+  }
 });

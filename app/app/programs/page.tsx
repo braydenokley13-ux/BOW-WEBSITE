@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Button } from "@/components/ds";
+import { Badge, Button, PageHeader } from "@/components/ds";
 import { requireStaff } from "@/lib/dal";
 import { listPrograms, programStageLabel, type ProgramSummary } from "@/lib/operations";
 
@@ -56,19 +56,16 @@ export default async function ProgramsPage({
 
   return (
     <main className="ops-page">
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">Operations · Programs</span>
-          <h1 className="ops-title">Run every launch from demand to renewal.</h1>
-          <p className="ops-summary">
-            Programs connect partners, Locations, Curriculum, staffing, enrollment, Classes, and the next decision. {atRisk > 0 ? `${atRisk} launch${atRisk === 1 ? "" : "es"} currently have blockers.` : "No launching Program is blocked."}
-          </p>
-        </div>
-        <div className="ops-actions">
-          <Button href="/app/curriculum" variant="secondary">Curriculum</Button>
-          <Button href="/app/programs/new" variant="emphasis">Create Program</Button>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Programs"
+        title="Run every launch from demand to renewal."
+        context={`Programs connect partners, Locations, Curriculum, staffing, enrollment, Classes, and the next decision. ${atRisk > 0 ? `${atRisk} launch${atRisk === 1 ? "" : "es"} currently have blockers.` : "No launching Program is blocked."}`}
+        action={<Button href="/app/programs/new" variant="emphasis">Create Program</Button>}
+      />
+      <div style={{ display: "flex", gap: 16, marginBottom: 4 }}>
+        <Link href="/app/locations" className="ops-inline-link">Locations & regions →</Link>
+        <Link href="/app/curriculum" className="ops-inline-link">Curriculum →</Link>
+      </div>
 
       <nav className="ops-filters" aria-label="Program lifecycle views">
         {VIEW_LABELS.map((item) => {

@@ -1,58 +1,179 @@
 import Link from "next/link";
-import { Badge } from "@/components/ds";
+import { Badge, PageHeader, PageSection } from "@/components/ds";
 import { requireStaff } from "@/lib/dal";
-import { getPeopleOperationsData } from "@/lib/people-operations";
+import { getPeopleOperationsData, type PersonAttentionView } from "@/lib/people-operations";
+import { listPeopleDirectory, type PersonDirectoryRow } from "@/lib/people-directory";
 
-const standingBadge = {
-  strong: { label: "Strong", status: "positive" as const },
-  on_track: { label: "On Track", status: "info" as const },
-  needs_attention: { label: "Needs Attention", status: "warning" as const },
-  at_risk: { label: "At Risk", status: "negative" as const },
+const ROLE_BADGE_TONE: Record<string, "positive" | "warning" | "negative" | "info" | "neutral" | "locked"> = {
+  instructor: "info",
+  student: "positive",
+  applicant: "warning",
+  staff: "neutral",
 };
 
-export default async function MyPeoplePage() {
+const FACETS = [
+  { key: "attention", label: "Needs attention" },
+  { key: "all", label: "All" },
+  { key: "instructor", label: "Instructors" },
+  { key: "student", label: "Students" },
+  { key: "applicant", label: "Applicants" },
+  { key: "staff", label: "Staff" },
+] as const;
+
+const STANDING_BADGE = {
+  strong: { label: "Strong", status: "positive" as const },
+  on_track: { label: "On track", status: "info" as const },
+  needs_attention: { label: "Needs attention", status: "warning" as const },
+  at_risk: { label: "At risk", status: "negative" as const },
+};
+
+export default async function PeoplePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string }>;
+}) {
   const me = await requireStaff();
-  const data = await getPeopleOperationsData({ userId: me.id, role: me.role });
-  const ordered = [...data.people].sort((a, b) => {
-    const rank = { at_risk: 0, needs_attention: 1, on_track: 2, strong: 3 };
-    return rank[a.standing] - rank[b.standing] || a.name.localeCompare(b.name);
+  const { type } = await searchParams;
+  const facet = (type ?? "attention") as (typeof FACETS)[number]["key"];
+
+  const [directory, opsData] = await Promise.all([
+    listPeopleDirectory(facet === "attention" || facet === "all" ? {} : { type: facet }),
+    getPeopleOperationsData({ userId: me.id, role: me.role }),
+  ]);
+
+  const standingByPerson = new Map(opsData.people.map((p) => [p.personId, p]));
+
+  const rows = directory.map((row) => ({
+    row,
+    ops: row.personId ? standingByPerson.get(row.personId) : undefined,
+  }));
+
+  let visible = rows;
+  if (facet === "attention") {
+    visible = rows.filter(({ row, ops }) => row.attentionReasons.length > 0 || (ops && ["at_risk", "needs_attention"].includes(ops.standing)));
+  }
+
+  const standingRank = { at_risk: 0, needs_attention: 1, on_track: 2, strong: 3 };
+  visible = [...visible].sort((a, b) => {
+    const aRank = a.ops ? standingRank[a.ops.standing] : a.row.attentionReasons.length > 0 ? 1 : 2;
+    const bRank = b.ops ? standingRank[b.ops.standing] : b.row.attentionReasons.length > 0 ? 1 : 2;
+    return aRank - bRank || a.row.name.localeCompare(b.row.name);
   });
-  const needsAttention = ordered.filter((person) => ["at_risk", "needs_attention"].includes(person.standing));
+
+  const totalCount = directory.length;
+  const attentionCount = rows.filter(({ row, ops }) => row.attentionReasons.length > 0 || (ops && ["at_risk", "needs_attention"].includes(ops.standing))).length;
 
   return (
     <main className="ops-page">
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">BOW OS · Management by exception</span>
-          <h1 className="ops-title">My People</h1>
-          <p className="ops-summary">See who is executing, who is blocked, and who needs feedback. The evidence comes from real Work, weekly commitments, and role history—not a made-up person score.</p>
-        </div>
-      </header>
-
-      <section aria-label="Manager summary" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-        <div className="ops-panel" style={{ padding: 16 }}><span className="ops-label">In scope</span><strong style={{ display: "block", fontFamily: "var(--font-display)", fontSize: 32 }}>{ordered.length}</strong><span className="ops-field__help">{me.role === "admin" ? "Active BOW operating team" : "You and your direct reports"}</span></div>
-        <div className="ops-panel" style={{ padding: 16 }}><span className="ops-label">Needs attention</span><strong style={{ display: "block", fontFamily: "var(--font-display)", fontSize: 32 }}>{needsAttention.length}</strong><span className="ops-field__help">Exceptions before normal work</span></div>
-        <div className="ops-panel" style={{ padding: 16 }}><span className="ops-label">Weekly commitments missing</span><strong style={{ display: "block", fontFamily: "var(--font-display)", fontSize: 32 }}>{ordered.filter((person) => !person.currentWeek).length}</strong><span className="ops-field__help">Current week beginning {data.currentWeekStart}</span></div>
-        <div className="ops-panel" style={{ padding: 16 }}><span className="ops-label">Waiting for review</span><strong style={{ display: "block", fontFamily: "var(--font-display)", fontSize: 32 }}>{ordered.reduce((sum, person) => sum + person.waitingReview, 0)}</strong><span className="ops-field__help">Submitted Work awaiting judgment</span></div>
-      </section>
-
-      {ordered.length === 0 ? (
-        <section className="ops-empty"><h2 className="ops-empty__title">No people are in your management scope yet</h2><p className="ops-empty__body">Create role assignments and reporting relationships before using the manager layer.</p></section>
-      ) : (
-        <section aria-labelledby="people-attention-heading" style={{ display: "grid", gap: 10 }}>
-          <div><span className="ops-label">At risk first</span><h2 id="people-attention-heading" className="ops-section-title">Who needs me?</h2></div>
-          <div className="ops-panel" style={{ padding: 0, overflow: "hidden" }}>
-            {ordered.map((person, index) => {
-              const standing = standingBadge[person.standing];
-              return <article key={person.personId} style={{ padding: "18px clamp(14px,3vw,22px)", borderBottom: index === ordered.length - 1 ? 0 : "1px solid var(--border-rule)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 18, alignItems: "start" }}>
-                <div><Badge status={standing.status}>{standing.label}</Badge><h3 style={{ margin: "8px 0 2px", fontFamily: "var(--font-interface)", fontSize: 17 }}><Link href={`/app/people/${person.personId}`} style={{ color: "inherit", textDecoration: "none" }}>{person.name}</Link></h3><p className="ops-field__help">{person.roleTitle} · {person.assignmentStatus?.replace(/_/g, " ") ?? "no role assignment"}</p></div>
-                <div>{person.attentionReasons.length ? <ul className="ops-body" style={{ margin: 0, paddingLeft: 18 }}>{person.attentionReasons.slice(0, 4).map((reason) => <li key={reason}>{reason}</li>)}</ul> : <p className="ops-body" style={{ margin: 0 }}>No current exception. Work and weekly commitment are on track.</p>}{person.currentWeek && <p className="ops-body" style={{ margin: "8px 0 0" }}><strong>This week:</strong> {person.currentWeek.commitment}</p>}</div>
-                <div><span className="ops-label">Work · {person.openWork} open</span><p className="ops-field__help">{person.overdueWork} overdue · {person.waitingReview} review</p><span className="ops-label">Capacity · {person.availabilityStatus}</span><p className="ops-field__help">{person.weeklyCapacityHours == null ? "Not estimated" : `${person.weeklyCapacityHours} hrs / week`}</p><Link href={`/app/people/${person.personId}`} className="ops-label" style={{ color: "var(--bow-blue)", textDecoration: "none" }}>Open operating profile →</Link></div>
-              </article>;
-            })}
+      <PageHeader
+        eyebrow="BOW OS · People"
+        title="People"
+        context="Every human at BOW — instructor, student, applicant, or staff role-holder — in one place. Find anyone without knowing which record they live in."
+        action={
+          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            <Link href="/app/hiring" className="ops-inline-link">Hiring pipeline →</Link>
+            <Link href="/app/training" className="ops-inline-link">Training →</Link>
           </div>
-        </section>
-      )}
+        }
+        meta={[
+          { label: "In view", value: totalCount },
+          { label: "Needs attention", value: attentionCount },
+        ]}
+      />
+
+      <nav aria-label="People facets" style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "4px 0 4px" }}>
+        {FACETS.map((f) => (
+          <Link
+            key={f.key}
+            href={f.key === "attention" ? "/app/people" : `/app/people?type=${f.key}`}
+            className="ops-chip"
+            data-tone={facet === f.key ? "positive" : undefined}
+            aria-current={facet === f.key ? "page" : undefined}
+            style={{ textDecoration: "none" }}
+          >
+            {f.label}
+          </Link>
+        ))}
+      </nav>
+
+      <PageSection noRule>
+        {visible.length === 0 ? (
+          <div className="ops-empty">
+            <h2 className="ops-empty__title">{facet === "attention" ? "Nothing needs attention right now." : "No people match this view."}</h2>
+            <p className="ops-empty__body">
+              {facet === "attention" ? "Everyone in scope has current Work, weekly commitments, and role status on track." : "Try a different facet above."}
+            </p>
+          </div>
+        ) : (
+          <div style={{ borderTop: "1px solid var(--border-rule)" }}>
+            {visible.map(({ row, ops }, index) => (
+              <PersonRow key={row.personId ?? row.fallbackHref} row={row} ops={ops} isLast={index === visible.length - 1} />
+            ))}
+          </div>
+        )}
+      </PageSection>
     </main>
+  );
+}
+
+function PersonRow({
+  row,
+  ops,
+  isLast,
+}: {
+  row: PersonDirectoryRow;
+  ops: PersonAttentionView | undefined;
+  isLast: boolean;
+}) {
+  const href = row.personId ? `/app/people/${row.personId}` : row.fallbackHref ?? "#";
+  const standing = ops ? STANDING_BADGE[ops.standing] : null;
+
+  return (
+    <article
+      style={{
+        padding: "16px clamp(14px,3vw,22px)",
+        borderBottom: isLast ? 0 : "1px solid var(--border-rule)",
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: 16,
+        alignItems: "start",
+      }}
+    >
+      <div>
+        <h3 style={{ margin: "0 0 3px", fontFamily: "var(--font-interface)", fontSize: 16 }}>
+          <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>{row.name}</Link>
+        </h3>
+        <span className="ops-field__help">{row.email ?? "No email on file"}{row.unlinked ? " · not yet linked to a person record" : ""}</span>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {row.roles.map((role) => (
+          <span className="ops-chip" data-tone={ROLE_BADGE_TONE[role.kind]} key={`${role.kind}-${role.recordId}`}>
+            {role.label} · {role.status}
+          </span>
+        ))}
+        {row.roles.length === 0 && <span className="ops-field__help">No active role</span>}
+      </div>
+
+      <div>
+        {standing && <Badge status={standing.status}>{standing.label}</Badge>}
+        {row.attentionReasons.length > 0 ? (
+          <ul className="ops-body" style={{ margin: "6px 0 0", paddingLeft: 16 }}>
+            {row.attentionReasons.slice(0, 3).map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        ) : (
+          !standing && <p className="ops-body" style={{ margin: 0 }}>On track.</p>
+        )}
+      </div>
+
+      <div>
+        {ops && <p className="ops-field__help">{ops.openWork} open work · {ops.overdueWork} overdue</p>}
+        <Link href={href} className="ops-label" style={{ color: "var(--bow-blue)", textDecoration: "none" }}>
+          {row.unlinked ? "Open record →" : "Open profile →"}
+        </Link>
+      </div>
+    </article>
   );
 }
