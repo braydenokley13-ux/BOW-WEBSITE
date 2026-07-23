@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireStaff } from "@/lib/dal";
+import { PersonIdentityError, resolveGuardianPerson, resolveStudentIdentity } from "@/lib/people-identity";
 import { logActivity } from "@/lib/hiring";
 
 export interface ActionResult {
@@ -35,7 +36,7 @@ function normalizeOptionalEmail(value: unknown, label: string): string | null {
 }
 
 function friendlyFailure(error: unknown, fallback: string): ActionResult {
-  if (error instanceof StudentActionError) return { ok: false, error: error.message };
+  if (error instanceof StudentActionError || error instanceof PersonIdentityError) return { ok: false, error: error.message };
   if (error instanceof Error && /(?:unique|constraint)/i.test(error.message)) {
     return { ok: false, error: "That identity changed while this record was being saved. Refresh and try again." };
   }
@@ -58,128 +59,6 @@ async function inImmediateTransaction<T>(operation: () => T): Promise<T> {
     }
     throw error;
   }
-}
-
-/**
- * Resolve one canonical guardian Person while the caller holds a write lock.
- * People predating the operating-system migration are not guaranteed to have
- * unique normalized emails, so ambiguity must stop the write instead of
- * silently attaching a child to an arbitrary Person.
- */
-async function resolveGuardianPerson(name: string, email: string, phone: string, now: number): Promise<string> {
-  const db = getDb();
-  const matches = (await db
-      .prepare("SELECT id FROM people WHERE lower(trim(email)) = ? ORDER BY created_at, id")
-      .all(email)) as unknown as { id: string }[];
-  if (matches.length > 1) {
-    throw new StudentActionError("More than one Person uses that guardian email. Reconcile the duplicate identity before adding this student.");
-  }
-  if (matches[0]) {
-    (await db.prepare(
-            `UPDATE people
-          SET email = ?,
-              name = CASE WHEN trim(name) = '' THEN ? ELSE name END,
-              phone = CASE WHEN trim(phone) = '' THEN ? ELSE phone END,
-              updated_at = ?
-        WHERE id = ?`,
-          ).run(email, name, phone, now, matches[0].id));
-    return matches[0].id;
-  }
-
-  const id = `pfx-${randomUUID().slice(0, 8)}`;
-  (await db.prepare(
-        "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)",
-      ).run(id, name, email, phone, now, now));
-  return id;
-}
-
-/**
- * Resolve optional account/Person links for a student email without ever
- * guessing between duplicate identities. The caller holds BEGIN IMMEDIATE,
- * making the check-and-insert sequence safe against another writer.
- */
-async function resolveStudentIdentity(email: string | null, name: string, now: number): Promise<{ userId: string | null; personId: string | null }> {
-  if (!email) return { userId: null, personId: null };
-  const db = getDb();
-  const matchingStudents = (await db
-      .prepare("SELECT id FROM students WHERE lower(trim(email)) = ? ORDER BY created_at, id")
-      .all(email)) as unknown as { id: string }[];
-  if (matchingStudents.length > 0) {
-    throw new StudentActionError("A student record already uses that email. Open the existing record instead of creating a duplicate.");
-  }
-
-  const users = (await db
-      .prepare("SELECT id, role FROM users WHERE lower(trim(email)) = ? ORDER BY id")
-      .all(email)) as unknown as { id: string; role: string }[];
-  if (users.length > 1) {
-    throw new StudentActionError("More than one account uses that email. Reconcile the account identity before adding this student.");
-  }
-  if (users[0] && users[0].role !== "student") {
-    throw new StudentActionError("That email belongs to a non-student account. Use a different student email.");
-  }
-
-  const people = (await db
-      .prepare("SELECT id, user_id FROM people WHERE lower(trim(email)) = ? ORDER BY created_at, id")
-      .all(email)) as unknown as { id: string; user_id: string | null }[];
-  if (people.length > 1) {
-    throw new StudentActionError("More than one Person uses that student email. Reconcile the duplicate identity before adding this student.");
-  }
-
-  let userId = users[0]?.id ?? null;
-  let personId = people[0]?.id ?? null;
-  if (people[0]?.user_id) {
-    const linkedUser = (await db.prepare("SELECT id, role, email FROM users WHERE id = ?").get(people[0].user_id)) as
-      | { id: string; role: string; email: string }
-      | undefined;
-    if (
-      !linkedUser ||
-      linkedUser.role !== "student" ||
-      linkedUser.email.trim().toLowerCase() !== email ||
-      (userId && userId !== linkedUser.id)
-    ) {
-      throw new StudentActionError("The Person and account attached to that student email disagree. Reconcile the identity before continuing.");
-    }
-    userId = linkedUser.id;
-  }
-
-  if (userId) {
-    const peopleLinkedToAccount = (await db
-          .prepare("SELECT id, email FROM people WHERE user_id = ? ORDER BY created_at, id")
-          .all(userId)) as unknown as { id: string; email: string }[];
-    if (peopleLinkedToAccount.length > 1) {
-      throw new StudentActionError("That account is linked to multiple People. Reconcile the identity before adding this student.");
-    }
-    if (peopleLinkedToAccount[0]) {
-      if (
-        peopleLinkedToAccount[0].email.trim().toLowerCase() !== email ||
-        (personId && personId !== peopleLinkedToAccount[0].id)
-      ) {
-        throw new StudentActionError("The account and Person attached to that student email disagree. Reconcile the identity before continuing.");
-      }
-      personId = peopleLinkedToAccount[0].id;
-    }
-  }
-
-  if (userId && (await db.prepare("SELECT 1 FROM students WHERE user_id = ?").get(userId))) {
-    throw new StudentActionError("That student account is already linked to another student record.");
-  }
-  if (personId && (await db.prepare("SELECT 1 FROM students WHERE person_id = ?").get(personId))) {
-    throw new StudentActionError("That Person is already linked to another student record.");
-  }
-  if (!personId) {
-    personId = `pfx-${randomUUID().slice(0, 8)}`;
-    (await db.prepare(
-            "INSERT INTO people (id, name, email, phone, user_id, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?)",
-          ).run(personId, name, email, userId, now, now));
-  } else {
-    (await db.prepare(
-            `UPDATE people
-          SET name = CASE WHEN trim(name) = '' THEN ? ELSE name END,
-              email = ?, user_id = COALESCE(user_id, ?), updated_at = ?
-        WHERE id = ?`,
-          ).run(name, email, userId, now, personId));
-  }
-  return { userId, personId };
 }
 
 async function attachFirstTouchAttribution(

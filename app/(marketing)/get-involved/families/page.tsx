@@ -32,7 +32,7 @@ export default function FamiliesPage() {
           <p style={{ margin: "22px 0 0", fontFamily: "var(--font-interface)", fontSize: "clamp(17px,1.5vw,21px)", lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 580 }}>You enter a sports decision and learn through making choices. BOW is built for students who are curious about sports, business, leadership, strategy, or money — not for students who already know the vocabulary.</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 32 }}>
             <Button href="/get-involved" variant="primary" size="lg">Join a Future BOW Program</Button>
-            <Button href="/lessons" variant="secondary" size="lg">Explore the Lessons</Button>
+            <Button href="/programs/track-101" variant="secondary" size="lg">Explore the Lessons</Button>
           </div>
         </div>
       </section>

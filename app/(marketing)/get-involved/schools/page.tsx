@@ -45,7 +45,7 @@ export default function SchoolsPage() {
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 32 }}>
             <Button href="/get-involved" variant="primary" size="lg">Bring BOW to a School</Button>
-            <Button href="/lessons" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}>Explore the Curriculum</Button>
+            <Button href="/programs/track-101" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}>Explore the Curriculum</Button>
           </div>
         </div>
       </section>

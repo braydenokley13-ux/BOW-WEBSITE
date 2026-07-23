@@ -51,6 +51,15 @@ export function allowedProgramTransitions(stage: ProgramStage): ProgramStage[] {
 export const LOCATION_STAGES = ["prospect", "evaluating", "launching", "active", "paused", "closed"] as const;
 export type LocationStage = (typeof LOCATION_STAGES)[number];
 
+export const PUBLIC_PROGRAM_STATUSES = ["coming_soon", "open", "full", "closed"] as const;
+export type PublicProgramStatus = (typeof PUBLIC_PROGRAM_STATUSES)[number];
+
+export const REGISTRATION_MODES = ["immediate", "approval"] as const;
+export type RegistrationMode = (typeof REGISTRATION_MODES)[number];
+
+export const FULL_CAPACITY_BEHAVIORS = ["close", "waitlist", "continue"] as const;
+export type FullCapacityBehavior = (typeof FULL_CAPACITY_BEHAVIORS)[number];
+
 export interface Program {
   id: string;
   requestKey: string | null;
@@ -84,8 +93,40 @@ export interface Program {
   launchExceptionReason: string | null;
   launchExceptionApprovedBy: string | null;
   launchExceptionApprovedAt: number | null;
+  isPublic: boolean;
+  publicStatus: PublicProgramStatus | null;
+  shortDescription: string | null;
+  longDescription: string | null;
+  gradeRange: string | null;
+  imageUrl: string | null;
+  registrationMode: RegistrationMode;
+  fullCapacityBehavior: FullCapacityBehavior;
+  registrationDeadline: string | null;
   createdAt: number;
   updatedAt: number;
+}
+
+/**
+ * A parent never sees internal B2B stage names ("staffing", "renewal_review").
+ * Public status is an explicit Founder-set field, defaulting to Coming Soon
+ * the moment a Program is published, and automatically flips to Full once
+ * confirmed registrations reach capacity.
+ */
+export function derivePublicStatus(
+  program: Pick<Program, "isPublic" | "publicStatus" | "capacity">,
+  confirmedCount: number,
+): PublicProgramStatus | null {
+  if (!program.isPublic) return null;
+  const base = program.publicStatus ?? "coming_soon";
+  if (base === "open" && program.capacity != null && confirmedCount >= program.capacity) return "full";
+  return base;
+}
+
+export function publicStatusLabel(status: PublicProgramStatus): string {
+  if (status === "coming_soon") return "Coming Soon";
+  if (status === "open") return "Open";
+  if (status === "full") return "Full";
+  return "Closed";
 }
 
 export interface Location {

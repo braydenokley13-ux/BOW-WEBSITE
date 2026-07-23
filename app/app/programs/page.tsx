@@ -95,7 +95,8 @@ export default async function ProgramsPage({
                 <span className="ops-record-meta">{summary.partnerName ?? "Partner not linked"} · {summary.locationName ?? (summary.program.deliveryFormat === "online" ? "Online" : "Location missing")}</span>
               </div>
               <div>
-                <Badge status={stageTone(summary.program.stage)}>{programStageLabel(summary.program.stage)}</Badge>
+                <Badge status={stageTone(summary.program.stage)}>{programStageLabel(summary.program.stage)}</Badge>{" "}
+                <Badge status={summary.program.isPublic ? "positive" : "neutral"}>{summary.program.isPublic ? "Public" : "Draft"}</Badge>
                 <span className="ops-record-meta">{summary.program.launchDate ? `Launch ${summary.program.launchDate}` : "Launch date missing"}</span>
               </div>
               <div>

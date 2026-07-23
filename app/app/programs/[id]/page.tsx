@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, Button, DataStrip, PageSection, RecordShell } from "@/components/ds";
 import ProgramActions from "@/components/app/programs/ProgramActions";
+import PublicListingPanel from "@/components/app/programs/PublicListingPanel";
+import DuplicateProgramButton from "@/components/app/programs/DuplicateProgramButton";
+import PendingRegistrations from "@/components/app/programs/PendingRegistrations";
 import { requireStaff } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import {
@@ -10,6 +13,7 @@ import {
   formatLabel,
   getProgram,
   getProgramFormOptions,
+  listPendingProgramRegistrations,
   programStageLabel,
   type ProgramDetail,
 } from "@/lib/operations";
@@ -47,6 +51,7 @@ export default async function ProgramDetailPage({
   const detail = await getProgram(id);
   if (!detail) notFound();
   const options = await getProgramFormOptions();
+  const pendingRegistrations = await listPendingProgramRegistrations(id);
   const program = detail.program;
 
   const isActive = program.stage === "active";
@@ -104,6 +109,7 @@ export default async function ProgramDetailPage({
       actions={
         <div className="ops-actions" style={{ margin: 0 }}>
           <Button href="/app/programs" variant="secondary">All Programs</Button>
+          <DuplicateProgramButton programId={id} />
           {!planLocked && <Button href={`/app/programs/${id}/edit`} variant="emphasis">Edit Program Plan</Button>}
         </div>
       }
@@ -149,10 +155,16 @@ export default async function ProgramDetailPage({
           detail={detail}
           instructorPersonMap={instructorPersonMap}
           studentPersonMap={studentPersonMap}
+          pendingRegistrations={pendingRegistrations}
         />
       )}
       {activeTab === "schedule" && <ScheduleTab detail={detail} />}
       {activeTab === "activity" && <ActivityTab detail={detail} />}
+
+      <PageSection title="Public Listing">
+        <p className="ops-record-meta" style={{ marginBottom: 16 }}>Controls whether — and how — this Program appears on the public website.</p>
+        <PublicListingPanel programId={id} program={program} />
+      </PageSection>
 
       {/* Actions live on every tab (bottom of page) so a mutation is always
           one scroll away regardless of which tab surfaced the need for it. */}
@@ -422,13 +434,16 @@ function PeopleTab({
   detail,
   instructorPersonMap,
   studentPersonMap,
+  pendingRegistrations,
 }: {
   detail: ProgramDetail;
   instructorPersonMap: Map<string, string>;
   studentPersonMap: Map<string, string>;
+  pendingRegistrations: import("@/lib/operations").ProgramRegistrationRow[];
 }) {
   return (
     <div style={{ display: "grid", gap: 4 }}>
+      <PendingRegistrations registrations={pendingRegistrations} />
       <PageSection title="Instructors" noRule>
         {detail.instructors.length === 0 ? (
           <p className="ops-body">No instructor is assigned to this Program yet.</p>

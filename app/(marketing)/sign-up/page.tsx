@@ -1,9 +1,9 @@
 import SignUpForm from "@/components/site/SignUpForm";
 
 export const metadata = {
-  title: "Sign Up — BOW Sports Capital",
+  title: "Join the Interest List — BOW Sports Capital",
   description:
-    "Step into the front office. Tell us who you are and what you’re interested in, and we’ll point you to the right starting line.",
+    "Not ready to register for a specific program? Join the BOW interest list and we'll follow up with the right next step.",
 };
 
 export default function SignUpPage() {

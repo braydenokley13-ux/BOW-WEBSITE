@@ -3,6 +3,8 @@ import { Button, CapLine, SectionHeader, DecisionCard } from "@/components/ds";
 import ImageSlot from "@/components/site/ImageSlot";
 import DataRibbon from "@/components/site/DataRibbon";
 import FaqList from "@/components/site/FaqList";
+import PublicProgramCard from "@/components/site/PublicProgramCard";
+import { listPublicPrograms } from "@/lib/operations";
 import {
   heroDecisionFacts,
   heroDecisionUnknowns,
@@ -12,7 +14,6 @@ import {
   modelSteps,
   lessonFlow,
   tracks,
-  featuredLessons,
   lessonSteps,
   homeEpisodes,
   pathways,
@@ -29,6 +30,7 @@ export default async function HomePage() {
   // Testimonials are admin-editable (Feature 8); fall back to the static
   // seed quotes if none are active. revalidatePath("/") refreshes this after edits.
   const dbTestimonials = (await getActiveTestimonials());
+  const upcomingPrograms = (await listPublicPrograms()).slice(0, 3);
   const testimonials = dbTestimonials.length
     ? dbTestimonials.map((t) => ({
         text: t.quote,
@@ -56,8 +58,8 @@ export default async function HomePage() {
               BOW Sports Capital helps middle and high school students learn economics, finance, leadership, and strategy by making the same decisions that shape teams, leagues, and the business of sports.
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6 }}>
-              <Button href="/programs" variant="primary" size="lg">Explore BOW</Button>
-              <Button href="/teach" variant="secondary" size="lg">Apply to Teach</Button>
+              <Button href="/programs" variant="primary" size="lg">Find a Program</Button>
+              <Button href="#howitworks" variant="secondary" size="lg">See How BOW Works</Button>
             </div>
             <Link href="/podcast" className="bow-link" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)", marginTop: 2 }}>
               Listen to the Podcast →
@@ -99,6 +101,23 @@ export default async function HomePage() {
       </section>
 
       <DataRibbon />
+
+      {/* ===== UPCOMING PROGRAMS ===== */}
+      {upcomingPrograms.length > 0 && (
+        <section style={{ background: "var(--bow-paper)", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)" }}>
+          <div className="bow-container">
+            <SectionHeader kicker="Join Now" title="Upcoming programs" style={{ marginBottom: 32 }} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(16px,2vw,24px)" }}>
+              {upcomingPrograms.map((program) => (
+                <PublicProgramCard key={program.id} program={program} />
+              ))}
+            </div>
+            <div style={{ marginTop: 28 }}>
+              <Button href="/programs" variant="secondary" size="md">See All Programs</Button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ===== INSTRUCTOR RECRUITMENT ===== */}
       <section style={{ background: "var(--bow-ink)", color: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--bow-dark-border)", position: "relative", overflow: "clip" }}>
@@ -212,38 +231,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ===== FEATURED LESSONS ===== */}
-      <section style={{ background: "var(--bow-paper)", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-far" aria-hidden style={{ position: "absolute", right: "-5%", bottom: "-6%", fontFamily: "var(--font-editorial)", fontStyle: "italic", fontWeight: 600, fontSize: "clamp(110px,16vw,260px)", lineHeight: 0.8, color: "rgba(10,10,11,0.04)", letterSpacing: "-0.02em", pointerEvents: "none", zIndex: 0 }}>Decisions</div>
-        <div className="bow-container" style={{ position: "relative" }}>
-          <SectionHeader kicker="Featured Lessons" title="Front-office decisions, built for students." style={{ marginBottom: 40 }} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "clamp(20px,2.5vw,32px)" }}>
-            {featuredLessons.map((l) => (
-              <Link key={l.bigNum} href={l.href} className="bow-reveal-sm bow-card" style={{ background: "#fff", border: "1px solid var(--border-rule)", display: "flex", flexDirection: "column", color: "var(--bow-ink)" }}>
-                <div style={{ aspectRatio: "16/10", background: "var(--bow-ink)", position: "relative", overflow: "hidden", display: "flex", alignItems: "flex-end", padding: 16 }}>
-                  <div style={{ position: "absolute", top: 14, right: 16, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 64, lineHeight: 0.8, color: "rgba(255,255,255,0.08)" }}>{l.bigNum}</div>
-                  <div style={{ position: "relative" }}>
-                    <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-orange)" }}>{l.category}</span>
-                    <div style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 26, textTransform: "uppercase", color: "#fff", lineHeight: 0.95, marginTop: 4 }}>{l.hook}</div>
-                  </div>
-                </div>
-                <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12, flex: 1 }}>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", color: "var(--bow-slate)" }}>{l.trackmod}</span>
-                  <h3 style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: 21, lineHeight: 1.15 }}>{l.title}</h3>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)", borderTop: "1px solid var(--border-rule)", paddingTop: 12, marginTop: 2 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>DECISION</span><span style={{ color: "var(--bow-ink)", textAlign: "right" }}>{l.decision}</span></div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>CONCEPT</span><span style={{ color: "var(--bow-ink)", textAlign: "right" }}>{l.concept}</span></div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>RUNTIME</span><span style={{ color: "var(--bow-ink)" }}>{l.runtime}</span></div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>PODCAST</span><span style={{ color: "var(--bow-blue)" }}>{l.podcast}</span></div>
-                  </div>
-                  <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)", marginTop: 4 }}>View the Lesson →</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ===== LESSON ARCHITECTURE ===== */}
       <section id="lessons" style={{ background: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)", position: "relative", overflow: "clip" }}>
         <div className="bow-para-sink" aria-hidden style={{ position: "absolute", left: "-3%", top: "8%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(120px,18vw,300px)", lineHeight: 0.8, color: "rgba(10,10,11,0.03)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none", zIndex: 0 }}>Case</div>
@@ -278,8 +265,8 @@ export default async function HomePage() {
             ))}
           </div>
           <div style={{ marginTop: 36, display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
-            <Button href="/lessons" variant="primary" size="lg">Open a Lesson</Button>
-            <Button href="/lessons" variant="secondary" size="lg">View All Lessons</Button>
+            <Button href="/programs/track-101" variant="primary" size="lg">Explore Track 101</Button>
+            <Button href="/programs" variant="secondary" size="lg">See All Programs</Button>
           </div>
         </div>
       </section>
