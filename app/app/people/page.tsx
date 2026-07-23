@@ -105,7 +105,7 @@ export default async function PeoplePage({
             </p>
           </div>
         ) : (
-          <div className="ops-panel" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ borderTop: "1px solid var(--border-rule)" }}>
             {visible.map(({ row, ops }, index) => (
               <PersonRow key={row.personId ?? row.fallbackHref} row={row} ops={ops} isLast={index === visible.length - 1} />
             ))}

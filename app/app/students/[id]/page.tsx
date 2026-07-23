@@ -17,7 +17,7 @@ import StudentDetailActions from "@/components/app/students/StudentDetailActions
 export default async function StudentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const personId = await resolveStudentPersonId(id);
-  if (personId) redirect(`/app/people/${personId}#student`);
+  if (personId) redirect(`/app/people/${personId}?tab=student`);
 
   const detail = await getStudentDetail(id);
   if (!detail) notFound();

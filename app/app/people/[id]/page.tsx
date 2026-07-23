@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge, RecordShell } from "@/components/ds";
+import { Badge, PageSection, RecordShell } from "@/components/ds";
 import WeeklyCommitmentEditor from "@/components/app/people/WeeklyCommitmentEditor";
 import { AccountabilityControls, ActivationControls, CapacityControls, RoleAssignmentSetup, RoleDecisionControls } from "@/components/app/people/PersonOperatingControls";
 import InstructorDetailActions from "@/components/app/hiring/InstructorDetailActions";
@@ -10,11 +10,13 @@ import IntroductionTracker from "@/components/app/hiring/IntroductionTracker";
 import StudentDetailActions from "@/components/app/students/StudentDetailActions";
 import { requireStaff } from "@/lib/dal";
 import { getDb } from "@/lib/db";
-import { getPeopleOperationsData } from "@/lib/people-operations";
+import { getPeopleOperationsData, type PersonAttentionView } from "@/lib/people-operations";
 import { resolvePersonRoleIds, type PersonRoleKind } from "@/lib/people-directory";
 import { getInstructorDetail, getStudentDetail, getStudentAttendanceHistory, listActivity, listOpenTasksForEntity, listStaffUsers, resolveUserNames } from "@/lib/hiring";
 import { getInstructorWorkforceDossier } from "@/lib/instructor-workforce";
 import { listIntroductions } from "@/lib/flywheel";
+
+type TabKey = "overview" | "operations" | "instructor" | "student" | "applicant";
 
 function label(value: unknown): string {
   return String(value ?? "—").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -32,23 +34,30 @@ function when(value: number | string | null | undefined): string {
  * useful. Fails safe with an inline notice instead of the route's error
  * boundary.
  */
-async function renderSafely(label: string, render: () => Promise<ReactNode>): Promise<ReactNode> {
+async function renderSafely(sectionLabel: string, render: () => Promise<ReactNode>): Promise<ReactNode> {
   try {
     return await render();
   } catch (error) {
-    console.error(`[people/[id]] ${label} section failed to render`, error);
+    console.error(`[people/[id]] ${sectionLabel} section failed to render`, error);
     return (
       <section className="ops-alert" data-tone="warning">
-        <span className="ops-label">{label}</span>
+        <span className="ops-label">{sectionLabel}</span>
         <p className="ops-body" style={{ marginTop: 6 }}>This section couldn&rsquo;t load right now. The rest of this person&rsquo;s record is unaffected.</p>
       </section>
     );
   }
 }
 
-export default async function PersonRecordPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PersonRecordPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const me = await requireStaff();
   const { id: personId } = await params;
+  const { tab } = await searchParams;
 
   const db = getDb();
   const personRow = (await db.prepare(
@@ -66,6 +75,14 @@ export default async function PersonRecordPage({ params }: { params: Promise<{ i
   if (roleIds.applicationId) roleBadges.push({ kind: "applicant", label: "Applicant" });
   if (opsPerson?.roleAssignmentId) roleBadges.push({ kind: "staff", label: opsPerson.roleTitle });
 
+  const availableTabs: { key: TabKey; label: string }[] = [{ key: "overview", label: "Overview" }];
+  if (opsPerson) availableTabs.push({ key: "operations", label: "Operations" });
+  if (roleIds.instructorId) availableTabs.push({ key: "instructor", label: "Instructor" });
+  if (roleIds.studentId) availableTabs.push({ key: "student", label: "Student" });
+  if (roleIds.applicationId) availableTabs.push({ key: "applicant", label: "Applicant" });
+
+  const activeTab: TabKey = availableTabs.some((t) => t.key === tab) ? (tab as TabKey) : "overview";
+
   return (
     <RecordShell
       eyebrow="People · Canonical person record"
@@ -79,26 +96,100 @@ export default async function PersonRecordPage({ params }: { params: Promise<{ i
           {roleBadges.length === 0 && <Badge status="neutral">No active role</Badge>}
         </div>
       }
-      actions={
-        <nav aria-label="Jump to section" style={{ display: "flex", gap: 12 }}>
-          {opsPerson && <a className="ops-inline-link" href="#staff">Operations</a>}
-          {roleIds.instructorId && <a className="ops-inline-link" href="#instructor">Instructor</a>}
-          {roleIds.studentId && <a className="ops-inline-link" href="#student">Student</a>}
-          {roleIds.applicationId && <a className="ops-inline-link" href="#applicant">Applicant</a>}
-        </nav>
-      }
     >
-      {opsPerson && await renderSafely("Operations", () => OperationsSection({ personId, me, opsPerson, opsData }))}
-      {roleIds.instructorId && await renderSafely("Instructor", () => InstructorSection({ instructorId: roleIds.instructorId!, me }))}
-      {roleIds.studentId && await renderSafely("Student", () => StudentSection({ studentId: roleIds.studentId! }))}
-      {roleIds.applicationId && await renderSafely("Applicant", () => ApplicantSection({ applicationId: roleIds.applicationId! }))}
-      {!opsPerson && !roleIds.instructorId && !roleIds.studentId && !roleIds.applicationId && (
-        <section className="ops-empty">
-          <h2 className="ops-empty__title">No role records found for this person.</h2>
-          <p className="ops-empty__body">This human exists in the people spine but has no instructor, student, applicant, or staff role attached yet.</p>
-        </section>
+      <nav aria-label="Person record sections" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border-rule)", marginBottom: 4, flexWrap: "wrap" }}>
+        {availableTabs.map((t) => (
+          <Link
+            key={t.key}
+            href={t.key === "overview" ? `/app/people/${personId}` : `/app/people/${personId}?tab=${t.key}`}
+            aria-current={activeTab === t.key ? "page" : undefined}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "10px 14px",
+              fontFamily: "var(--font-interface)",
+              fontSize: 13,
+              fontWeight: 600,
+              color: activeTab === t.key ? "var(--bow-ink)" : "var(--bow-slate)",
+              borderBottom: activeTab === t.key ? "2px solid var(--bow-blue)" : "2px solid transparent",
+              marginBottom: -1,
+              textDecoration: "none",
+            }}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </nav>
+
+      {activeTab === "overview" && (
+        <OverviewTab personId={personId} personRow={personRow} roleBadges={roleBadges} opsPerson={opsPerson} roleIds={roleIds} />
       )}
+      {activeTab === "operations" && opsPerson && await renderSafely("Operations", () => OperationsSection({ personId, me, opsPerson, opsData }))}
+      {activeTab === "instructor" && roleIds.instructorId && await renderSafely("Instructor", () => InstructorSection({ instructorId: roleIds.instructorId!, me }))}
+      {activeTab === "student" && roleIds.studentId && await renderSafely("Student", () => StudentSection({ studentId: roleIds.studentId! }))}
+      {activeTab === "applicant" && roleIds.applicationId && await renderSafely("Applicant", () => ApplicantSection({ applicationId: roleIds.applicationId! }))}
     </RecordShell>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/* Overview — calm, read-only summary + top actions. No forms.            */
+/* ---------------------------------------------------------------------- */
+
+function OverviewTab({
+  personId,
+  opsPerson,
+  roleIds,
+}: {
+  personId: string;
+  personRow: { name: string; email: string | null; phone: string | null; identity_status: string };
+  roleBadges: { kind: PersonRoleKind; label: string }[];
+  opsPerson: PersonAttentionView | undefined;
+  roleIds: { instructorId: string | null; studentId: string | null; applicationId: string | null };
+}) {
+  const attentionItems: string[] = [];
+  if (opsPerson) {
+    if (opsPerson.standing === "at_risk" || opsPerson.standing === "needs_attention") {
+      attentionItems.push(...opsPerson.attentionReasons.slice(0, 3));
+    }
+  }
+
+  const actions: { label: string; href: string }[] = [];
+  if (opsPerson) actions.push({ label: "Set this week's commitment", href: `/app/people/${personId}?tab=operations` });
+  if (roleIds.instructorId) actions.push({ label: "View instructor dossier", href: `/app/people/${personId}?tab=instructor` });
+  if (roleIds.studentId) actions.push({ label: "View student record", href: `/app/people/${personId}?tab=student` });
+  if (roleIds.applicationId) actions.push({ label: "View application", href: `/app/people/${personId}?tab=applicant` });
+
+  return (
+    <div style={{ display: "grid", gap: 4 }}>
+      <PageSection title="Status" noRule>
+        {opsPerson ? (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: attentionItems.length ? 10 : 0 }}>
+            <Badge status={opsPerson.standing === "at_risk" ? "negative" : opsPerson.standing === "needs_attention" ? "warning" : "positive"}>{label(opsPerson.standing)}</Badge>
+            <Badge status="neutral">{opsPerson.assignmentStatus ? label(opsPerson.assignmentStatus) : "No assignment"}</Badge>
+          </div>
+        ) : (
+          <p className="ops-body">No operating status tracked for this person.</p>
+        )}
+        {attentionItems.length > 0 ? (
+          <ul className="ops-body" style={{ margin: 0, paddingLeft: 18 }}>
+            {attentionItems.map((reason) => <li key={reason}>{reason}</li>)}
+          </ul>
+        ) : opsPerson ? (
+          <p className="ops-body" style={{ margin: 0 }}>Nothing needs attention right now.</p>
+        ) : null}
+      </PageSection>
+
+      {actions.length > 0 && (
+        <PageSection title="What to do next">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {actions.map((action) => (
+              <Link key={action.href} href={action.href} className="ops-inline-link">{action.label} →</Link>
+            ))}
+          </div>
+        </PageSection>
+      )}
+    </div>
   );
 }
 
@@ -138,75 +229,63 @@ async function OperationsSection({
   ).get(opsPerson.roleAssignmentId)) as { manager_assignment_id: string | null } | undefined : undefined;
   const personTasks = opsData.tasks.filter((task) => task.personId === personId);
   const canManagePerson = me.role === "admin" || opsPerson.userId !== me.id;
+  const hasEvidence = Object.values(opsPerson.evidence).some((count) => count > 0);
 
   return (
-    <section id="staff" className="ops-anchor" style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "grid", gap: 4 }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <Badge status={opsPerson.standing === "at_risk" ? "negative" : opsPerson.standing === "needs_attention" ? "warning" : "positive"}>{label(opsPerson.standing)}</Badge>
         <Badge status="neutral">{opsPerson.assignmentStatus ? label(opsPerson.assignmentStatus) : "No assignment"}</Badge>
         <Badge status="neutral">{label(opsPerson.availabilityStatus)}</Badge>
       </div>
 
-      <div className="ops-panel" style={{ padding: 20 }}>
-        <span className="ops-label">One primary result</span>
-        <h2 className="ops-section-title">This week</h2>
+      <PageSection title="This week">
         <WeeklyCommitmentEditor personId={personId} personName={opsPerson.name} weekStart={opsData.currentWeekStart} cycle={opsPerson.currentWeek} tasks={personTasks} outcomes={opsData.outcomes} managerMode={opsPerson.userId !== me.id} />
-      </div>
+      </PageSection>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
-        <div className="ops-panel" style={{ padding: 18 }}>
-          <span className="ops-label">Execution</span>
-          <h2 className="ops-section-title">Current work</h2>
-          <p className="ops-body">{opsPerson.openWork} open · {opsPerson.overdueWork} overdue · {opsPerson.waitingReview} awaiting review · {opsPerson.blockedWork} revisions</p>
-          <Link href="/app/tasks" className="ops-label" style={{ color: "var(--bow-blue)", textDecoration: "none" }}>Open canonical Work queue →</Link>
-        </div>
-        <div className="ops-panel" style={{ padding: 18 }}>
-          <span className="ops-label">Contextual evidence · 90 days</span>
-          <h2 className="ops-section-title">Performance evidence</h2>
+      <PageSection title="Current work">
+        <p className="ops-body">{opsPerson.openWork} open · {opsPerson.overdueWork} overdue · {opsPerson.waitingReview} awaiting review · {opsPerson.blockedWork} revisions</p>
+        <Link href="/app/tasks" className="ops-inline-link">Open canonical Work queue →</Link>
+      </PageSection>
+
+      <PageSection title="Performance evidence">
+        {hasEvidence ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
             {Object.entries(opsPerson.evidence).map(([dimension, count]) => (
               <div key={dimension}><span className="ops-label">{dimension}</span><strong style={{ display: "block", fontFamily: "var(--font-display)", fontSize: 24 }}>{count}</strong></div>
             ))}
           </div>
-        </div>
-      </div>
+        ) : (
+          <p className="ops-body">No performance evidence in the last 90 days.</p>
+        )}
+      </PageSection>
 
       {me.role === "admin" && (
-        <div className="ops-panel" style={{ padding: 20 }}>
-          <span className="ops-label">One canonical reporting line</span>
-          <h2 className="ops-section-title">Assignment &amp; manager</h2>
+        <PageSection title="Assignment & manager">
           <RoleAssignmentSetup personId={personId} roleAssignmentId={opsPerson.roleAssignmentId} roles={roles} managerAssignments={managerAssignments} currentManagerAssignmentId={assignmentDetails?.manager_assignment_id ?? null} />
-        </div>
+        </PageSection>
       )}
 
       {opsPerson.roleAssignmentId && (
         <>
-          <div className="ops-panel" style={{ padding: 20 }}>
-            <span className="ops-label">Availability without fake precision</span>
-            <h2 className="ops-section-title">Capacity</h2>
+          <PageSection title="Capacity">
             <CapacityControls roleAssignmentId={opsPerson.roleAssignmentId} initialHours={opsPerson.weeklyCapacityHours} initialAvailability={opsPerson.availabilityStatus} />
-          </div>
-          <div className="ops-panel" style={{ padding: 20 }}>
-            <span className="ops-label">Earned authority</span>
-            <h2 className="ops-section-title">Role activation</h2>
+          </PageSection>
+          <PageSection title="Role activation">
             <ActivationControls roleAssignmentId={opsPerson.roleAssignmentId} requirements={requirements.map((item) => ({ id: item.id, label: item.label, status: item.status, sourceType: item.source_type, decisionNote: item.decision_note }))} lessons={playbookLessons} canManage={canManagePerson} />
-          </div>
+          </PageSection>
           {canManagePerson && (
-            <div className="ops-panel" style={{ padding: 20 }}>
-              <span className="ops-label">Human decision · evidence attached</span>
-              <h2 className="ops-section-title">Role &amp; autonomy</h2>
+            <PageSection title="Role & autonomy">
               <RoleDecisionControls roleAssignmentId={opsPerson.roleAssignmentId} status={opsPerson.assignmentStatus ?? "activating"} autonomy={opsPerson.autonomyLevel ?? 2} />
-            </div>
+            </PageSection>
           )}
         </>
       )}
 
-      <div className="ops-panel" style={{ padding: 20 }}>
-        <span className="ops-label">Recovery before punishment</span>
-        <h2 className="ops-section-title">Accountability</h2>
+      <PageSection title="Accountability">
         <AccountabilityControls events={accountability.map((event) => ({ id: event.id, eventType: event.event_type, reason: event.reason, recoveryCommitment: event.recovery_commitment, createdAt: Number(event.created_at) }))} canManage={canManagePerson} />
-      </div>
-    </section>
+      </PageSection>
+    </div>
   );
 }
 
@@ -227,27 +306,20 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
   const resolvedOwnerName = instructor.ownerUserId ? (await resolveUserNames([instructor.ownerUserId])).get(instructor.ownerUserId) : null;
 
   return (
-    <section id="instructor" className="ops-anchor" style={{ display: "grid", gap: 12 }}>
-      <div className="ops-section-head">
-        <div>
-          <span className="ops-label">Instructor workforce dossier</span>
-          <h2 className="ops-section-title">Instructor</h2>
-        </div>
-        <div className="ops-status-line">
-          <Badge status="info">{label(instructor.stage)}</Badge>
-          <Badge status={instructor.trainingStatus === "complete" ? "positive" : "warning"}>Training · {label(instructor.trainingStatus)}</Badge>
-          <Link href={`/app/instructors/${instructorId}`} className="ops-inline-link">Full dossier →</Link>
-        </div>
+    <div style={{ display: "grid", gap: 4 }}>
+      <div className="ops-status-line" style={{ marginTop: 0 }}>
+        <Badge status="info">{label(instructor.stage)}</Badge>
+        <Badge status={instructor.trainingStatus === "complete" ? "positive" : "warning"}>Training · {label(instructor.trainingStatus)}</Badge>
+        <Link href={`/app/instructors/${instructorId}`} className="ops-inline-link">Full dossier →</Link>
       </div>
 
       <div className="ops-alert" data-tone={dossier.nextAction.tone}>
-        <span className="ops-label">Manager next action</span>
+        <span className="ops-label">Next action</span>
         <h3 className="ops-alert__title" style={{ marginTop: 7 }}>{dossier.nextAction.title}</h3>
         <p className="ops-body" style={{ marginTop: 5 }}>{dossier.nextAction.detail}</p>
       </div>
 
-      <div className="ops-panel" style={{ padding: 20 }}>
-        <div className="ops-section-head"><div><span className="ops-label">Lifecycle</span><h3 className="ops-section-title">Pipeline &amp; access decisions</h3></div></div>
+      <PageSection title="Pipeline & access decisions">
         <InstructorDetailActions
           instructorId={instructorId}
           stage={instructor.stage}
@@ -257,11 +329,9 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
           staffUsers={staffUsers}
           availability={detail.availability.map((slot) => ({ dayOfWeek: slot.dayOfWeek, startTime: slot.startTime, endTime: slot.endTime, notes: slot.notes ?? "" }))}
         />
-      </div>
+      </PageSection>
 
-      <div className="ops-panel" style={{ padding: 20 }}>
-        <span className="ops-label">Current delivery</span>
-        <h3 className="ops-section-title">Assignments · {dossier.workload.currentClasses}/{dossier.workload.maximumClasses} weekly slots</h3>
+      <PageSection title={`Assignments · ${dossier.workload.currentClasses}/${dossier.workload.maximumClasses} weekly slots`}>
         {dossier.currentAssignments.length === 0 ? <p className="ops-body">No current Class assignments.</p> : (
           <div className="ops-list">
             {dossier.currentAssignments.map((a) => (
@@ -273,7 +343,7 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
             ))}
           </div>
         )}
-      </div>
+      </PageSection>
 
       <InstructorWorkforceActions
         instructorId={instructorId}
@@ -289,9 +359,7 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
         developmentItems={dossier.development.map((item) => ({ id: item.id, title: item.title, kind: item.kind, stage: item.stage, status: item.status }))}
       />
 
-      <div className="ops-panel" style={{ padding: 18 }}>
-        <span className="ops-label">Universal Work</span>
-        <h3 className="ops-section-title">Open Work · {openTasks.length}</h3>
+      <PageSection title={`Open Work · ${openTasks.length}`}>
         {openTasks.length === 0 ? <p className="ops-body">No open Work linked to this instructor.</p> : (
           <div className="ops-list">
             {openTasks.map((task) => (
@@ -299,17 +367,14 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
             ))}
           </div>
         )}
-      </div>
+      </PageSection>
 
-      <div className="ops-panel" style={{ padding: 18 }}>
-        <span className="ops-label">Owner &amp; source</span>
+      <PageSection title="Owner & source">
         <p className="ops-body">Owner: {instructor.ownerUserId ? (resolvedOwnerName && resolvedOwnerName !== instructor.ownerUserId ? resolvedOwnerName : "Former staff member") : "Unassigned"} · Source: {instructor.source ? label(instructor.source) : "—"}</p>
-      </div>
+      </PageSection>
 
       {activity.length > 0 && (
-        <div className="ops-panel" style={{ padding: 18 }}>
-          <span className="ops-label">Audit trail</span>
-          <h3 className="ops-section-title">Recent activity</h3>
+        <PageSection title="Recent activity">
           <div className="ops-timeline">
             {activity.map((item) => (
               <div className="ops-timeline__item" key={item.id}>
@@ -318,11 +383,11 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
               </div>
             ))}
           </div>
-        </div>
+        </PageSection>
       )}
 
       <IntroductionTracker introducerType="instructor" introducerId={instructorId} introductions={introductions} />
-    </section>
+    </div>
   );
 }
 
@@ -342,48 +407,45 @@ async function StudentSection({ studentId }: { studentId: string }) {
   const attendance = (await getStudentAttendanceHistory(studentId)) as Array<{ id: string; session_date: string; class_title: string; present: boolean }>;
 
   return (
-    <section id="student" className="ops-anchor" style={{ display: "grid", gap: 12 }}>
-      <div className="ops-section-head">
-        <div><span className="ops-label">Student record</span><h2 className="ops-section-title">Student</h2></div>
-        <div className="ops-status-line">
-          <Badge status={student.formStatus === "complete" ? "positive" : student.formStatus === "submitted" ? "warning" : "negative"}>Forms: {label(student.formStatus)}</Badge>
-          <Badge status={student.enrollmentStatus === "active" ? "positive" : "locked"}>{label(student.enrollmentStatus)}</Badge>
-        </div>
+    <div style={{ display: "grid", gap: 4 }}>
+      <div className="ops-status-line" style={{ marginTop: 0 }}>
+        <Badge status={student.formStatus === "complete" ? "positive" : student.formStatus === "submitted" ? "warning" : "negative"}>Forms: {label(student.formStatus)}</Badge>
+        <Badge status={student.enrollmentStatus === "active" ? "positive" : "locked"}>{label(student.enrollmentStatus)}</Badge>
       </div>
 
-      <div className="ops-panel">
+      <PageSection title="Details">
         <div className="ops-meta-grid">
           <div className="ops-meta"><span className="ops-label">Age / Grade</span><span className="ops-value">{student.age ?? "—"} / {student.grade ?? "—"}</span></div>
           <div className="ops-meta"><span className="ops-label">Student email</span><span className="ops-value">{student.email ?? "—"}</span></div>
           <div className="ops-meta"><span className="ops-label">Guardian</span><span className="ops-value">{guardian ? `${guardian.name} (${guardian.email})` : "—"}</span></div>
         </div>
-      </div>
+      </PageSection>
 
-      <div className="ops-panel--flat">
-        <div className="ops-section-head"><h3 className="ops-section-title">Classes</h3></div>
-        {classRows.length === 0 && <p className="ops-body">Not enrolled in any classes.</p>}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {classRows.map((row) => (
-            <div key={row.enrollment.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <Link href={`/app/classes/${row.enrollment.classId}`} className="ops-inline-link">{row.title}</Link>
-              <Badge status={row.enrollment.status === "enrolled" ? "positive" : "neutral"}>{row.enrollment.status}</Badge>
-            </div>
-          ))}
-        </div>
-      </div>
+      <PageSection title="Classes">
+        {classRows.length === 0 ? <p className="ops-body">Not enrolled in any classes.</p> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {classRows.map((row) => (
+              <div key={row.enrollment.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <Link href={`/app/classes/${row.enrollment.classId}`} className="ops-inline-link">{row.title}</Link>
+                <Badge status={row.enrollment.status === "enrolled" ? "positive" : "neutral"}>{row.enrollment.status}</Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </PageSection>
 
-      <div className="ops-panel--flat">
-        <div className="ops-section-head"><h3 className="ops-section-title">Attendance history</h3></div>
-        {attendance.length === 0 && <p className="ops-body">No attendance recorded yet.</p>}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {attendance.map((a) => (
-            <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <span className="ops-value">{when(a.session_date)} — {a.class_title}</span>
-              <Badge status={a.present ? "positive" : "negative"}>{a.present ? "Present" : "Absent"}</Badge>
-            </div>
-          ))}
-        </div>
-      </div>
+      <PageSection title="Attendance history">
+        {attendance.length === 0 ? <p className="ops-body">No attendance recorded yet.</p> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {attendance.map((a) => (
+              <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span className="ops-value">{when(a.session_date)} — {a.class_title}</span>
+                <Badge status={a.present ? "positive" : "negative"}>{a.present ? "Present" : "Absent"}</Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </PageSection>
 
       <StudentDetailActions
         key={student.updatedAt}
@@ -393,7 +455,7 @@ async function StudentSection({ studentId }: { studentId: string }) {
         enrollmentStatus={student.enrollmentStatus}
         expectedUpdatedAt={student.updatedAt}
       />
-    </section>
+    </div>
   );
 }
 
@@ -415,12 +477,12 @@ async function ApplicantSection({ applicationId }: { applicationId: string }) {
   if (!app) return null;
 
   return (
-    <section id="applicant" className="ops-anchor" style={{ display: "grid", gap: 12 }}>
-      <div className="ops-section-head">
-        <div><span className="ops-label">Hiring pipeline</span><h2 className="ops-section-title">Applicant · {app.opening_title}</h2></div>
+    <div style={{ display: "grid", gap: 4 }}>
+      <div className="ops-status-line" style={{ marginTop: 0 }}>
+        <span className="ops-record-meta">{app.opening_title}</span>
         <Badge status={app.lifecycle_status === "accepted" ? "positive" : app.lifecycle_status === "rejected" ? "negative" : "info"}>{label(app.lifecycle_status)}</Badge>
       </div>
-      <div className="ops-panel" style={{ padding: 18 }}>
+      <PageSection title="Application">
         <div className="ops-meta-grid">
           <div className="ops-meta"><span className="ops-label">Next action</span><span className="ops-value">{app.next_action ?? app.waiting_on ?? "Final"}</span></div>
           <div className="ops-meta"><span className="ops-label">Owner</span><span className="ops-value">{app.owner_name ?? "Unassigned"}</span></div>
@@ -428,7 +490,7 @@ async function ApplicantSection({ applicationId }: { applicationId: string }) {
         <Link href={`/app/hiring/applications/${applicationId}`} className="ops-inline-link" style={{ display: "inline-block", marginTop: 10 }}>
           Open full candidate cockpit →
         </Link>
-      </div>
-    </section>
+      </PageSection>
+    </div>
   );
 }

@@ -13,5 +13,5 @@ export default async function InstructorDetailRedirect({ params }: { params: Pro
   const { id } = await params;
   const personId = await resolveInstructorPersonId(id);
   if (!personId) notFound();
-  redirect(`/app/people/${personId}#instructor`);
+  redirect(`/app/people/${personId}?tab=instructor`);
 }
