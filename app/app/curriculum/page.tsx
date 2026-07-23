@@ -1,20 +1,16 @@
-import { Badge, Button } from "@/components/ds";
+import { Badge, Button, PageHeader } from "@/components/ds";
 import { listCurricula } from "@/lib/hiring";
 
 export default async function CurriculumPage() {
   const curricula = (await listCurricula());
   return (
     <main className="ops-page">
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">BOW HQ · Curriculum</span>
-          <h1 className="ops-title">Curriculum</h1>
-          <p className="ops-summary">Published curricula classes are built on. {curricula.length} total.</p>
-        </div>
-        <div className="ops-actions">
-          <Button href="/app/curriculum/new" variant="emphasis">New Curriculum</Button>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Programs · Curriculum library"
+        title="Curriculum"
+        context={`Published curricula classes are built on. ${curricula.length} total.`}
+        action={<Button href="/app/curriculum/new" variant="emphasis">New Curriculum</Button>}
+      />
 
       {curricula.length === 0 ? (
         <section className="ops-empty">

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Badge } from "@/components/ds";
+import { Badge, PageHeader, PageSection } from "@/components/ds";
 import { getCurrentUser } from "@/lib/dal";
 import { getDb, rowToCurriculum, rowToClass } from "@/lib/db";
 import CurriculumForm from "@/components/app/curriculum/CurriculumForm";
@@ -17,22 +17,17 @@ export default async function CurriculumDetailPage({ params }: { params: Promise
 
   return (
     <main className="ops-page">
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">Curriculum</span>
-          <h1 className="ops-title">{curriculum.title}</h1>
-          <div className="ops-status-line">
-            <Badge status={curriculum.published ? "positive" : "neutral"}>{curriculum.published ? "Published" : "Draft"}</Badge>
-            {curriculum.ageRange && <Badge status="neutral">{curriculum.ageRange}</Badge>}
-          </div>
-          {curriculum.description && <p className="ops-summary">{curriculum.description}</p>}
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Curriculum"
+        title={curriculum.title}
+        context={curriculum.description ?? undefined}
+        meta={[
+          { label: "Status", value: <Badge status={curriculum.published ? "positive" : "neutral"}>{curriculum.published ? "Published" : "Draft"}</Badge> },
+          ...(curriculum.ageRange ? [{ label: "Age range", value: curriculum.ageRange }] : []),
+        ]}
+      />
 
-      <section className="ops-panel ops-panel--flat" aria-labelledby="curriculum-classes-title">
-        <div className="ops-section-head">
-          <div><h2 id="curriculum-classes-title" className="ops-section-title">Classes built on this curriculum</h2></div>
-        </div>
+      <PageSection title="Classes built on this curriculum" noRule>
         {classes.length === 0 ? (
           <p className="ops-body">No classes yet.</p>
         ) : (
@@ -46,19 +41,16 @@ export default async function CurriculumDetailPage({ params }: { params: Promise
             ))}
           </div>
         )}
-      </section>
+      </PageSection>
 
       {me?.role === "admin" && (
-        <section className="ops-panel ops-panel--flat" aria-labelledby="curriculum-edit-title">
-          <div className="ops-section-head">
-            <div><h2 id="curriculum-edit-title" className="ops-section-title">Edit</h2></div>
-          </div>
+        <PageSection title="Edit">
           <CurriculumForm
             mode="edit"
             curriculumId={curriculum.id}
             initial={{ title: curriculum.title, description: curriculum.description ?? "", ageRange: curriculum.ageRange ?? "", published: curriculum.published }}
           />
-        </section>
+        </PageSection>
       )}
     </main>
   );

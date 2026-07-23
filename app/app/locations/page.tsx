@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Button, DataStrip } from "@/components/ds";
+import { Badge, Button, DataStrip, PageHeader } from "@/components/ds";
 import { requireStaff } from "@/lib/dal";
 import { listLocations, programStageLabel, type LocationSummary } from "@/lib/operations";
 
@@ -55,20 +55,18 @@ export default async function LocationsPage({
 
   return (
     <main className="ops-page" data-accent="blue">
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">Network · Locations</span>
-          <h1 className="ops-title">Build repeatable markets, not isolated launches.</h1>
-          <p className="ops-summary">
-            Each Location connects regional ownership, partner demand, instructor supply, active Programs, and the next expansion decision. {attentionCount > 0 ? `${attentionCount} market${attentionCount === 1 ? " needs" : "s need"} attention.` : "Every market has a clear operating path."}
-          </p>
-        </div>
-        <div className="ops-actions">
-          <Button href="/app/partners" variant="secondary">Partners</Button>
-          <Button href="/app/programs/new" variant="secondary">Create Program</Button>
-          <Button href="/app/locations/new" variant="emphasis">Plan Location</Button>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Programs · Network · Locations"
+        title="Build repeatable markets, not isolated launches."
+        context={`Each Location connects regional ownership, partner demand, instructor supply, active Programs, and the next expansion decision. ${attentionCount > 0 ? `${attentionCount} market${attentionCount === 1 ? " needs" : "s need"} attention.` : "Every market has a clear operating path."}`}
+        action={
+          <div className="ops-actions" style={{ margin: 0 }}>
+            <Button href="/app/partners" variant="secondary">Partners</Button>
+            <Button href="/app/programs/new" variant="secondary">Create Program</Button>
+            <Button href="/app/locations/new" variant="emphasis">Plan Location</Button>
+          </div>
+        }
+      />
 
       <DataStrip
         dense
