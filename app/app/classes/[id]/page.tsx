@@ -5,7 +5,7 @@ import { getDb, rowToPerson } from "@/lib/db";
 import { getClassDetail, listEligibleInstructors, listStudents, listActivity, classStatusFlags } from "@/lib/hiring";
 import { sessionHref } from "@/lib/routes";
 import ClassDetailActions, { RemoveInstructorButton, WithdrawStudentButton } from "@/components/app/classes/ClassDetailActions";
-import { formatDateTimeInZone } from "@/lib/timezone";
+import { coerceEpochMs, formatDateTimeInZone } from "@/lib/timezone";
 import ConfirmEnrollmentButton from "@/components/app/classes/ConfirmEnrollmentButton";
 import CloseoutPanel from "@/components/app/classes/CloseoutPanel";
 import { getClassCloseout } from "@/lib/flywheel";
@@ -153,9 +153,12 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
               <div>
                 <Link href={row.personId ? `/app/people/${row.personId}?tab=student` : `/app/students/${row.enrollment.studentId}`} className="ops-inline-link">{row.name}</Link>
                 <span className="ops-record-meta" style={{ display: "block", marginTop: 3 }}>
-                  {row.enrollment.confirmedAt
-                    ? `Confirmed by ${row.enrollment.confirmationSource?.replace(/_/g, " ") ?? "recorded source"} · ${new Date(row.enrollment.confirmedAt).toLocaleDateString()}`
-                    : "Confirmation not yet recorded"}
+                  {(() => {
+                    const confirmedMs = coerceEpochMs(row.enrollment.confirmedAt);
+                    const source = row.enrollment.confirmationSource?.replace(/_/g, " ") ?? "recorded source";
+                    if (confirmedMs == null) return "Confirmation not yet recorded";
+                    return `Confirmed by ${source} · ${new Date(confirmedMs).toLocaleDateString()}`;
+                  })()}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -193,7 +196,7 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
           {activity.map((a) => (
             <div key={a.id} className="ops-timeline__item">
               <span className="ops-record-meta">
-                {new Date(a.createdAt).toLocaleString()} · {a.kind}
+                {(() => { const ms = coerceEpochMs(a.createdAt); return ms == null ? "Date not recorded" : new Date(ms).toLocaleString(); })()} · {a.kind}
               </span>
               <p className="ops-body" style={{ margin: "2px 0 0" }}>{a.body}</p>
             </div>

@@ -13,7 +13,7 @@ import {
   programStageLabel,
   type ProgramDetail,
 } from "@/lib/operations";
-import { formatDateTimeInZone } from "@/lib/timezone";
+import { coerceEpochMs, formatDateTimeInZone } from "@/lib/timezone";
 
 type TabKey = "overview" | "classes" | "people" | "schedule" | "activity";
 
@@ -222,6 +222,10 @@ function OverviewTab({
   const program = detail.program;
   const firstBlocker = detail.readiness.blockers[0];
   const nextAction = detail.readiness.nextAction;
+  // The Status block already calls out the primary (first) blocker with its
+  // own strong callout — "What's unresolved" lists only what's left so the
+  // same item never appears twice.
+  const remainingBlockers = detail.readiness.blockers.slice(1);
 
   const dataStripItems = [
     { label: "Classes", value: String(detail.classes.length) },
@@ -287,12 +291,24 @@ function OverviewTab({
 
       {showReadiness && (
         <PageSection title="What's unresolved">
-          {detail.readiness.blockers.length === 0 && detail.readiness.warnings.length === 0 ? (
-            <p className="ops-body">Nothing is unresolved. Every launch condition is satisfied.</p>
+          {/* The primary blocker already has its own strong callout in the
+              Status block above — list only the remaining blockers here so
+              the same item never appears twice on the page. */}
+          {remainingBlockers.length === 0 && detail.readiness.warnings.length === 0 ? (
+            <p className="ops-body">
+              {detail.readiness.blockers.length > 0 ? "Only the primary blocker above remains." : "Nothing is unresolved. Every launch condition is satisfied."}
+            </p>
           ) : (
             <div style={{ display: "grid", gap: 10 }}>
-              {detail.readiness.blockers.map((blocker, index) => (
-                <div className="ops-alert" data-tone="negative" key={`blocker-${index}`}>
+              {remainingBlockers.map((blocker, index) => (
+                <div
+                  key={`blocker-${index}`}
+                  style={{
+                    borderLeft: "3px solid var(--bow-negative)",
+                    background: "var(--bow-white)",
+                    padding: "12px 16px",
+                  }}
+                >
                   <span className="ops-alert__title">Blocker</span>
                   <p className="ops-body" style={{ marginTop: 5 }}>{blocker.detail}</p>
                   {blocker.actionHref && blocker.actionLabel && (
@@ -301,7 +317,14 @@ function OverviewTab({
                 </div>
               ))}
               {detail.readiness.warnings.map((warning, index) => (
-                <div className="ops-alert" data-tone="warning" key={`warning-${index}`}>
+                <div
+                  key={`warning-${index}`}
+                  style={{
+                    borderLeft: "3px solid var(--bow-warning)",
+                    background: "var(--bow-white)",
+                    padding: "12px 16px",
+                  }}
+                >
                   <span className="ops-alert__title">Warning</span>
                   <p className="ops-body" style={{ marginTop: 5 }}>{warning.detail}</p>
                   {warning.actionHref && warning.actionLabel && (
@@ -545,7 +568,7 @@ function ActivityTab({ detail }: { detail: ProgramDetail }) {
             <div className="ops-timeline__item" key={activity.id}>
               <span className="ops-label">
                 {activity.href ? <Link href={activity.href} style={{ color: "var(--bow-blue)" }}>{activity.scopeLabel}</Link> : activity.scopeLabel}
-                {" · "}{activity.kind.replace(/_/g, " ")} · {new Date(activity.createdAt).toLocaleString()}
+                {" · "}{activity.kind.replace(/_/g, " ")} · {(() => { const ms = coerceEpochMs(activity.createdAt); return ms == null ? "Date not recorded" : new Date(ms).toLocaleString(); })()}
               </span>
               <p className="ops-body" style={{ marginTop: 5, color: "var(--bow-ink)" }}>{activity.body ?? "Activity recorded."}</p>
               {activity.actorName && <span className="ops-record-meta">By {activity.actorName}</span>}

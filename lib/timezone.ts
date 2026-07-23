@@ -189,6 +189,22 @@ export function canonicalDateToUtcNoon(value: unknown): CanonicalDateResolution 
   return { ok: true, canonicalDate, epoch };
 }
 
+/**
+ * Coerce a bigint-column-as-string (or already-numeric) epoch value to a
+ * finite number, returning null for anything unusable (null/undefined,
+ * empty string, non-numeric). Several read paths pass Postgres `bigint`
+ * columns straight through without a driver-side numeric cast, so a raw
+ * `new Date(value)` on the un-coerced string produces "Invalid Date"
+ * instead of a real timestamp — callers should route through this (or
+ * formatDateTimeInZone, which already does) instead of constructing a
+ * Date directly from a value read off the database.
+ */
+export function coerceEpochMs(value: number | string | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const numeric = typeof value === "string" ? Number(value) : value;
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export function formatDateTimeInZone(
   epoch: number | string,
   timeZone: string | null | undefined,
