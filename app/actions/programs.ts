@@ -311,11 +311,16 @@ async function resolveContinuationHoldWork(programId: string, actorUserId: strin
   }
 }
 
-async function beginTransaction<T>(work: () => T): Promise<T> {
+async function beginTransaction<T>(work: () => T | Promise<T>): Promise<T> {
   const db = getDb();
   (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const result = work();
+    // MUST await the work before COMMIT. If the returned promise is left
+    // unawaited, COMMIT is dispatched after only work's first query and the
+    // remaining writes run after the commit (some on a released pooled
+    // connection) — defeating atomicity and every `changes !== 1` optimistic
+    // guard, whose thrown error can no longer roll anything back.
+    const result = (await work());
     (await db.exec("COMMIT"));
     return result;
   } catch (error) {
@@ -2098,20 +2103,37 @@ export async function confirmProgramRegistration(registrationId: string): Promis
   if (!registration) return { ok: false, error: "Registration not found." };
   if (registration.status === "confirmed") return { ok: true };
   if (!registration.class_id) return { ok: false, error: "This registration has no linked Class to enroll into." };
+  const classId = registration.class_id;
 
   const now = Date.now();
   try {
     (await beginTransaction(async () => {
             const existing = (await db.prepare(
                     "SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?",
-                  ).get(registration.class_id, registration.student_id)) as { id: string; status: string } | undefined;
+                  ).get(classId, registration.student_id)) as { id: string; status: string } | undefined;
+            let enrollmentId: string;
             if (existing) {
+              enrollmentId = existing.id;
               (await db.prepare("UPDATE class_enrollments SET status = 'enrolled', enrolled_at = ?, withdrawn_at = NULL, withdrawal_reason = NULL WHERE id = ?").run(now, existing.id));
             } else {
+              enrollmentId = `pfx-${randomUUID().slice(0, 8)}`;
               (await db.prepare(
                         "INSERT INTO class_enrollments (id, class_id, student_id, status, enrolled_at, withdrawn_at, withdrawal_reason) VALUES (?, ?, ?, 'enrolled', ?, NULL, NULL)",
-                      ).run(`pfx-${randomUUID().slice(0, 8)}`, registration.class_id, registration.student_id, now));
+                      ).run(enrollmentId, classId, registration.student_id, now));
             }
+            // Mirror the canonical staff enrollment path: add the student to the
+            // roster of every future session so a confirmed approval/waitlist
+            // registration shows up on session attendance, not just the Class.
+            (await db.prepare(
+                      `INSERT INTO class_session_roster (id, session_id, student_id, enrollment_id, rostered_at)
+             SELECT 'csr-' || lower(hex(randomblob(16))), cs.id, ?, ?, ?
+             FROM class_sessions cs
+             WHERE cs.class_id = ? AND cs.session_date > ?
+               AND NOT EXISTS (
+                 SELECT 1 FROM class_session_roster csr
+                 WHERE csr.session_id = cs.id AND csr.student_id = ?
+               )`,
+                    ).run(registration.student_id, enrollmentId, now, classId, now, registration.student_id));
             (await db.prepare("UPDATE program_registrations SET status = 'confirmed', updated_at = ? WHERE id = ?").run(now, registrationId));
             (await logActivity("program", registration.program_id, "note", `Registration ${registrationId} confirmed by staff.`, me.id));
           }));

@@ -74,7 +74,7 @@ export default async function HomePage() {
               <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "42%", backgroundImage: "repeating-linear-gradient(120deg, rgba(255,255,255,0.16) 0 1.5px, transparent 1.5px 13px)" }} />
               <div style={{ position: "absolute", right: -22, top: -44, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(190px,30vw,300px)", lineHeight: 0.7, color: "rgba(255,255,255,0.12)", letterSpacing: "-0.04em", zIndex: 2 }}>03</div>
               <div style={{ position: "absolute", left: "50%", bottom: 0, transform: "translateX(-50%)", width: "84%", height: "80%", zIndex: 3 }}>
-                <ImageSlot placeholder="Drop a player cutout" fit="cover" position="50% 12%" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", filter: "grayscale(1) contrast(1.08) brightness(1.04)" }} />
+                <ImageSlot placeholder="BOW front office scouting report" fit="cover" position="50% 12%" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", filter: "grayscale(1) contrast(1.08) brightness(1.04)" }} />
                 <div style={{ position: "absolute", inset: 0, background: "var(--bow-blue)", mixBlendMode: "color", opacity: 0.42, pointerEvents: "none" }} />
                 <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,10,11,0.5), transparent 45%)", pointerEvents: "none" }} />
               </div>

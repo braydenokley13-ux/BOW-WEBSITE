@@ -38,11 +38,13 @@ const CLASS_TRANSITIONS: Record<ClassStatus, ClassStatus[]> = {
 };
 const HISTORICAL_PROGRAM_STAGES = new Set(["completed", "renewal_review", "renewed", "closed"]);
 
-async function inImmediateTransaction<T>(operation: () => T): Promise<T> {
+async function inImmediateTransaction<T>(operation: () => T | Promise<T>): Promise<T> {
   const db = getDb();
   (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const result = operation();
+    // Await the operation before COMMIT: an unawaited promise commits after
+    // only its first query and runs later writes outside the transaction.
+    const result = (await operation());
     (await db.exec("COMMIT"));
     return result;
   } catch (error) {
