@@ -33,7 +33,7 @@ export default function YouthOrganizationsPage() {
           <p style={{ margin: "22px 0 0", fontFamily: "var(--font-interface)", fontSize: "clamp(17px,1.5vw,21px)", lineHeight: 1.6, color: "#b9bcc4", maxWidth: 580 }}>Community organizations, nonprofits, libraries, recreation programs, and enrichment providers can bring the BOW learning model to their students in formats that fit outside a traditional classroom.</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 32 }}>
             <Button href="/get-involved" variant="primary" size="lg">Inquire About BOW</Button>
-            <Button href="/lessons" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}>Explore the Curriculum</Button>
+            <Button href="/programs/track-101" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}>Explore the Curriculum</Button>
           </div>
         </div>
       </section>

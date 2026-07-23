@@ -136,7 +136,7 @@ export default function SignUpForm() {
                 color: "var(--bow-orange)",
               }}
             >
-              Your Seat Is Open
+              BOW Interest List
             </span>
             <h1
               style={{
@@ -149,11 +149,11 @@ export default function SignUpForm() {
                 textTransform: "uppercase",
               }}
             >
-              Step into the front office.
+              Find your next BOW program.
             </h1>
             <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 17, lineHeight: 1.6, color: "#b9bcc4" }}>
-              Tell us who you are and what you’re interested in. We’ll point you to the right starting line — a track, the
-              interest list, or a school program.
+              This joins the interest list — it&apos;s not a confirmed registration. Already know which program you want?{" "}
+              <a href="/programs" style={{ color: "#fff", textDecoration: "underline" }}>Register directly on /programs</a> instead.
             </p>
             <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 10 }}>
               <div

@@ -22,7 +22,7 @@ export interface NavItem {
 export const NAV: NavItem[] = [
   { label: "Home", href: "/" },
   { label: "Programs", href: "/programs" },
-  { label: "Enroll", href: "/get-involved" },
+  { label: "Get Involved", href: "/get-involved" },
   { label: "Teach", href: "/teach" },
 ];
 
@@ -37,7 +37,7 @@ export const FOOTER_COLS: FooterCol[] = [
     links: [{ label: "Programs Overview", href: "/programs" }],
   },
   {
-    head: "Enroll",
+    head: "Get Involved",
     links: [{ label: "Get Involved", href: "/get-involved" }],
   },
   {

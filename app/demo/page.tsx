@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireStaff } from "@/lib/dal";
 import { getConceptMap } from "@/lib/concept-map";
 import { getSelfModules, getQuizQuestions } from "@/lib/self-paced";
 import { SIM_TURNS, SIM_TEAM, TOTAL_TURNS } from "@/lib/sim-game";
@@ -12,11 +13,14 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
-  openGraph: { type: "website", title: TITLE, description: DESCRIPTION, url: "/demo" },
-  twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
+  robots: { index: false, follow: false },
 };
 
 export default async function DemoPage() {
+  // Staff-led only: this tour exposes live curriculum content and quiz
+  // answer keys, so it stays behind sign-in rather than being publicly
+  // browsable — a BOW staff member presents it during a partner call.
+  await requireStaff();
   // Pull real, live curriculum data so the demo always reflects the platform.
   const concepts = (await getConceptMap()).map((c) => ({
     name: c.conceptName,

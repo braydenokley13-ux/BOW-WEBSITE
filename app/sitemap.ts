@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
 import { SITE } from "@/lib/site";
-import { lessons } from "@/lib/lessons";
 import { getAllPartnerOrgs } from "@/lib/partners";
 import { getAnalyticsPlayers } from "@/lib/nba";
 import { getPublishedArticles } from "@/lib/articles";
@@ -13,7 +12,6 @@ const ROUTES = [
   "/programs/track-101",
   "/programs/track-201",
   "/programs/track-301",
-  "/lessons",
   "/analytics",
   "/analytics/articles",
   "/analytics/teams",
@@ -42,12 +40,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: now,
     changeFrequency: "monthly",
     priority: path === "/" ? 1 : 0.7,
-  }));
-  const lessonEntries: MetadataRoute.Sitemap = lessons.map((l) => ({
-    url: `${SITE.url}/lessons/${l.slug}`,
-    lastModified: now,
-    changeFrequency: "monthly",
-    priority: 0.6,
   }));
   // Public partner / school landing pages — shared in outreach, so index them.
   const partnerEntries: MetadataRoute.Sitemap = (await getAllPartnerOrgs()).map((p) => ({
@@ -78,5 +70,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     changeFrequency: "weekly",
     priority: 0.5,
   }));
-  return [...staticEntries, ...lessonEntries, ...partnerEntries, ...playerEntries, ...articleEntries, ...teamEntries];
+  return [...staticEntries, ...partnerEntries, ...playerEntries, ...articleEntries, ...teamEntries];
 }

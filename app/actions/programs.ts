@@ -6,13 +6,19 @@ import { getDb } from "@/lib/db";
 import { requireStaff } from "@/lib/dal";
 import { logActivity, recomputeInstructorStatuses, type ClassStatus } from "@/lib/hiring";
 import {
+  FULL_CAPACITY_BEHAVIORS,
   PROGRAM_STAGES,
+  PUBLIC_PROGRAM_STATUSES,
+  REGISTRATION_MODES,
   allowedProgramTransitions,
   getClassStaffingRecommendation,
   getProgram,
   getProgramReadiness,
   type DeliveryFormat,
+  type FullCapacityBehavior,
   type ProgramStage,
+  type PublicProgramStatus,
+  type RegistrationMode,
 } from "@/lib/operations";
 import { revalidateEntity } from "@/lib/routes";
 import {
@@ -1913,6 +1919,208 @@ export async function createProgramContinuation(
   }, me, true);
   if (result.ok) revalidateProgram(id);
   return result;
+}
+
+export interface PublicListingInput {
+  isPublic: boolean;
+  publicStatus: PublicProgramStatus | null;
+  shortDescription: string | null;
+  longDescription: string | null;
+  gradeRange: string | null;
+  imageUrl: string | null;
+  registrationMode: RegistrationMode;
+  fullCapacityBehavior: FullCapacityBehavior;
+  registrationDeadline: string | null;
+}
+
+/**
+ * Public-facing listing fields live outside the operating-plan form on
+ * purpose: publishing a Program to the website is a Founder decision
+ * ("Save Draft" vs "Publish"), not a step in the B2B delivery-readiness
+ * pipeline that `createProgram`/`updateProgramPlan` protect.
+ */
+export async function setProgramPublicListing(id: string, input: PublicListingInput): Promise<ActionResult> {
+  const me = await requireStaff();
+  const db = getDb();
+  const row = (await db.prepare("SELECT id FROM programs WHERE id = ?").get(id));
+  if (!row) return { ok: false, error: "Program not found." };
+
+  const shortDescription = clean(input.shortDescription, 400);
+  const longDescription = clean(input.longDescription, 8000);
+  const gradeRange = clean(input.gradeRange, 60);
+  const imageUrl = clean(input.imageUrl, 2000);
+  const registrationDeadline = clean(input.registrationDeadline, 40);
+  if (!validDate(registrationDeadline)) return { ok: false, error: "Use a valid registration deadline date." };
+  if (input.publicStatus !== null && !PUBLIC_PROGRAM_STATUSES.includes(input.publicStatus)) {
+    return { ok: false, error: "Choose a valid public status." };
+  }
+  if (!REGISTRATION_MODES.includes(input.registrationMode)) return { ok: false, error: "Choose a valid registration mode." };
+  if (!FULL_CAPACITY_BEHAVIORS.includes(input.fullCapacityBehavior)) {
+    return { ok: false, error: "Choose a valid full-capacity behavior." };
+  }
+  if (input.isPublic && !shortDescription) {
+    return { ok: false, error: "Add a short description before publishing this Program." };
+  }
+
+  const now = Date.now();
+  (await db.prepare(
+        `UPDATE programs SET
+        is_public = ?, public_status = ?, short_description = ?, long_description = ?, grade_range = ?,
+        image_url = ?, registration_mode = ?, full_capacity_behavior = ?, registration_deadline = ?, updated_at = ?
+      WHERE id = ?`,
+      ).run(
+      input.isPublic,
+      input.publicStatus,
+      shortDescription,
+      longDescription,
+      gradeRange,
+      imageUrl,
+      input.registrationMode,
+      input.fullCapacityBehavior,
+      registrationDeadline,
+      now,
+      id,
+      ));
+  (await logActivity(
+        "program",
+        id,
+        "note",
+        input.isPublic ? "Published to the public website." : "Saved as a private draft (not public).",
+        me.id,
+      ));
+  revalidateProgram(id);
+  revalidatePath("/programs");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+interface DuplicateSourceRow {
+  name: string;
+  partner_org_id: string | null;
+  primary_contact_person_id: string | null;
+  location_id: string | null;
+  curriculum_id: string | null;
+  audience: string | null;
+  delivery_format: DeliveryFormat;
+  schedule_label: string | null;
+  schedule_day: number | null;
+  schedule_start_time: string | null;
+  schedule_end_time: string | null;
+  schedule_timezone: string | null;
+  capacity: number | null;
+  minimum_enrollment: number;
+  owner_user_id: string | null;
+  short_description: string | null;
+  long_description: string | null;
+  grade_range: string | null;
+  image_url: string | null;
+  registration_mode: RegistrationMode;
+  full_capacity_behavior: FullCapacityBehavior;
+}
+
+/**
+ * Duplicate a Program's reusable operating facts for a new cohort. Never
+ * copies registrations, roster, attendance, or results — the duplicate
+ * starts with zero Classes and zero sessions, always as a private Draft, so
+ * dates and staffing get a deliberate review before anything is public.
+ */
+export async function duplicateProgram(id: string): Promise<ActionResult & { id?: string }> {
+  const me = await requireStaff();
+  const db = getDb();
+  const row = (await db.prepare("SELECT * FROM programs WHERE id = ?").get(id)) as DuplicateSourceRow | undefined;
+  if (!row) return { ok: false, error: "Program not found." };
+
+  const newId = `prg-${randomUUID().slice(0, 10)}`;
+  const now = Date.now();
+  const newName = clean(`${row.name} (Copy)`, 160) ?? "Untitled Program (Copy)";
+
+  (await db.prepare(
+        `INSERT INTO programs
+        (id, request_key, name, partner_org_id, primary_contact_person_id, location_id, curriculum_id, audience,
+         delivery_format, stage, start_date, end_date, launch_date, schedule_label, schedule_day, schedule_start_time,
+         schedule_end_time, schedule_timezone, capacity, minimum_enrollment, owner_user_id, partner_confirmed,
+         materials_status, renewal_status, source_type, source_id, parent_program_id, outcome_summary, notes,
+         is_public, public_status, short_description, long_description, grade_range, image_url,
+         registration_mode, full_capacity_behavior, registration_deadline, created_at, updated_at)
+       VALUES
+        (?, NULL, ?, ?, ?, ?, ?, ?,
+         ?, 'planning', NULL, NULL, NULL, ?, ?, ?,
+         ?, ?, ?, ?, ?, false,
+         'not_ready', 'not_due', 'manual', NULL, ?, NULL, NULL,
+         false, NULL, ?, ?, ?, ?,
+         ?, ?, NULL, ?, ?)`,
+      ).run(
+      newId,
+      newName,
+      row.partner_org_id,
+      row.primary_contact_person_id,
+      row.location_id,
+      row.curriculum_id,
+      row.audience,
+      row.delivery_format,
+      row.schedule_label,
+      row.schedule_day,
+      row.schedule_start_time,
+      row.schedule_end_time,
+      row.schedule_timezone,
+      row.capacity,
+      row.minimum_enrollment,
+      row.owner_user_id,
+      id,
+      row.short_description,
+      row.long_description,
+      row.grade_range,
+      row.image_url,
+      row.registration_mode,
+      row.full_capacity_behavior,
+      now,
+      now,
+      ));
+  (await logActivity("program", newId, "created", `Duplicated from Program ${id} ("${row.name}") as a private Draft.`, me.id));
+  revalidateProgram(newId);
+  revalidatePath("/app/programs");
+  return { ok: true, id: newId };
+}
+
+/**
+ * Confirm a pending (approval-required) or waitlisted public registration:
+ * enrolls the student in the canonical class_enrollments roster, exactly
+ * like a direct staff enrollment would.
+ */
+export async function confirmProgramRegistration(registrationId: string): Promise<ActionResult> {
+  const me = await requireStaff();
+  const db = getDb();
+  const registration = (await db.prepare(
+        "SELECT id, program_id, class_id, student_id, status FROM program_registrations WHERE id = ?",
+      ).get(registrationId)) as
+    | { id: string; program_id: string; class_id: string | null; student_id: string; status: string }
+    | undefined;
+  if (!registration) return { ok: false, error: "Registration not found." };
+  if (registration.status === "confirmed") return { ok: true };
+  if (!registration.class_id) return { ok: false, error: "This registration has no linked Class to enroll into." };
+
+  const now = Date.now();
+  try {
+    (await beginTransaction(async () => {
+            const existing = (await db.prepare(
+                    "SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?",
+                  ).get(registration.class_id, registration.student_id)) as { id: string; status: string } | undefined;
+            if (existing) {
+              (await db.prepare("UPDATE class_enrollments SET status = 'enrolled', enrolled_at = ?, withdrawn_at = NULL, withdrawal_reason = NULL WHERE id = ?").run(now, existing.id));
+            } else {
+              (await db.prepare(
+                        "INSERT INTO class_enrollments (id, class_id, student_id, status, enrolled_at, withdrawn_at, withdrawal_reason) VALUES (?, ?, ?, 'enrolled', ?, NULL, NULL)",
+                      ).run(`pfx-${randomUUID().slice(0, 8)}`, registration.class_id, registration.student_id, now));
+            }
+            (await db.prepare("UPDATE program_registrations SET status = 'confirmed', updated_at = ? WHERE id = ?").run(now, registrationId));
+            (await logActivity("program", registration.program_id, "note", `Registration ${registrationId} confirmed by staff.`, me.id));
+          }));
+  } catch {
+    return { ok: false, error: "Could not confirm this registration. Refresh and try again." };
+  }
+
+  revalidateProgram(registration.program_id);
+  return { ok: true };
 }
 
 export async function addProgramNote(id: string, body: string): Promise<ActionResult> {

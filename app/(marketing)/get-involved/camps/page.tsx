@@ -35,7 +35,7 @@ export default function CampsPage() {
           <p style={{ margin: "22px 0 0", fontFamily: "var(--font-interface)", fontSize: "clamp(17px,1.5vw,21px)", lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 580 }}>One complete sports-business challenge in 45 to 75 minutes. Team-based decisions, minimal setup, no economics background required. Standalone sessions or a multi-day Front Office Challenge.</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 32 }}>
             <Button href="/get-involved" variant="primary" size="lg">Bring BOW to a Camp</Button>
-            <Button href="/lessons" variant="secondary" size="lg">View Sample Sessions</Button>
+            <Button href="/programs/track-101" variant="secondary" size="lg">View Sample Sessions</Button>
           </div>
         </div>
       </section>

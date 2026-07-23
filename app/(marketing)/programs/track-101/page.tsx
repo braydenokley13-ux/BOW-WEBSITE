@@ -9,8 +9,7 @@ import {
   track101Modules,
   trackDelivery,
 } from "@/lib/programs";
-import type { Concept, TrackModule, ModuleLesson, DeliveryFormat } from "@/lib/programs";
-import { getLessonById } from "@/lib/lessons";
+import type { Concept, TrackModule, DeliveryFormat } from "@/lib/programs";
 
 export const metadata = {
   title: "Track 101 — BOW Sports Capital",
@@ -79,35 +78,16 @@ export default function Track101Page() {
         </div>
       </section>
 
-      {/* ===== MODULE MAP ===== */}
+      {/* ===== MODULE OVERVIEW ===== */}
       <section style={{ background: "var(--bow-paper)", padding: "clamp(48px,7vw,96px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
         <div className="bow-container">
-          <SectionHeader kicker="4 Modules · 12 Lessons" title="The module map" style={{ marginBottom: 40 }} />
-          <div style={{ display: "flex", flexDirection: "column", gap: "clamp(20px,2.5vw,32px)" }}>
-            {track101Modules.map((m: TrackModule, mi: number) => (
-              <div key={m.n} className="bow-reveal-sm" style={{ background: "#fff", border: "1px solid var(--border-rule)" }}>
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 10, padding: "22px clamp(18px,2.4vw,28px)", borderBottom: "1px solid var(--border-rule)" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-blue)" }}>{m.n}</span>
-                    <h3 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(24px,3vw,38px)", textTransform: "uppercase", letterSpacing: "-0.01em", lineHeight: 0.95 }}>{m.title}</h3>
-                  </div>
-                  <span style={{ fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)", fontStyle: "italic" }}>{m.theme}</span>
-                </div>
-                {m.lessons.map((l: ModuleLesson, li: number) => {
-                  const lesson = getLessonById(`t101-m${mi + 1}-l${li + 1}`);
-                  const href = lesson ? `/lessons/${lesson.slug}` : "/lessons";
-                  return (
-                    <Link key={l.n} href={href} className="bow-link" style={{ display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 16, alignItems: "center", padding: "16px clamp(18px,2.4vw,28px)", borderBottom: "1px solid var(--border-rule)", color: "var(--bow-ink)" }}>
-                      <span style={{ fontFamily: "var(--font-data)", fontWeight: 600, fontSize: 13, color: "var(--bow-slate)" }}>{l.n}</span>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                        <span style={{ fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: 18, lineHeight: 1.2 }}>{l.title}</span>
-                        <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--bow-slate)", lineHeight: 1.4 }}>{l.overview}</span>
-                        <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.04em", color: "var(--bow-slate)" }}>{l.concept} · {l.runtime} · {l.podcast} · SIM {l.sim}</span>
-                      </div>
-                      <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--bow-blue)", whiteSpace: "nowrap" }}>View →</span>
-                    </Link>
-                  );
-                })}
+          <SectionHeader kicker={`${track101Modules.length} Modules`} title="How the track is organized" style={{ marginBottom: 40 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "clamp(16px,2vw,22px)" }}>
+            {track101Modules.map((m: TrackModule) => (
+              <div key={m.n} style={{ background: "#fff", border: "1px solid var(--border-rule)", borderTop: "4px solid var(--bow-blue)", padding: "22px 22px 26px", display: "flex", flexDirection: "column", gap: 8 }}>
+                <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-blue)" }}>{m.n}</span>
+                <h3 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 20, textTransform: "uppercase", letterSpacing: "-0.005em" }}>{m.title}</h3>
+                <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.5, color: "var(--bow-slate)" }}>{m.theme}</p>
               </div>
             ))}
           </div>

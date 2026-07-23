@@ -87,11 +87,8 @@ export default function Masthead() {
           <Link href="/sign-in" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", color: "#9a9da6" }}>
             Sign In
           </Link>
-          <Link href="/sign-up" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", color: "#fff" }}>
-            Sign Up
-          </Link>
-          <Button href="/teach" variant="primary" size="sm" style={{ height: 36 }}>
-            Apply to Teach
+          <Button href="/programs" variant="primary" size="sm" style={{ height: 36 }}>
+            Find a Program
           </Button>
         </div>
 
@@ -151,11 +148,11 @@ export default function Masthead() {
             Sign In
           </Link>
           <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <Button href="/teach" variant="primary" size="md" full onClick={closeMenu} style={{ height: 44 }}>
-              Apply to Teach
+            <Button href="/programs" variant="primary" size="md" full onClick={closeMenu} style={{ height: 44 }}>
+              Find a Program
             </Button>
-            <Button href="/sign-up" variant="secondary" size="md" full onClick={closeMenu} style={{ height: 44, color: "#fff", borderColor: "var(--bow-dark-border)" }}>
-              Sign Up
+            <Button href="/teach" variant="secondary" size="md" full onClick={closeMenu} style={{ height: 44, color: "#fff", borderColor: "var(--bow-dark-border)" }}>
+              Apply to Teach
             </Button>
           </div>
         </div>
