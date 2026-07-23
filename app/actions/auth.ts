@@ -4,8 +4,16 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { randomBytes, randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
-import { hashPassword, isPublicDemoPassword, verifyPassword } from "@/lib/password";
-import { createSession, destroySession } from "@/lib/session";
+import { isPublicDemoPassword, verifyPassword } from "@/lib/password";
+import { destroySession } from "@/lib/session";
+import { createClient } from "@/lib/supabase/server";
+import {
+  ensureSupabaseAuthUser,
+  linkAppUserToSupabaseAuth,
+  setSupabaseAuthPassword,
+} from "@/lib/supabase/auth-helpers";
+import { revokeAllSupabaseSessions } from "@/lib/supabase/admin";
+import { verifySupabasePassword } from "@/lib/supabase/verify-client";
 import { getCurrentUser } from "@/lib/dal";
 import { roleHomePath, SELF_PACED_COHORT_ID, SELF_PACED_ORG_ID, type Role } from "@/lib/account";
 import { hashOpaqueToken } from "@/lib/security-tokens";
@@ -60,9 +68,6 @@ export async function joinSelfPaced(_prev: AuthState, formData: FormData): Promi
   const db = getDb();
   const userId = `u-${randomUUID().slice(0, 8)}`;
   const first = name.split(/\s+/)[0] || name;
-  // Scrypt is intentionally expensive. Finish it before taking SQLite's
-  // writer lock so one sign-up cannot stall every other operating action.
-  const passwordHash = hashPassword(password);
   const now = Date.now();
   (await db.exec("BEGIN IMMEDIATE"));
   try {
@@ -80,8 +85,8 @@ export async function joinSelfPaced(_prev: AuthState, formData: FormData): Promi
     }
 
     (await db.prepare(
-            "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', 'Just now', 'Email + password', ?, ?, ?)",
-          ).run(userId, name, first, email, SELF_PACED_ORG_ID, passwordHash, now, now));
+            "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, 'student', ?, NULL, 'active', 'Just now', 'Email + password', NULL, ?, ?)",
+          ).run(userId, name, first, email, SELF_PACED_ORG_ID, now, now));
 
     const matchingPeople = (await db.prepare(
           "SELECT id, user_id FROM people WHERE lower(trim(email)) = ? ORDER BY created_at, id",
@@ -151,9 +156,14 @@ export async function joinSelfPaced(_prev: AuthState, formData: FormData): Promi
     return { error: "Your account could not be created. No sign-up records were changed." };
   }
 
-  try {
-    await createSession(userId);
-  } catch {
+  const authUserId = await ensureSupabaseAuthUser(email, password);
+  if (!authUserId) {
+    return { error: "Your account was created, but automatic sign-in failed. Use the sign-in page with the email and password you just chose." };
+  }
+  await linkAppUserToSupabaseAuth(userId, authUserId);
+  const supabase = await createClient();
+  const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+  if (signInError) {
     return { error: "Your account was created, but automatic sign-in failed. Use the sign-in page with the email and password you just chose." };
   }
   redirect("/onboarding");
@@ -340,10 +350,10 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
     return { error: "Enter one letter for the student's last initial (a period is optional)." };
   }
 
-  const passwordHash = hashPassword(password);
   let userId = `u-${randomUUID()}`;
   let acceptedRole = inv.role as Role;
   let approvedInstructorPersonId: string | null = null;
+  let acceptedEmail = "";
   const now = Date.now();
 
   (await db.exec("BEGIN IMMEDIATE"));
@@ -369,6 +379,7 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
     }
     acceptedRole = current.role;
     const email = String(current.email).trim().toLowerCase();
+    acceptedEmail = email;
     const name = buildName(first, last, email.split("@")[0]);
     const accountFirst = current.role === "instructor"
       ? (name.split(/\s+/)[0] || name)
@@ -425,17 +436,17 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
               .prepare(
                 `UPDATE users
            SET name = ?, first = ?, grade = ?, status = 'active', last = 'Just now',
-               signin = 'Email + password', password_hash = ?, last_active_at = ?,
+               signin = 'Email + password', password_hash = NULL, last_active_at = ?,
                created_at = COALESCE(created_at, ?)
            WHERE id = ? AND status = 'invited' AND password_hash IS NULL
              AND role = ? AND org_id = ?`,
               )
-              .run(name, accountFirst, grade || null, passwordHash, now, now, userId, current.role, current.org_id));
+              .run(name, accountFirst, grade || null, now, now, userId, current.role, current.org_id));
       if (claimed.changes !== 1) throw new Error("account_exists");
     } else {
       (await db.prepare(
-                "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'Just now', 'Email + password', ?, ?, ?)",
-              ).run(userId, name, accountFirst, email, current.role, current.org_id, grade || null, passwordHash, now, now));
+                "INSERT INTO users (id, name, first, email, role, org_id, grade, status, last, signin, password_hash, last_active_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'Just now', 'Email + password', NULL, ?, ?)",
+              ).run(userId, name, accountFirst, email, current.role, current.org_id, grade || null, now, now));
     }
 
     if (current.role === "student" && current.cohort_id) {
@@ -499,13 +510,15 @@ export async function acceptInvitation(_prev: AcceptState, formData: FormData): 
     return { error: "This invitation is no longer available. Ask for a fresh one." };
   }
 
-  try {
-    await createSession(userId);
-  } catch {
-    return {
-      error: "Your account was created, but BOW could not start a session. Use Sign in, or contact a BOW administrator if your organization is paused.",
-    };
-  }
+  const acceptError = {
+    error: "Your account was created, but BOW could not start a session. Use Sign in, or contact a BOW administrator if your organization is paused.",
+  };
+  const authUserId = await ensureSupabaseAuthUser(acceptedEmail, password);
+  if (!authUserId) return acceptError;
+  await linkAppUserToSupabaseAuth(userId, authUserId);
+  const supabase = await createClient();
+  const { error: signInError } = await supabase.auth.signInWithPassword({ email: acceptedEmail, password });
+  if (signInError) return acceptError;
   redirect(acceptedRole === "instructor" ? "/app/teach" : roleHomePath(acceptedRole));
 }
 
@@ -725,13 +738,15 @@ export async function resetPassword(
   const now = Date.now();
   const candidate = (await db
       .prepare(
-        `SELECT prt.id, prt.user_id, u.password_hash
+        `SELECT prt.id, prt.user_id, u.password_hash, u.auth_user_id
          FROM password_reset_tokens prt
          JOIN users u ON u.id = prt.user_id
          JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
         WHERE prt.token_hash = ? AND prt.consumed_at IS NULL AND prt.expires_at > ? AND u.status = 'active'`,
       )
-      .get(tokenHash, now)) as { id: string; user_id: string; password_hash: string | null } | undefined;
+      .get(tokenHash, now)) as
+    | { id: string; user_id: string; password_hash: string | null; auth_user_id: string | null }
+    | undefined;
   if (!candidate) return { error: "This password-reset link is invalid or has expired. Request a new one." };
 
   // Do not persist one limiter row for every random 43-character guess. Once a
@@ -744,17 +759,22 @@ export async function resetPassword(
     }));
   if (!tokenLimit.allowed) return { error: "Too many reset attempts. Request a new password-reset link." };
 
-  if (verifyPassword(password, candidate.password_hash)) {
+  // Accounts that never migrated off the legacy scheme still carry a scrypt
+  // hash; reject a "new" password that just matches it. Accounts already on
+  // Supabase Auth have no local hash to compare against, so this check is a
+  // no-op for them — Supabase itself is free to accept the same password.
+  if (candidate.password_hash && verifyPassword(password, candidate.password_hash)) {
     return { error: "Choose a new password that is different from your current password." };
   }
 
-  const passwordHash = hashPassword(password);
   let resetEmail: string | null = null;
+  let resetUserId: string | null = null;
+  let resetAuthUserId: string | null = candidate.auth_user_id;
   (await db.exec("BEGIN IMMEDIATE"));
   try {
     const current = (await db
           .prepare(
-            `SELECT prt.id, prt.user_id, u.role, u.email, u.password_hash
+            `SELECT prt.id, prt.user_id, u.role, u.email, u.password_hash, u.auth_user_id
            FROM password_reset_tokens prt
            JOIN users u ON u.id = prt.user_id
            JOIN organizations o ON o.id = u.org_id AND o.status = 'active'
@@ -762,7 +782,7 @@ export async function resetPassword(
             AND prt.expires_at > ? AND u.status = 'active'`,
           )
           .get(candidate.id, tokenHash, Date.now())) as
-      | { id: string; user_id: string; role: string; email: string; password_hash: string | null }
+      | { id: string; user_id: string; role: string; email: string; password_hash: string | null; auth_user_id: string | null }
       | undefined;
     if (!current || current.user_id !== candidate.user_id || current.password_hash !== candidate.password_hash) {
       throw new Error("reset_unavailable");
@@ -774,19 +794,20 @@ export async function resetPassword(
     const updated = (await db
           .prepare(
             `UPDATE users
-            SET password_hash = ?, password_change_required = 0, signin = 'Email + password'
+            SET password_hash = NULL, password_change_required = 0, signin = 'Email + password'
           WHERE id = ? AND status = 'active' AND password_hash IS ?`,
           )
-          .run(passwordHash, current.user_id, current.password_hash));
+          .run(current.user_id, current.password_hash));
     if (consumed.changes !== 1 || updated.changes !== 1) throw new Error("reset_unavailable");
 
-    (await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(current.user_id));
     (await db.prepare(
             "UPDATE password_reset_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
           ).run(consumedAt, current.user_id));
     (await db.prepare("INSERT INTO activity (id, icon, text, when_label, role) VALUES (?, 'lock', ?, 'Just now', ?)")
             .run(`act-${randomUUID()}`, "Account security: password reset completed and prior sessions revoked.", current.role));
     resetEmail = current.email.trim().toLowerCase();
+    resetUserId = current.user_id;
+    resetAuthUserId = current.auth_user_id;
     (await db.exec("COMMIT"));
   } catch {
     try {
@@ -795,6 +816,17 @@ export async function resetPassword(
       // Preserve the safe public result below if rollback is already complete.
     }
     return { error: "This password-reset link is invalid or has expired. Request a new one." };
+  }
+
+  // The credential change is committed at this point. Push the new password
+  // into Supabase Auth (provisioning an identity if this account never
+  // signed in through Supabase before) and revoke every other session.
+  if (resetEmail && resetUserId) {
+    const authUserId = await setSupabaseAuthPassword(resetAuthUserId, resetEmail, password);
+    if (authUserId && authUserId !== resetAuthUserId) {
+      await linkAppUserToSupabaseAuth(resetUserId, authUserId);
+    }
+    if (authUserId) await revokeAllSupabaseSessions(authUserId);
   }
 
   try {
@@ -834,8 +866,10 @@ export async function changePassword(_prev: PasswordState, formData: FormData): 
 
   const db = getDb();
   const row = (await db
-      .prepare("SELECT password_hash, password_change_required FROM users WHERE id = ?")
-      .get(me.id)) as { password_hash: string | null; password_change_required: number } | undefined;
+      .prepare("SELECT password_hash, password_change_required, auth_user_id FROM users WHERE id = ?")
+      .get(me.id)) as
+    | { password_hash: string | null; password_change_required: number; auth_user_id: string | null }
+    | undefined;
   if (!row) return { error: "Your account is no longer available. Sign in again." };
 
   // The database is the authority for the stronger bootstrap-password policy.
@@ -847,15 +881,20 @@ export async function changePassword(_prev: PasswordState, formData: FormData): 
   if (next.length < minimumLength) return { error: `New password must be at least ${minimumLength} characters.` };
   if (isPublicDemoPassword(next)) return { error: "Choose a password that is not the public BOW demo password." };
 
-  if (!verifyPassword(current, row?.password_hash)) {
+  // Verify the current password against whichever credential store this
+  // account actually has: Supabase Auth once migrated, otherwise the legacy
+  // scrypt hash. Never persists a session while checking.
+  const currentMatchesSupabase = row.auth_user_id ? await verifySupabasePassword(me.email, current) : false;
+  const currentMatchesLegacy = !currentMatchesSupabase && verifyPassword(current, row.password_hash);
+  if (!currentMatchesSupabase && !currentMatchesLegacy) {
     return { error: "Your current password is incorrect." };
   }
-  if (verifyPassword(next, row?.password_hash)) {
+  const nextMatchesSupabase = row.auth_user_id ? await verifySupabasePassword(me.email, next) : false;
+  const nextMatchesLegacy = verifyPassword(next, row.password_hash);
+  if (nextMatchesSupabase || nextMatchesLegacy) {
     return { error: "Choose a new password that is different from the current password." };
   }
 
-  // Scrypt is intentionally completed before taking SQLite's writer lock.
-  const passwordHash = hashPassword(next);
   let committedRequirement = row.password_change_required;
   let committedChangeWasRequired = passwordChangeWasRequired;
   try {
@@ -878,7 +917,7 @@ export async function changePassword(_prev: PasswordState, formData: FormData): 
     const updated = (await db
           .prepare(
             `UPDATE users
-         SET password_hash = ?,
+         SET password_hash = NULL,
              password_change_required = CASE
                WHEN COALESCE(password_change_required, 0) != 0 AND ? = 0 THEN 1
                ELSE 0
@@ -886,7 +925,7 @@ export async function changePassword(_prev: PasswordState, formData: FormData): 
          WHERE id = ? AND status = 'active' AND password_hash IS ?
          RETURNING password_change_required`,
           )
-          .get(passwordHash, strongerPolicyPassed ? 1 : 0, me.id, locked.password_hash)) as
+          .get(strongerPolicyPassed ? 1 : 0, me.id, locked.password_hash)) as
       | { password_change_required: number }
       | undefined;
     if (!updated) throw new Error("password_changed");
@@ -895,7 +934,6 @@ export async function changePassword(_prev: PasswordState, formData: FormData): 
     (await db.prepare(
             "UPDATE password_reset_tokens SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL",
           ).run(committedAt, me.id));
-    (await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(me.id));
     committedRequirement = updated.password_change_required;
     (await db.exec("COMMIT"));
   } catch (error) {
@@ -918,11 +956,20 @@ export async function changePassword(_prev: PasswordState, formData: FormData): 
     return { error: "We couldn't change your password. Refresh and try again." };
   }
 
-  // Session rows are already revoked. Cookie mutation and the replacement
-  // session happen after COMMIT so neither request APIs nor createSession's own
-  // writer transaction can nest inside the credential transaction.
+  // The DB-side credential row is already cleared. Push the new password into
+  // Supabase Auth (provisioning an identity if this account never signed in
+  // through Supabase before), revoke every other session, then sign this
+  // request's own session out and back in against the new password so the
+  // caller keeps a valid cookie session afterward.
+  const authUserId = await setSupabaseAuthPassword(row.auth_user_id, me.email, next);
+  if (authUserId && authUserId !== row.auth_user_id) {
+    await linkAppUserToSupabaseAuth(me.id, authUserId);
+  }
+  if (authUserId) await revokeAllSupabaseSessions(authUserId);
+
   await destroySession();
-  await createSession(me.id);
+  const supabase = await createClient();
+  await supabase.auth.signInWithPassword({ email: me.email, password: next });
   if (committedRequirement !== 0) redirect("/change-password");
   if (committedChangeWasRequired) redirect("/app");
   return { ok: true };

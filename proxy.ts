@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { SESSION_COOKIE } from "@/lib/session-cookie";
+import { createProxyClient } from "@/lib/supabase/proxy-client";
 
 /**
  * Optimistic auth boundary (Next 16 renamed `middleware` -> `proxy`).
  *
- * This only checks for the *presence* of the session cookie — fast,
- * no database access. The real, authoritative check happens in the
- * app layout and in every server action via the DAL (`requireUser`).
+ * Refreshes the Supabase Auth token (writing any rotated cookies onto the
+ * response) and checks only for the *presence* of a Supabase user — fast,
+ * no application-database access. The real, authoritative check (active
+ * user, active organization) happens in the app layout and in every server
+ * action via the DAL (`requireUser`).
  */
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasSession = request.cookies.has(SESSION_COOKIE);
 
   // Guard the authenticated app and the self-paced student/instructor surfaces.
   // Public credential slugs remain unguarded, but the data layer only resolves
@@ -39,15 +40,25 @@ export function proxy(request: NextRequest) {
     pathname === "/analytics/admin" ||
     pathname.startsWith("/analytics/admin/");
   const passwordChange = pathname === "/change-password";
-  if (guarded || passwordChange) {
-    if (!hasSession) {
-      const url = new URL("/sign-in", request.url);
-      url.searchParams.set("next", pathname);
-      return NextResponse.redirect(url);
-    }
+
+  let response = NextResponse.next();
+  if (!guarded && !passwordChange) return response;
+
+  // A fresh response object must receive any cookies the refresh writes, so
+  // build the Supabase client against it before the redirect branch below.
+  response = NextResponse.next({ request });
+  const supabase = createProxyClient(request, response);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    const url = new URL("/sign-in", request.url);
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {
