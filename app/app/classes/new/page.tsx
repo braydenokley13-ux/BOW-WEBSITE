@@ -1,3 +1,4 @@
+import { PageHeader } from "@/components/ds";
 import { listCurricula, listOrganizations } from "@/lib/hiring";
 import NewClassForm from "@/components/app/classes/NewClassForm";
 
@@ -7,12 +8,7 @@ export default async function NewClassPage() {
 
   return (
     <main className="ops-page" style={{ maxWidth: 720 }}>
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">Programs</span>
-          <h1 className="ops-title">New Delivery</h1>
-        </div>
-      </header>
+      <PageHeader eyebrow="Programs" title="New delivery Program" />
       <div className="ops-alert" data-tone="info">
         <span className="ops-alert__title">Every delivery belongs to a Program</span>
         <p className="ops-body" style={{ marginTop: 4 }}>This creates the operating Program and its first Class together, so demand, staffing, readiness, delivery, and renewal remain one continuous record.</p>
