@@ -2,13 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/dal";
 import { roleHomePath } from "@/lib/account";
-import { Badge, Button } from "@/components/ds";
+import { Badge, DataStrip, PageHeader, PageSection } from "@/components/ds";
+import type { DataItem } from "@/components/ds";
 import { getLeadershipHomeData } from "@/lib/hiring";
 import { getDb } from "@/lib/db";
 import { listPrograms } from "@/lib/operations";
 import { programStageLabel } from "@/lib/operations-shared";
 import { entityHref, sessionHref } from "@/lib/routes";
-import { getInstructorByUserId } from "@/lib/hiring";
 import { getGrowthLeadershipSnapshot } from "@/lib/growth";
 import { getGrowthActions } from "@/lib/flywheel";
 import { getPeopleOperationsData } from "@/lib/people-operations";
@@ -75,14 +75,6 @@ function shortDate(timestamp: number): string {
 export default async function AppHome() {
   const me = await requireUser();
   if (me.role !== "admin" && me.role !== "growth") {
-    if (me.role === "instructor") {
-      const instructor = (await getInstructorByUserId(me.id));
-      if (!instructor || (instructor.stage === "active" && instructor.eligibilityStatus === "eligible")) {
-        redirect("/app/instructor");
-      }
-      if (["inactive", "rejected"].includes(instructor.stage)) redirect("/app/settings");
-      redirect("/app/teach");
-    }
     redirect(roleHomePath(me.role));
   }
 
@@ -403,72 +395,76 @@ export default async function AppHome() {
   const peopleAttentionCount = peopleOperations.people.filter((person) => person.standing === "at_risk" || person.openAccountability > 0).length;
   const visible = exceptions.slice(0, 15);
   const remaining = Math.max(0, exceptions.length - visible.length);
-  const metricCards = [
-    { label: "Act now", value: criticalCount, detail: "Launch, delivery, or quality risk", href: "#attention-queue", tone: criticalCount > 0 ? "var(--bow-negative)" : "var(--bow-positive)" },
-    { label: "Programs at risk", value: programRisks.length, detail: "Readiness blockers across the portfolio", href: "/app/programs", tone: programRisks.length > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
-    { label: "Founder decisions", value: founderDecisionCount, detail: "Reviews and handoffs waiting", href: "/app/tasks", tone: founderDecisionCount > 0 ? "var(--bow-blue)" : "var(--bow-positive)" },
-    { label: "Growth exceptions", value: growth.exceptions.length, detail: "Evidence, ownership, or market decisions", href: "/app/growth", tone: growth.exceptions.length > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
-    { label: "People requiring attention", value: peopleAttentionCount, detail: "Recovery, role review, or execution risk", href: "/app/people", tone: peopleAttentionCount > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
-    { label: "Without a named owner", value: unassignedCount, detail: "Exceptions needing accountability", href: "/app/tasks", tone: unassignedCount > 0 ? "var(--bow-warning)" : "var(--bow-positive)" },
-  ];
+
+  const stripItems: DataItem[] = [];
+  if (criticalCount > 0) stripItems.push({ label: "Act now", value: String(criticalCount), tone: "negative" });
+  if (founderDecisionCount > 0) stripItems.push({ label: "Founder decisions", value: String(founderDecisionCount), tone: "info" });
+  if (programRisks.length > 0) stripItems.push({ label: "Programs at risk", value: String(programRisks.length), tone: "warning" });
+  if (growth.exceptions.length > 0) stripItems.push({ label: "Growth exceptions", value: String(growth.exceptions.length), tone: "warning" });
+  if (peopleAttentionCount > 0) stripItems.push({ label: "People needing attention", value: String(peopleAttentionCount), tone: "warning" });
+  if (unassignedCount > 0) stripItems.push({ label: "Without an owner", value: String(unassignedCount), tone: "negative" });
+
+  // Upcoming commitments: sessions and interviews landing in the next 7 days.
+  const soonCutoff = now + 7 * DAY_MS;
+  const upcomingSessions = (await db
+      .prepare(
+        `SELECT s.id AS session_id, s.class_id, s.session_date AS scheduled_at, c.title AS class_title
+           FROM class_sessions s JOIN classes c ON c.id = s.class_id
+          WHERE s.session_date BETWEEN ? AND ?
+          ORDER BY s.session_date LIMIT 6`,
+      )
+      .all(now, soonCutoff)) as { session_id: string; class_id: string; scheduled_at: number; class_title: string }[];
+  const upcomingInterviews = (
+    (await db
+            .prepare(
+              `SELECT i.id, i.person_id, i.interview_at FROM instructors i
+                WHERE i.interview_at BETWEEN ? AND ? ORDER BY i.interview_at LIMIT 6`,
+            )
+            .all(now, soonCutoff)) as { id: string; person_id: string; interview_at: number }[]
+  );
+  const commitments = [
+    ...upcomingSessions.map((s) => ({
+      key: `session:${s.session_id}`,
+      when: s.scheduled_at,
+      label: `Session · ${s.class_title}`,
+      href: sessionHref(s.class_id, s.session_id),
+    })),
+    ...(await Promise.all(
+      upcomingInterviews.map(async (i) => ({
+        key: `interview:${i.id}`,
+        when: i.interview_at,
+        label: `Interview · ${await personName(i.person_id)}`,
+        href: entityHref("instructor", i.id)!,
+      })),
+    )),
+  ].sort((a, b) => a.when - b.when).slice(0, 8);
+
+  // Recent changes: instructors decided and tasks completed in the last 3 days.
+  const recentCutoff = now - 3 * DAY_MS;
+  const recentDecisions = (
+    (await db
+            .prepare(
+              `SELECT id, person_id, decided_at, founder_decision FROM instructors
+                WHERE decided_at IS NOT NULL AND decided_at > ? ORDER BY decided_at DESC LIMIT 5`,
+            )
+            .all(recentCutoff)) as { id: string; person_id: string; decided_at: number; founder_decision: string | null }[]
+  );
+  const recentChanges = await Promise.all(
+    recentDecisions.map(async (d) => ({
+      key: `decision:${d.id}`,
+      when: d.decided_at,
+      label: `${await personName(d.person_id)} — ${d.founder_decision ?? "decision recorded"}`,
+      href: entityHref("instructor", d.id)!,
+    })),
+  );
 
   return (
-    <main className="ops-page">
-      <header className="ops-hero">
-        <div className="ops-hero__copy">
-          <span className="ops-eyebrow">BOW HQ · Management by exception</span>
-          <h1 className="ops-title">Founder cockpit</h1>
-          <p className="ops-summary">
-            One ranked view of the decisions and blockers that can change an outcome. Normal operating work stays with the team in its workspace.
-          </p>
-        </div>
-        <div className="ops-actions">
-          <Button href="/app/tasks" variant="secondary">Open all Work</Button>
-        </div>
-      </header>
+    <main className="ops-page" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+      <PageHeader eyebrow="BOW HQ" title="Home" context="What needs you, ranked by consequence and time." />
 
-      <section aria-label="Operating pulse" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
-        {metricCards.map((metric) => (
-          <Link key={metric.label} href={metric.href} className="ops-panel" style={{ textDecoration: "none", borderTop: `4px solid ${metric.tone}`, padding: 18 }}>
-            <span className="ops-label">{metric.label}</span>
-            <strong style={{ display: "block", margin: "8px 0 4px", fontFamily: "var(--font-display)", fontSize: 36, lineHeight: 1, color: "var(--bow-ink)" }}>
-              {metric.value}
-            </strong>
-            <span className="ops-body" style={{ fontSize: 12.5 }}>{metric.detail}</span>
-          </Link>
-        ))}
-      </section>
-
-      {growthActions.length > 0 && (
-        <section aria-labelledby="growth-actions-heading" className="ops-anchor">
-          <div className="ops-section-head">
-            <div>
-              <span className="ops-label">Flywheel</span>
-              <h2 id="growth-actions-heading" className="ops-section-title">Growth actions</h2>
-            </div>
-            <Link className="ops-inline-link" href="/app/growth">All growth actions →</Link>
-          </div>
-          <div className="ops-list">
-            {growthActions.map((action) => (
-              <article className="ops-list-row ops-list-row--compact" key={action.key}>
-                <div>
-                  <Link className="ops-record-name" href={action.entityHref}>{action.entityLabel}</Link>
-                  <span className="ops-record-meta">{action.reason} {action.action}</span>
-                </div>
-                <span className="ops-record-meta">{action.ageDays}d</span>
-                <Link className="ops-inline-link" href={action.entityHref}>{action.ctaLabel}</Link>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section id="attention-queue" aria-labelledby="attention-heading" className="ops-anchor">
+      <section id="attention-queue" aria-labelledby="attention-heading">
         <div className="ops-section-head">
-          <div>
-            <span className="ops-label">Ranked by consequence and time</span>
-            <h2 id="attention-heading" className="ops-section-title">Attention queue</h2>
-          </div>
+          <h2 id="attention-heading" className="ops-section-title">Attention queue</h2>
           <span className="ops-section-note">{exceptions.length} open exception{exceptions.length === 1 ? "" : "s"}</span>
         </div>
 
@@ -479,28 +475,23 @@ export default async function AppHome() {
             <p className="ops-empty__body">The team can stay focused on planned delivery and growth.</p>
           </div>
         ) : (
-          <ol className="ops-list" style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {visible.map((item, index) => (
-              <li key={item.key} className="ops-list-row" style={{ gridTemplateColumns: "42px minmax(0, 1fr)" }}>
-                <span aria-hidden="true" style={{ fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-slate)", paddingTop: 3 }}>
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-                    <Badge status={severityStatus[item.severity]}>{severityLabel[item.severity]}</Badge>
-                    <Link href={item.domainHref} className="ops-label" style={{ textDecoration: "none", color: "var(--bow-blue)" }}>{item.domain}</Link>
-                    {item.unassigned && <Badge status="negative">Owner needed</Badge>}
+          <ol style={{ listStyle: "none", padding: 0, margin: 0, borderTop: "1px solid var(--border-rule)" }}>
+            {visible.map((item) => (
+              <li key={item.key} style={{ borderBottom: "1px solid var(--border-rule)", padding: "14px 0" }}>
+                <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
+                  <Badge status={severityStatus[item.severity]}>{severityLabel[item.severity]}</Badge>
+                  <Link href={item.domainHref} className="ops-label" style={{ textDecoration: "none", color: "var(--bow-blue)" }}>{item.domain}</Link>
+                  {item.unassigned && <Badge status="negative">Owner needed</Badge>}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 420px", minWidth: 0 }}>
+                    <h3 style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.35, color: "var(--bow-ink)" }}>{item.title}</h3>
+                    <p className="ops-body" style={{ margin: "5px 0 0" }}>{item.context}</p>
+                    <span className="ops-label" style={{ display: "block", marginTop: 9 }}>Accountable · {item.owner}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
-                    <div style={{ flex: "1 1 420px", minWidth: 0 }}>
-                      <h3 style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.35, color: "var(--bow-ink)" }}>{item.title}</h3>
-                      <p className="ops-body" style={{ margin: "5px 0 0" }}>{item.context}</p>
-                      <span className="ops-label" style={{ display: "block", marginTop: 9 }}>Accountable · {item.owner}</span>
-                    </div>
-                    <Link href={item.href} className="ops-inline-link" style={{ alignSelf: "center", textDecoration: "none", whiteSpace: "nowrap" }}>
-                      {item.actionLabel} →
-                    </Link>
-                  </div>
+                  <Link href={item.href} className="ops-inline-link" style={{ alignSelf: "center", textDecoration: "none", whiteSpace: "nowrap" }}>
+                    {item.actionLabel} →
+                  </Link>
                 </div>
               </li>
             ))}
@@ -513,8 +504,68 @@ export default async function AppHome() {
         )}
       </section>
 
-      <nav aria-label="Operating workspaces" className="ops-panel--flat" style={{ display: "flex", alignItems: "center", gap: "12px 24px", flexWrap: "wrap" }}>
-        <span className="ops-label">Move the system</span>
+      {stripItems.length > 0 && <DataStrip items={stripItems} dense />}
+
+      {commitments.length > 0 && (
+        <PageSection title="Upcoming commitments">
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {commitments.map((c) => (
+              <Link
+                key={c.key}
+                href={c.href}
+                style={{
+                  display: "flex", justifyContent: "space-between", gap: 12, textDecoration: "none",
+                  padding: "10px 0", borderBottom: "1px solid var(--border-rule)", color: "var(--bow-ink)",
+                }}
+              >
+                <span style={{ fontFamily: "var(--font-interface)", fontSize: 14 }}>{c.label}</span>
+                <span className="ops-label">{shortDate(c.when)}</span>
+              </Link>
+            ))}
+          </div>
+        </PageSection>
+      )}
+
+      {recentChanges.length > 0 && (
+        <PageSection title="Recent changes">
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {recentChanges.map((c) => (
+              <Link
+                key={c.key}
+                href={c.href}
+                style={{
+                  display: "flex", justifyContent: "space-between", gap: 12, textDecoration: "none",
+                  padding: "10px 0", borderBottom: "1px solid var(--border-rule)", color: "var(--bow-ink)",
+                }}
+              >
+                <span style={{ fontFamily: "var(--font-interface)", fontSize: 14 }}>{c.label}</span>
+                <span className="ops-label">{shortDate(c.when)}</span>
+              </Link>
+            ))}
+          </div>
+        </PageSection>
+      )}
+
+      {growthActions.length > 0 && (
+        <PageSection
+          title="Growth actions"
+          action={<Link className="ops-inline-link" href="/app/growth">All growth actions →</Link>}
+        >
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {growthActions.map((action) => (
+              <div key={action.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--border-rule)" }}>
+                <div>
+                  <Link className="ops-record-name" href={action.entityHref}>{action.entityLabel}</Link>
+                  <span className="ops-record-meta" style={{ display: "block" }}>{action.reason} {action.action}</span>
+                </div>
+                <Link className="ops-inline-link" href={action.entityHref}>{action.ctaLabel}</Link>
+              </div>
+            ))}
+          </div>
+        </PageSection>
+      )}
+
+      <nav aria-label="Workspaces" style={{ display: "flex", alignItems: "center", gap: "10px 22px", flexWrap: "wrap", paddingTop: 8, borderTop: "1px solid var(--border-rule)" }}>
         {[
           ["Programs", "/app/programs"],
           ["Growth", "/app/growth"],

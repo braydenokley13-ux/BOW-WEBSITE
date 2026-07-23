@@ -2,8 +2,6 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/dal";
 import { getCurriculumTree } from "@/app/actions/learn-author";
 import CurriculumManagerClient from "./CurriculumManagerClient";
-import CutoverControl from "./CutoverControl";
-import { getLearnCutoverEnabled } from "@/lib/learn/cutover";
 
 export const metadata = {
   title: "Playbook Studio · BOW HQ",
@@ -13,9 +11,7 @@ export const metadata = {
 
 export default async function LearnAdminPage() {
   await requireAdmin();
-  const [tree, cutoverEnabled] = await Promise.all([getCurriculumTree(), getLearnCutoverEnabled()]);
-  const publishedLessons = tree.ok ? tree.lessons.filter((lesson) => lesson.publishedVersionId).length : 0;
-  const draftLessons = tree.ok ? tree.lessons.filter((lesson) => !lesson.isTemplate && !lesson.publishedVersionId).length : 0;
+  const tree = await getCurriculumTree();
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 20px" }}>
@@ -67,7 +63,6 @@ export default async function LearnAdminPage() {
         </Link>
         </div>
       </div>
-      <CutoverControl enabled={cutoverEnabled} publishedLessons={publishedLessons} draftLessons={draftLessons} />
       {tree.ok ? (
         <CurriculumManagerClient tree={tree} />
       ) : (

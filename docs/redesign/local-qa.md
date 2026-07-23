@@ -47,52 +47,93 @@ JSON through the proxy.
 
 `scripts/dev-bootstrap.sql` and `scripts/migrations/001`–`011` were applied
 in order, plus `scripts/migrate-people-work-os.ts` (needed before migration
-`008`, which extends `role_assignments`). Two local-only supplemental SQL
-files (scratchpad `qa/000_local_tasks_supplement.sql` and
-`qa/001_local_operations_supplement.sql` + `qa/002_local_growth_supplement.sql`,
-never committed) were required to get a clean boot: several tables that
-`lib/operations.ts`, `lib/flywheel.ts`, and `lib/growth.ts` query
-(`tasks`, `programs`, `locations`, `classes`, `growth_campaigns`,
-`student_acquisition_touchpoints`, etc.) have no committed Postgres DDL
-anywhere in the repo — they were historically created only by the
-one-off SQLite→Supabase migration script or hand-created directly in
-Supabase Studio in production, and were never captured in
-`scripts/migrations/`. `scripts/dev-bootstrap.sql` already documents this
-same class of gap for a few tables ("Stubs for the hiring/growth dashboard
-widgets ... Empty is fine"); the supplements just extend that same
-established pattern to the rest. All added tables are empty stubs (0 rows
-is a correct, honest state for a fresh sandbox) — no row data was invented.
-**This is real, pre-existing schema/migration debt in the repo, not
-something introduced by this QA pass** — flagging it here since a "real"
-local or staging Postgres for this app would hit the exact same gap.
+`008`, which extends `role_assignments`). Local-only supplemental SQL
+files (scratchpad `qa/000_local_tasks_supplement.sql`,
+`qa/001_local_operations_supplement.sql`, `qa/002_local_growth_supplement.sql`,
+`qa/003_local_stage2_demo_data.sql` — never committed) were required to get
+a clean boot: several tables that `lib/operations.ts`, `lib/flywheel.ts`,
+`lib/growth.ts`, and `lib/hiring.ts` query (`tasks`, `programs`,
+`locations`, `classes`, `growth_campaigns`,
+`student_acquisition_touchpoints`, `training_modules`,
+`training_module_completions`, `training_module_views`, etc.) have no
+committed Postgres DDL anywhere in the repo — they were historically
+created only by the one-off SQLite→Supabase migration script or
+hand-created directly in Supabase Studio in production, and were never
+captured in `scripts/migrations/`. `scripts/dev-bootstrap.sql` already
+documents this same class of gap for a few tables ("Stubs for the
+hiring/growth dashboard widgets ... Empty is fine"); the supplements just
+extend that same established pattern to the rest. Stage 2 additionally
+found `practice_evaluations` existed but was missing most of the columns
+`getInstructorDetail()`/`rowToPracticeEvaluation()` expect
+(`evaluated_at`, the three rating columns, etc.) — `003_local_stage2_demo_data.sql`
+adds them with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. **This is real,
+pre-existing schema/migration debt in the repo, not something introduced
+by this QA pass** — flagging it here since a "real" local or staging
+Postgres for this app would hit the exact same gap.
+
+`003_local_stage2_demo_data.sql` (idempotent, re-runnable) seeds
+representative operational demo data on top of the earlier stub-only
+supplements: 2 partner organizations, 2 locations (one with no
+`primary_leader_user_id`, intentionally, to exercise the growth
+"leadership imbalance" exception), 1 curriculum, 3 programs across
+lifecycle stages (`active`, `launching`, `completed`/renewal-pending), 2
+classes with `class_sessions` (one already past with no session report —
+a follow-up-due case — one scheduled for "today" at seed time, two
+upcoming), an active/eligible instructor dossier for
+`marcus.reyes@lincolnhs.edu` (`instr-marcus`, stage `active`,
+`eligibility_status = eligible`, onboarding + training modules complete)
+so `requireInstructorSelf`/`requireActiveInstructorSelf` resolve to the
+delivering-instructor experience, a second instructor mid-onboarding
+(`instr-priya` / `person-priya`, stage `training`, one required training
+module still incomplete), 3 students with class enrollments, 3 tasks
+(one overdue, one founder handoff, one instructor follow-up), 2 growth
+inquiries, and growth-exceptions fixtures (an over-budget active
+campaign, a behind-pace operating goal, the leaderless Omaha location).
 
 ## Demo accounts
 
-Four `users` rows (dana@bowsportscapital.org / admin, jordan@bowsportscapital.org /
-growth, marcus.reyes@lincolnhs.edu / instructor, jalen.b@lincolnhs.edu /
-student — the same identities in `lib/account.ts`'s in-code seed array,
-which is not actually loaded into the database by any script) were
-inserted directly into `users`, and matching Supabase Auth identities were
-created via GoTrue's admin API (`email_confirm: true`). `lib/session.ts`
-backfills each row's `auth_user_id` by email on first successful sign-in.
-Password for all: see `docs/redesign/local-qa.md`'s sibling
-`CREDENTIALS.txt` in the scratchpad (not committed, since it's
+`users` rows for dana@bowsportscapital.org / admin,
+jordan@bowsportscapital.org / growth, marcus.reyes@lincolnhs.edu /
+instructor, jalen.b@lincolnhs.edu / student (the same identities in
+`lib/account.ts`'s in-code seed array, which is not actually loaded into
+the database by any script), plus one added for Stage 2,
+priya.anand@example.com / instructor (mid-onboarding, no corresponding
+`people.user_id` login was needed before Stage 2's stage-aware `/app/teach`
+work), were inserted directly into `users`, and matching Supabase Auth
+identities were created via GoTrue's admin API (`email_confirm: true`).
+`lib/session.ts` backfills each row's `auth_user_id` by email on first
+successful sign-in. Password for all: see `docs/redesign/local-qa.md`'s
+sibling `CREDENTIALS.txt` in the scratchpad (not committed, since it's
 environment-specific, sandbox-only, and not a secret worth version
 control — regenerate it any time by re-running the GoTrue admin API calls
 in this session's history with a new `SEED_PASSWORD`).
 
+## Restarting after a container restart, redux (seed order)
+
+After the steps in "Restarting after a container restart" above, re-apply
+the local-only supplements in order if the Postgres data directory was
+ever recreated from scratch (a restart of the same `pgdata/` does NOT
+need this — the data persists on disk):
+
+```bash
+export PATH=/usr/lib/postgresql/16/bin:$PATH
+for f in qa/000_local_tasks_supplement.sql qa/001_local_operations_supplement.sql \
+         qa/002_local_growth_supplement.sql qa/003_local_stage2_demo_data.sql; do
+  PGPASSWORD=postgres psql -h 127.0.0.1 -p 5433 -U postgres -d bow -f "$SCRATCH/$f"
+done
+```
+
 ## Proof
 
 Screenshots taken with Playwright (`executablePath: /opt/pw-browsers/chromium`)
-against the running dev server, signed in as each demo account, saved to
-this session's scratchpad `qa/`:
+against the running dev server, signed in as each demo account. Stage 0/1
+shots are in this session's scratchpad `qa/`; Stage 2 shots are in
+scratchpad `stage2/`:
 
-- `admin-app.png` / `admin-app-mobile.png` — `/app` (Founder cockpit), desktop 1280×800 and mobile 375×812
-- `admin-programs.png` — `/app/programs`
-- `admin-people.png` — `/app/people`
-- `admin-tasks.png` — `/app/tasks`
-- `instructor-teach.png` — instructor session (`/app/teach` client-redirects to `/app/settings` — unrelated to this environment, an app-level redirect for this seed instructor's data)
-- `student-dashboard.png` — `/dashboard`, signed in as the student demo account
+- `stage2/staff-home.png` / `stage2/staff-home-mobile.png` — `/app` (new attention-first Home), desktop 1280×800 and mobile 375×812, with seeded attention-queue items visible
+- `stage2/instructor-active-teach.png` — `/app/teach` signed in as marcus.reyes@lincolnhs.edu (active/eligible instructor) — the "Today" view
+- `stage2/instructor-onboarding-teach.png` — `/app/teach` signed in as priya.anand@example.com (mid-onboarding instructor) — the checklist/training view
+- `stage2/redirect-check-instructor-redirect.png` / `stage2/redirect-check-student-redirect.png` — confirm `/app/instructor` → `/app/teach` and `/app/student` → `/dashboard`
 
 All pages render real application content (not error boundaries) after the
 schema supplements above.
