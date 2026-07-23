@@ -113,10 +113,12 @@ function nextTimestamp(previous?: number | null): number {
   return Math.max(Date.now(), (previous ?? 0) + 1);
 }
 
-async function transaction<T>(db: Db, work: () => T): Promise<T> {
+async function transaction<T>(db: Db, work: () => T | Promise<T>): Promise<T> {
   (await db.exec("BEGIN IMMEDIATE"));
   try {
-    const result = work();
+    // Await the work before COMMIT: an unawaited promise commits after only
+    // its first query and runs later writes outside the transaction.
+    const result = (await work());
     (await db.exec("COMMIT"));
     return result;
   } catch (error) {

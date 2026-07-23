@@ -13,8 +13,10 @@ interface ImageSlotProps {
 
 /**
  * ImageSlot — stand-in for the design tool's <image-slot>. The handoff ships no
- * raster imagery, so unfilled slots render an intentional editorial placeholder.
- * Drop a real `src` (e.g. an athlete cutout) to fill it.
+ * raster imagery, so an unfilled slot renders as an intentional abstract
+ * treatment (a subtle diagonal hatch) — never internal design-instruction text
+ * that would leak onto a public page. The `placeholder` string is used only as
+ * the accessible label. Drop a real `src` (e.g. an athlete cutout) to fill it.
  */
 export default function ImageSlot({
   src,
@@ -42,27 +44,9 @@ export default function ImageSlot({
       role="img"
       aria-label={placeholder}
       style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         background: "repeating-linear-gradient(135deg, rgba(127,127,140,0.10) 0 2px, transparent 2px 12px)",
         ...style,
       }}
-    >
-      <span
-        style={{
-          fontFamily: "var(--font-data)",
-          fontSize: 11,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-          color: "rgba(255,255,255,0.55)",
-          mixBlendMode: "difference",
-          padding: "4px 10px",
-          textAlign: "center",
-        }}
-      >
-        {placeholder}
-      </span>
-    </div>
+    />
   );
 }

@@ -110,13 +110,15 @@ const BOW_ORG_ID = "org-bow";
 const TERMINAL_CANONICAL_CLASS_STATUSES = new Set(["completed", "cancelled"]);
 const HISTORICAL_CANONICAL_PROGRAM_STAGES = new Set(["completed", "renewal_review", "renewed", "closed"]);
 
-async function withLegacyTransaction<T>(db: LegacyDb, work: () => T): Promise<T> {
+async function withLegacyTransaction<T>(db: LegacyDb, work: () => T | Promise<T>): Promise<T> {
   // Serialize standalone writers. A nested caller already owns the writer
   // lock, so use a savepoint only in that case.
   const nested = db.isTransaction;
   (await db.exec(nested ? "SAVEPOINT legacy_lms_action" : "BEGIN IMMEDIATE"));
   try {
-    const result = work();
+    // Await the work before COMMIT/RELEASE: an unawaited promise commits after
+    // only its first query and runs later writes outside the transaction.
+    const result = (await work());
     (await db.exec(nested ? "RELEASE SAVEPOINT legacy_lms_action" : "COMMIT"));
     return result;
   } catch (error) {
