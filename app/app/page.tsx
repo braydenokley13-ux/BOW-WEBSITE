@@ -39,12 +39,6 @@ interface ClassContextRow {
   owner_name: string | null;
 }
 
-const severityStatus: Record<Severity, "negative" | "warning" | "neutral"> = {
-  critical: "negative",
-  high: "warning",
-  watch: "neutral",
-};
-
 const severityLabel: Record<Severity, string> = {
   critical: "Act now",
   high: "Next up",
@@ -464,7 +458,9 @@ export default async function AppHome() {
 
       <section id="attention-queue" aria-labelledby="attention-heading">
         <div className="ops-section-head">
-          <h2 id="attention-heading" className="ops-section-title">Attention queue</h2>
+          <h2 id="attention-heading" style={{ margin: 0, fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, color: "var(--text-primary, var(--bow-ink))" }}>
+            Attention queue
+          </h2>
           <span className="ops-section-note">{exceptions.length} open exception{exceptions.length === 1 ? "" : "s"}</span>
         </div>
 
@@ -475,27 +471,46 @@ export default async function AppHome() {
             <p className="ops-empty__body">The team can stay focused on planned delivery and growth.</p>
           </div>
         ) : (
-          <ol style={{ listStyle: "none", padding: 0, margin: 0, borderTop: "1px solid var(--border-rule)" }}>
-            {visible.map((item) => (
-              <li key={item.key} style={{ borderBottom: "1px solid var(--border-rule)", padding: "14px 0" }}>
-                <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
-                  <Badge status={severityStatus[item.severity]}>{severityLabel[item.severity]}</Badge>
-                  <Link href={item.domainHref} className="ops-label" style={{ textDecoration: "none", color: "var(--bow-blue)" }}>{item.domain}</Link>
-                  {item.unassigned && <Badge status="negative">Owner needed</Badge>}
+          <>
+            {(["critical", "high", "watch"] as Severity[]).map((tier) => {
+              const rows = visible.filter((item) => item.severity === tier);
+              if (rows.length === 0) return null;
+              return (
+                <div key={tier} style={{ marginBottom: 20 }}>
+                  <span
+                    style={{
+                      display: "block", fontFamily: "var(--font-data)", fontSize: 11, fontWeight: 700,
+                      letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)",
+                      padding: "6px 0", borderBottom: "1px solid var(--border-rule)",
+                    }}
+                  >
+                    {severityLabel[tier]}
+                  </span>
+                  <ol style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                    {rows.map((item) => (
+                      <li key={item.key} style={{ borderBottom: "1px solid var(--border-rule)", padding: "14px 0" }}>
+                        <div style={{ marginBottom: 6 }}>
+                          <Link href={item.domainHref} className="ops-label" style={{ textDecoration: "none", color: "var(--bow-blue)" }}>{item.domain}</Link>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
+                          <div style={{ flex: "1 1 420px", minWidth: 0 }}>
+                            <h3 style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.35, color: "var(--bow-ink)" }}>{item.title}</h3>
+                            <p className="ops-body" style={{ margin: "5px 0 0" }}>{item.context}</p>
+                            <span className="ops-label" style={{ display: "block", marginTop: 9 }}>
+                              {item.unassigned ? "No accountable owner" : `Accountable · ${item.owner}`}
+                            </span>
+                          </div>
+                          <Link href={item.href} className="ops-inline-link" style={{ alignSelf: "center", textDecoration: "none", whiteSpace: "nowrap" }}>
+                            {item.actionLabel} →
+                          </Link>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
-                  <div style={{ flex: "1 1 420px", minWidth: 0 }}>
-                    <h3 style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.35, color: "var(--bow-ink)" }}>{item.title}</h3>
-                    <p className="ops-body" style={{ margin: "5px 0 0" }}>{item.context}</p>
-                    <span className="ops-label" style={{ display: "block", marginTop: 9 }}>Accountable · {item.owner}</span>
-                  </div>
-                  <Link href={item.href} className="ops-inline-link" style={{ alignSelf: "center", textDecoration: "none", whiteSpace: "nowrap" }}>
-                    {item.actionLabel} →
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ol>
+              );
+            })}
+          </>
         )}
         {remaining > 0 && (
           <p className="ops-body" style={{ margin: "10px 0 0", fontSize: 12.5 }}>

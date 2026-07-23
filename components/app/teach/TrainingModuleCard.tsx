@@ -49,14 +49,25 @@ export default function TrainingModuleCard({
     }
   };
 
+  // Completed modules compress to a single quiet hairline row — emphasis
+  // belongs on what's still outstanding, not on what's already done.
+  if (completed) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--border-rule)" }}>
+        <span aria-hidden="true" style={{ color: "var(--bow-positive)", fontSize: 14, lineHeight: 1 }}>✓</span>
+        <span style={{ fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)" }}>{module.title}</span>
+      </div>
+    );
+  }
+
   return (
-    <article style={{ border: "1px solid var(--border-rule)", borderRadius: 5, padding: 14, background: "var(--bow-paper)" }}>
+    <div style={{ padding: "12px 0", borderBottom: "1px solid var(--border-rule)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <span style={{ fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-ink)" }}>{module.title}</span>{" "}
           {module.required && <Badge status="negative">Required</Badge>}
         </div>
-        {completed ? <Badge status="positive">Completed</Badge> : <CompleteModuleButton instructorId={instructorId} moduleId={module.id} disabled={!ready} />}
+        <CompleteModuleButton instructorId={instructorId} moduleId={module.id} disabled={!ready} />
       </div>
       <details onToggle={(event) => void opened(event)} style={{ marginTop: 10 }}>
         <summary style={{ cursor: "pointer", fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-blue)" }}>Open module content</summary>
@@ -66,8 +77,8 @@ export default function TrainingModuleCard({
           ) : <p style={{ margin: 0 }}>This resource link is unavailable. Contact the instructor manager.</p>}
         </div>
       </details>
-      {!completed && firstViewedAt && !ready && <p role="status" style={{ margin: "8px 0 0", fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>Review the content; completion unlocks in a few seconds.</p>}
+      {firstViewedAt && !ready && <p role="status" style={{ margin: "8px 0 0", fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>Review the content; completion unlocks in a few seconds.</p>}
       {error && <p role="alert" style={{ margin: "8px 0 0", fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-negative)" }}>{error}</p>}
-    </article>
+    </div>
   );
 }

@@ -10,21 +10,22 @@ import { formatDateTimeInZone } from "@/lib/timezone";
 import SubmitWorkControls from "@/components/app/tasks/SubmitWorkControls";
 import { sessionHref } from "@/lib/routes";
 
-const STAGE_LABEL: Record<string, string> = {
-  accepted: "Accepted",
-  onboarding: "Onboarding",
-  training: "Training",
-  practice_evaluation: "Practice Evaluation",
-  eligible: "Eligible",
-  active: "Active",
-  inactive: "Inactive",
-};
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_STAGES = ["eligible", "active"];
 
 function upcomingSorted<T extends { scheduledAt: number }>(sessions: T[], now: number): T[] {
   return sessions.filter((s) => s.scheduledAt >= now).sort((a, b) => a.scheduledAt - b.scheduledAt);
+}
+
+/** Presentation-layer humanizer for raw snake_case/lowercase enum values. */
+function humanize(value: string): string {
+  return value.split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+}
+
+function isSameCalendarDay(a: number, b: number): boolean {
+  const da = new Date(a);
+  const db = new Date(b);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -75,18 +76,14 @@ export default async function TeachHomePage() {
     }),
   );
 
-  const latestEval = detail.evaluations[0] ?? null;
-
-  const stageBadges = (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-      <Badge status="info">{STAGE_LABEL[instructor.stage] ?? instructor.stage}</Badge>
-      <Badge status={instructor.onboardingStatus === "complete" ? "positive" : "neutral"}>Onboarding: {instructor.onboardingStatus}</Badge>
-      <Badge status={instructor.trainingStatus === "complete" ? "positive" : instructor.trainingStatus === "behind" ? "negative" : "neutral"}>
-        Training: {instructor.trainingStatus}
-      </Badge>
-      {latestEval && <Badge status={latestEval.decision === "pass" ? "positive" : "warning"}>Practice eval: {latestEval.decision}</Badge>}
-    </div>
-  );
+  // Training status only needs a mention when it isn't the unremarkable
+  // "on track" default — humanized, folded into the context line rather
+  // than a chip strip (item 4/3 of the Stage 2.1 review).
+  const trainingNote = instructor.trainingStatus === "behind"
+    ? " Training is behind."
+    : instructor.trainingStatus === "in_progress"
+      ? " Training in progress."
+      : "";
 
   if (!isDelivering) {
     // Onboarding / training / not-yet-eligible: checklist + modules + next
@@ -96,9 +93,12 @@ export default async function TeachHomePage() {
         <PageHeader
           eyebrow="My BOW"
           title="Onboarding & training"
-          context={incompleteModuleCount > 0 ? `${incompleteModuleCount} item${incompleteModuleCount === 1 ? "" : "s"} left before you're ready to teach.` : "You're caught up — watch for your next session."}
+          context={
+            (incompleteModuleCount > 0
+              ? `${incompleteModuleCount} item${incompleteModuleCount === 1 ? "" : "s"} left before you're ready to teach.`
+              : "You're caught up — watch for your next session.") + trainingNote
+          }
         />
-        {stageBadges}
 
         {nextTrainingSession && (
           <PageSection title="Next session to attend" noRule>
@@ -119,7 +119,7 @@ export default async function TeachHomePage() {
 
         <PageSection title="Onboarding checklist">
           {onboardingModules.length === 0 && <p className="ops-body">Nothing to complete.</p>}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column" }}>
             {(await Promise.all(onboardingModules.map(async (module) => (
                                 <TrainingModuleCard key={module.id} instructorId={instructor.id} module={module} completed={completedModuleIds.has(module.id)} initialViewedAt={(await moduleViews.get(module.id)) ?? null} renderedAt={now} />
                               ))))}
@@ -214,23 +214,33 @@ export default async function TeachHomePage() {
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
       <PageHeader eyebrow="My BOW" title="Today" context={`${classes.length} assigned class${classes.length === 1 ? "" : "es"}.`} />
-      {stageBadges}
 
       <PageSection title="Sessions to teach" noRule>
         {upcomingClassSessions.length === 0 ? (
           <p className="ops-body">No sessions scheduled in the next two weeks.</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {upcomingClassSessions.map((s) => (
-              <Link
-                key={s.id}
-                href={sessionHref(s.class_id, s.id)}
-                style={{ display: "flex", justifyContent: "space-between", gap: 12, textDecoration: "none", color: "var(--bow-ink)", padding: "10px 0", borderBottom: "1px solid var(--border-rule)" }}
-              >
-                <span style={{ fontFamily: "var(--font-interface)", fontSize: 14 }}>{classTitleById.get(s.class_id) ?? "Class"}</span>
-                <span className="ops-label">{new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(s.session_date)} · Prep →</span>
-              </Link>
-            ))}
+            {upcomingClassSessions.map((s) => {
+              const isToday = isSameCalendarDay(s.session_date, now);
+              return (
+                <Link
+                  key={s.id}
+                  href={sessionHref(s.class_id, s.id)}
+                  style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, textDecoration: "none",
+                    color: "var(--bow-ink)", padding: "12px 14px", margin: "0 -14px",
+                    borderBottom: "1px solid var(--border-rule)",
+                    background: isToday ? "var(--bow-paper)" : "transparent",
+                    borderLeft: isToday ? "3px solid var(--bow-blue)" : "3px solid transparent",
+                  }}
+                >
+                  <span style={{ fontFamily: "var(--font-interface)", fontSize: 14, fontWeight: isToday ? 700 : 400 }}>
+                    {isToday && <Badge status="info">Today</Badge>} {classTitleById.get(s.class_id) ?? "Class"}
+                  </span>
+                  <span className="ops-label">{new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(s.session_date)} · Prep →</span>
+                </Link>
+              );
+            })}
           </div>
         )}
       </PageSection>
@@ -244,7 +254,9 @@ export default async function TeachHomePage() {
                 href={sessionHref(s.class_id, s.id)}
                 style={{ display: "flex", justifyContent: "space-between", gap: 12, textDecoration: "none", color: "var(--bow-ink)", padding: "10px 0", borderBottom: "1px solid var(--border-rule)" }}
               >
-                <span style={{ fontFamily: "var(--font-interface)", fontSize: 14 }}>{classTitleById.get(s.class_id) ?? "Class"} — session report needed</span>
+                <span style={{ fontFamily: "var(--font-interface)", fontSize: 14 }}>
+                  {classTitleById.get(s.class_id) ?? "Class"} — {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(s.session_date)} session report needed
+                </span>
                 <Badge status="warning">Submit report</Badge>
               </Link>
             ))}
@@ -264,7 +276,7 @@ export default async function TeachHomePage() {
                 style={{ display: "flex", justifyContent: "space-between", gap: 12, textDecoration: "none", color: "var(--bow-ink)", padding: "10px 0", borderBottom: "1px solid var(--border-rule)" }}
               >
                 <span style={{ fontFamily: "var(--font-interface)", fontSize: 14 }}>{c.title}</span>
-                <span className="ops-label">{c.status}</span>
+                <span className="ops-label">{humanize(c.status)}</span>
               </Link>
             ))}
           </div>

@@ -190,10 +190,13 @@ export function canonicalDateToUtcNoon(value: unknown): CanonicalDateResolution 
 }
 
 export function formatDateTimeInZone(
-  epoch: number,
+  epoch: number | string,
   timeZone: string | null | undefined,
 ): string {
-  if (!Number.isFinite(epoch)) return "Invalid date";
+  // Some drivers/paths return bigint columns as strings; coerce before
+  // validating so a numeric string doesn't fall through as "Invalid date".
+  const numericEpoch = typeof epoch === "string" ? Number(epoch) : epoch;
+  if (!Number.isFinite(numericEpoch)) return "Invalid date";
   const normalizedTimeZone = typeof timeZone === "string" ? timeZone.trim() : "";
   // Legacy rows predate timezone persistence. Render those in one declared
   // BOW operating zone instead of whichever device/server happens to read it.
@@ -206,7 +209,7 @@ export function formatDateTimeInZone(
     hour: "numeric",
     minute: "2-digit",
     timeZoneName: "short",
-  }).format(new Date(epoch));
+  }).format(new Date(numericEpoch));
 }
 
 export function canonicalDateInZone(
