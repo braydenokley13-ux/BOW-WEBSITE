@@ -1,0 +1,235 @@
+/* ============================================================
+ * BOW Sports Capital — portal shell (Stage 1)
+ * Left sidebar + slim content top bar. Calm front-office feel: paper/white
+ * surfaces, ink text, one accent, hairline separators. No boxes/shadows.
+ * ============================================================ */
+
+.bow-portal {
+  display: flex;
+  min-height: 100vh;
+  background: var(--surface-page);
+}
+
+/* ---------- Sidebar ---------- */
+.bow-portal-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-rule);
+  background: var(--surface-raised);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.bow-portal-sidebar__brand {
+  display: flex;
+  flex-direction: column;
+  line-height: 0.8;
+  padding: 20px 18px 16px;
+  flex-shrink: 0;
+}
+.bow-portal-sidebar__brand-mark { font-family: var(--font-display); font-weight: 900; font-size: 20px; letter-spacing: -0.02em; text-transform: uppercase; color: var(--text-primary); }
+.bow-portal-sidebar__brand-name { margin-top: 3px; font-family: var(--font-display); font-weight: 600; font-size: 8.5px; letter-spacing: 0.3em; color: var(--text-secondary); text-transform: uppercase; }
+
+.bow-portal-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 10px;
+}
+
+.bow-portal-nav__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px;
+  border-radius: var(--radius-control, 6px);
+  color: var(--text-secondary);
+  font-family: var(--font-interface);
+  font-weight: 500;
+  font-size: 13.5px;
+  text-decoration: none;
+}
+.bow-portal-nav__link svg { flex-shrink: 0; opacity: 0.8; }
+.bow-portal-nav__link:hover { background: var(--surface-page); color: var(--text-primary); }
+.bow-portal-nav__link[data-active="true"] {
+  background: var(--bow-blue-tint);
+  color: var(--bow-blue);
+  font-weight: 600;
+}
+.bow-portal-nav__link[data-active="true"] svg { opacity: 1; }
+.bow-portal-nav__link:focus-visible { outline: 2px solid var(--bow-blue); outline-offset: -2px; }
+
+.bow-portal-nav--secondary {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-rule);
+}
+.bow-portal-nav--secondary .bow-portal-nav__label {
+  display: block;
+  padding: 8px 8px 4px;
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--state-inactive);
+}
+.bow-portal-nav--secondary .bow-portal-nav__link { font-size: 12.5px; padding: 6px 8px; color: var(--state-inactive); }
+.bow-portal-nav--secondary .bow-portal-nav__link:hover { color: var(--text-primary); }
+.bow-portal-nav--secondary .bow-portal-nav__link[data-active="true"] { color: var(--bow-blue); background: var(--bow-blue-tint); }
+
+.bow-portal-sidebar__spacer { flex: 1; }
+
+/* ---------- Account block ---------- */
+.bow-portal-account {
+  border-top: 1px solid var(--border-rule);
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.bow-portal-account__identity { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.bow-portal-account__avatar {
+  width: 28px; height: 28px; border-radius: 999px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--bow-white); font-family: var(--font-display); font-weight: 700; font-size: 11.5px;
+}
+.bow-portal-account__name { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.bow-portal-account__name span:first-child { font-family: var(--font-interface); font-weight: 600; font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bow-portal-account__role { font-family: var(--font-data); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.bow-portal-account__links { display: flex; flex-direction: column; gap: 2px; }
+.bow-portal-account__links a,
+.bow-portal-account__links button {
+  border: 0; background: transparent; text-align: left; cursor: pointer;
+  padding: 5px 0; font-family: var(--font-interface); font-size: 12.5px; color: var(--text-secondary);
+}
+.bow-portal-account__links a:hover,
+.bow-portal-account__links button:hover { color: var(--text-primary); }
+
+/* ---------- Content column + top bar ---------- */
+.bow-portal-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.bow-portal-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 52px;
+  flex-shrink: 0;
+  padding: 0 clamp(16px, 3vw, 32px);
+  border-bottom: 1px solid var(--border-rule);
+  background: var(--surface-raised);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+.bow-portal-topbar__title {
+  font-family: var(--font-interface);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bow-portal-topbar__utility { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.bow-portal-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-rule);
+  border-radius: var(--radius-control, 6px);
+  color: var(--state-inactive);
+  font-family: var(--font-interface);
+  font-size: 12.5px;
+  background: var(--surface-page);
+  cursor: not-allowed;
+  user-select: none;
+}
+.bow-portal-search svg { opacity: 0.7; }
+
+.bow-portal-content { flex: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: clamp(18px, 2.4vw, 28px) clamp(16px, 3vw, 32px) 48px; }
+
+/* ---------- Mobile: sidebar collapses to a top bar + overlay sheet ---------- */
+.bow-portal-mobile-bar { display: none; }
+.bow-portal-mobile-menu-btn {
+  width: 36px; height: 34px;
+  border: 1px solid var(--border-rule); border-radius: var(--radius-control, 6px);
+  background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer;
+}
+.bow-portal-mobile-menu-btn span { display: block; width: 16px; height: 2px; background: var(--text-primary); }
+
+.bow-portal-sheet-backdrop {
+  position: fixed; inset: 0; background: rgba(10, 10, 11, 0.4); z-index: 200;
+}
+.bow-portal-sheet {
+  position: fixed; top: 0; left: 0; bottom: 0; width: min(84vw, 300px);
+  background: var(--surface-raised); z-index: 201; display: flex; flex-direction: column;
+  box-shadow: 0 0 0 1px var(--border-rule);
+}
+.bow-portal-sheet__head { display: flex; align-items: center; justify-content: space-between; padding: 16px 14px 8px; flex-shrink: 0; }
+.bow-portal-sheet__close { border: 0; background: transparent; font-size: 20px; line-height: 1; cursor: pointer; color: var(--text-secondary); padding: 4px 8px; }
+.bow-portal-sheet .bow-portal-nav { padding: 8px 10px; }
+.bow-portal-sheet .bow-portal-nav__link { font-size: 15px; padding: 10px 8px; }
+.bow-portal-sheet__scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+
+@media (max-width: 767px) {
+  .bow-portal-sidebar { display: none; }
+  .bow-portal-mobile-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    height: 52px; flex-shrink: 0; padding: 0 16px;
+    border-bottom: 1px solid var(--border-rule); background: var(--surface-raised);
+    position: sticky; top: 0; z-index: 40;
+  }
+  .bow-portal-mobile-bar__brand { display: flex; align-items: baseline; gap: 8px; font-family: var(--font-display); font-weight: 900; font-size: 15px; letter-spacing: -0.01em; text-transform: uppercase; color: var(--text-primary); }
+  .bow-portal-topbar { display: none; }
+  .bow-portal-content { padding: 16px 16px 40px; }
+}
+
+/* ============================================================
+ * ds primitives: PageHeader / PageSection / RecordShell
+ * Compact, hairline-separated, no boxes/shadows.
+ * ============================================================ */
+
+.ds-page-header { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.ds-page-header__row { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.ds-page-header__titles { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ds-page-header__eyebrow { font-family: var(--font-data); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.ds-page-header__title { margin: 0; font-family: var(--font-interface); font-weight: 700; font-size: 20px; line-height: 1.25; color: var(--text-primary); }
+.ds-page-header__context { margin: 0; font-family: var(--font-interface); font-size: 13.5px; color: var(--text-secondary); }
+.ds-page-header__action { flex-shrink: 0; }
+.ds-page-header__meta { display: flex; flex-wrap: wrap; gap: 18px; margin: 4px 0 0; padding-top: 12px; border-top: 1px solid var(--border-rule); }
+.ds-page-header__meta-item { display: flex; flex-direction: column; gap: 2px; }
+.ds-page-header__meta-item dt { margin: 0; font-family: var(--font-data); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.ds-page-header__meta-item dd { margin: 0; font-family: var(--font-interface); font-size: 13px; color: var(--text-primary); }
+
+.ds-page-section { padding: 18px 0; border-top: 1px solid var(--border-rule); }
+.ds-page-section--no-rule { border-top: 0; padding-top: 0; }
+.ds-page-section__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.ds-page-section__title { margin: 0; font-family: var(--font-interface); font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.ds-page-section__action { flex-shrink: 0; }
+
+.ds-record-shell { display: flex; flex-direction: column; gap: 20px; }
+.ds-record-shell__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--border-rule); }
+.ds-record-shell__identity { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ds-record-shell__eyebrow { font-family: var(--font-data); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.ds-record-shell__title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ds-record-shell__title { margin: 0; font-family: var(--font-interface); font-weight: 700; font-size: 22px; color: var(--text-primary); }
+.ds-record-shell__subtitle { margin: 0; font-family: var(--font-interface); font-size: 13.5px; color: var(--text-secondary); }
+.ds-record-shell__actions { flex-shrink: 0; display: flex; gap: 8px; }
+.ds-record-shell__body { display: flex; flex-direction: column; gap: 20px; }
+.ds-record-shell__body--split { flex-direction: row; align-items: flex-start; }
+.ds-record-shell__content { flex: 1; min-width: 0; }
+.ds-record-shell__side { width: 280px; flex-shrink: 0; }
+
+@media (max-width: 900px) {
+  .ds-record-shell__body--split { flex-direction: column; }
+  .ds-record-shell__side { width: 100%; }
+}
