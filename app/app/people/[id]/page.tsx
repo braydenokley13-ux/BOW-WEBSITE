@@ -127,7 +127,7 @@ export default async function PersonRecordPage({
       {activeTab === "operations" && opsPerson && await renderSafely("Operations", () => OperationsSection({ personId, me, opsPerson, opsData }))}
       {activeTab === "instructor" && roleIds.instructorId && await renderSafely("Instructor", () => InstructorSection({ instructorId: roleIds.instructorId!, me }))}
       {activeTab === "student" && roleIds.studentId && await renderSafely("Student", () => StudentSection({ studentId: roleIds.studentId! }))}
-      {activeTab === "applicant" && roleIds.applicationId && await renderSafely("Applicant", () => ApplicantSection({ applicationId: roleIds.applicationId! }))}
+      {activeTab === "applicant" && roleIds.applicationId && await renderSafely("Applicant", () => ApplicantSection({ applicationId: roleIds.applicationId!, roleIds }))}
     </RecordShell>
   );
 }
@@ -319,6 +319,16 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
         <p className="ops-body" style={{ marginTop: 5 }}>{dossier.nextAction.detail}</p>
       </div>
 
+      {instructor.source === "people_work_application" && (
+        <div className="ops-alert" data-tone="info">
+          <span className="ops-label">Onboarding origin</span>
+          <p className="ops-body" style={{ marginTop: 6 }}>This instructor record began as an accepted hiring application.</p>
+          <p style={{ marginTop: 8 }}>
+            <Link href={`/app/hiring/applications/${instructorId}`} className="ops-inline-link">View the originating application cockpit →</Link>
+          </p>
+        </div>
+      )}
+
       <PageSection title="Pipeline & access decisions">
         <InstructorDetailActions
           instructorId={instructorId}
@@ -465,7 +475,7 @@ async function StudentSection({ studentId }: { studentId: string }) {
 /* rather than being duplicated here).                                   */
 /* ---------------------------------------------------------------------- */
 
-async function ApplicantSection({ applicationId }: { applicationId: string }) {
+async function ApplicantSection({ applicationId, roleIds }: { applicationId: string; roleIds: { instructorId: string | null } }) {
   const db = getDb();
   const app = (await db.prepare(
     `SELECT a.lifecycle_status, a.next_action, a.waiting_on, ov.title AS opening_title, u.name AS owner_name
@@ -482,6 +492,17 @@ async function ApplicantSection({ applicationId }: { applicationId: string }) {
         <span className="ops-record-meta">{app.opening_title}</span>
         <Badge status={app.lifecycle_status === "accepted" ? "positive" : app.lifecycle_status === "rejected" ? "negative" : "info"}>{label(app.lifecycle_status)}</Badge>
       </div>
+      {app.lifecycle_status === "accepted" && roleIds.instructorId && (
+        <div className="ops-alert" data-tone="positive">
+          <span className="ops-label">Accepted — onboarding begins</span>
+          <p className="ops-body" style={{ marginTop: 6 }}>
+            This application was accepted and became the instructor onboarding record.
+          </p>
+          <p style={{ marginTop: 8 }}>
+            <Link href={`?tab=instructor`} className="ops-inline-link">Go to Instructor tab →</Link>
+          </p>
+        </div>
+      )}
       <PageSection title="Application">
         <div className="ops-meta-grid">
           <div className="ops-meta"><span className="ops-label">Next action</span><span className="ops-value">{app.next_action ?? app.waiting_on ?? "Final"}</span></div>
