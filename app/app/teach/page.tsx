@@ -6,12 +6,80 @@ import { getInstructorDetail, listClassesForInstructor, listTrainingModules, lis
 import TrainingModuleCard from "@/components/app/teach/TrainingModuleCard";
 import RegisterSessionButton from "@/components/app/teach/RegisterSessionButton";
 import AvailabilityEditor from "@/components/app/hiring/AvailabilityEditor";
-import { formatDateTimeInZone } from "@/lib/timezone";
+import { formatDateTimeInZone, canonicalDateInZone } from "@/lib/timezone";
 import SubmitWorkControls from "@/components/app/tasks/SubmitWorkControls";
+import MissionUpdateForm from "@/components/app/teach/MissionUpdateForm";
 import { sessionHref } from "@/lib/routes";
+import { getMissionWithUpdates } from "@/lib/instructor-missions";
+import { missionAreaMeta, missionIsOverdue, MISSION_UPDATE_KIND_LABEL, type InstructorMission, type MissionUpdate } from "@/lib/instructor-missions-shared";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_STAGES = ["eligible", "active"];
+
+/**
+ * The instructor's headline responsibility right now — "what am I responsible
+ * for?" — rendered above the fold on the self-service home. Shows the outcome,
+ * cadence, any due date, recent progress/feedback, and a way to post an update.
+ */
+function MissionCard({
+  data,
+  showEmpty,
+  now,
+}: {
+  data: { mission: InstructorMission; updates: MissionUpdate[] } | null;
+  showEmpty: boolean;
+  now: number;
+}) {
+  if (!data) {
+    if (!showEmpty) return null;
+    return (
+      <PageSection title="Current mission" noRule>
+        <div className="ops-alert" data-tone="info">
+          <p className="ops-body" style={{ margin: 0 }}>
+            No current mission yet. Your BOW lead will set one — or tell them the mission you&rsquo;d like to take on
+            (a class, a school introduction, recruiting an instructor, content, or curriculum).
+          </p>
+        </div>
+      </PageSection>
+    );
+  }
+  const { mission, updates } = data;
+  const area = missionAreaMeta(mission.area);
+  const overdue = missionIsOverdue(mission.dueOn, canonicalDateInZone(now));
+  return (
+    <PageSection title="Current mission" noRule>
+      <div className="ops-alert" data-tone={overdue ? "warning" : "positive"} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <Badge status="info">{area.label}</Badge>
+          {mission.dueOn && <Badge status={overdue ? "negative" : "neutral"}>{overdue ? "Overdue " : "Due "}{mission.dueOn}</Badge>}
+          {mission.cadence !== "once" && <span className="ops-label">{mission.cadence} cadence</span>}
+        </div>
+        <h3 className="ops-alert__title" style={{ margin: "2px 0 0" }}>{mission.title}</h3>
+        <p className="ops-body" style={{ margin: 0 }}>{mission.outcome}</p>
+        {mission.relatedEntityLabel && <span className="ops-label">Linked to {mission.relatedEntityLabel}</span>}
+      </div>
+
+      {updates.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <span className="ops-label">Recent updates</span>
+          <div className="ops-timeline" style={{ marginTop: 6 }}>
+            {updates.slice(0, 3).map((update) => (
+              <div className="ops-timeline__item" key={update.id}>
+                <span className="ops-record-meta">
+                  {new Date(update.createdAt).toLocaleDateString()} · {MISSION_UPDATE_KIND_LABEL[update.kind]}
+                  {update.authorName ? ` · ${update.authorName}` : ""}
+                </span>
+                <p className="ops-body" style={{ marginTop: 3 }}>{update.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <MissionUpdateForm missionId={mission.id} />
+    </PageSection>
+  );
+}
 
 function upcomingSorted<T extends { scheduledAt: number }>(sessions: T[], now: number): T[] {
   return sessions.filter((s) => s.scheduledAt >= now).sort((a, b) => a.scheduledAt - b.scheduledAt);
@@ -45,6 +113,7 @@ export default async function TeachHomePage() {
   const now = Number(((await db.prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
 
   const isDelivering = ACTIVE_STAGES.includes(instructor.stage) && instructor.eligibilityStatus === "eligible";
+  const missionData = await getMissionWithUpdates(instructor.id);
 
   const modules = (await listTrainingModules());
   const moduleViews = new Map(
@@ -99,6 +168,8 @@ export default async function TeachHomePage() {
               : "You're caught up — watch for your next session.") + trainingNote
           }
         />
+
+        <MissionCard data={missionData} showEmpty={false} now={now} />
 
         {nextTrainingSession && (
           <PageSection title="Next session to attend" noRule>
@@ -214,6 +285,8 @@ export default async function TeachHomePage() {
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
       <PageHeader eyebrow="My BOW" title="Today" context={`${classes.length} assigned class${classes.length === 1 ? "" : "es"}.`} />
+
+      <MissionCard data={missionData} showEmpty now={now} />
 
       <PageSection title="Sessions to teach" noRule>
         {upcomingClassSessions.length === 0 ? (

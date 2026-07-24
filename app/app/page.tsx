@@ -12,6 +12,8 @@ import { entityHref, sessionHref } from "@/lib/routes";
 import { getGrowthLeadershipSnapshot } from "@/lib/growth";
 import { getGrowthActions } from "@/lib/flywheel";
 import { getPeopleOperationsData } from "@/lib/people-operations";
+import { getInstructorActivationExceptions } from "@/lib/instructor-missions";
+import type { ActivationException } from "@/lib/instructor-missions-shared";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -74,12 +76,15 @@ export default async function AppHome() {
 
   const db = getDb();
   const now = Number(((await db.prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
-  const [data, programs, growth, growthActions, peopleOperations] = await Promise.all([
+  const [data, programs, growth, growthActions, peopleOperations, activationExceptions] = await Promise.all([
     getLeadershipHomeData(),
     listPrograms(),
     getGrowthLeadershipSnapshot(now),
     getGrowthActions(now, 3),
     getPeopleOperationsData({ userId: me.id, role: me.role, now }),
+    // Instructor activation queue. Degrades to empty if the mission migration
+    // has not been applied yet, so the home never regresses on a cold schema.
+    getInstructorActivationExceptions(now).catch(() => [] as ActivationException[]),
   ]);
   const personNameStatement = db.prepare("SELECT name FROM people WHERE id = ?");
   const userNameStatement = db.prepare("SELECT name FROM users WHERE id = ?");
@@ -342,6 +347,27 @@ export default async function AppHome() {
     });
   }
 
+  // Instructor activation: accepted-but-not-activated, ready-but-unused, and
+  // dormant instructors. Onboarding stalls and active-without-mission stay in
+  // the dedicated Instructor command center to keep this queue consequential.
+  const activationHomeKinds = new Set(["accepted_not_activated", "ready_without_assignment", "dormant"]);
+  for (const item of activationExceptions.filter((exception) => activationHomeKinds.has(exception.kind)).slice(0, 8)) {
+    add({
+      key: `activation:${item.instructorId}`,
+      title: item.title,
+      domain: "People",
+      domainHref: "/app/people/instructors",
+      severity: item.severity,
+      score: item.score,
+      context: item.detail,
+      owner: "Instructor lead",
+      unassigned: false,
+      href: `/app/people/${item.personId}?tab=instructor`,
+      actionLabel: item.kind === "accepted_not_activated" ? "Activate instructor" : item.kind === "dormant" ? "Re-engage" : "Assign work or mission",
+      dueAt: now - item.ageDays * DAY_MS,
+    });
+  }
+
   // Growth stays in its own operating workspace unless canonical evidence
   // identifies a real decision, ownership gap, or market imbalance.
   for (const item of growth.exceptions) {
@@ -396,6 +422,8 @@ export default async function AppHome() {
   if (programRisks.length > 0) stripItems.push({ label: "Programs at risk", value: String(programRisks.length), tone: "warning" });
   if (growth.exceptions.length > 0) stripItems.push({ label: "Growth exceptions", value: String(growth.exceptions.length), tone: "warning" });
   if (peopleAttentionCount > 0) stripItems.push({ label: "People needing attention", value: String(peopleAttentionCount), tone: "warning" });
+  const instructorsToActivate = activationExceptions.filter((item) => item.severity === "critical" || item.severity === "high").length;
+  if (instructorsToActivate > 0) stripItems.push({ label: "Instructors to activate", value: String(instructorsToActivate), tone: "warning" });
   if (unassignedCount > 0) stripItems.push({ label: "Without an owner", value: String(unassignedCount), tone: "negative" });
 
   // Upcoming commitments: sessions and interviews landing in the next 7 days.
@@ -586,6 +614,7 @@ export default async function AppHome() {
           ["Growth", "/app/growth"],
           ["Work", "/app/tasks"],
           ["People", "/app/people"],
+          ["Instructor command", "/app/people/instructors"],
           ["Locations", "/app/locations"],
         ].map(([label, href]) => (
           <Link key={href} href={href} className="ops-inline-link" style={{ textDecoration: "none" }}>

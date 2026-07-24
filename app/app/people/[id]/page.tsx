@@ -6,6 +6,7 @@ import WeeklyCommitmentEditor from "@/components/app/people/WeeklyCommitmentEdit
 import { AccountabilityControls, ActivationControls, CapacityControls, RoleAssignmentSetup, RoleDecisionControls } from "@/components/app/people/PersonOperatingControls";
 import InstructorDetailActions from "@/components/app/hiring/InstructorDetailActions";
 import InstructorWorkforceActions from "@/components/app/hiring/InstructorWorkforceActions";
+import InstructorMissionControls from "@/components/app/hiring/InstructorMissionControls";
 import IntroductionTracker from "@/components/app/hiring/IntroductionTracker";
 import StudentDetailActions from "@/components/app/students/StudentDetailActions";
 import { requireStaff } from "@/lib/dal";
@@ -14,6 +15,9 @@ import { getPeopleOperationsData, type PersonAttentionView } from "@/lib/people-
 import { resolvePersonRoleIds, type PersonRoleKind } from "@/lib/people-directory";
 import { getInstructorDetail, getStudentDetail, getStudentAttendanceHistory, listActivity, listOpenTasksForEntity, listStaffUsers, resolveUserNames } from "@/lib/hiring";
 import { getInstructorWorkforceDossier } from "@/lib/instructor-workforce";
+import { getMissionWithUpdates, getMissionHistory } from "@/lib/instructor-missions";
+import { missionAreaMeta, missionIsOverdue, MISSION_UPDATE_KIND_LABEL } from "@/lib/instructor-missions-shared";
+import { canonicalDateInZone } from "@/lib/timezone";
 import { listIntroductions } from "@/lib/flywheel";
 
 type TabKey = "overview" | "operations" | "instructor" | "student" | "applicant";
@@ -305,6 +309,23 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
   const staffUsers = await listStaffUsers();
   const resolvedOwnerName = instructor.ownerUserId ? (await resolveUserNames([instructor.ownerUserId])).get(instructor.ownerUserId) : null;
 
+  const missionData = await getMissionWithUpdates(instructorId);
+  const missionHistory = await getMissionHistory(instructorId, 8);
+  // Let staff link a new mission to a Class or Program this instructor already
+  // touches, so a Current Mission carries real operating context.
+  const relatedOptions: { value: string; label: string }[] = [];
+  const seenRelated = new Set<string>();
+  for (const assignment of dossier.currentAssignments) {
+    const classKey = `class:${assignment.classId}`;
+    if (!seenRelated.has(classKey)) { seenRelated.add(classKey); relatedOptions.push({ value: classKey, label: `Class · ${assignment.classTitle}` }); }
+    if (assignment.programId) {
+      const programKey = `program:${assignment.programId}`;
+      if (!seenRelated.has(programKey)) { seenRelated.add(programKey); relatedOptions.push({ value: programKey, label: `Program · ${assignment.programName}` }); }
+    }
+  }
+  const nowMs = Number(((await getDb().prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
+  const missionToday = canonicalDateInZone(nowMs);
+
   return (
     <div style={{ display: "grid", gap: 4 }}>
       <div className="ops-status-line" style={{ marginTop: 0 }}>
@@ -318,6 +339,71 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
         <h3 className="ops-alert__title" style={{ marginTop: 7 }}>{dossier.nextAction.title}</h3>
         <p className="ops-body" style={{ marginTop: 5 }}>{dossier.nextAction.detail}</p>
       </div>
+
+      <PageSection title="Current mission">
+        {missionData ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            <div className="ops-alert" data-tone={missionIsOverdue(missionData.mission.dueOn, missionToday) ? "warning" : "positive"} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <Badge status="info">{missionAreaMeta(missionData.mission.area).label}</Badge>
+                {missionData.mission.dueOn && (
+                  <Badge status={missionIsOverdue(missionData.mission.dueOn, missionToday) ? "negative" : "neutral"}>
+                    {missionIsOverdue(missionData.mission.dueOn, missionToday) ? "Overdue " : "Due "}{missionData.mission.dueOn}
+                  </Badge>
+                )}
+                {missionData.mission.cadence !== "once" && <span className="ops-label">{missionData.mission.cadence} cadence</span>}
+              </div>
+              <h3 className="ops-alert__title" style={{ margin: "2px 0 0" }}>{missionData.mission.title}</h3>
+              <p className="ops-body" style={{ margin: 0 }}>{missionData.mission.outcome}</p>
+              <span className="ops-record-meta">
+                {missionData.mission.relatedEntityLabel ? `Linked to ${missionData.mission.relatedEntityLabel} · ` : ""}
+                Assigned {when(missionData.mission.createdAt)}{missionData.mission.assignedByName ? ` by ${missionData.mission.assignedByName}` : ""}
+              </span>
+            </div>
+
+            {missionData.updates.length > 0 && (
+              <div className="ops-timeline">
+                {missionData.updates.slice(0, 6).map((update) => (
+                  <div className="ops-timeline__item" key={update.id}>
+                    <span className="ops-record-meta">
+                      {new Date(update.createdAt).toLocaleDateString()} · {MISSION_UPDATE_KIND_LABEL[update.kind]}{update.authorName ? ` · ${update.authorName}` : ""}
+                    </span>
+                    <p className="ops-body" style={{ marginTop: 3 }}>{update.body}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <InstructorMissionControls instructorId={instructorId} instructorName={dossier.profile.name} missionId={missionData.mission.id} relatedOptions={relatedOptions} />
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            <p className="ops-body" style={{ margin: 0 }}>
+              No Current Mission. Give this instructor one clear responsibility right now — teaching or a growth mission — so they are moving forward, not sitting idle.
+            </p>
+            <InstructorMissionControls instructorId={instructorId} instructorName={dossier.profile.name} missionId={null} relatedOptions={relatedOptions} />
+          </div>
+        )}
+
+        {missionHistory.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <span className="ops-label">Mission history</span>
+            <div className="ops-list" style={{ marginTop: 6 }}>
+              {missionHistory.map((mission) => (
+                <div className="ops-list-row" key={mission.id}>
+                  <div>
+                    <span className="ops-record-name">{mission.title}</span>
+                    <span className="ops-record-meta">{missionAreaMeta(mission.area).label} · {when(mission.completedAt)}</span>
+                  </div>
+                  <Badge status={mission.status === "completed" && mission.completionOutcome === "delivered" ? "positive" : mission.status === "cancelled" ? "locked" : "neutral"}>
+                    {mission.status === "completed" ? label(mission.completionOutcome ?? "completed") : "Cancelled"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </PageSection>
 
       {instructor.source === "people_work_application" && (
         <div className="ops-alert" data-tone="info">
