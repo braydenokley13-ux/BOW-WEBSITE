@@ -13,6 +13,13 @@ const STATUS_TONE: Record<GrowthIntroduction["status"], "positive" | "warning" |
   declined: "negative",
 };
 
+const STATUS_LABEL: Record<GrowthIntroduction["status"], string> = {
+  suggested: "Suggested",
+  contacted: "Contacted",
+  converted: "Converted",
+  declined: "Declined",
+};
+
 const KIND_LABEL: Record<(typeof INTRODUCTION_TARGET_KINDS)[number], string> = {
   student: "Student(s)",
   instructor: "Future instructor",
@@ -136,7 +143,7 @@ export default function IntroductionTracker({
                   {KIND_LABEL[intro.targetKind]}{intro.note ? ` · ${intro.note}` : ""}
                 </span>
               </div>
-              <Badge status={STATUS_TONE[intro.status]}>{intro.status}</Badge>
+              <Badge status={STATUS_TONE[intro.status]}>{STATUS_LABEL[intro.status]}</Badge>
               <div className="ops-row-actions">
                 {intro.status === "suggested" && (
                   <Button size="sm" variant="secondary" disabled={busy === intro.id} onClick={() => run(intro.id, () => setIntroductionStatus(intro.id, "contacted"))}>
