@@ -12,6 +12,8 @@ import { listStaffUsers } from "@/lib/hiring";
 import FlywheelPanel from "@/components/app/growth/FlywheelPanel";
 import ManagementBriefing from "@/components/app/growth/ManagementBriefing";
 import { getManagementBriefing } from "@/lib/management";
+import { getGrowthAdvocates } from "@/lib/growth-attribution";
+import { advocateHeadline, advocateRoleHint } from "@/lib/growth-attribution-shared";
 import { addCanonicalDays, canonicalDateInZone } from "@/lib/timezone";
 
 function label(value: string): string {
@@ -58,6 +60,12 @@ export default async function GrowthCommandCenterPage() {
   const center = (await getGrowthCommandCenter(now));
   const flywheel = (await getFlywheelSnapshot(now));
   const weekly = (await getWeeklyOperatingSummary(now));
+  // Cross-system attribution: who actually brings instructors, families, and
+  // partners into BOW. Degrades to empty if a referral spine is missing.
+  const advocacy = await getGrowthAdvocates(5).catch(() => ({
+    advocates: [] as Awaited<ReturnType<typeof getGrowthAdvocates>>["advocates"],
+    totals: { advocates: 0, activeInstructorsGenerated: 0, partnersGenerated: 0, verifiedFamilies: 0, studentsReached: 0, pendingReferrals: 0 },
+  }));
   const staffUsers = (await listStaffUsers()).map((user) => ({ id: user.id, name: user.name }));
   const briefing = isLeadership ? (await getManagementBriefing(now)) : null;
   const { funnel } = center;
@@ -198,6 +206,42 @@ export default async function GrowthCommandCenterPage() {
             </span>
           </div>
         </div>
+      </section>
+
+      <section className="ops-panel ops-panel--flat ops-anchor" id="advocates" aria-labelledby="advocates-heading">
+        <div className="ops-section-head">
+          <div>
+            <span className="ops-label">People, not just channels</span>
+            <h2 className="ops-section-title" id="advocates-heading">Who generates our growth</h2>
+          </div>
+          <Link className="ops-inline-link" href="/app/growth/advocates">All advocates →</Link>
+        </div>
+        {advocacy.advocates.length === 0 ? (
+          <p className="ops-body">
+            No attributable referral or introduction has produced a verified outcome yet. When an instructor refers an instructor, a family refers a family, or someone opens a school, the person and the downstream result appear here.
+          </p>
+        ) : (
+          <>
+            <div className="ops-list">
+              {advocacy.advocates.map((advocate) => (
+                <article className="ops-list-row" key={advocate.personId} style={{ alignItems: "flex-start" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <Link className="ops-record-name" href={`/app/people/${advocate.personId}`}>{advocate.name}</Link>
+                    <span className="ops-record-meta">{advocateRoleHint(advocate)}</span>
+                    <p className="ops-body" style={{ margin: "4px 0 0" }}>{advocateHeadline(advocate)}</p>
+                  </div>
+                  <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <span className="ops-value">{advocate.studentsReached}</span>
+                    <span className="ops-record-meta">student{advocate.studentsReached === 1 ? "" : "s"} reached</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <p className="ops-record-meta" style={{ marginTop: 10 }}>
+              {advocacy.totals.advocates} advocate{advocacy.totals.advocates === 1 ? "" : "s"} · {advocacy.totals.activeInstructorsGenerated} instructor{advocacy.totals.activeInstructorsGenerated === 1 ? "" : "s"} activated · {advocacy.totals.partnersGenerated} partner{advocacy.totals.partnersGenerated === 1 ? "" : "s"} opened · {advocacy.totals.studentsReached} students reached through referred growth.
+            </p>
+          </>
+        )}
       </section>
 
       <DataStrip

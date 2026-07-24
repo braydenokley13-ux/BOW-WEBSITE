@@ -19,6 +19,8 @@ import { getMissionWithUpdates, getMissionHistory } from "@/lib/instructor-missi
 import { missionAreaMeta, missionIsOverdue, MISSION_UPDATE_KIND_LABEL } from "@/lib/instructor-missions-shared";
 import { getInstructorImpact, listActiveInstructorOptions } from "@/lib/instructor-growth";
 import { deriveNextOpportunities, impactStats, impactHeadline, type OpportunityKind } from "@/lib/instructor-growth-shared";
+import { getPersonAttribution } from "@/lib/growth-attribution";
+import { advocateHeadline, CHANNEL_META } from "@/lib/growth-attribution-shared";
 import ReferrerAttributionControl from "@/components/app/hiring/ReferrerAttributionControl";
 import { canonicalDateInZone } from "@/lib/timezone";
 import { listIntroductions } from "@/lib/flywheel";
@@ -129,7 +131,10 @@ export default async function PersonRecordPage({
       </nav>
 
       {activeTab === "overview" && (
-        <OverviewTab personId={personId} personRow={personRow} roleBadges={roleBadges} opsPerson={opsPerson} roleIds={roleIds} />
+        <>
+          <OverviewTab personId={personId} personRow={personRow} roleBadges={roleBadges} opsPerson={opsPerson} roleIds={roleIds} />
+          {await renderSafely("Growth generated", () => GrowthGeneratedSection({ personId }))}
+        </>
       )}
       {activeTab === "operations" && opsPerson && await renderSafely("Operations", () => OperationsSection({ personId, me, opsPerson, opsData }))}
       {activeTab === "instructor" && roleIds.instructorId && await renderSafely("Instructor", () => InstructorSection({ instructorId: roleIds.instructorId!, me }))}
@@ -197,6 +202,59 @@ function OverviewTab({
         </PageSection>
       )}
     </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/* Growth generated — cross-channel referral/introduction attribution for  */
+/* ANY person (instructor recruiter, referring family, community connector).*/
+/* Renders nothing when the person has generated no attributable growth.    */
+/* ---------------------------------------------------------------------- */
+
+async function GrowthGeneratedSection({ personId }: { personId: string }) {
+  const advocate = await getPersonAttribution(personId);
+  if (!advocate) return null;
+  return (
+    <PageSection title="Growth generated">
+      <p className="ops-body" style={{ marginTop: 0 }}>{advocateHeadline(advocate)}</p>
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", margin: "10px 0" }}>
+        <div>
+          <span className="ops-value" style={{ fontSize: 22 }}>{advocate.studentsReached}</span>
+          <span className="ops-record-meta">Students reached downstream</span>
+        </div>
+        {advocate.activeInstructorsGenerated > 0 && (
+          <div>
+            <span className="ops-value" style={{ fontSize: 22 }}>{advocate.activeInstructorsGenerated}</span>
+            <span className="ops-record-meta">Instructors now active</span>
+          </div>
+        )}
+        {advocate.partnersGenerated > 0 && (
+          <div>
+            <span className="ops-value" style={{ fontSize: 22 }}>{advocate.partnersGenerated}</span>
+            <span className="ops-record-meta">Partners opened</span>
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {advocate.channels.map((channel) => {
+          const meta = CHANNEL_META[channel.channel];
+          return (
+            <span key={channel.channel} className="ops-record-meta" style={{ display: "block" }}>
+              <strong style={{ color: "var(--bow-ink)", fontWeight: 600 }}>{meta.label}:</strong>{" "}
+              {channel.referred} {meta.referredNoun}
+              {channel.advanced > 0 && channel.advanced !== channel.converted ? ` · ${channel.advanced} advanced` : ""}
+              {channel.converted > 0 ? (
+                <span style={{ color: "var(--bow-positive)" }}> · {channel.converted} {meta.convertedNoun}</span>
+              ) : ""}
+            </span>
+          );
+        })}
+      </div>
+      <p className="ops-record-meta" style={{ marginTop: 10 }}>
+        Derived from confirmed referrals, converted introductions, enrollments, and finalized attendance — not entered by hand.{" "}
+        <Link href="/app/growth/advocates" className="ops-inline-link">All advocates →</Link>
+      </p>
+    </PageSection>
   );
 }
 

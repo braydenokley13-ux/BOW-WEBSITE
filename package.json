@@ -15,7 +15,7 @@
     "migrate": "tsx scripts/run-migrations.ts",
     "seed:learn-demo": "tsx scripts/seed-learn-demo.ts",
     "import:legacy-lessons": "tsx scripts/import-legacy-lessons.ts",
-    "test": "tsx --test tests/db-transaction.test.ts tests/learn/*.test.ts tests/navigation/*.test.ts tests/instructor-missions.test.ts tests/instructor-growth.test.ts"
+    "test": "tsx --test tests/db-transaction.test.ts tests/learn/*.test.ts tests/navigation/*.test.ts tests/instructor-missions.test.ts tests/instructor-growth.test.ts tests/growth-attribution.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "6.3.1",

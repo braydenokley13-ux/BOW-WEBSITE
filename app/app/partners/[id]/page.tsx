@@ -114,6 +114,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
           )`,
         ).get(id, id)) as { count: number }).count,
   };
+  const now = Number(((await db.prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
   const latestLifecycleEvent = activity.find((entry) => entry.kind === "lifecycle")?.body ?? null;
   const lifecycleStatus = lifecycleStatuses.has(org.status as PartnerLifecycleStatus)
     ? org.status as PartnerLifecycleStatus
@@ -149,6 +150,35 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
             This legacy organization uses an unsupported status. An administrator must reconcile it before staff can change its lifecycle.
           </p>
         </div>
+      )}
+
+      {repeatOpportunities.length > 0 && (
+        <section className="ops-panel ops-panel--signal">
+          <div className="ops-section-head">
+            <div>
+              <span className="ops-label">Repeat loop</span>
+              <h2 className="ops-section-title">Delivered programs ready to repeat</h2>
+            </div>
+            <Badge status="warning">{repeatOpportunities.length}</Badge>
+          </div>
+          <p className="ops-body" style={{ marginTop: 0 }}>
+            A completed program with no repeat decision is a warm renewal waiting to be asked. Open the program to share the outcome and propose the next cohort — or consciously close it.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+            {repeatOpportunities.map((program) => {
+              const days = Math.max(0, Math.floor((now - program.updated_at) / (24 * 60 * 60 * 1000)));
+              return (
+                <div key={program.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <Link href={`/app/programs/${program.id}`} className="ops-record-name">{program.name}</Link>
+                    <span className="ops-record-meta">Completed {days === 0 ? "today" : `${days} day${days === 1 ? "" : "s"} ago`} · no repeat decision recorded</span>
+                  </div>
+                  <Button href={`/app/programs/${program.id}`} variant="emphasis" size="sm">Propose repeat →</Button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       <section className="ops-panel">
