@@ -3,7 +3,7 @@ import PodcastPlayer from "@/components/site/PodcastPlayer";
 import { podcastAllEpisodes, podTakeaways } from "@/lib/podcast";
 
 export const metadata = {
-  title: "Podcast — BOW Sports Capital",
+  title: "Podcast",
   description:
     "The BOW Sports Capital Podcast — the conversations behind the decisions. Each episode connects sports headlines, front-office strategy, and economics to the curriculum.",
 };

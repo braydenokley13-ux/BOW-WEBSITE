@@ -4,7 +4,7 @@ import { listAchievementBadges } from "@/app/actions/learn-achievements";
 import AchievementEditor from "@/components/learn/builder/AchievementEditor";
 
 export const metadata = {
-  title: "Achievements · Playbook Studio · BOW HQ",
+  title: "Achievements · Playbook Studio",
   description: "Create and manage badges awarded by the Playbook Engine's declarative rule system.",
   robots: { index: false, follow: false },
 };

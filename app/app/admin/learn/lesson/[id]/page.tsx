@@ -4,7 +4,7 @@ import { getLessonDraft } from "@/app/actions/learn-author";
 import BuilderShell from "@/components/learn/builder/BuilderShell";
 
 export const metadata = {
-  title: "Playbook Studio · BOW HQ",
+  title: "Playbook Studio",
   robots: { index: false, follow: false },
 };
 

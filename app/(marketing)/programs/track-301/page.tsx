@@ -4,7 +4,7 @@ import { track301Areas, track301Build } from "@/lib/programs";
 import type { BuildAreaItem, BuildStep } from "@/lib/programs";
 
 export const metadata = {
-  title: "Track 301 — BOW Sports Capital",
+  title: "Track 301",
   description:
     "The room where the industry gets shaped. The executive track in development — negotiation, valuation, media rights, and the economics of an entire league.",
 };

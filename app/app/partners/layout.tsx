@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { requireStaff } from "@/lib/dal";
 
 export const metadata: Metadata = {
-  title: "Partners · BOW HQ",
+  title: "Partners",
   description: "Partner organizations BOW runs classes with.",
   robots: { index: false, follow: false },
 };

@@ -4,7 +4,7 @@ import { loadInstructorCohorts, loadCohortRoster, loadReleasableMapNodes } from 
 import CohortRoster from "@/components/learn/instructor/CohortRoster";
 
 export const metadata = {
-  title: "Cohort Console · BOW HQ",
+  title: "Cohort Console",
   description: "Per-student lesson status, scores, and release controls for your cohorts.",
   robots: { index: false, follow: false },
 };

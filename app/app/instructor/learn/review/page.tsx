@@ -4,7 +4,7 @@ import { listPendingReviews } from "@/app/actions/learn-review";
 import ReviewQueue from "@/components/learn/instructor/ReviewQueue";
 
 export const metadata = {
-  title: "Reflection Review Queue · BOW HQ",
+  title: "Reflection Review Queue",
   description: "Review and score pending student reflections.",
   robots: { index: false, follow: false },
 };

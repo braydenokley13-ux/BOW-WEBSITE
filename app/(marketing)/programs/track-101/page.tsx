@@ -12,7 +12,7 @@ import {
 import type { Concept, TrackModule, DeliveryFormat } from "@/lib/programs";
 
 export const metadata = {
-  title: "Track 101 — BOW Sports Capital",
+  title: "Track 101",
   description:
     "Learn how the business of sports actually works — one decision at a time. The introductory, recommended starting track.",
 };

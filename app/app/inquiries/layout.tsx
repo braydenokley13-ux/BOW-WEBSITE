@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { requireStaff } from "@/lib/dal";
 
 export const metadata: Metadata = {
-  title: "Demand Inbox · BOW HQ",
+  title: "Demand Inbox",
   description: "Qualify public demand and turn it into owned Program work.",
   robots: { index: false, follow: false },
 };

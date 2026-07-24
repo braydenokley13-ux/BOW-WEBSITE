@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { requireStaff } from "@/lib/dal";
 
 export const metadata: Metadata = {
-  title: "Regions · BOW HQ",
+  title: "Regions",
   description: "Regional leadership, Location portfolios, lifecycle, and expansion visibility.",
   robots: { index: false, follow: false },
 };

@@ -2,7 +2,7 @@ import { Button } from "@/components/ds";
 import { hwDistricts, hwMissions, hwMetrics } from "@/lib/highway";
 
 export const metadata = {
-  title: "Highway World — BOW Sports Capital",
+  title: "Highway World",
   description:
     "Highway World is BOW's interactive sports-business world — a driving overworld, mission interiors, and a live franchise headquarters. Currently in development.",
 };

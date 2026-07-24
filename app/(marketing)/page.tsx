@@ -19,7 +19,6 @@ import {
   pathways,
   formats,
   impact,
-  quotes,
   faqs,
 } from "@/lib/home";
 import { getActiveTestimonials } from "@/lib/content";
@@ -27,16 +26,15 @@ import { getActiveTestimonials } from "@/lib/content";
 const SECTION_PAD = "clamp(56px,8vw,120px) clamp(18px,4vw,40px)";
 
 export default async function HomePage() {
-  // Testimonials are admin-editable (Feature 8); fall back to the static
-  // seed quotes if none are active. revalidatePath("/") refreshes this after edits.
+  // Testimonials are admin-editable and must be real. Only approved rows are
+  // shown — no fabricated seed fallback. The section hides itself when empty.
   const dbTestimonials = (await getActiveTestimonials());
   const upcomingPrograms = (await listPublicPrograms()).slice(0, 3);
-  const testimonials = dbTestimonials.length
-    ? dbTestimonials.map((t) => ({
-        text: t.quote,
-        who: [t.studentName, t.schoolName, t.trackCompleted ? `Track ${t.trackCompleted}` : ""].filter(Boolean).join(" · ").toUpperCase(),
-      }))
-    : quotes;
+  const hasOpenPrograms = upcomingPrograms.length > 0;
+  const testimonials = dbTestimonials.map((t) => ({
+    text: t.quote,
+    who: [t.studentName, t.schoolName, t.trackCompleted ? `Track ${t.trackCompleted}` : ""].filter(Boolean).join(" · ").toUpperCase(),
+  }));
 
   return (
     <div>
@@ -58,7 +56,11 @@ export default async function HomePage() {
               BOW Sports Capital helps middle and high school students learn economics, finance, leadership, and strategy by making the same decisions that shape teams, leagues, and the business of sports.
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6 }}>
-              <Button href="/programs" variant="primary" size="lg">Find a Program</Button>
+              {hasOpenPrograms ? (
+                <Button href="/programs" variant="primary" size="lg">Find a Program</Button>
+              ) : (
+                <Button href="/sign-up" variant="primary" size="lg">Join the Interest List</Button>
+              )}
               <Button href="#howitworks" variant="secondary" size="lg">See How BOW Works</Button>
             </div>
             <Link href="/podcast" className="bow-link" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)", marginTop: 2 }}>
@@ -124,9 +126,9 @@ export default async function HomePage() {
         <div aria-hidden className="bow-para-far" style={{ position: "absolute", right: "-4%", bottom: "-12%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(150px,24vw,390px)", lineHeight: .75, color: "rgba(255,255,255,.04)" }}>COACH</div>
         <div className="bow-container" style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: "clamp(32px,6vw,72px)", alignItems: "center" }}>
           <div>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--bow-orange)" }}>We&apos;re hiring instructors</span>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--bow-orange)" }}>Now recruiting volunteer instructors</span>
             <h2 style={{ marginTop: 12, fontFamily: "var(--font-editorial)", fontSize: "clamp(36px,5vw,62px)", lineHeight: 1, textWrap: "balance" }}>Help us teach the next generation of sports decision-makers.</h2>
-            <p style={{ marginTop: 22, maxWidth: 620, fontSize: 18, lineHeight: 1.6, color: "#b9bcc4" }}>BOW instructors guide young people through the economics, finance, leadership, and strategy behind sports. We provide the curriculum and training. You bring preparation, judgment, energy, and the willingness to improve.</p>
+            <p style={{ marginTop: 22, maxWidth: 620, fontSize: 18, lineHeight: 1.6, color: "#b9bcc4" }}>Teaching with BOW is a volunteer role. Instructors guide young people through the economics, finance, leadership, and strategy behind sports. We provide the curriculum and training. You bring preparation, judgment, energy, and the willingness to improve.</p>
             <div style={{ marginTop: 28, display: "flex", flexWrap: "wrap", gap: 12 }}><Button href="/teach" variant="primary" size="lg">Explore Teaching at BOW</Button><Button href="/join/sports-economics-instructor" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}>View the Opening</Button></div>
           </div>
           <div style={{ display: "grid", gap: 1, background: "var(--bow-dark-border)", border: "1px solid var(--bow-dark-border)" }}>
@@ -409,14 +411,16 @@ export default async function HomePage() {
               </div>
             ))}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(20px,3vw,40px)", marginTop: 40 }}>
-            {testimonials.map((q) => (
-              <figure key={q.who} style={{ margin: 0, display: "flex", flexDirection: "column", gap: 14 }}>
-                <blockquote style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 500, fontSize: 22, lineHeight: 1.3, color: "#fff" }}>&ldquo;{q.text}&rdquo;</blockquote>
-                <figcaption style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#9a9da6" }}>{q.who}</figcaption>
-              </figure>
-            ))}
-          </div>
+          {testimonials.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(20px,3vw,40px)", marginTop: 40 }}>
+              {testimonials.map((q) => (
+                <figure key={q.who} style={{ margin: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+                  <blockquote style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 500, fontSize: 22, lineHeight: 1.3, color: "#fff" }}>&ldquo;{q.text}&rdquo;</blockquote>
+                  <figcaption style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#9a9da6" }}>{q.who}</figcaption>
+                </figure>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -435,12 +439,12 @@ export default async function HomePage() {
       <section style={{ background: "var(--bow-blue)", color: "#fff", padding: "clamp(64px,10vw,150px) clamp(18px,4vw,40px)", position: "relative", overflow: "hidden" }}>
         <div className="bow-para-upbig" aria-hidden style={{ position: "absolute", right: -40, bottom: -80, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(200px,28vw,460px)", lineHeight: 0.7, color: "rgba(255,255,255,0.08)", pointerEvents: "none" }}>BOW</div>
         <div className="bow-container" style={{ position: "relative" }}>
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.7)" }}>Your Seat Is Open</span>
+          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.7)" }}>Step Into the Front Office</span>
           <h2 style={{ margin: "14px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(44px,8vw,120px)", lineHeight: 0.86, letterSpacing: "-0.02em", textTransform: "uppercase" }}>Step into the front office.</h2>
           <p style={{ margin: "22px 0 0", fontFamily: "var(--font-interface)", fontSize: "clamp(17px,1.5vw,21px)", lineHeight: 1.55, color: "rgba(255,255,255,0.9)", maxWidth: 560 }}>Explore the tracks, find the right starting point, and begin making the decisions behind the game.</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 30 }}>
             <Button href="/programs" variant="ink" size="lg">Explore Programs</Button>
-            <Button href="/sign-up" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "rgba(255,255,255,0.6)" }}>Sign Up</Button>
+            <Button href="/sign-up" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "rgba(255,255,255,0.6)" }}>Join the Interest List</Button>
           </div>
         </div>
       </section>

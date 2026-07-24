@@ -9,7 +9,7 @@ import {
 } from "@/lib/get-involved";
 
 export const metadata = {
-  title: "For Youth Organizations — BOW Sports Capital",
+  title: "For Youth Organizations",
   description:
     "Adaptable economic decision-making for any group. Community organizations, nonprofits, libraries, and enrichment providers can bring BOW to their students.",
 };
