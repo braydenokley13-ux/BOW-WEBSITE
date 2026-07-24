@@ -10,12 +10,16 @@ interface Props {
   programName: string;
 }
 
+/* Labels are set in the interface voice, sentence case. Tracked-out mono
+ * uppercase is the *data* voice — correct for a stat label, but applied to
+ * "STUDENT FIRST NAME *" it made a parent read a database column instead of
+ * a question, and letterspaced 11px caps are the slowest thing on the page
+ * to scan. */
 const labelStyle: CSSProperties = {
-  fontFamily: "var(--font-data)",
-  fontSize: 11,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "var(--bow-slate)",
+  fontFamily: "var(--font-interface)",
+  fontSize: "var(--type-body-sm)",
+  fontWeight: "var(--fw-medium)" as CSSProperties["fontWeight"],
+  color: "var(--text-primary)",
 };
 
 const fieldStyle: CSSProperties = {
@@ -23,12 +27,26 @@ const fieldStyle: CSSProperties = {
   border: "1px solid var(--border-rule)",
   borderRadius: "var(--radius-control)",
   padding: "12px 14px",
-  fontSize: 15,
+  fontSize: 16, // 16px keeps iOS Safari from zooming the viewport on focus.
+  lineHeight: 1.4,
   fontFamily: "var(--font-interface)",
   width: "100%",
+  minHeight: 46,
 };
 
 const fieldWrap: CSSProperties = { display: "flex", flexDirection: "column", gap: 6 };
+
+/* Group heading — three groups of questions read as three groups. */
+const groupStyle: CSSProperties = {
+  fontFamily: "var(--font-display)",
+  fontWeight: 700,
+  fontSize: 12,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+  color: "var(--text-secondary)",
+  marginBottom: 14,
+  display: "block",
+};
 
 export default function ProgramRegistrationForm({ programId, programName }: Props) {
   const [studentFirstName, setStudentFirstName] = useState("");
@@ -116,6 +134,8 @@ export default function ProgramRegistrationForm({ programId, programName }: Prop
 
   return (
     <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 18, border: "1px solid var(--border-rule)", borderRadius: "var(--radius-control)", padding: "28px 26px", background: "#fff" }}>
+      <fieldset style={{ border: 0, padding: 0, margin: 0, minInlineSize: 0 }}>
+      <legend style={groupStyle}>Who is registering</legend>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
         <div style={fieldWrap}>
           <label style={labelStyle} htmlFor="reg-first">Student first name *</label>
@@ -130,9 +150,12 @@ export default function ProgramRegistrationForm({ programId, programName }: Prop
           <input id="reg-grade" style={fieldStyle} value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="6th grade" />
         </div>
       </div>
+      </fieldset>
 
       <div style={{ height: 1, background: "var(--border-rule)" }} />
 
+      <fieldset style={{ border: 0, padding: 0, margin: 0, minInlineSize: 0 }}>
+      <legend style={groupStyle}>Parent or guardian</legend>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
         <div style={fieldWrap}>
           <label style={labelStyle} htmlFor="reg-parent-name">Parent / guardian name *</label>
@@ -147,7 +170,12 @@ export default function ProgramRegistrationForm({ programId, programName }: Prop
           <input id="reg-parent-phone" style={fieldStyle} value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} autoComplete="tel" />
         </div>
       </div>
+      </fieldset>
 
+      <div style={{ height: 1, background: "var(--border-rule)" }} />
+
+      <fieldset style={{ border: 0, padding: 0, margin: 0, minInlineSize: 0 }}>
+      <legend style={groupStyle}>Where they are</legend>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
         <div style={fieldWrap}>
           <label style={labelStyle} htmlFor="reg-school">School</label>
@@ -162,6 +190,8 @@ export default function ProgramRegistrationForm({ programId, programName }: Prop
           <input id="reg-state" style={fieldStyle} value={state} onChange={(e) => setState(e.target.value)} />
         </div>
       </div>
+
+      </fieldset>
 
       <div style={fieldWrap}>
         <label style={labelStyle} htmlFor="reg-referral">How did you hear about BOW?</label>
