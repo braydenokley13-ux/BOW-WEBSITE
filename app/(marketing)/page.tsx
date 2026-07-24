@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { Button, CapLine, SectionHeader, DecisionCard } from "@/components/ds";
-import ImageSlot from "@/components/site/ImageSlot";
+import { Button, DecisionCard } from "@/components/ds";
 import DataRibbon from "@/components/site/DataRibbon";
 import FaqList from "@/components/site/FaqList";
 import PublicProgramCard from "@/components/site/PublicProgramCard";
@@ -11,10 +10,8 @@ import {
   heroDecisionOptions,
   heroDecisionConsequence,
   concepts,
-  modelSteps,
-  lessonFlow,
+  learningLoop,
   tracks,
-  lessonSteps,
   homeEpisodes,
   pathways,
   formats,
@@ -23,12 +20,28 @@ import {
 } from "@/lib/home";
 import { getActiveTestimonials } from "@/lib/content";
 
-const SECTION_PAD = "clamp(56px,8vw,120px) clamp(18px,4vw,40px)";
+/* ============================================================
+ * Home.
+ *
+ * The page answers, in order: what is this → what does a student actually do
+ * → what can I join → is it real → how do I get in → who teaches it.
+ * Instructor recruitment used to be the third thing a first-time visitor
+ * saw, before the page had explained what BOW is; it now sits after the
+ * proof, where someone might plausibly want to volunteer.
+ *
+ * Two structural rules hold across every section here:
+ *   - Grids declare their column counts (see `.bow-grid-*`). The previous
+ *     `auto-fit` grids left visibly empty cells whenever the item count
+ *     didn't divide into the resolved columns — 8 lesson beats across 5
+ *     columns, 6 pathways across 4.
+ *   - Blue is the accent. Orange appears exactly once on the page, on the
+ *     open instructor call, because that is the only genuine signal.
+ * ============================================================ */
 
 export default async function HomePage() {
   // Testimonials are admin-editable and must be real. Only approved rows are
   // shown — no fabricated seed fallback. The section hides itself when empty.
-  const dbTestimonials = (await getActiveTestimonials());
+  const dbTestimonials = await getActiveTestimonials();
   const upcomingPrograms = (await listPublicPrograms()).slice(0, 3);
   const hasOpenPrograms = upcomingPrograms.length > 0;
   const testimonials = dbTestimonials.map((t) => ({
@@ -36,67 +49,132 @@ export default async function HomePage() {
     who: [t.studentName, t.schoolName, t.trackCompleted ? `Track ${t.trackCompleted}` : ""].filter(Boolean).join(" · ").toUpperCase(),
   }));
 
-  return (
-    <div>
-      {/* ===== HERO A — DRAFT BOARD ===== */}
-      <section style={{ position: "relative", background: "var(--bow-paper)", borderBottom: "1px solid var(--border-rule)", overflow: "clip" }}>
-        <div className="bow-para-upbig" aria-hidden style={{ position: "absolute", top: -40, right: -60, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(180px,30vw,460px)", lineHeight: 0.8, color: "rgba(10,10,11,0.04)", letterSpacing: "-0.04em", pointerEvents: "none" }}>101</div>
-        <div className="bow-para-far" aria-hidden style={{ position: "absolute", left: "-4%", bottom: "-8%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(120px,18vw,260px)", lineHeight: 0.8, color: "rgba(49,87,255,0.05)", letterSpacing: "-0.03em", textTransform: "uppercase", pointerEvents: "none", zIndex: 0 }}>Draft</div>
-        <div className="bow-drift-l" aria-hidden style={{ position: "absolute", left: 0, top: "30%", width: "60%", height: 8, background: "rgba(49,87,255,0.10)", pointerEvents: "none", zIndex: 0 }} />
-        <div className="bow-para-sink" aria-hidden style={{ position: "absolute", right: "6%", bottom: "12%", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(10,10,11,0.16)", pointerEvents: "none", zIndex: 0 }}>ON THE CLOCK</div>
+  const joinPathways = pathways.filter((p) => p.group === "join");
+  const hostPathways = pathways.filter((p) => p.group === "host");
 
-        <div className="bow-container-wide" style={{ padding: "clamp(40px,6vw,80px) clamp(18px,4vw,40px) clamp(48px,7vw,96px)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "clamp(32px,5vw,64px)", alignItems: "center", position: "relative" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 640 }}>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 12, fontWeight: 600, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--bow-orange)" }}>Sports is the hook. Economics is the lesson.</span>
-            <h1 style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(40px,6.4vw,82px)", lineHeight: 0.96, letterSpacing: "-0.015em", textWrap: "balance" }}>
+  return (
+    <div id="main">
+      {/* ===== HERO =====
+       * The right-hand column is a real front-office brief rendered in type
+       * and data rather than a photo slot. The previous composition layered
+       * an orange circle and a blue rectangle under an empty image
+       * placeholder with `mix-blend-mode: color`, which resolved to a purple
+       * gradient blob whenever no photograph was uploaded — i.e. always. */}
+      <section style={{ position: "relative", background: "var(--bow-paper)", borderBottom: "1px solid var(--border-rule)", overflow: "clip" }}>
+        <div className="bow-ghost bow-para-upbig" aria-hidden style={{ top: -40, right: -60, fontSize: "clamp(180px,30vw,460px)" }}>
+          101
+        </div>
+
+        <div
+          className="bow-container-wide bow-split bow-split-center"
+          style={{
+            padding: "clamp(40px,6vw,84px) var(--page-inset) clamp(48px,7vw,96px)",
+            position: "relative",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)", maxWidth: 620 }}>
+            <span className="bow-eyebrow-data" style={{ color: "var(--bow-blue)" }}>
+              Sports is the hook. Economics is the lesson.
+            </span>
+            <h1
+              style={{
+                fontFamily: "var(--font-editorial)", fontWeight: "var(--fw-semibold)",
+                fontSize: "var(--type-lead)", lineHeight: "var(--lh-lead)",
+                letterSpacing: "var(--track-editorial)", textWrap: "balance",
+              }}
+            >
               Learn to make the decisions behind the game.
             </h1>
-            <CapLine weight={7} step={18} stepAt={0.4} style={{ maxWidth: 320 }} />
-            <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: "clamp(17px,1.5vw,21px)", lineHeight: 1.55, color: "var(--bow-slate)", maxWidth: 540 }}>
-              BOW Sports Capital helps middle and high school students learn economics, finance, leadership, and strategy by making the same decisions that shape teams, leagues, and the business of sports.
+            <p className="bow-lead" style={{ maxWidth: "34ch" }}>
+              BOW Sports Capital teaches middle and high school students economics, finance, and strategy by
+              putting them in the chair where the calls actually get made.
             </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6 }}>
+            <div className="bow-actions" style={{ marginTop: "var(--space-2)" }}>
               {hasOpenPrograms ? (
-                <Button href="/programs" variant="primary" size="lg">Find a Program</Button>
+                <Button href="/programs" variant="primary" size="lg">Find a program</Button>
               ) : (
-                <Button href="/sign-up" variant="primary" size="lg">Join the Interest List</Button>
+                <Button href="/sign-up" variant="primary" size="lg">Join the interest list</Button>
               )}
-              <Button href="#howitworks" variant="secondary" size="lg">See How BOW Works</Button>
+              <Button href="#how" variant="secondary" size="lg">See how it works</Button>
             </div>
-            <Link href="/podcast" className="bow-link" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)", marginTop: 2 }}>
-              Listen to the Podcast →
-            </Link>
           </div>
 
-          {/* Scouting-report collage card */}
-          <div style={{ position: "relative" }}>
-            <div style={{ position: "relative", aspectRatio: "4/5", background: "var(--bow-ink)", overflow: "hidden", border: "1px solid var(--border-strong)" }}>
-              <div style={{ position: "absolute", left: "-18%", top: "14%", width: "78%", aspectRatio: "1", borderRadius: 999, background: "var(--bow-orange)" }} />
-              <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)", backgroundSize: "36px 36px" }} />
-              <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "42%", backgroundImage: "repeating-linear-gradient(120deg, rgba(255,255,255,0.16) 0 1.5px, transparent 1.5px 13px)" }} />
-              <div style={{ position: "absolute", right: -22, top: -44, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(190px,30vw,300px)", lineHeight: 0.7, color: "rgba(255,255,255,0.12)", letterSpacing: "-0.04em", zIndex: 2 }}>03</div>
-              <div style={{ position: "absolute", left: "50%", bottom: 0, transform: "translateX(-50%)", width: "84%", height: "80%", zIndex: 3 }}>
-                <ImageSlot placeholder="BOW front office scouting report" fit="cover" position="50% 12%" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", filter: "grayscale(1) contrast(1.08) brightness(1.04)" }} />
-                <div style={{ position: "absolute", inset: 0, background: "var(--bow-blue)", mixBlendMode: "color", opacity: 0.42, pointerEvents: "none" }} />
-                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,10,11,0.5), transparent 45%)", pointerEvents: "none" }} />
+          {/* Front-office brief — the product, shown rather than described. */}
+          <div style={{ position: "relative", maxWidth: 560, width: "100%", justifySelf: "end" }}>
+            <div style={{ position: "relative", background: "var(--bow-ink)", color: "var(--bow-on-ink)", border: "1px solid var(--border-strong)", overflow: "hidden" }}>
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute", inset: 0, pointerEvents: "none",
+                  backgroundImage:
+                    "linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)",
+                  backgroundSize: "34px 34px",
+                }}
+              />
+              <div
+                style={{
+                  position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  gap: "var(--space-4)", padding: "14px 20px", borderBottom: "1px solid var(--bow-dark-border)",
+                }}
+              >
+                <span className="bow-eyebrow-data" style={{ color: "var(--bow-on-ink-subtle)" }}>Front-Office Brief</span>
+                <span className="bow-eyebrow-data" style={{ background: "var(--bow-blue)", color: "#fff", padding: "4px 9px" }}>
+                  Round 03
+                </span>
               </div>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "16px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.14)", zIndex: 4 }}>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "#fff" }}>Scouting Report</span>
-                <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15, letterSpacing: "0.12em", textTransform: "uppercase", color: "#fff", background: "var(--bow-blue)", padding: "2px 8px" }}>Grade · A−</span>
+
+              <div style={{ position: "relative", padding: "clamp(20px,2.4vw,28px) 20px" }}>
+                <p
+                  style={{
+                    fontFamily: "var(--font-editorial)", fontWeight: "var(--fw-medium)",
+                    fontSize: "var(--type-card)", lineHeight: 1.28, letterSpacing: "var(--track-editorial)",
+                  }}
+                >
+                  Your franchise point guard wants a max extension. The cap says you can&rsquo;t afford it next
+                  summer.
+                </p>
+
+                <div className="bow-grid bow-grid-2" style={{ gap: 1, background: "var(--bow-dark-border)", border: "1px solid var(--bow-dark-border)", marginTop: "var(--space-6)" }}>
+                  {heroDecisionFacts.map((f) => (
+                    <div key={f.label} style={{ background: "var(--bow-ink)", padding: "12px 14px" }}>
+                      <div className="bow-eyebrow-data" style={{ color: "var(--bow-on-ink-subtle)", marginBottom: 6 }}>{f.label}</div>
+                      <div
+                        className="bow-stat"
+                        style={{ fontSize: 22, color: f.tone === "negative" ? "var(--bow-negative)" : "var(--bow-on-ink)" }}
+                      >
+                        {f.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: "var(--space-6)", display: "flex", flexWrap: "wrap", gap: "var(--space-2)" }}>
+                  {heroDecisionUnknowns.map((u) => (
+                    <span
+                      key={u}
+                      className="bow-data"
+                      style={{
+                        fontSize: 10.5, letterSpacing: "0.1em", padding: "5px 9px",
+                        border: "1px solid var(--bow-dark-border)", color: "var(--bow-on-ink-subtle)",
+                      }}
+                    >
+                      {u}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: 18, background: "linear-gradient(to top, rgba(10,10,11,0.94), transparent)", zIndex: 4 }}>
-                <div style={{ height: 5, width: 64, background: "var(--bow-blue)", marginBottom: 12 }} />
-                <div style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "#9a9da6" }}>War Room · Round 03</div>
-                <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, textTransform: "uppercase", color: "#fff", letterSpacing: "0.01em" }}>You&apos;re on the clock.</div>
+
+              <div
+                style={{
+                  position: "relative", padding: "14px 20px", borderTop: "1px solid var(--bow-dark-border)",
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-4)",
+                }}
+              >
+                <span className="bow-eyebrow-data" style={{ color: "var(--bow-on-ink-subtle)" }}>You&rsquo;re on the clock</span>
+                <Link href="#decide" className="bow-cta-link" style={{ color: "#8fa4ff" }}>
+                  Make the call
+                </Link>
               </div>
-            </div>
-            <div className="bow-para-down" style={{ position: "absolute", top: -18, left: -18, background: "var(--bow-blue)", color: "#fff", padding: "10px 14px", zIndex: 5 }}>
-              <div style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", opacity: 0.8 }}>Cap Space</div>
-              <div style={{ fontFamily: "var(--font-data)", fontWeight: 600, fontSize: 22 }}>-$8.4M</div>
-            </div>
-            <div className="bow-para-up" style={{ position: "absolute", bottom: 40, right: -18, background: "#fff", border: "1px solid var(--border-strong)", padding: "10px 14px", zIndex: 5 }}>
-              <div style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Title Odds</div>
-              <div style={{ fontFamily: "var(--font-data)", fontWeight: 600, fontSize: 22, color: "var(--bow-ink)" }}>14%</div>
             </div>
           </div>
         </div>
@@ -104,200 +182,83 @@ export default async function HomePage() {
 
       <DataRibbon />
 
-      {/* ===== UPCOMING PROGRAMS ===== */}
-      {upcomingPrograms.length > 0 && (
-        <section style={{ background: "var(--bow-paper)", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)" }}>
-          <div className="bow-container">
-            <SectionHeader kicker="Join Now" title="Upcoming programs" style={{ marginBottom: 32 }} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(16px,2vw,24px)" }}>
-              {upcomingPrograms.map((program) => (
-                <PublicProgramCard key={program.id} program={program} />
-              ))}
-            </div>
-            <div style={{ marginTop: 28 }}>
-              <Button href="/programs" variant="secondary" size="md">See All Programs</Button>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ===== INSTRUCTOR RECRUITMENT ===== */}
-      <section style={{ background: "var(--bow-ink)", color: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--bow-dark-border)", position: "relative", overflow: "clip" }}>
-        <div aria-hidden className="bow-para-far" style={{ position: "absolute", right: "-4%", bottom: "-12%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(150px,24vw,390px)", lineHeight: .75, color: "rgba(255,255,255,.04)" }}>COACH</div>
-        <div className="bow-container" style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: "clamp(32px,6vw,72px)", alignItems: "center" }}>
-          <div>
-            <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--bow-orange)" }}>Now recruiting volunteer instructors</span>
-            <h2 style={{ marginTop: 12, fontFamily: "var(--font-editorial)", fontSize: "clamp(36px,5vw,62px)", lineHeight: 1, textWrap: "balance" }}>Help us teach the next generation of sports decision-makers.</h2>
-            <p style={{ marginTop: 22, maxWidth: 620, fontSize: 18, lineHeight: 1.6, color: "#b9bcc4" }}>Teaching with BOW is a volunteer role. Instructors guide young people through the economics, finance, leadership, and strategy behind sports. We provide the curriculum and training. You bring preparation, judgment, energy, and the willingness to improve.</p>
-            <div style={{ marginTop: 28, display: "flex", flexWrap: "wrap", gap: 12 }}><Button href="/teach" variant="primary" size="lg">Explore Teaching at BOW</Button><Button href="/join/sports-economics-instructor" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}>View the Opening</Button></div>
-          </div>
-          <div style={{ display: "grid", gap: 1, background: "var(--bow-dark-border)", border: "1px solid var(--bow-dark-border)" }}>
-            {["Clear hiring process", "Training before assignment", "Real work with evidence", "Coaching and growth"].map((item, index) => <div key={item} style={{ background: "var(--bow-dark-surface)", padding: "20px 22px", display: "flex", gap: 16, alignItems: "center" }}><span style={{ fontFamily: "var(--font-data)", color: "var(--bow-blue)" }}>{String(index + 1).padStart(2, "0")}</span><span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 22, textTransform: "uppercase" }}>{item}</span></div>)}
-          </div>
-        </div>
-      </section>
-
-      {/* ===== WHAT BOW IS ===== */}
-      <section id="howitworks" style={{ background: "var(--bow-paper)", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-far" aria-hidden style={{ position: "absolute", right: "-6%", top: "4%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(120px,20vw,340px)", lineHeight: 0.78, color: "rgba(10,10,11,0.035)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none", zIndex: 0 }}>Decide</div>
-        <div className="bow-container" style={{ position: "relative" }}>
-          <div className="bow-reveal" style={{ maxWidth: 860 }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-blue)" }}>Welcome to the Front Office</span>
-            <h2 className="bow-wipe" style={{ margin: "12px 0 0", fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(30px,4.4vw,56px)", lineHeight: 1.02, letterSpacing: "-0.01em", textWrap: "balance" }}>
-              Sports are the entry point. Decision-making is the education.
-            </h2>
-            <p style={{ margin: "22px 0 0", fontFamily: "var(--font-interface)", fontSize: "clamp(17px,1.4vw,21px)", lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 680 }}>
-              BOW doesn&apos;t teach sports trivia. Students learn by running into the same constraints real front offices face — and defending the calls they make.
+      {/* ===== WHAT BOW IS + THE LOOP ===== */}
+      <section id="how" className="bow-section bow-section-paper">
+        <div className="bow-container">
+          <div className="bow-section-intro bow-section-intro-wide bow-reveal">
+            <span className="bow-eyebrow" style={{ color: "var(--bow-blue)" }}>Welcome to the front office</span>
+            <h2 className="bow-headline">Sports are the entry point. Decision-making is the education.</h2>
+            <p className="bow-lead">
+              BOW doesn&rsquo;t teach sports trivia. Students run into the same constraints real front offices
+              face — and defend the calls they make.
             </p>
           </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 36 }}>
+          <ul
+            style={{
+              display: "flex", flexWrap: "wrap", gap: "var(--space-2)",
+              marginTop: "var(--space-8)", padding: 0, listStyle: "none",
+            }}
+          >
             {concepts.map((c) => (
-              <span key={c} style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14, padding: "8px 16px", border: "1px solid var(--border-rule)", borderRadius: 999, background: "#fff" }}>{c}</span>
+              <li
+                key={c}
+                style={{
+                  fontFamily: "var(--font-interface)", fontWeight: "var(--fw-medium)",
+                  fontSize: "var(--type-body-sm)", padding: "7px 14px",
+                  border: "1px solid var(--border-rule)", borderRadius: "var(--radius-pill)",
+                  background: "var(--bow-white)", color: "var(--text-secondary)",
+                }}
+              >
+                {c}
+              </li>
             ))}
-          </div>
+          </ul>
 
-          <div style={{ marginTop: 52, borderTop: "1px solid var(--border-rule)", borderBottom: "1px solid var(--border-rule)", padding: "36px 0" }}>
-            <div style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--bow-slate)", marginBottom: 22 }}>The BOW Learning Model</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 18 }}>
-              {modelSteps.map((m) => (
-                <div key={m.n} className="bow-reveal-sm" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-blue)", fontWeight: 600 }}>{m.n}</span>
-                  <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(22px,2.4vw,30px)", textTransform: "uppercase", letterSpacing: "-0.01em", lineHeight: 0.96 }}>{m.label}</span>
-                  <div style={{ height: 5, background: "var(--bow-blue)", width: "100%" }} />
-                  <span style={{ fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)", lineHeight: 1.5 }}>{m.body}</span>
-                </div>
+          {/* One loop, stated once. This was previously two four-up grids —
+            * "The BOW Learning Model" and "How Each Lesson Works" — naming the
+            * same four beats in different words. */}
+          <div style={{ marginTop: "clamp(40px,5vw,64px)", borderTop: "1px solid var(--border-rule)", paddingTop: "var(--space-8)" }}>
+            <div className="bow-eyebrow-data" style={{ color: "var(--text-secondary)", marginBottom: "var(--space-6)" }}>
+              Every lesson runs the same loop
+            </div>
+            <ol className="bow-grid bow-grid-4" style={{ padding: 0, margin: 0, listStyle: "none" }}>
+              {learningLoop.map((m) => (
+                <li key={m.n} className="bow-reveal-sm" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+                  <span className="bow-data" style={{ fontSize: "var(--type-meta)", color: "var(--bow-blue)", fontWeight: "var(--fw-semibold)" }}>{m.n}</span>
+                  <span className="bow-display" style={{ fontSize: "var(--type-section)" }}>{m.label}</span>
+                  <div style={{ height: 4, background: "var(--bow-blue)", width: "100%" }} />
+                  <span style={{ fontFamily: "var(--font-interface)", fontSize: "var(--type-body-sm)", color: "var(--text-secondary)", lineHeight: "var(--lh-body)" }}>
+                    {m.body}
+                  </span>
+                </li>
               ))}
-            </div>
+            </ol>
           </div>
         </div>
       </section>
 
-      {/* ===== CHOOSE YOUR TRACK ===== */}
-      <section id="tracks" style={{ background: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-sink" aria-hidden style={{ position: "absolute", left: "-3%", top: "8%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(120px,18vw,300px)", lineHeight: 0.8, color: "rgba(10,10,11,0.035)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none", zIndex: 0 }}>Path</div>
-        <div className="bow-container" style={{ position: "relative" }}>
-          <div className="bow-reveal" style={{ marginBottom: 44 }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-blue)" }}>The Programs</span>
-            <h2 style={{ margin: "10px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(34px,5vw,64px)", lineHeight: 0.92, letterSpacing: "-0.02em", textTransform: "uppercase", maxWidth: "16ch" }}>Choose your path into sports business.</h2>
-          </div>
-          <div className="bow-track-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", border: "1px solid var(--border-rule)" }}>
-            {tracks.map((t) => (
-              <div key={t.num} style={{ display: "flex", flexDirection: "column", gap: 18, padding: "clamp(24px,3vw,36px)", borderRight: "1px solid var(--border-rule)", background: t.bg, color: t.fg, position: "relative", minHeight: "100%" }}>
-                {t.recommended && (
-                  <div style={{ position: "absolute", top: 0, left: 0, background: "var(--bow-blue)", color: "#fff", fontFamily: "var(--font-data)", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", padding: "5px 10px" }}>Recommended Start</div>
-                )}
-                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginTop: t.topPad }}>
-                  <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(56px,7vw,92px)", lineHeight: 0.8, letterSpacing: "-0.03em" }}>{t.num}</span>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: t.kindColor }}>{t.kind}</span>
-                </div>
-                <div style={{ height: 5, background: t.line, width: 64 }} />
-                <h3 style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: 24, lineHeight: 1.1 }}>{t.title}</h3>
-                <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.55, color: t.muted }}>{t.desc}</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 4 }}>
-                  {t.meta.map((row) => (
-                    <div key={row} style={{ display: "flex", alignItems: "center", gap: 9, fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.02em", color: t.muted }}>
-                      <span style={{ width: 4, height: 4, background: t.line, display: "inline-block" }} />
-                      {row}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ marginTop: "auto", paddingTop: 18 }}>
-                  <Button href={t.href} variant={t.btnVariant} size="md" full>{t.cta}</Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ===== HOW EACH LESSON WORKS (dark) ===== */}
-      <section className="bow-front-office" style={{ background: "var(--bow-ink)", color: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--bow-dark-border)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-far" aria-hidden style={{ position: "absolute", right: "-2%", top: "-10%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(180px,30vw,520px)", lineHeight: 0.7, color: "rgba(255,255,255,0.04)", letterSpacing: "-0.04em", pointerEvents: "none", zIndex: 0 }}>04</div>
-        <div className="bow-container" style={{ position: "relative" }}>
-          <div style={{ marginBottom: 48, maxWidth: 760 }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)" }}>How Each Lesson Works</span>
-            <h2 className="bow-wipe" style={{ margin: "12px 0 0", fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(30px,4.4vw,54px)", lineHeight: 1.02, letterSpacing: "-0.01em", textWrap: "balance" }}>
-              Not a simulation library. A structured way to make decisions.
-            </h2>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 1, background: "var(--bow-dark-border)", border: "1px solid var(--bow-dark-border)" }}>
-            {lessonFlow.map((s) => (
-              <div key={s.n} className="bow-reveal-sm" style={{ background: "var(--bow-ink)", padding: "clamp(24px,2.6vw,34px)", display: "flex", flexDirection: "column", gap: 14 }}>
-                <span style={{ fontFamily: "var(--font-data)", fontWeight: 600, fontSize: 30, color: "var(--bow-blue)" }}>{s.n}</span>
-                <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 22, textTransform: "uppercase", letterSpacing: "-0.01em", lineHeight: 1 }}>{s.label}</span>
-                <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14.5, lineHeight: 1.55, color: "#b9bcc4" }}>{s.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ===== LESSON ARCHITECTURE ===== */}
-      <section id="lessons" style={{ background: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-sink" aria-hidden style={{ position: "absolute", left: "-3%", top: "8%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(120px,18vw,300px)", lineHeight: 0.8, color: "rgba(10,10,11,0.03)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none", zIndex: 0 }}>Case</div>
-        <div className="bow-container" style={{ position: "relative" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "clamp(24px,4vw,52px)", alignItems: "start", marginBottom: 52 }}>
-            <div>
-              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)" }}>Lesson Architecture</span>
-              <h2 className="bow-wipe" style={{ margin: "12px 0 0", fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(30px,4.4vw,54px)", lineHeight: 1.02, letterSpacing: "-0.01em", textWrap: "balance" }}>Every lesson is a front-office case file.</h2>
-              <p style={{ margin: "20px 0 0", fontFamily: "var(--font-interface)", fontSize: "clamp(16px,1.4vw,19px)", lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 480 }}>The lesson isn’t the information delivered. The lesson is the decision the content forces you to make.</p>
-            </div>
-            <div style={{ border: "1px solid var(--border-rule)", borderLeft: "5px solid var(--bow-blue)", padding: "clamp(20px,2.4vw,28px)", background: "var(--bow-paper)" }}>
-              <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-slate)" }}>Example · Track 101 · M1 · L2</span>
-              <h3 style={{ margin: "10px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 24, textTransform: "uppercase", letterSpacing: "-0.01em", lineHeight: 0.95 }}>Opportunity Cost, in Trades</h3>
-              <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-slate)", lineHeight: 1.5 }}>You’re the GM. A title contender wants your franchise player. Win sooner, or keep the asset everyone wants? Every yes is a no somewhere else on the roster.</p>
-              <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 10, padding: "4px 10px", border: "1px solid var(--border-rule)", letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>14 MIN</span>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 10, padding: "4px 10px", border: "1px solid var(--bow-blue)", letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)" }}>SIM READY</span>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 10, padding: "4px 10px", border: "1px solid var(--bow-orange)", letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-orange)" }}>EP 04</span>
-              </div>
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 1, background: "var(--border-rule)", border: "1px solid var(--border-rule)" }}>
-            {lessonSteps.map((s) => (
-              <div key={s.n} className="bow-reveal-sm" style={{ background: s.bg, color: s.fg, padding: "clamp(20px,2.2vw,26px)", display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontFamily: "var(--font-data)", fontWeight: 700, fontSize: 26, color: s.numColor, lineHeight: 0.9 }}>{s.n}</span>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: s.tagColor, border: `1px solid ${s.tagColor}`, padding: "2px 7px" }}>{s.tag}</span>
-                </div>
-                <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 17, textTransform: "uppercase", letterSpacing: "-0.01em", lineHeight: 1 }}>{s.label}</span>
-                <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.55, color: s.muted }}>{s.body}</p>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 36, display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
-            <Button href="/programs/track-101" variant="primary" size="lg">Explore Track 101</Button>
-            <Button href="/programs" variant="secondary" size="lg">See All Programs</Button>
-          </div>
-        </div>
-      </section>
-
-      {/* ===== SIMULATION SPOTLIGHT ===== */}
-      <section id="simulations" className="bow-front-office" style={{ background: "var(--bow-ink)", color: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--bow-dark-border)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-upbig" aria-hidden style={{ position: "absolute", inset: "-20% 0", backgroundImage: "linear-gradient(rgba(49,87,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(49,87,255,0.06) 1px, transparent 1px)", backgroundSize: "48px 48px", pointerEvents: "none", zIndex: 0 }} />
-        <div className="bow-para-sink" aria-hidden style={{ position: "absolute", left: "-3%", top: "-8%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,26vw,460px)", lineHeight: 0.7, color: "rgba(255,255,255,0.035)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none", zIndex: 0 }}>Make It</div>
-        <div className="bow-container" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "clamp(28px,4vw,56px)", alignItems: "center", position: "relative" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)" }}>Simulation Spotlight</span>
-            <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(34px,5vw,68px)", lineHeight: 0.9, letterSpacing: "-0.02em", textTransform: "uppercase" }}>Don&apos;t just learn the decision. Make it.</h2>
-            <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 17, lineHeight: 1.6, color: "#b9bcc4", maxWidth: 520 }}>
-              Every lesson ends in a standalone interactive experience where you take the role, weigh what you know against what you don&apos;t, and live with the result. Here&apos;s a brief from the war room.
+      {/* ===== THE DECISION — the product demo ===== */}
+      <section id="decide" className="bow-section bow-section-ink bow-front-office">
+        <div className="bow-container bow-split bow-split-center">
+          <div className="bow-section-intro">
+            <span className="bow-eyebrow" style={{ color: "var(--bow-blue)" }}>Try the simulation</span>
+            <h2 className="bow-display" style={{ fontSize: "var(--type-page)" }}>Don&rsquo;t just learn the decision. Make it.</h2>
+            <p className="bow-lead">
+              Every lesson ends in an interactive brief: take the role, weigh what you know against what you
+              don&rsquo;t, and live with the result.
             </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginTop: 6 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-8)", marginTop: "var(--space-4)" }}>
               {[
                 ["Role", "General Manager"],
                 ["Runtime", "12–18 min"],
                 ["Format", "Solo or group"],
               ].map(([k, v]) => (
-                <div key={k} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#6d7078" }}>{k}</span>
-                  <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 15 }}>{v}</span>
+                <div key={k} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span className="bow-eyebrow-data" style={{ color: "var(--bow-on-ink-subtle)" }}>{k}</span>
+                  <span style={{ fontFamily: "var(--font-interface)", fontWeight: "var(--fw-semibold)", fontSize: "var(--type-body)" }}>{v}</span>
                 </div>
               ))}
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <Button href="/simulation" variant="primary" size="lg">Preview the Simulation</Button>
             </div>
           </div>
           <div>
@@ -315,108 +276,113 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ===== PODCAST ===== */}
-      <section id="podcast" style={{ background: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-far" aria-hidden style={{ position: "absolute", right: "-4%", top: "2%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(110px,17vw,280px)", lineHeight: 0.8, color: "rgba(10,10,11,0.035)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none", zIndex: 0 }}>On Air</div>
-        <div className="bow-container" style={{ position: "relative" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "clamp(28px,4vw,56px)", alignItems: "start" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-blue)" }}>The BOW Sports Capital Podcast</span>
-              <h2 style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(30px,4.2vw,52px)", lineHeight: 1.02, letterSpacing: "-0.01em", textWrap: "balance" }}>The conversations behind the decisions.</h2>
-              <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 17, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 520 }}>Each episode connects sports headlines, front-office strategy, and business concepts to the decisions students make throughout the curriculum.</p>
-              <div style={{ marginTop: 6 }}>
-                <Button href="/podcast" variant="ink" size="md">Explore the Podcast</Button>
-              </div>
-              <div style={{ marginTop: 12, border: "1px solid var(--border-rule)", display: "flex", alignItems: "stretch" }}>
-                <div style={{ flex: "0 0 128px", background: "var(--bow-ink)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-                  <div style={{ width: 46, height: 46, borderRadius: 999, background: "var(--bow-blue)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ color: "#fff", fontSize: 18, marginLeft: 3 }}>▶</span></div>
-                  <span style={{ position: "absolute", bottom: 8, left: 0, right: 0, textAlign: "center", fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.1em", color: "#9a9da6" }}>EP 07</span>
+      {/* ===== TRACKS ===== */}
+      <section id="tracks" className="bow-section bow-section-raised">
+        <div className="bow-container">
+          <div className="bow-section-intro bow-reveal" style={{ marginBottom: "clamp(28px,3.5vw,44px)" }}>
+            <span className="bow-eyebrow" style={{ color: "var(--bow-blue)" }}>The programs</span>
+            <h2 className="bow-display">Choose your path into sports business.</h2>
+          </div>
+          <div className="bow-grid bow-grid-2 bow-grid-ruled">
+            {tracks.map((t) => (
+              <div
+                key={t.num}
+                style={{
+                  display: "flex", flexDirection: "column", gap: "var(--space-4)",
+                  padding: "clamp(24px,3vw,36px)", position: "relative",
+                  background: t.recommended ? "var(--bow-white)" : "var(--bow-paper)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", minHeight: 22 }}>
+                  <span className="bow-eyebrow-data" style={{ color: "var(--text-secondary)" }}>{t.kind}</span>
+                  {t.recommended && (
+                    <span className="bow-eyebrow-data" style={{ background: "var(--bow-blue)", color: "#fff", padding: "4px 9px" }}>
+                      Start here
+                    </span>
+                  )}
                 </div>
-                <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-orange)" }}>Latest · Salary Cap</span>
-                  <h3 style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: 19, lineHeight: 1.15 }}>The Apron Era: How One Rule Rewired the League</h3>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>38 MIN · CONNECTS TO TRACK 101 · M3 L2</span>
+                <span
+                  className="bow-display"
+                  style={{ fontSize: "clamp(56px,7vw,92px)", lineHeight: 0.8, letterSpacing: "-0.03em" }}
+                >
+                  {t.num}
+                </span>
+                <div style={{ height: 4, background: "var(--bow-blue)", width: 64 }} />
+                <h3 style={{ fontFamily: "var(--font-editorial)", fontWeight: "var(--fw-semibold)", fontSize: "var(--type-card)", lineHeight: "var(--lh-card)" }}>
+                  {t.title}
+                </h3>
+                <p style={{ fontFamily: "var(--font-interface)", fontSize: "var(--type-body-sm)", lineHeight: "var(--lh-body)", color: "var(--text-secondary)" }}>
+                  {t.desc}
+                </p>
+                <ul style={{ display: "flex", flexDirection: "column", gap: 6, margin: 0, padding: 0, listStyle: "none" }}>
+                  {t.meta.map((row) => (
+                    <li key={row} className="bow-data" style={{ display: "flex", alignItems: "center", gap: 9, fontSize: "var(--type-meta)", color: "var(--text-secondary)" }}>
+                      <span aria-hidden style={{ width: 4, height: 4, background: "var(--bow-blue)", display: "inline-block" }} />
+                      {row}
+                    </li>
+                  ))}
+                </ul>
+                <div style={{ marginTop: "auto", paddingTop: "var(--space-4)" }}>
+                  <Button href={t.href} variant={t.recommended ? "primary" : "secondary"} size="md" full>
+                    {t.cta}
+                  </Button>
                 </div>
               </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ===== UPCOMING PROGRAMS =====
+       * Sits after the explanation now, not before it: the old order asked a
+       * visitor to register for something the page hadn't described yet. */}
+      {upcomingPrograms.length > 0 && (
+        <section className="bow-section bow-section-paper">
+          <div className="bow-container">
+            <div className="bow-section-intro" style={{ marginBottom: "clamp(24px,3vw,36px)" }}>
+              <span className="bow-eyebrow" style={{ color: "var(--bow-blue)" }}>Open now</span>
+              <h2 className="bow-display">Upcoming programs</h2>
             </div>
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {homeEpisodes.map((e) => (
-                <Link key={e.num} href="/podcast" style={{ display: "flex", gap: 16, padding: "18px 0", borderBottom: "1px solid var(--border-rule)", alignItems: "center", color: "var(--bow-ink)" }}>
-                  <span style={{ fontFamily: "var(--font-data)", fontWeight: 600, fontSize: 13, color: "var(--bow-slate)", flex: "0 0 42px" }}>{e.num}</span>
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-blue)" }}>{e.topic}</span>
-                    <h4 style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: 18, lineHeight: 1.2 }}>{e.title}</h4>
-                    <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{e.meta}</span>
-                  </div>
-                </Link>
+            <div className="bow-grid bow-grid-3">
+              {upcomingPrograms.map((program) => (
+                <PublicProgramCard key={program.id} program={program} />
               ))}
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ===== AUDIENCE PATHWAYS ===== */}
-      <section style={{ background: "var(--bow-paper)", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-far" aria-hidden style={{ position: "absolute", left: "-4%", bottom: "-8%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(120px,18vw,320px)", lineHeight: 0.8, color: "rgba(10,10,11,0.035)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none", zIndex: 0 }}>Enter</div>
-        <div className="bow-container" style={{ position: "relative" }}>
-          <div className="bow-reveal" style={{ marginBottom: 44, maxWidth: 760 }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-blue)" }}>Find Your Way In</span>
-            <h2 style={{ margin: "10px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,4.8vw,60px)", lineHeight: 0.92, letterSpacing: "-0.02em", textTransform: "uppercase" }}>Find your way into the front office.</h2>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "clamp(16px,2vw,24px)" }}>
-            {pathways.map((p) => (
-              <div key={p.title} className="bow-reveal-sm" style={{ background: "#fff", border: "1px solid var(--border-rule)", borderTop: `4px solid ${p.accent}`, padding: "26px 22px", display: "flex", flexDirection: "column", gap: 12, minHeight: "100%" }}>
-                <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 26, textTransform: "uppercase", letterSpacing: "-0.01em" }}>{p.title}</span>
-                <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14.5, lineHeight: 1.55, color: "var(--bow-slate)", flex: 1 }}>{p.body}</p>
-                <Link href={p.href} className="bow-link" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)" }}>{p.cta} →</Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ===== PARTNERSHIPS ===== */}
-      <section style={{ background: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-sink" aria-hidden style={{ position: "absolute", right: "-3%", top: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(110px,17vw,300px)", lineHeight: 0.8, color: "rgba(10,10,11,0.035)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none", zIndex: 0 }}>Campus</div>
-        <div className="bow-container" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "clamp(28px,4vw,56px)", alignItems: "center", position: "relative" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-orange)" }}>For Schools &amp; Camps</span>
-            <h2 style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(30px,4.2vw,52px)", lineHeight: 1.02, letterSpacing: "-0.01em", textWrap: "balance" }}>Bring the front office to your students.</h2>
-            <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 17, lineHeight: 1.6, color: "var(--bow-slate)", maxWidth: 480 }}>BOW works with schools, camps, and enrichment programs to put students in the room where sports-business decisions get made — for an afternoon or a full season.</p>
-            <div style={{ marginTop: 6 }}>
-              <Button href="/get-involved/schools" variant="primary" size="md">Explore Partnerships</Button>
+            <div style={{ marginTop: "var(--space-8)" }}>
+              <Button href="/programs" variant="secondary" size="md">See all programs</Button>
             </div>
           </div>
-          <div style={{ border: "1px solid var(--border-rule)" }}>
-            {formats.map((f) => (
-              <div key={f.n} style={{ display: "flex", alignItems: "center", gap: 16, padding: "18px 22px", borderBottom: "1px solid var(--border-rule)" }}>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 12, fontWeight: 600, color: "var(--bow-blue)", flex: "0 0 28px" }}>{f.n}</span>
-                <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, textTransform: "uppercase", letterSpacing: "0.01em", flex: 1 }}>{f.title}</span>
-                <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-slate)" }}>{f.detail}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* ===== IMPACT / CREDIBILITY ===== */}
-      <section id="about" className="bow-front-office" style={{ background: "var(--bow-ink)", color: "#fff", padding: SECTION_PAD, borderBottom: "1px solid var(--bow-dark-border)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-far" aria-hidden style={{ position: "absolute", right: "-4%", top: "-6%", fontFamily: "var(--font-editorial)", fontStyle: "italic", fontWeight: 600, fontSize: "clamp(120px,20vw,360px)", lineHeight: 0.78, color: "rgba(255,255,255,0.035)", letterSpacing: "-0.02em", pointerEvents: "none", zIndex: 0 }}>Proof</div>
-        <div className="bow-container" style={{ position: "relative" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 1, background: "var(--bow-dark-border)", border: "1px solid var(--bow-dark-border)" }}>
+      {/* ===== PROOF ===== */}
+      <section id="about" className="bow-section bow-section-ink bow-front-office">
+        <div className="bow-container">
+          <div className="bow-section-intro" style={{ marginBottom: "clamp(28px,3.5vw,44px)" }}>
+            <span className="bow-eyebrow" style={{ color: "var(--bow-blue)" }}>Where BOW stands</span>
+            <h2 className="bow-headline">Built and counted, not projected.</h2>
+          </div>
+          <div className="bow-grid bow-grid-ruled" style={{ gridTemplateColumns: `repeat(${Math.min(impact.length, 5)}, minmax(0, 1fr))` }}>
             {impact.map((i) => (
-              <div key={i.label} style={{ background: "var(--bow-ink)", padding: "28px 22px", display: "flex", flexDirection: "column", gap: 8 }}>
-                <span style={{ fontFamily: "var(--font-data)", fontWeight: 600, fontSize: "clamp(30px,4vw,46px)", letterSpacing: "-0.01em", color: "#fff" }}>{i.value}</span>
-                <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9a9da6" }}>{i.label}</span>
+              <div key={i.label} style={{ background: "var(--bow-ink)", padding: "26px 20px", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+                <span className="bow-stat" style={{ fontSize: "clamp(28px,3.4vw,42px)", color: "var(--bow-on-ink)" }}>{i.value}</span>
+                <span className="bow-eyebrow" style={{ color: "var(--bow-on-ink-subtle)" }}>{i.label}</span>
               </div>
             ))}
           </div>
           {testimonials.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(20px,3vw,40px)", marginTop: 40 }}>
+            <div className="bow-grid bow-grid-3" style={{ gap: "clamp(20px,3vw,40px)", marginTop: "clamp(32px,4vw,48px)" }}>
               {testimonials.map((q) => (
-                <figure key={q.who} style={{ margin: 0, display: "flex", flexDirection: "column", gap: 14 }}>
-                  <blockquote style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 500, fontSize: 22, lineHeight: 1.3, color: "#fff" }}>&ldquo;{q.text}&rdquo;</blockquote>
-                  <figcaption style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#9a9da6" }}>{q.who}</figcaption>
+                <figure key={q.who} style={{ margin: 0, display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+                  <blockquote
+                    style={{
+                      fontFamily: "var(--font-editorial)", fontWeight: "var(--fw-medium)",
+                      fontSize: "var(--type-card)", lineHeight: 1.35, color: "var(--bow-on-ink)",
+                    }}
+                  >
+                    &ldquo;{q.text}&rdquo;
+                  </blockquote>
+                  <figcaption className="bow-data" style={{ fontSize: "var(--type-meta)", color: "var(--bow-on-ink-subtle)" }}>{q.who}</figcaption>
                 </figure>
               ))}
             </div>
@@ -424,27 +390,170 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ===== FAQ ===== */}
-      <section id="faq" style={{ background: "var(--bow-paper)", padding: SECTION_PAD, borderBottom: "1px solid var(--border-rule)" }}>
+      {/* ===== WAYS IN =====
+       * Six peers in two labelled groups, 3-up. The previous 4-column
+       * auto-fit grid rendered them 4 + 2, leaving two empty cells, and gave
+       * each card a different accent colour implying a taxonomy. */}
+      <section className="bow-section bow-section-paper">
         <div className="bow-container">
-          <div style={{ marginBottom: 44, maxWidth: 640 }}>
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--bow-blue)" }}>FAQ</span>
-            <h2 style={{ margin: "10px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(34px,5vw,64px)", lineHeight: 0.92, letterSpacing: "-0.02em", textTransform: "uppercase", maxWidth: "14ch" }}>What people want to know.</h2>
+          <div className="bow-section-intro bow-reveal" style={{ marginBottom: "clamp(28px,3.5vw,44px)" }}>
+            <span className="bow-eyebrow" style={{ color: "var(--bow-blue)" }}>Find your way in</span>
+            <h2 className="bow-display">However you got here, there&rsquo;s a door.</h2>
+          </div>
+
+          {[
+            { head: "Join a program", items: joinPathways },
+            { head: "Bring BOW to your group", items: hostPathways },
+          ].map((band) => (
+            <div key={band.head} style={{ marginBottom: "var(--space-12)" }}>
+              <div className="bow-eyebrow-data" style={{ color: "var(--text-secondary)", marginBottom: "var(--space-4)" }}>{band.head}</div>
+              <div className="bow-grid bow-grid-2" style={{ gridTemplateColumns: band.items.length >= 4 ? undefined : "repeat(2, minmax(0,1fr))" }}>
+                {band.items.map((p) => (
+                  <Link
+                    key={p.title}
+                    href={p.href}
+                    className="bow-card"
+                    style={{
+                      background: "var(--bow-white)", border: "1px solid var(--border-rule)",
+                      borderTop: "3px solid var(--bow-blue)", padding: "24px 22px",
+                      display: "flex", flexDirection: "column", gap: "var(--space-3)",
+                    }}
+                  >
+                    <span className="bow-display" style={{ fontSize: "var(--type-card)" }}>{p.title}</span>
+                    <p style={{ fontFamily: "var(--font-interface)", fontSize: "var(--type-body-sm)", lineHeight: "var(--lh-body)", color: "var(--text-secondary)", flex: 1 }}>
+                      {p.body}
+                    </p>
+                    <span className="bow-cta-link">{p.cta}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* Formats read as a spec list, not six more cards. */}
+          <div style={{ borderTop: "1px solid var(--border-rule)", paddingTop: "var(--space-8)" }}>
+            <div className="bow-eyebrow-data" style={{ color: "var(--text-secondary)", marginBottom: "var(--space-4)" }}>
+              Formats we run
+            </div>
+            <dl style={{ margin: 0, border: "1px solid var(--border-rule)", background: "var(--bow-white)" }}>
+              {formats.map((f, i) => (
+                <div
+                  key={f.n}
+                  style={{
+                    display: "flex", alignItems: "baseline", gap: "var(--space-4)", padding: "15px 20px",
+                    borderTop: i === 0 ? "none" : "1px solid var(--border-rule)",
+                  }}
+                >
+                  <span className="bow-data" style={{ fontSize: "var(--type-meta)", color: "var(--bow-blue)", flex: "0 0 26px" }}>{f.n}</span>
+                  <dt className="bow-display" style={{ fontSize: "var(--type-card)", flex: 1 }}>{f.title}</dt>
+                  <dd className="bow-data" style={{ margin: 0, fontSize: "var(--type-meta)", color: "var(--text-secondary)" }}>{f.detail}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== PODCAST ===== */}
+      <section id="podcast" className="bow-section bow-section-raised">
+        <div className="bow-container bow-split">
+          <div className="bow-section-intro">
+            <span className="bow-eyebrow" style={{ color: "var(--bow-blue)" }}>The BOW Sports Capital podcast</span>
+            <h2 className="bow-headline">The conversations behind the decisions.</h2>
+            <p className="bow-lead">
+              Each episode connects sports headlines, front-office strategy, and business concepts to the
+              decisions students make throughout the curriculum.
+            </p>
+            <div style={{ marginTop: "var(--space-4)" }}>
+              <Button href="/podcast" variant="ink" size="md">Explore the podcast</Button>
+            </div>
+          </div>
+          <ul style={{ display: "flex", flexDirection: "column", margin: 0, padding: 0, listStyle: "none" }}>
+            {homeEpisodes.map((e, i) => (
+              <li key={e.num}>
+                <Link
+                  href="/podcast"
+                  style={{
+                    display: "flex", gap: "var(--space-4)", padding: "16px 0", alignItems: "baseline",
+                    borderTop: i === 0 ? "none" : "1px solid var(--border-rule)", color: "var(--text-primary)",
+                  }}
+                >
+                  <span className="bow-data" style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--type-meta)", color: "var(--text-secondary)", flex: "0 0 44px" }}>
+                    {e.num}
+                  </span>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span className="bow-eyebrow" style={{ color: "var(--bow-blue)" }}>{e.topic}</span>
+                    <h3 style={{ fontFamily: "var(--font-editorial)", fontWeight: "var(--fw-semibold)", fontSize: 18, lineHeight: 1.25 }}>{e.title}</h3>
+                    <span className="bow-data" style={{ fontSize: "var(--type-meta)", color: "var(--text-secondary)" }}>{e.meta}</span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* ===== TEACH WITH BOW =====
+       * Moved from position three to here. Orange appears exactly once on
+       * this page, and this is it: an open call is a real signal. */}
+      <section className="bow-section bow-section-ink">
+        <div className="bow-container bow-split">
+          <div className="bow-section-intro">
+            <span className="bow-eyebrow-data" style={{ color: "var(--bow-orange)" }}>Now recruiting volunteer instructors</span>
+            <h2 className="bow-headline">Help us teach the next generation of sports decision-makers.</h2>
+            <p className="bow-lead">
+              Teaching with BOW is a volunteer role. We provide the curriculum and the training. You bring
+              preparation, judgment, and the willingness to improve.
+            </p>
+            <div className="bow-actions" style={{ marginTop: "var(--space-4)" }}>
+              <Button href="/teach" variant="primary" size="lg">Explore teaching at BOW</Button>
+              <Button href="/join/sports-economics-instructor" variant="secondary" size="lg">View the opening</Button>
+            </div>
+          </div>
+          <ol className="bow-grid bow-grid-ruled" style={{ gridTemplateColumns: "minmax(0,1fr)", margin: 0, padding: 0, listStyle: "none", alignSelf: "start" }}>
+            {["Clear hiring process", "Training before assignment", "Real work with evidence", "Coaching and growth"].map((item, index) => (
+              <li key={item} style={{ background: "var(--bow-dark-surface)", padding: "18px 22px", display: "flex", gap: "var(--space-4)", alignItems: "center" }}>
+                <span className="bow-data" style={{ color: "var(--bow-blue)" }}>{String(index + 1).padStart(2, "0")}</span>
+                <span className="bow-display" style={{ fontSize: "var(--type-card)" }}>{item}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* ===== FAQ ===== */}
+      <section id="faq" className="bow-section bow-section-paper">
+        <div className="bow-container">
+          <div className="bow-section-intro" style={{ marginBottom: "clamp(28px,3.5vw,44px)" }}>
+            <span className="bow-eyebrow" style={{ color: "var(--bow-blue)" }}>FAQ</span>
+            <h2 className="bow-display">What people want to know.</h2>
           </div>
           <FaqList items={faqs} />
         </div>
       </section>
 
       {/* ===== FINAL CTA ===== */}
-      <section style={{ background: "var(--bow-blue)", color: "#fff", padding: "clamp(64px,10vw,150px) clamp(18px,4vw,40px)", position: "relative", overflow: "hidden" }}>
-        <div className="bow-para-upbig" aria-hidden style={{ position: "absolute", right: -40, bottom: -80, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(200px,28vw,460px)", lineHeight: 0.7, color: "rgba(255,255,255,0.08)", pointerEvents: "none" }}>BOW</div>
+      <section
+        style={{
+          background: "var(--bow-blue)", color: "#fff",
+          padding: "var(--section-y-loose) var(--page-inset)", position: "relative", overflow: "hidden",
+        }}
+      >
+        <div className="bow-ghost bow-ghost-light bow-para-upbig" aria-hidden style={{ right: -40, bottom: -80, fontSize: "clamp(200px,28vw,460px)" }}>
+          BOW
+        </div>
         <div className="bow-container" style={{ position: "relative" }}>
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.7)" }}>Step Into the Front Office</span>
-          <h2 style={{ margin: "14px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(44px,8vw,120px)", lineHeight: 0.86, letterSpacing: "-0.02em", textTransform: "uppercase" }}>Step into the front office.</h2>
-          <p style={{ margin: "22px 0 0", fontFamily: "var(--font-interface)", fontSize: "clamp(17px,1.5vw,21px)", lineHeight: 1.55, color: "rgba(255,255,255,0.9)", maxWidth: 560 }}>Explore the tracks, find the right starting point, and begin making the decisions behind the game.</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 30 }}>
-            <Button href="/programs" variant="ink" size="lg">Explore Programs</Button>
-            <Button href="/sign-up" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "rgba(255,255,255,0.6)" }}>Join the Interest List</Button>
+          <h2 className="bow-display" style={{ fontSize: "var(--type-campaign)", lineHeight: "var(--lh-campaign)" }}>
+            Step into the front office.
+          </h2>
+          <p className="bow-lead" style={{ color: "rgba(255,255,255,0.92)", marginTop: "var(--space-6)" }}>
+            Explore the tracks, find the right starting point, and begin making the decisions behind the game.
+          </p>
+          <div className="bow-actions" style={{ marginTop: "var(--space-8)" }}>
+            <Button href="/programs" variant="ink" size="lg">Explore programs</Button>
+            <Button href="/sign-up" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "rgba(255,255,255,0.6)" }}>
+              Join the interest list
+            </Button>
           </div>
         </div>
       </section>

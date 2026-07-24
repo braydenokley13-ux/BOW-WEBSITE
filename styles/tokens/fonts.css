@@ -1,7 +1,12 @@
 /* BOW Sports Capital — Webfonts
- * Loaded from Google Fonts. All four families are the brand-specified stack:
- *   Barlow Condensed (display), Newsreader (editorial serif),
- *   Inter (interface), IBM Plex Mono (data).
- * Consumers inherit these @font-face rules automatically.
+ *
+ * Delivery lives in `lib/fonts.ts`, which self-hosts all four brand families
+ * through `next/font/google` and publishes each as a `--font-*-loaded` custom
+ * property on <html>. Nothing is fetched from a third-party origin at runtime,
+ * so there is no render-blocking stylesheet import here — that round-trip (and
+ * the layout shift it caused) is what this file used to be.
+ *
+ * Each `--font-*-loaded` value already carries its own fallback stack (the
+ * `fallback` option on each family), so `styles/tokens/typography.css` can
+ * consume them directly and keep owning the semantic names.
  */
-@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800;900&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap");

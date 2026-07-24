@@ -20,7 +20,7 @@ export default function FamiliesPage() {
     <div data-screen-label="Families & Students">
       {/* ===== HERO ===== */}
       <section style={{ background: "var(--bow-paper)", padding: "clamp(56px,8vw,120px) clamp(18px,4vw,40px) clamp(48px,7vw,96px)", borderBottom: "1px solid var(--border-rule)", position: "relative", overflow: "hidden" }}>
-        <div aria-hidden style={{ position: "absolute", right: "-2%", top: "-6%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,24vw,400px)", lineHeight: 0.78, color: "rgba(10,10,11,0.04)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none" }}>Play</div>
+        <div className="bow-ghost" aria-hidden style={{ position: "absolute", right: "-2%", top: "-6%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,24vw,400px)", lineHeight: 0.78, color: "rgba(10,10,11,0.04)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none" }}>Play</div>
         <div className="bow-container" style={{ position: "relative" }}>
           <nav aria-label="Breadcrumb" style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "var(--bow-slate)", marginBottom: 28 }}>
             <Link href="/" style={{ color: "var(--bow-blue)" }}>Home</Link>

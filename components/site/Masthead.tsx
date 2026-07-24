@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NAV, SITE } from "@/lib/site";
 import Button from "@/components/ds/Button";
 
@@ -14,68 +14,49 @@ function isActive(pathname: string, href: string) {
 export default function Masthead() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPath, setMenuPath] = useState(pathname);
   const closeMenu = () => setMenuOpen(false);
 
+  // Route changes must close the sheet — otherwise a tapped link navigates
+  // underneath an overlay that is still covering the page. Adjusted during
+  // render rather than in an effect, so the sheet is already gone on the
+  // first paint of the new route instead of flashing for a frame.
+  if (menuPath !== pathname) {
+    setMenuPath(pathname);
+    setMenuOpen(false);
+  }
+
+  // Escape closes; the body locks while the sheet covers the page.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuOpen(false); };
+    document.addEventListener("keydown", onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [menuOpen]);
+
   return (
-    <header
-      style={{
-        background: "var(--bow-ink)",
-        color: "#fff",
-        borderBottom: "1px solid var(--bow-dark-border)",
-        position: "sticky",
-        top: 0,
-        zIndex: 100,
-      }}
-    >
-      <div
-        className="bow-container-wide"
-        style={{
-          padding: "0 clamp(18px,4vw,40px)",
-          height: 66,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 24,
-        }}
-      >
-        <Link href="/" onClick={closeMenu} aria-label={`${SITE.name} home`} style={{ display: "flex", flexDirection: "column", lineHeight: 0.8, flexShrink: 0 }}>
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-            BOW
-          </span>
-          <span
-            style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 600,
-              fontSize: 9.5,
-              letterSpacing: "0.34em",
-              color: "#9a9da6",
-              textTransform: "uppercase",
-              marginTop: 3,
-            }}
-          >
-            {SITE.tagline}
-          </span>
+    <header className="bow-masthead">
+      <div className="bow-container-wide bow-masthead-bar">
+        <Link href="/" onClick={closeMenu} aria-label={`${SITE.name} home`} className="bow-wordmark">
+          <span className="bow-wordmark-name">BOW</span>
+          <span className="bow-wordmark-sub">{SITE.tagline}</span>
         </Link>
 
-        {/* Desktop nav */}
-        <nav className="bow-nav-desktop" style={{ gap: "clamp(8px,0.9vw,18px)", flex: 1, justifyContent: "center" }}>
+        <nav className="bow-nav-desktop" aria-label="Primary">
           {NAV.map((n) => {
             const active = isActive(pathname, n.href);
             return (
               <Link
                 key={n.href}
                 href={n.href}
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 600,
-                  fontSize: "clamp(11px,0.8vw,13px)",
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                  color: active ? "#fff" : "#9a9da6",
-                  paddingBottom: 3,
-                  borderBottom: `2px solid ${active ? "var(--bow-blue)" : "transparent"}`,
-                  whiteSpace: "nowrap",
-                }}
+                className="bow-nav-link"
+                aria-current={active ? "page" : undefined}
+                data-active={active ? "true" : undefined}
               >
                 {n.label}
               </Link>
@@ -83,76 +64,48 @@ export default function Masthead() {
           })}
         </nav>
 
-        <div className="bow-nav-desktop" style={{ alignItems: "center", gap: 14, flexShrink: 0 }}>
-          <Link href="/sign-in" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", color: "#9a9da6" }}>
-            Sign In
-          </Link>
-          <Button href="/programs" variant="primary" size="sm" style={{ height: 36 }}>
-            Find a Program
-          </Button>
+        <div className="bow-nav-desktop bow-masthead-account">
+          <Link href="/sign-in" className="bow-nav-link">Sign In</Link>
+          <Button href="/programs" variant="primary" size="sm">Find a Program</Button>
         </div>
 
-        {/* Mobile toggle */}
         <button
+          type="button"
           className="bow-nav-mobile-toggle"
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           aria-expanded={menuOpen}
-          style={{
-            background: "transparent",
-            border: "1px solid var(--bow-dark-border)",
-            color: "#fff",
-            width: 42,
-            height: 38,
-            borderRadius: 4,
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 4,
-            cursor: "pointer",
-          }}
+          aria-controls="bow-mobile-menu"
         >
-          <span style={{ display: "block", width: 18, height: 2, background: "#fff" }} />
-          <span style={{ display: "block", width: 18, height: 2, background: "#fff" }} />
-          <span style={{ display: "block", width: 18, height: 2, background: "#fff" }} />
+          <span aria-hidden className="bow-burger" data-open={menuOpen ? "true" : undefined} />
         </button>
       </div>
 
-      {/* Mobile menu */}
       {menuOpen && (
-        <div className="bow-nav-mobile" style={{ borderTop: "1px solid var(--bow-dark-border)", padding: "12px clamp(18px,4vw,40px) 22px", flexDirection: "column", gap: 2 }}>
-          {NAV.map((n) => (
-            <Link
-              key={n.href}
-              href={n.href}
-              onClick={closeMenu}
-              style={{
-                fontFamily: "var(--font-display)",
-                fontWeight: 600,
-                fontSize: 22,
-                letterSpacing: "0.02em",
-                textTransform: "uppercase",
-                padding: "10px 0",
-                borderBottom: "1px solid var(--bow-dark-border)",
-                color: isActive(pathname, n.href) ? "#fff" : "#c8cad0",
-              }}
-            >
-              {n.label}
+        <div id="bow-mobile-menu" className="bow-nav-mobile">
+          <nav aria-label="Primary mobile">
+            {NAV.map((n) => (
+              <Link
+                key={n.href}
+                href={n.href}
+                onClick={closeMenu}
+                className="bow-nav-mobile-link"
+                aria-current={isActive(pathname, n.href) ? "page" : undefined}
+                data-active={isActive(pathname, n.href) ? "true" : undefined}
+              >
+                {n.label}
+              </Link>
+            ))}
+            <Link href="/sign-in" onClick={closeMenu} className="bow-nav-mobile-link">
+              Sign In
             </Link>
-          ))}
-          <Link
-            href="/sign-in"
-            onClick={closeMenu}
-            style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 22, letterSpacing: "0.02em", textTransform: "uppercase", padding: "10px 0", borderBottom: "1px solid var(--bow-dark-border)", color: "#c8cad0" }}
-          >
-            Sign In
-          </Link>
+          </nav>
           {/* Stacked: two full-width buttons side by side overflow narrow screens. */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
-            <Button href="/programs" variant="primary" size="md" full onClick={closeMenu} style={{ height: 44 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
+            <Button href="/programs" variant="primary" size="md" full onClick={closeMenu}>
               Find a Program
             </Button>
-            <Button href="/teach" variant="secondary" size="md" full onClick={closeMenu} style={{ height: 44, color: "#fff", borderColor: "var(--bow-dark-border)" }}>
+            <Button href="/teach" variant="secondary" size="md" full onClick={closeMenu}>
               Apply to Teach
             </Button>
           </div>

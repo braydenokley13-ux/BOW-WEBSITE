@@ -59,35 +59,40 @@ export interface Step {
   body: string;
 }
 
-export const modelSteps: Step[] = [
-  { n: "01", label: "Learn the Concept", body: "The economic idea, the context, and the problem on the table." },
-  { n: "02", label: "Hear the Story", body: "A podcast episode brings the issue into the real sports world." },
-  { n: "03", label: "Make the Decision", body: "You take the role and make the call inside the simulation." },
-  { n: "04", label: "See the Consequence", body: "You live with the result and defend your reasoning." },
+/**
+ * The one canonical four-beat loop every BOW lesson runs.
+ *
+ * This used to be two arrays — `modelSteps` ("Learn the Concept / Hear the
+ * Story / Make the Decision / See the Consequence") and `lessonFlow` ("The
+ * Front-Office Brief / The Podcast Connection / The Simulation / The
+ * Debrief") — rendered as two separate four-up grids on the same page. They
+ * were the same four beats named twice, which made the homepage read as if
+ * BOW had two different teaching models. One loop, stated once.
+ */
+export const learningLoop: Step[] = [
+  { n: "01", label: "The Brief", body: "The economic concept arrives as a problem on your desk: the context, the constraints, and the call you have to make." },
+  { n: "02", label: "The Story", body: "A BOW Sports Capital podcast episode grounds the idea in how the sports world actually operates." },
+  { n: "03", label: "The Decision", body: "You take the role and make the call inside the simulation — real options, incomplete information, no obviously right answer." },
+  { n: "04", label: "The Consequence", body: "The world responds. You live with the result and defend your reasoning." },
 ];
 
-export const lessonFlow: Step[] = [
-  { n: "01", label: "The Front-Office Brief", body: "You receive the economic concept, the context, and the problem to solve." },
-  { n: "02", label: "The Podcast Connection", body: "A related BOW Sports Capital Podcast episode grounds it in the real sports world." },
-  { n: "03", label: "The Simulation", body: "You make the decision through a standalone interactive experience." },
-  { n: "04", label: "The Debrief", body: "You examine the consequence, defend your call, and tie it back to the economics." },
-];
-
+/**
+ * The two live tracks, as a comparison.
+ *
+ * Presentation fields (`bg`/`fg`/`muted`/`line`/`kindColor`/`topPad`) are
+ * gone — a data file was choosing surface colours and a hand-tuned top
+ * padding to make two cards line up. `recommended` is the one distinction
+ * that matters to a visitor choosing between them, and the layout derives
+ * everything else from it.
+ */
 export interface Track {
   num: string;
   kind: string;
-  kindColor: string;
   recommended: boolean;
   title: string;
   desc: string;
   meta: string[];
   cta: string;
-  btnVariant: "primary" | "secondary" | "ink";
-  bg: string;
-  fg: string;
-  muted: string;
-  line: string;
-  topPad: string;
   href: string;
 }
 
@@ -95,35 +100,21 @@ export const tracks: Track[] = [
   {
     num: "101",
     kind: "Introductory",
-    kindColor: "var(--bow-blue)",
     recommended: true,
     title: "Build the foundation.",
     desc: "Learn the essential ideas behind sports economics, team building, finance, and front-office decision-making.",
     meta: ["4 modules", "12 lessons", "12 connected simulations", "Podcast connections"],
     cta: "Explore Track 101",
-    btnVariant: "primary",
-    bg: "#fff",
-    fg: "var(--bow-ink)",
-    muted: "var(--bow-slate)",
-    line: "var(--bow-blue)",
-    topPad: "14px",
     href: "/programs/track-101",
   },
   {
     num: "201",
     kind: "Advanced",
-    kindColor: "var(--bow-orange)",
     recommended: false,
     title: "Take control of harder decisions.",
     desc: "Apply deeper economic thinking to more complex front-office situations, competing priorities, and strategic tradeoffs.",
     meta: ["4 modules", "12 lessons", "12 connected simulations", "Podcast connections"],
     cta: "Explore Track 201",
-    btnVariant: "secondary",
-    bg: "var(--bow-paper)",
-    fg: "var(--bow-ink)",
-    muted: "var(--bow-slate)",
-    line: "var(--bow-orange)",
-    topPad: "0px",
     href: "/programs/track-201",
   },
   // Track 301 is not yet a real, purchasable track — it's intentionally left out of this
@@ -153,27 +144,33 @@ export const featuredLessons: FeaturedLesson[] = [
   { bigNum: "06", category: "Franchise Management", hook: "The team is fading. Fix it your way.", trackmod: "TRACK 201 · MODULE 2", title: "The franchise is sliding. Chase relevance now, or rebuild the foundation?", decision: "Win now or rebuild", concept: "Long-term strategy", runtime: "18 min", podcast: "EP 05", href: "/lessons/save-the-franchise" },
 ];
 
+/**
+ * The eight beats inside a single lesson.
+ *
+ * Each step used to carry its own `bg`/`fg`/`numColor`/`tagColor`, which
+ * rendered as eight tiles alternating white/cream/ink with blue, orange,
+ * green and grey numerals in no decodable order — four signal colours doing
+ * decoration. The only distinction that carries meaning is which beats are
+ * the *decision* beats, so that is the only one the data models now.
+ */
 export interface LessonStep {
   n: string;
   label: string;
   tag: string;
   body: string;
-  bg: string;
-  fg: string;
-  muted: string;
-  numColor: string;
-  tagColor: string;
+  /** The two beats where the student actually acts and absorbs the result. */
+  decisive?: boolean;
 }
 
 export const lessonSteps: LessonStep[] = [
-  { n: "01", label: "Cold Open", tag: "Hook", body: "A scenario that forces a position before the full economic picture is clear.", bg: "#fff", fg: "var(--bow-ink)", muted: "var(--bow-slate)", numColor: "var(--bow-blue)", tagColor: "var(--bow-blue)" },
-  { n: "02", label: "The Economic Concept", tag: "Foundation", body: "The core idea — scarcity, opportunity cost, incentives — defined through the problem already on the table.", bg: "var(--bow-paper)", fg: "var(--bow-ink)", muted: "var(--bow-slate)", numColor: "var(--bow-blue)", tagColor: "var(--bow-orange)" },
-  { n: "03", label: "Front-Office Brief", tag: "Context", body: "The facts, constraints, and what the decision requires. More information than expected. Less than wanted.", bg: "#fff", fg: "var(--bow-ink)", muted: "var(--bow-slate)", numColor: "var(--bow-orange)", tagColor: "var(--bow-orange)" },
-  { n: "04", label: "Podcast Connection", tag: "Story", body: "A BOW Sports Capital episode grounds the concept in how the sports world actually operates.", bg: "var(--bow-paper)", fg: "var(--bow-ink)", muted: "var(--bow-slate)", numColor: "var(--bow-blue)", tagColor: "var(--bow-blue)" },
-  { n: "05", label: "The Decision", tag: "Simulation", body: "You take the role. Real options, incomplete information, competing incentives. No obviously right answer.", bg: "var(--bow-ink)", fg: "#fff", muted: "#b9bcc4", numColor: "#6f8bff", tagColor: "var(--bow-orange)" },
-  { n: "06", label: "The Consequence", tag: "Response", body: "The world responds. Cash, wins, chemistry, media, and ownership pressure all shift — immediately.", bg: "var(--bow-ink)", fg: "#fff", muted: "#b9bcc4", numColor: "var(--bow-positive)", tagColor: "var(--bow-positive)" },
-  { n: "07", label: "The Debrief", tag: "Analysis", body: "Review what happened, the economics behind each option, and what the decision reveals about the concept.", bg: "var(--bow-paper)", fg: "var(--bow-ink)", muted: "var(--bow-slate)", numColor: "var(--bow-blue)", tagColor: "var(--bow-blue)" },
-  { n: "08", label: "Podcast Extension", tag: "Deeper Read", body: "Optional: more analysis, a longer argument, a different case for students who want to push further.", bg: "#fff", fg: "var(--bow-ink)", muted: "var(--bow-slate)", numColor: "var(--bow-slate)", tagColor: "var(--bow-slate)" },
+  { n: "01", label: "Cold Open", tag: "Hook", body: "A scenario that forces a position before the full economic picture is clear." },
+  { n: "02", label: "The Economic Concept", tag: "Foundation", body: "The core idea — scarcity, opportunity cost, incentives — defined through the problem already on the table." },
+  { n: "03", label: "Front-Office Brief", tag: "Context", body: "The facts, constraints, and what the decision requires. More information than expected. Less than wanted." },
+  { n: "04", label: "Podcast Connection", tag: "Story", body: "A BOW Sports Capital episode grounds the concept in how the sports world actually operates." },
+  { n: "05", label: "The Decision", tag: "Simulation", body: "You take the role. Real options, incomplete information, competing incentives. No obviously right answer.", decisive: true },
+  { n: "06", label: "The Consequence", tag: "Response", body: "The world responds. Cash, wins, chemistry, media, and ownership pressure all shift — immediately.", decisive: true },
+  { n: "07", label: "The Debrief", tag: "Analysis", body: "Review what happened, the economics behind each option, and what the decision reveals about the concept." },
+  { n: "08", label: "Podcast Extension", tag: "Deeper Read", body: "Optional: more analysis, a longer argument, a different case for students who want to push further." },
 ];
 
 export interface Episode {
@@ -190,21 +187,31 @@ export const homeEpisodes: Episode[] = [
   { num: "EP 04", topic: "Sports Economics", title: "Opportunity Cost, Explained in Trades", meta: "33 MIN · TRACK 101 · M1 L2" },
 ];
 
+/**
+ * Ways into BOW, grouped by who is asking.
+ *
+ * `accent` is gone: the six entries were previously blue / orange / green /
+ * a one-off `#5A6BFF` / amber / ink, which implied a category system that
+ * doesn't exist. They are six peers, so they now look like six peers, and
+ * the grouping below carries the only real distinction — someone joining a
+ * program vs. someone bringing BOW to a group.
+ */
 export interface Pathway {
   title: string;
-  accent: string;
   body: string;
   cta: string;
   href: string;
+  /** "join" = an individual or family; "host" = an organisation. */
+  group: "join" | "host";
 }
 
 export const pathways: Pathway[] = [
-  { title: "Students", accent: "var(--bow-blue)", body: "Explore tracks, make front-office decisions, and learn how the economics of sports actually work.", cta: "Find Your Track", href: "/get-involved/families" },
-  { title: "Parents", accent: "var(--bow-orange)", body: "See what students build: economic reasoning, decision-making, communication, and confidence through decisions they already care about.", cta: "Explore the Program", href: "/get-involved/families" },
-  { title: "Schools", accent: "var(--bow-positive)", body: "Offer a modern, discussion-driven economics and sports-business program that fits your classroom and schedule.", cta: "Bring BOW to School", href: "/get-involved/schools" },
-  { title: "Camps", accent: "#5A6BFF", body: "High-energy workshops and short simulations built for camp schedules — no economics background needed.", cta: "Camp Programs", href: "/get-involved/camps" },
-  { title: "Youth Orgs", accent: "var(--bow-warning)", body: "Flexible enrichment through workshops or structured courses — adaptable to almost any format or age group.", cta: "Workshop Options", href: "/get-involved/youth-organizations" },
-  { title: "Partners", accent: "var(--bow-ink)", body: "Connect sports, business, media, education, and community engagement through a program built to develop strategic thinkers.", cta: "Explore a Partnership", href: "/get-involved/partners" },
+  { title: "Students", group: "join", body: "Explore tracks, make front-office decisions, and learn how the economics of sports actually work.", cta: "Find your track", href: "/get-involved/families" },
+  { title: "Parents", group: "join", body: "See what students build: economic reasoning, decision-making, communication, and confidence — through decisions they already care about.", cta: "See what students build", href: "/get-involved/families" },
+  { title: "Schools", group: "host", body: "Offer a modern, discussion-driven economics and sports-business program that fits your classroom and schedule.", cta: "Bring BOW to your school", href: "/get-involved/schools" },
+  { title: "Camps", group: "host", body: "High-energy workshops and short simulations built for camp schedules — no economics background needed.", cta: "See camp formats", href: "/get-involved/camps" },
+  { title: "Youth Orgs", group: "host", body: "Flexible enrichment through workshops or structured courses — adaptable to almost any format or age group.", cta: "See workshop options", href: "/get-involved/youth-organizations" },
+  { title: "Partners", group: "host", body: "Connect sports, business, media, education, and community engagement through a program built to develop strategic thinkers.", cta: "Explore a partnership", href: "/get-involved/partners" },
 ];
 
 export interface Format {

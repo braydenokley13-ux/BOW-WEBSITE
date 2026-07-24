@@ -13,7 +13,7 @@ export default async function TeachPage() {
   return (
     <div>
       <section className="bow-front-office" style={{ padding: PAD, minHeight: "72vh", display: "grid", placeItems: "center", position: "relative", overflow: "clip" }}>
-        <div aria-hidden style={{ position: "absolute", right: "-2%", bottom: "-12%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,28vw,440px)", color: "rgba(255,255,255,.04)", lineHeight: .75 }}>TEACH</div>
+        <div className="bow-ghost" aria-hidden style={{ position: "absolute", right: "-2%", bottom: "-12%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,28vw,440px)", color: "rgba(255,255,255,.04)", lineHeight: .75 }}>TEACH</div>
         <div className="bow-container" style={{ width: "100%", position: "relative" }}>
           <span className="bow-eyebrow" style={{ color: "var(--bow-orange)" }}>We&apos;re building the instructor team</span>
           <h1 style={{ marginTop: 14, maxWidth: 900, fontFamily: "var(--font-editorial)", fontSize: "clamp(44px,7vw,90px)", lineHeight: .95, letterSpacing: "-.02em" }}>Help students learn to make the decisions behind sports.</h1>

@@ -23,4 +23,18 @@
   --grid-columns-mobile:  4;  /* @kind other */
   --gutter-desktop: 32px;
   --gutter-mobile:  18px;
+
+  /* ---- Page rhythm ----
+   * One horizontal inset and three vertical section rhythms, so pacing is a
+   * choice ("this section breathes / this one is tight") rather than a
+   * number retyped per page. `--section-y` was previously a `SECTION_PAD`
+   * string constant copy-pasted across marketing routes. */
+  --page-inset: clamp(18px, 4vw, 40px);
+  --section-y:       clamp(56px, 7vw, 104px);  /* Default section rhythm */
+  --section-y-tight: clamp(40px, 4.5vw, 64px); /* Continuation of the section above */
+  --section-y-loose: clamp(72px, 10vw, 144px); /* Cover / closing moments */
+
+  /* ---- Grid gaps ---- */
+  --gap-grid: clamp(16px, 2vw, 24px);
+  --gap-columns: clamp(28px, 4.5vw, 64px); /* Between the halves of a split section */
 }
