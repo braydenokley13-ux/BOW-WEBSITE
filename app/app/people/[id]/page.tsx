@@ -6,6 +6,7 @@ import WeeklyCommitmentEditor from "@/components/app/people/WeeklyCommitmentEdit
 import { AccountabilityControls, ActivationControls, CapacityControls, RoleAssignmentSetup, RoleDecisionControls } from "@/components/app/people/PersonOperatingControls";
 import InstructorDetailActions from "@/components/app/hiring/InstructorDetailActions";
 import InstructorWorkforceActions from "@/components/app/hiring/InstructorWorkforceActions";
+import InstructorMissionControls from "@/components/app/hiring/InstructorMissionControls";
 import IntroductionTracker from "@/components/app/hiring/IntroductionTracker";
 import StudentDetailActions from "@/components/app/students/StudentDetailActions";
 import { requireStaff } from "@/lib/dal";
@@ -14,6 +15,12 @@ import { getPeopleOperationsData, type PersonAttentionView } from "@/lib/people-
 import { resolvePersonRoleIds, type PersonRoleKind } from "@/lib/people-directory";
 import { getInstructorDetail, getStudentDetail, getStudentAttendanceHistory, listActivity, listOpenTasksForEntity, listStaffUsers, resolveUserNames } from "@/lib/hiring";
 import { getInstructorWorkforceDossier } from "@/lib/instructor-workforce";
+import { getMissionWithUpdates, getMissionHistory } from "@/lib/instructor-missions";
+import { missionAreaMeta, missionIsOverdue, MISSION_UPDATE_KIND_LABEL } from "@/lib/instructor-missions-shared";
+import { getInstructorImpact, listActiveInstructorOptions } from "@/lib/instructor-growth";
+import { deriveNextOpportunities, impactStats, impactHeadline, type OpportunityKind } from "@/lib/instructor-growth-shared";
+import ReferrerAttributionControl from "@/components/app/hiring/ReferrerAttributionControl";
+import { canonicalDateInZone } from "@/lib/timezone";
 import { listIntroductions } from "@/lib/flywheel";
 
 type TabKey = "overview" | "operations" | "instructor" | "student" | "applicant";
@@ -305,6 +312,55 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
   const staffUsers = await listStaffUsers();
   const resolvedOwnerName = instructor.ownerUserId ? (await resolveUserNames([instructor.ownerUserId])).get(instructor.ownerUserId) : null;
 
+  const missionData = await getMissionWithUpdates(instructorId);
+  const missionHistory = await getMissionHistory(instructorId, 8);
+  // Let staff link a new mission to a Class or Program this instructor already
+  // touches, so a Current Mission carries real operating context.
+  const relatedOptions: { value: string; label: string }[] = [];
+  const seenRelated = new Set<string>();
+  for (const assignment of dossier.currentAssignments) {
+    const classKey = `class:${assignment.classId}`;
+    if (!seenRelated.has(classKey)) { seenRelated.add(classKey); relatedOptions.push({ value: classKey, label: `Class · ${assignment.classTitle}` }); }
+    if (assignment.programId) {
+      const programKey = `program:${assignment.programId}`;
+      if (!seenRelated.has(programKey)) { seenRelated.add(programKey); relatedOptions.push({ value: programKey, label: `Program · ${assignment.programName}` }); }
+    }
+  }
+  const nowMs = Number(((await getDb().prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
+  const missionToday = canonicalDateInZone(nowMs);
+
+  // Derived impact record + evidence-based development signals (B + C).
+  const impact = await getInstructorImpact(instructorId, nowMs);
+  const referrerOptions = (await listActiveInstructorOptions()).filter((option) => option.id !== instructorId);
+  let currentReferrer: { personId: string; name: string } | null = null;
+  try {
+    const referrerRow = (await getDb().prepare(
+      "SELECT ref.id AS person_id, ref.name FROM instructors i LEFT JOIN people ref ON ref.id = i.referred_by_person_id WHERE i.id = ? AND i.referred_by_person_id IS NOT NULL",
+    ).get(instructorId)) as { person_id: string; name: string } | undefined;
+    currentReferrer = referrerRow ? { personId: referrerRow.person_id, name: referrerRow.name } : null;
+  } catch {
+    currentReferrer = null;
+  }
+  const recentQuality = dossier.qualityDimensions.map((dimension) => dimension.recentAverage).filter((value): value is number => value != null);
+  const nextOpportunities = deriveNextOpportunities({
+    stage: instructor.stage,
+    eligible: instructor.eligibilityStatus === "eligible",
+    progressionLevel: dossier.profile.progressionLevel,
+    currentAssignmentCount: dossier.workload.currentClasses,
+    upcomingSessionCount: dossier.reliability.next30DaySessions,
+    sessionsTaught: impact.sessionsTaught,
+    programsLed: impact.programsLed,
+    qualityAverage: recentQuality.length ? recentQuality.reduce((sum, value) => sum + value, 0) / recentQuality.length : null,
+    lowReliabilitySignals: dossier.reliability.lowReliabilitySignals180d,
+    instructorReferralsActivated: impact.instructorReferralsActivated,
+    partnerOpportunities: impact.partnerOpportunities,
+    hasActiveMission: Boolean(missionData),
+    currentAssignmentLoad: dossier.workload.currentClasses,
+    maxWeeklyClasses: dossier.workload.maximumClasses,
+    lastActivityDays: activity.length ? Math.max(0, Math.floor((nowMs - activity[0].createdAt) / 86_400_000)) : 0,
+  });
+  const opportunityTone: Record<OpportunityKind, "positive" | "warning" | "info"> = { ready: "positive", attention: "warning", develop: "info" };
+
   return (
     <div style={{ display: "grid", gap: 4 }}>
       <div className="ops-status-line" style={{ marginTop: 0 }}>
@@ -318,6 +374,100 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
         <h3 className="ops-alert__title" style={{ marginTop: 7 }}>{dossier.nextAction.title}</h3>
         <p className="ops-body" style={{ marginTop: 5 }}>{dossier.nextAction.detail}</p>
       </div>
+
+      <PageSection title="Current mission">
+        {missionData ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            <div className="ops-alert" data-tone={missionIsOverdue(missionData.mission.dueOn, missionToday) ? "warning" : "positive"} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <Badge status="info">{missionAreaMeta(missionData.mission.area).label}</Badge>
+                {missionData.mission.dueOn && (
+                  <Badge status={missionIsOverdue(missionData.mission.dueOn, missionToday) ? "negative" : "neutral"}>
+                    {missionIsOverdue(missionData.mission.dueOn, missionToday) ? "Overdue " : "Due "}{missionData.mission.dueOn}
+                  </Badge>
+                )}
+                {missionData.mission.cadence !== "once" && <span className="ops-label">{missionData.mission.cadence} cadence</span>}
+              </div>
+              <h3 className="ops-alert__title" style={{ margin: "2px 0 0" }}>{missionData.mission.title}</h3>
+              <p className="ops-body" style={{ margin: 0 }}>{missionData.mission.outcome}</p>
+              <span className="ops-record-meta">
+                {missionData.mission.relatedEntityLabel ? `Linked to ${missionData.mission.relatedEntityLabel} · ` : ""}
+                Assigned {when(missionData.mission.createdAt)}{missionData.mission.assignedByName ? ` by ${missionData.mission.assignedByName}` : ""}
+              </span>
+            </div>
+
+            {missionData.updates.length > 0 && (
+              <div className="ops-timeline">
+                {missionData.updates.slice(0, 6).map((update) => (
+                  <div className="ops-timeline__item" key={update.id}>
+                    <span className="ops-record-meta">
+                      {new Date(update.createdAt).toLocaleDateString()} · {MISSION_UPDATE_KIND_LABEL[update.kind]}{update.authorName ? ` · ${update.authorName}` : ""}
+                    </span>
+                    <p className="ops-body" style={{ marginTop: 3 }}>{update.body}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <InstructorMissionControls instructorId={instructorId} instructorName={dossier.profile.name} missionId={missionData.mission.id} relatedOptions={relatedOptions} />
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            <p className="ops-body" style={{ margin: 0 }}>
+              No Current Mission. Give this instructor one clear responsibility right now — teaching or a growth mission — so they are moving forward, not sitting idle.
+            </p>
+            <InstructorMissionControls instructorId={instructorId} instructorName={dossier.profile.name} missionId={null} relatedOptions={relatedOptions} />
+          </div>
+        )}
+
+        {missionHistory.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <span className="ops-label">Mission history</span>
+            <div className="ops-list" style={{ marginTop: 6 }}>
+              {missionHistory.map((mission) => (
+                <div className="ops-list-row" key={mission.id}>
+                  <div>
+                    <span className="ops-record-name">{mission.title}</span>
+                    <span className="ops-record-meta">{missionAreaMeta(mission.area).label} · {when(mission.completedAt)}</span>
+                  </div>
+                  <Badge status={mission.status === "completed" && mission.completionOutcome === "delivered" ? "positive" : mission.status === "cancelled" ? "locked" : "neutral"}>
+                    {mission.status === "completed" ? label(mission.completionOutcome ?? "completed") : "Cancelled"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </PageSection>
+
+      <PageSection title="Impact & growth record">
+        <p className="ops-body" style={{ marginTop: 0 }}>{impactHeadline(impact)}</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginTop: 8 }}>
+          {impactStats(impact).filter((stat) => stat.headline || stat.value > 0).map((stat) => (
+            <div key={stat.key}>
+              <span className="ops-label">{stat.label}</span>
+              <strong style={{ display: "block", fontFamily: "var(--font-display)", fontSize: 24 }}>{stat.value}</strong>
+            </div>
+          ))}
+        </div>
+        <p className="ops-record-meta" style={{ marginTop: 8 }}>Every figure is derived from delivered sessions, enrollments, completed missions, and confirmed referrals — not entered by hand.</p>
+      </PageSection>
+
+      <PageSection title="Next opportunity">
+        {nextOpportunities.length === 0 ? (
+          <p className="ops-body">No specific development signal right now. Keep the current mission and delivery cadence going.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {nextOpportunities.map((opportunity) => (
+              <div key={opportunity.key} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <Badge status={opportunityTone[opportunity.kind]}>{opportunity.label}</Badge>
+                <span className="ops-body">{opportunity.rationale}</span>
+              </div>
+            ))}
+            <p className="ops-record-meta" style={{ marginTop: 2 }}>Recommendations only — promotion and leadership are the founder&rsquo;s call.</p>
+          </div>
+        )}
+      </PageSection>
 
       {instructor.source === "people_work_application" && (
         <div className="ops-alert" data-tone="info">
@@ -381,6 +531,15 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
 
       <PageSection title="Owner & source">
         <p className="ops-body">Owner: {instructor.ownerUserId ? (resolvedOwnerName && resolvedOwnerName !== instructor.ownerUserId ? resolvedOwnerName : "Former staff member") : "Unassigned"} · Source: {instructor.source ? label(instructor.source) : "—"}</p>
+        {impact.instructorReferralsTotal > 0 && (
+          <p className="ops-body">Has referred {impact.instructorReferralsTotal} instructor{impact.instructorReferralsTotal === 1 ? "" : "s"} ({impact.instructorReferralsActivated} now active).</p>
+        )}
+        <ReferrerAttributionControl
+          instructorId={instructorId}
+          currentReferrerPersonId={currentReferrer?.personId ?? null}
+          currentReferrerName={currentReferrer?.name ?? null}
+          options={referrerOptions}
+        />
       </PageSection>
 
       {activity.length > 0 && (

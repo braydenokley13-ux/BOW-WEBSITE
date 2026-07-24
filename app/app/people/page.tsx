@@ -71,6 +71,7 @@ export default async function PeoplePage({
         context="Every human at BOW — instructor, student, applicant, or staff role-holder — in one place. Find anyone without knowing which record they live in."
         action={
           <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            <Link href="/app/people/instructors" className="ops-inline-link">Instructor command →</Link>
             <Link href="/app/hiring" className="ops-inline-link">Hiring pipeline →</Link>
             <Link href="/app/training" className="ops-inline-link">Training →</Link>
           </div>
