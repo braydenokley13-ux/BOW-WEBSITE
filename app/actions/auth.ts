@@ -24,6 +24,7 @@ import {
   publicAppOrigin,
   sendTransactionalEmail,
 } from "@/lib/transactional-email";
+import { renderTransactionalEmail } from "@/lib/email-template";
 
 export interface AuthState {
   error?: string;
@@ -674,10 +675,16 @@ export async function requestPasswordReset(
         delivered = Boolean(publicOrigin && (await sendTransactionalEmail({
           to: user.email,
           subject: "Reset your BOW Sports Capital password",
-          text:
-            "A password reset was requested for your BOW Sports Capital account.\n\n" +
-            `Reset your password within 30 minutes:\n${resetUrl}\n\n` +
-            "If you did not request this, you can ignore this message. Your password has not changed.",
+          ...renderTransactionalEmail({
+            preheader: "Reset your password — this link expires in 30 minutes.",
+            heading: "Reset your password",
+            paragraphs: [
+              "A password reset was requested for your BOW Sports Capital account.",
+              "This link expires in 30 minutes and can only be used once.",
+            ],
+            cta: { label: "Reset password", url: resetUrl },
+            note: "If you did not request this, you can ignore this message. Your password has not changed.",
+          }),
         })));
       } catch {
         // Keep all post-response failures outside the public action result.

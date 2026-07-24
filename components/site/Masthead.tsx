@@ -147,7 +147,8 @@ export default function Masthead() {
           >
             Sign In
           </Link>
-          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+          {/* Stacked: two full-width buttons side by side overflow narrow screens. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
             <Button href="/programs" variant="primary" size="md" full onClick={closeMenu} style={{ height: 44 }}>
               Find a Program
             </Button>

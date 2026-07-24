@@ -17,6 +17,7 @@ import { logActivity } from "@/lib/hiring";
 import { PersonIdentityError, resolveGuardianPerson, resolveStudentIdentity } from "@/lib/people-identity";
 import { clientAddressBucket, consumeRateLimit } from "@/lib/rate-limit";
 import { publicAppOrigin, sendTransactionalEmail, transactionalEmailReady } from "@/lib/transactional-email";
+import { renderTransactionalEmail } from "@/lib/email-template";
 
 export interface ProgramRegistrationInput {
   requestKey: string;
@@ -251,17 +252,20 @@ export async function registerForProgram(input: ProgramRegistrationInput): Promi
     (await sendTransactionalEmail({
           to: parentEmail,
           subject: `BOW Sports Capital — ${program.name} registration received`,
-          text: [
-            `Hi ${parentName},`,
-            "",
-            `${statusLine}`,
-            "",
-            `Program: ${program.name}`,
-            `Student: ${studentFirstName} ${studentLastName}`,
-            "",
-            "We'll follow up with any next steps by email.",
-            origin ? `Questions? Visit ${origin}/contact` : "",
-          ].filter(Boolean).join("\n"),
+          ...renderTransactionalEmail({
+            preheader: `${statusLine} — ${program.name}`,
+            heading: "Registration received",
+            paragraphs: [`Hi ${parentName},`, statusLine],
+            details: [
+              { label: "Program", value: program.name },
+              { label: "Student", value: `${studentFirstName} ${studentLastName}` },
+            ],
+            // The branded footer already links to /contact, so the plain-text
+            // pointer is only needed when no public origin is configured.
+            note: origin
+              ? "We'll follow up with any next steps by email."
+              : "We'll follow up with any next steps by email. Reach us through the contact page on our site.",
+          }),
         }).catch(() => false));
   }
 

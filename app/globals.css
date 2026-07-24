@@ -127,6 +127,18 @@ h1, h2, h3, h4, h5, h6, p, figure, blockquote { margin: 0; }
 .bow-container { max-width: var(--content-max); margin: 0 auto; }
 .bow-container-wide { max-width: var(--wide-max); margin: 0 auto; }
 
+/* ===== Masthead navigation =====
+ * Below 900px the inline nav and account cluster collapse into the toggle. */
+.bow-nav-desktop { display: flex; }
+.bow-nav-mobile { display: none; }
+.bow-nav-mobile-toggle { display: none; }
+
+@media (max-width: 900px) {
+  .bow-nav-desktop { display: none; }
+  .bow-nav-mobile { display: flex; }
+  .bow-nav-mobile-toggle { display: flex; }
+}
+
 /* Editorial link hover (links brighten / shift to franchise blue) */
 .bow-link { transition: color var(--dur-hover) var(--ease-out); }
 .bow-link:hover { color: var(--bow-blue); }

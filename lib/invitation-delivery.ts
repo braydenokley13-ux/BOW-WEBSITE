@@ -9,6 +9,7 @@ import {
   sendTransactionalEmail,
   transactionalEmailReady,
 } from "@/lib/transactional-email";
+import { renderTransactionalEmail } from "@/lib/email-template";
 
 export type InvitationDeliveryState = "queued" | "manual_copy_required";
 
@@ -111,14 +112,23 @@ export function queueInvitationDelivery(input: QueueInvitationDeliveryInput): In
       const invitationUrl = origin
         ? `${origin}/accept-invitation#token=${encodeURIComponent(input.token)}`
         : null;
-      const delivered = Boolean(invitationUrl && await sendTransactionalEmail({
-        to: normalizedEmail,
-        subject: "Your BOW Sports Capital invitation",
-        text:
-          `You have been invited to join BOW Sports Capital as ${input.role === "instructor" ? "an instructor" : "a student"}.\n\n` +
-          `Accept this invitation within 14 days:\n${invitationUrl}\n\n` +
-          "If you were not expecting this invitation, you can ignore this message.",
-      }));
+      const roleLabel = input.role === "instructor" ? "an instructor" : "a student";
+      const delivered = invitationUrl
+        ? await sendTransactionalEmail({
+            to: normalizedEmail,
+            subject: "Your BOW Sports Capital invitation",
+            ...renderTransactionalEmail({
+              preheader: `You've been invited to join BOW Sports Capital as ${roleLabel}.`,
+              heading: "You're invited to BOW Sports Capital",
+              paragraphs: [
+                `You have been invited to join BOW Sports Capital as ${roleLabel}.`,
+                "Accept this invitation within 14 days to set up your account.",
+              ],
+              cta: { label: "Accept invitation", url: invitationUrl },
+              note: "If you were not expecting this invitation, you can ignore this message.",
+            }),
+          })
+        : false;
 
       if (delivered) {
         try {
