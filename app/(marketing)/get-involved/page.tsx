@@ -2,7 +2,7 @@ import Link from "next/link";
 import InquiryForm from "@/components/site/InquiryForm";
 
 export const metadata = {
-  title: "Get Involved — BOW Sports Capital",
+  title: "Get Involved",
   description:
     "Step into the front office. Bring BOW to a school, camp, or youth organization, join as a student or family, or explore a partnership.",
 };

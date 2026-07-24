@@ -3,7 +3,7 @@ import { CapLine } from "@/components/ds";
 import { getGlossaryTerms } from "@/lib/glossary";
 import GlossaryView from "@/components/site/GlossaryView";
 
-const TITLE = "Front Office Glossary — BOW Sports Capital";
+const TITLE = "Front Office Glossary";
 const DESCRIPTION =
   "A searchable, plain-English glossary of every term in the BOW curriculum — from salary cap and Bird Rights to opportunity cost and Wins Above Replacement.";
 

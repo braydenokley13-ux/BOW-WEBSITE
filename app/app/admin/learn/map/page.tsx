@@ -4,7 +4,7 @@ import { getMapEditorData, listPublishedLessonsForMapPicker } from "@/app/action
 import MapEditor from "@/components/learn/builder/MapEditor";
 
 export const metadata = {
-  title: "Career Map Editor · BOW HQ",
+  title: "Career Map Editor",
   description: "Build the student Career Map — department sections, lesson nodes, unlock rules.",
   robots: { index: false, follow: false },
 };

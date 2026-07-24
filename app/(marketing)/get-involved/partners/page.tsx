@@ -7,7 +7,7 @@ import {
 } from "@/lib/get-involved";
 
 export const metadata = {
-  title: "For Partners — BOW Sports Capital",
+  title: "For Partners",
   description:
     "Build the program. Expand the access. BOW is building relationships with organizations that can strengthen the curriculum, grow distribution, and deepen credibility.",
 };

@@ -243,7 +243,7 @@ function EntryScreen({ onBegin }: { onBegin: () => void }) {
               }}
             >
               You’re the GM. Across three rounds, decide what your young star is really worth — and what you’re willing to
-              give up to win now.
+              give up to win now. The players and figures here are illustrative teaching examples, not real contracts.
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 22, marginTop: 26 }}>
               {[

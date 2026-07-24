@@ -11,7 +11,7 @@ import {
 } from "@/lib/get-involved";
 
 export const metadata = {
-  title: "For Camps — BOW Sports Capital",
+  title: "For Camps",
   description:
     "High-energy front-office decisions, built for camp schedules. One complete sports-business challenge in 45 to 75 minutes.",
 };

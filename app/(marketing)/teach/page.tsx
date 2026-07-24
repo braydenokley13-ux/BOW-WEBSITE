@@ -18,7 +18,7 @@ export default async function TeachPage() {
           <span className="bow-eyebrow" style={{ color: "var(--bow-orange)" }}>We&apos;re building the instructor team</span>
           <h1 style={{ marginTop: 14, maxWidth: 900, fontFamily: "var(--font-editorial)", fontSize: "clamp(44px,7vw,90px)", lineHeight: .95, letterSpacing: "-.02em" }}>Help students learn to make the decisions behind sports.</h1>
           <CapLine weight={7} step={20} stepAt={.46} style={{ marginTop: 26, maxWidth: 360 }} />
-          <p style={{ marginTop: 26, maxWidth: 700, fontSize: "clamp(18px,2vw,22px)", lineHeight: 1.55, color: "#b9bcc4" }}>BOW instructors turn sports into a live classroom for economics, finance, leadership, and strategy. You do not lecture from a textbook—you guide decisions, tradeoffs, and consequences.</p>
+          <p style={{ marginTop: 26, maxWidth: 700, fontSize: "clamp(18px,2vw,22px)", lineHeight: 1.55, color: "#b9bcc4" }}>BOW instructors turn sports into a live classroom for economics, finance, leadership, and strategy. You do not lecture from a textbook—you guide decisions, tradeoffs, and consequences. Teaching with BOW is a volunteer role.</p>
           <div style={{ marginTop: 30, display: "flex", flexWrap: "wrap", gap: 12 }}>
             <Button href={opening ? `/join/${opening.slug}` : "/contact"} variant="primary" size="lg">Apply to Teach</Button>
             <Button href="/#howitworks" variant="secondary" size="lg" style={{ color: "#fff", borderColor: "var(--bow-dark-border)" }}>See What BOW Teaches</Button>

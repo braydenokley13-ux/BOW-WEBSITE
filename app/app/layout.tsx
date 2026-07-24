@@ -7,7 +7,9 @@ import { getInstructorByUserId } from "@/lib/hiring";
 import { getLearnCutoverEnabled } from "@/lib/learn/cutover";
 
 export const metadata: Metadata = {
-  title: "Front Office",
+  // Own template so nested screens read "Programs" without stacking
+  // the root site brand ("… · BOW Sports Capital") on top of it.
+  title: { default: "BOW HQ", template: "%s" },
   description: "Your BOW Sports Capital front office — cohorts, lessons, and progress.",
   // The authenticated app is private; keep it out of search indexes.
   robots: { index: false, follow: false },

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Badge, Button, DataStrip } from "@/components/ds";
 import { requireStaff } from "@/lib/dal";
 import { getLocation, programStageLabel } from "@/lib/operations";
-import { formatCanonicalDate } from "@/lib/timezone";
+import { formatCanonicalDate, coerceEpochMs } from "@/lib/timezone";
 
 function stageTone(stage: string): "positive" | "warning" | "negative" | "info" | "neutral" | "locked" {
   if (stage === "active" || stage === "renewed") return "positive";
@@ -203,7 +203,7 @@ export default async function LocationDetailPage({ params }: { params: Promise<{
             <div className="ops-timeline">
               {detail.activity.slice(0, 30).map((activity) => (
                 <div className="ops-timeline__item" key={activity.id}>
-                  <span className="ops-label">{activity.kind.replace(/_/g, " ")} · {new Date(activity.createdAt).toLocaleString()}</span>
+                  <span className="ops-label">{activity.kind.replace(/_/g, " ")} · {(() => { const ms = coerceEpochMs(activity.createdAt); return ms == null ? "Date not recorded" : new Date(ms).toLocaleString(); })()}</span>
                   <p className="ops-body" style={{ marginTop: 5, color: "var(--bow-ink)" }}>{activity.body ?? "Activity recorded."}</p>
                   {activity.actorName && <span className="ops-record-meta">By {activity.actorName}</span>}
                 </div>

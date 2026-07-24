@@ -5,7 +5,7 @@ import { getActiveNewsItems } from "@/lib/content";
 import { conceptLabel } from "@/lib/daily-question";
 import NewsSubmitForm from "@/components/site/NewsSubmitForm";
 
-const TITLE = "In the News — BOW Sports Capital";
+const TITLE = "In the News";
 const DESCRIPTION =
   "Real sports-business headlines, tied to the economic concepts BOW teaches. See the front office at work in the news.";
 

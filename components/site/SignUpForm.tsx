@@ -358,7 +358,7 @@ export default function SignUpForm() {
                 )}
                 <div style={{ marginTop: 4 }}>
                   <Button variant="primary" size="lg" type="submit" full disabled={pending}>
-                    {pending ? "Sending…" : "Take My Seat"}
+                    {pending ? "Sending…" : "Join the Interest List"}
                   </Button>
                 </div>
                 <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 12, lineHeight: 1.5, color: "#6d7078" }}>

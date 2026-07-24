@@ -22,7 +22,7 @@ import {
   type DeskAssignment,
 } from "@/lib/desk";
 
-const TITLE = "The Research Desk — BOW Sports Capital";
+const TITLE = "The Research Desk";
 const DESCRIPTION =
   "Bow's editorial command center: the model flags signals, signals become assignments, assignments become published research, and every piece deposits residue that makes the machine smarter.";
 

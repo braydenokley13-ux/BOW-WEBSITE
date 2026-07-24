@@ -8,7 +8,7 @@ import {
 } from "@/lib/get-involved";
 
 export const metadata = {
-  title: "For Families & Students — BOW Sports Capital",
+  title: "For Families & Students",
   description:
     "You don't need to know economics before you start. BOW is built for students curious about sports, business, leadership, strategy, or money.",
 };

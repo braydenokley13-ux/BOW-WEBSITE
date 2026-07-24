@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import SignInForm from "@/components/site/SignInForm";
 
 export const metadata = {
-  title: "Sign In — BOW Sports Capital",
+  title: "Sign In",
   description:
     "Sign in to your program. Students, instructors, and BOW administrators run the program from one front office.",
 };

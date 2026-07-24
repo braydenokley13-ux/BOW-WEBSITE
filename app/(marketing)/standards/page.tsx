@@ -4,7 +4,7 @@ import { CapLine } from "@/components/ds";
 import { getStandardsAlignment, buildStandardsHtml, type StandardsEntry } from "@/lib/standards";
 import StandardsDownloadButton from "@/components/site/StandardsDownloadButton";
 
-const TITLE = "AP Economics Standards Alignment — BOW Sports Capital";
+const TITLE = "AP Economics Standards Alignment";
 const DESCRIPTION =
   "How every BOW Sports Capital module maps to specific AP Microeconomics and AP Macroeconomics standards — the document a curriculum committee needs.";
 

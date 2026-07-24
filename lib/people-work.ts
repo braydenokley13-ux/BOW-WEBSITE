@@ -44,6 +44,19 @@ function parseJson<T>(value: unknown, fallback: T): T {
   }
 }
 
+/**
+ * One unambiguous public label for a role's engagement. Openings internally
+ * store a set (e.g. ["volunteer","contractor","other"]) for BOW's own hiring
+ * records — the public must never see that contradiction. BOW instructor
+ * roles are volunteer/unpaid unless the data is exclusively a paid type.
+ */
+export function publicEngagementLabel(types: string[]): string {
+  const set = new Set(types.map((t) => t.toLowerCase().trim()));
+  if (set.has("volunteer")) return "Volunteer role · unpaid";
+  if (set.has("employee") || set.has("contractor")) return "Paid role";
+  return "Volunteer role · unpaid";
+}
+
 export async function getPublicOpening(slug: string): Promise<PublicOpening | null> {
   const db = getDb();
   const row = (await db.prepare(

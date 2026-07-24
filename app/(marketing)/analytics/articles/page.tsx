@@ -4,7 +4,7 @@ import ArticleCard from "@/components/analytics/ArticleCard";
 import { ARTICLE_CATEGORIES, getPublishedArticles, getPublishedTags, rehydrateArticlesFromMirror } from "@/lib/articles";
 import { getDataProvenance } from "@/lib/nba";
 
-const TITLE = "Analytics Articles — BOW Sports Capital";
+const TITLE = "Analytics Articles";
 const DESCRIPTION =
   "Front-office analysis and reader-submitted research papers where every embedded number is recomputed from the AASV model at read time — with the data's limits stated on the methods page.";
 

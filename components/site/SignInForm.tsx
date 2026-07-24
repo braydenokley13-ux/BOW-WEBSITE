@@ -247,7 +247,7 @@ export default function SignInForm() {
                 textDecoration: "none",
               }}
             >
-              Sign Up Instead
+              Join the Interest List
             </Link>
           </form>
         </div>

@@ -16,7 +16,7 @@ import {
 } from "@/lib/get-involved";
 
 export const metadata = {
-  title: "For Schools — BOW Sports Capital",
+  title: "For Schools",
   description:
     "Economics becomes real when the student has to make the decision. BOW puts students in the room where sports-business decisions get made.",
 };

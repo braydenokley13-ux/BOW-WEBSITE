@@ -4,7 +4,7 @@ import { getCurriculumTree } from "@/app/actions/learn-author";
 import CurriculumManagerClient from "./CurriculumManagerClient";
 
 export const metadata = {
-  title: "Playbook Studio · BOW HQ",
+  title: "Playbook Studio",
   description: "Build, publish, and manage Playbook Engine lessons visually — no code.",
   robots: { index: false, follow: false },
 };

@@ -3,7 +3,7 @@ import { CapLine } from "@/components/ds";
 import { getConceptMap } from "@/lib/concept-map";
 import ConceptMapView from "@/components/site/ConceptMapView";
 
-const TITLE = "Front Office Concept Map — BOW Sports Capital";
+const TITLE = "Front Office Concept Map";
 const DESCRIPTION =
   "Every economics concept BOW teaches, mapped to the track and module that covers it, how real NBA/NFL/MLB front offices use it, and a specific real-world example.";
 

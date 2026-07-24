@@ -231,17 +231,6 @@ export interface Impact {
 // so the homepage never claims more than what's actually built and counted.
 export const impact: Impact[] = partnerVerifiedFacts.map((f) => ({ value: f.value, label: f.label }));
 
-export interface Quote {
-  text: string;
-  who: string;
-}
-
-export const quotes: Quote[] = [
-  { text: "I stopped memorizing and started arguing about decisions. That changed how I see every trade.", who: "STUDENT · GRADE 9" },
-  { text: "It is the first thing my son has called homework and a game in the same sentence.", who: "PARENT · BROOKLYN" },
-  { text: "The economics finally had stakes my students cared about.", who: "EDUCATOR · CHICAGO" },
-];
-
 export interface Faq {
   id: string;
   q: string;

@@ -4,7 +4,7 @@ import PublicProgramCard from "@/components/site/PublicProgramCard";
 import { listPublicPrograms } from "@/lib/operations";
 
 export const metadata = {
-  title: "Programs — BOW Sports Capital",
+  title: "Programs",
   description: "Real, upcoming BOW Sports Capital programs students can join today — plus the curriculum behind them.",
 };
 

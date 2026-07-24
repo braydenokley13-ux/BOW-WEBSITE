@@ -1,14 +1,20 @@
 import { Button, CapLine } from "@/components/ds";
 import { aboutOutcomes } from "@/lib/about";
-import { impact, quotes } from "@/lib/home";
+import { impact } from "@/lib/home";
+import { getActiveTestimonials } from "@/lib/content";
 
 export const metadata = {
-  title: "About — BOW Sports Capital",
+  title: "About",
   description:
     "The economics debate was already happening. BOW Sports Capital gave it a front office — a curriculum built around the sports-business decisions students already care about.",
 };
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  // Only approved, real testimonials — no fabricated seed fallback.
+  const testimonials = (await getActiveTestimonials()).map((t) => ({
+    text: t.quote,
+    who: [t.studentName, t.schoolName, t.trackCompleted ? `Track ${t.trackCompleted}` : ""].filter(Boolean).join(" · ").toUpperCase(),
+  }));
   return (
     <div data-screen-label="About">
       {/* ===== HERO ===== */}
@@ -69,14 +75,16 @@ export default function AboutPage() {
               </div>
             ))}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(20px,3vw,40px)" }}>
-            {quotes.map((q) => (
-              <figure key={q.who} style={{ margin: 0, display: "flex", flexDirection: "column", gap: 14, paddingBottom: 20, borderBottom: "1px solid var(--bow-dark-border)" }}>
-                <blockquote style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 500, fontSize: 22, lineHeight: 1.3, color: "#fff" }}>&ldquo;{q.text}&rdquo;</blockquote>
-                <figcaption style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#9a9da6" }}>{q.who}</figcaption>
-              </figure>
-            ))}
-          </div>
+          {testimonials.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "clamp(20px,3vw,40px)" }}>
+              {testimonials.map((q) => (
+                <figure key={q.who} style={{ margin: 0, display: "flex", flexDirection: "column", gap: 14, paddingBottom: 20, borderBottom: "1px solid var(--bow-dark-border)" }}>
+                  <blockquote style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 500, fontSize: 22, lineHeight: 1.3, color: "#fff" }}>&ldquo;{q.text}&rdquo;</blockquote>
+                  <figcaption style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#9a9da6" }}>{q.who}</figcaption>
+                </figure>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

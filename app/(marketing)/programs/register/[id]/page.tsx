@@ -7,7 +7,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const program = await getPublicProgram(id);
   return {
-    title: program ? `Register — ${program.name} — BOW Sports Capital` : "Register — BOW Sports Capital",
+    title: program ? `Register — ${program.name} — BOW Sports Capital` : "Register",
     description: program?.shortDescription ?? "Register for a BOW Sports Capital program.",
   };
 }

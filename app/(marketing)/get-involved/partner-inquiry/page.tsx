@@ -2,7 +2,7 @@ import Link from "next/link";
 import PartnershipInquiryForm from "@/components/site/PartnershipInquiryForm";
 
 export const metadata = {
-  title: "Partnership Inquiry — BOW Sports Capital",
+  title: "Partnership Inquiry",
   description: "Tell us about your organization and the partnership you have in mind.",
 };
 
