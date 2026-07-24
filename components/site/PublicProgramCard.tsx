@@ -27,10 +27,16 @@ export default function PublicProgramCard({ program }: { program: ProgramCardDat
   } else if (program.status === "open") {
     cta = { label: "Register", href: `/programs/register/${program.id}` };
   } else if (program.status === "full") {
-    cta =
-      program.fullCapacityBehavior === "close"
-        ? { label: "Registration Closed", href: "#", disabled: true }
-        : { label: "Join Waitlist", href: `/programs/register/${program.id}` };
+    // "continue" (keep accepting past capacity) still creates a confirmed
+    // enrollment on submit — it is NOT a waitlist — so the CTA must read
+    // "Register", not "Join Waitlist". Only "waitlist" actually waitlists.
+    if (program.fullCapacityBehavior === "close") {
+      cta = { label: "Registration Closed", href: "#", disabled: true };
+    } else if (program.fullCapacityBehavior === "continue") {
+      cta = { label: "Register", href: `/programs/register/${program.id}` };
+    } else {
+      cta = { label: "Join Waitlist", href: `/programs/register/${program.id}` };
+    }
   }
 
   return (
