@@ -9,8 +9,11 @@ import AvailabilityEditor from "@/components/app/hiring/AvailabilityEditor";
 import { formatDateTimeInZone, canonicalDateInZone } from "@/lib/timezone";
 import SubmitWorkControls from "@/components/app/tasks/SubmitWorkControls";
 import MissionUpdateForm from "@/components/app/teach/MissionUpdateForm";
+import InstructorReferralForm from "@/components/app/teach/InstructorReferralForm";
 import { sessionHref } from "@/lib/routes";
 import { getMissionWithUpdates } from "@/lib/instructor-missions";
+import { getInstructorImpact } from "@/lib/instructor-growth";
+import { impactHeadline, impactStats } from "@/lib/instructor-growth-shared";
 import { missionAreaMeta, missionIsOverdue, MISSION_UPDATE_KIND_LABEL, type InstructorMission, type MissionUpdate } from "@/lib/instructor-missions-shared";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -113,7 +116,9 @@ export default async function TeachHomePage() {
   const now = Number(((await db.prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
 
   const isDelivering = ACTIVE_STAGES.includes(instructor.stage) && instructor.eligibilityStatus === "eligible";
-  const missionData = await getMissionWithUpdates(instructor.id);
+  // Resilient: never break an instructor's own home if the mission migration
+  // is briefly behind the deployed code.
+  const missionData = await getMissionWithUpdates(instructor.id).catch(() => null);
 
   const modules = (await listTrainingModules());
   const moduleViews = new Map(
@@ -281,6 +286,8 @@ export default async function TeachHomePage() {
     ).map((r) => r.session_id),
   );
   const followUpsDue = sessionRows.filter((s) => s.session_date < now && !reportedSessionIds.has(s.id));
+  const impact = await getInstructorImpact(instructor.id, now).catch(() => null);
+  const visibleImpact = impact ? impactStats(impact).filter((stat) => stat.value > 0) : [];
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
@@ -371,6 +378,25 @@ export default async function TeachHomePage() {
           </div>
         </PageSection>
       )}
+
+      {impact && visibleImpact.length > 0 && (
+        <PageSection title="What you've accomplished">
+          <p className="ops-body" style={{ marginTop: 0 }}>{impactHeadline(impact)}</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginTop: 6 }}>
+            {visibleImpact.map((stat) => (
+              <div key={stat.key}>
+                <span className="ops-label">{stat.label}</span>
+                <strong style={{ display: "block", fontFamily: "var(--font-display)", fontSize: 22 }}>{stat.value}</strong>
+              </div>
+            ))}
+          </div>
+        </PageSection>
+      )}
+
+      <PageSection title="Grow BOW">
+        <p className="ops-body" style={{ marginTop: 0 }}>Know someone who&rsquo;d be a strong instructor? Refer them — you&rsquo;ll get credit when they join and become active.</p>
+        <InstructorReferralForm />
+      </PageSection>
 
       <PageSection title="Development">
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

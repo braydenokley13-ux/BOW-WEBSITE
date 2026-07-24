@@ -17,6 +17,9 @@ import { getInstructorDetail, getStudentDetail, getStudentAttendanceHistory, lis
 import { getInstructorWorkforceDossier } from "@/lib/instructor-workforce";
 import { getMissionWithUpdates, getMissionHistory } from "@/lib/instructor-missions";
 import { missionAreaMeta, missionIsOverdue, MISSION_UPDATE_KIND_LABEL } from "@/lib/instructor-missions-shared";
+import { getInstructorImpact, listActiveInstructorOptions } from "@/lib/instructor-growth";
+import { deriveNextOpportunities, impactStats, impactHeadline, type OpportunityKind } from "@/lib/instructor-growth-shared";
+import ReferrerAttributionControl from "@/components/app/hiring/ReferrerAttributionControl";
 import { canonicalDateInZone } from "@/lib/timezone";
 import { listIntroductions } from "@/lib/flywheel";
 
@@ -326,6 +329,38 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
   const nowMs = Number(((await getDb().prepare("SELECT unixepoch('now') * 1000 AS now").get()) as { now: number }).now);
   const missionToday = canonicalDateInZone(nowMs);
 
+  // Derived impact record + evidence-based development signals (B + C).
+  const impact = await getInstructorImpact(instructorId, nowMs);
+  const referrerOptions = (await listActiveInstructorOptions()).filter((option) => option.id !== instructorId);
+  let currentReferrer: { personId: string; name: string } | null = null;
+  try {
+    const referrerRow = (await getDb().prepare(
+      "SELECT ref.id AS person_id, ref.name FROM instructors i LEFT JOIN people ref ON ref.id = i.referred_by_person_id WHERE i.id = ? AND i.referred_by_person_id IS NOT NULL",
+    ).get(instructorId)) as { person_id: string; name: string } | undefined;
+    currentReferrer = referrerRow ? { personId: referrerRow.person_id, name: referrerRow.name } : null;
+  } catch {
+    currentReferrer = null;
+  }
+  const recentQuality = dossier.qualityDimensions.map((dimension) => dimension.recentAverage).filter((value): value is number => value != null);
+  const nextOpportunities = deriveNextOpportunities({
+    stage: instructor.stage,
+    eligible: instructor.eligibilityStatus === "eligible",
+    progressionLevel: dossier.profile.progressionLevel,
+    currentAssignmentCount: dossier.workload.currentClasses,
+    upcomingSessionCount: dossier.reliability.next30DaySessions,
+    sessionsTaught: impact.sessionsTaught,
+    programsLed: impact.programsLed,
+    qualityAverage: recentQuality.length ? recentQuality.reduce((sum, value) => sum + value, 0) / recentQuality.length : null,
+    lowReliabilitySignals: dossier.reliability.lowReliabilitySignals180d,
+    instructorReferralsActivated: impact.instructorReferralsActivated,
+    partnerOpportunities: impact.partnerOpportunities,
+    hasActiveMission: Boolean(missionData),
+    currentAssignmentLoad: dossier.workload.currentClasses,
+    maxWeeklyClasses: dossier.workload.maximumClasses,
+    lastActivityDays: activity.length ? Math.max(0, Math.floor((nowMs - activity[0].createdAt) / 86_400_000)) : 0,
+  });
+  const opportunityTone: Record<OpportunityKind, "positive" | "warning" | "info"> = { ready: "positive", attention: "warning", develop: "info" };
+
   return (
     <div style={{ display: "grid", gap: 4 }}>
       <div className="ops-status-line" style={{ marginTop: 0 }}>
@@ -405,6 +440,35 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
         )}
       </PageSection>
 
+      <PageSection title="Impact & growth record">
+        <p className="ops-body" style={{ marginTop: 0 }}>{impactHeadline(impact)}</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginTop: 8 }}>
+          {impactStats(impact).filter((stat) => stat.headline || stat.value > 0).map((stat) => (
+            <div key={stat.key}>
+              <span className="ops-label">{stat.label}</span>
+              <strong style={{ display: "block", fontFamily: "var(--font-display)", fontSize: 24 }}>{stat.value}</strong>
+            </div>
+          ))}
+        </div>
+        <p className="ops-record-meta" style={{ marginTop: 8 }}>Every figure is derived from delivered sessions, enrollments, completed missions, and confirmed referrals — not entered by hand.</p>
+      </PageSection>
+
+      <PageSection title="Next opportunity">
+        {nextOpportunities.length === 0 ? (
+          <p className="ops-body">No specific development signal right now. Keep the current mission and delivery cadence going.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {nextOpportunities.map((opportunity) => (
+              <div key={opportunity.key} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <Badge status={opportunityTone[opportunity.kind]}>{opportunity.label}</Badge>
+                <span className="ops-body">{opportunity.rationale}</span>
+              </div>
+            ))}
+            <p className="ops-record-meta" style={{ marginTop: 2 }}>Recommendations only — promotion and leadership are the founder&rsquo;s call.</p>
+          </div>
+        )}
+      </PageSection>
+
       {instructor.source === "people_work_application" && (
         <div className="ops-alert" data-tone="info">
           <span className="ops-label">Onboarding origin</span>
@@ -467,6 +531,15 @@ async function InstructorSection({ instructorId, me }: { instructorId: string; m
 
       <PageSection title="Owner & source">
         <p className="ops-body">Owner: {instructor.ownerUserId ? (resolvedOwnerName && resolvedOwnerName !== instructor.ownerUserId ? resolvedOwnerName : "Former staff member") : "Unassigned"} · Source: {instructor.source ? label(instructor.source) : "—"}</p>
+        {impact.instructorReferralsTotal > 0 && (
+          <p className="ops-body">Has referred {impact.instructorReferralsTotal} instructor{impact.instructorReferralsTotal === 1 ? "" : "s"} ({impact.instructorReferralsActivated} now active).</p>
+        )}
+        <ReferrerAttributionControl
+          instructorId={instructorId}
+          currentReferrerPersonId={currentReferrer?.personId ?? null}
+          currentReferrerName={currentReferrer?.name ?? null}
+          options={referrerOptions}
+        />
       </PageSection>
 
       {activity.length > 0 && (
