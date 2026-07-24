@@ -4,6 +4,7 @@ import { after } from "next/server";
 import { getDb } from "@/lib/db";
 import { createNotification } from "@/lib/notifications";
 import { sendTransactionalEmail } from "@/lib/transactional-email";
+import { renderPlainBodyEmail } from "@/lib/email-template";
 
 /** Deliver a committed candidate message. The database state is never rolled back for an email failure. */
 export function queueCandidateCommunication(communicationId: string, actorUserId: string): void {
@@ -15,7 +16,11 @@ export function queueCandidateCommunication(communicationId: string, actorUserId
           WHERE id = ? AND status = 'queued'`,
       ).get(communicationId) as { id: string; application_id: string; recipient: string; subject: string; body: string } | undefined;
       if (!message) return;
-      const sent = await sendTransactionalEmail({ to: message.recipient, subject: message.subject, text: message.body });
+      const sent = await sendTransactionalEmail({
+        to: message.recipient,
+        subject: message.subject,
+        ...renderPlainBodyEmail(message.subject, message.body),
+      });
       await db.prepare(
         `UPDATE candidate_communications SET status = ?, sent_at = ?, failure_detail = ?
           WHERE id = ? AND status = 'queued'`,

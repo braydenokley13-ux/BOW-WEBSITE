@@ -10,6 +10,8 @@ export interface TransactionalEmailInput {
   to: string;
   subject: string;
   text: string;
+  /** Optional branded alternative part. The text part always remains the fallback. */
+  html?: string;
 }
 
 const MAILBOX = "[^\\s<>@]+@[^\\s<>@]+\\.[^\\s<>@]+";
@@ -94,7 +96,8 @@ export async function sendTransactionalEmail(input: TransactionalEmailInput): Pr
     subject.length > 160 ||
     /[\r\n]/.test(subject) ||
     !input.text ||
-    input.text.length > 20_000
+    input.text.length > 20_000 ||
+    (input.html !== undefined && (!input.html || input.html.length > 200_000))
   ) {
     return false;
   }
@@ -106,7 +109,13 @@ export async function sendTransactionalEmail(input: TransactionalEmailInput): Pr
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to: [to], subject, text: input.text }),
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject,
+        text: input.text,
+        ...(input.html ? { html: input.html } : {}),
+      }),
       signal: AbortSignal.timeout(10_000),
     });
     return response.ok;
