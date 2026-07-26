@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 
@@ -15,27 +13,22 @@ interface ButtonProps {
   type?: "button" | "submit" | "reset";
   href?: string;
   onClick?: () => void;
+  className?: string;
   style?: CSSProperties;
   "aria-label"?: string;
 }
 
-const sizes: Record<Size, CSSProperties> = {
-  sm: { fontSize: 13, padding: "8px 16px", letterSpacing: "0.06em" },
-  md: { fontSize: 15, padding: "12px 22px", letterSpacing: "0.06em" },
-  lg: { fontSize: 18, padding: "15px 30px", letterSpacing: "0.05em" },
-};
-
-const variants: Record<Variant, CSSProperties> = {
-  primary: { background: "var(--bow-blue)", color: "var(--bow-white)", border: "1px solid var(--bow-blue)" },
-  emphasis: { background: "var(--bow-orange-solid)", color: "var(--bow-white)", border: "1px solid var(--bow-orange-solid)" },
-  ink: { background: "var(--bow-ink)", color: "var(--bow-white)", border: "1px solid var(--bow-ink)" },
-  secondary: { background: "transparent", color: "var(--text-primary)", border: "1px solid var(--border-strong)" },
-  ghost: { background: "transparent", color: "var(--text-link)", border: "1px solid transparent" },
-};
-
 /**
  * BOW Button — the display voice (Barlow Condensed, uppercase) for
  * sports-business verbs. Flat, 4px radius, 120ms press feedback.
+ *
+ * Styling is entirely class-based (see `.bow-button*` in app/globals.css).
+ * That is deliberate: it keeps this a *server* component, so a marketing page
+ * whose only interactivity is links no longer ships and hydrates React for
+ * its buttons. It also means `:active` fires on touch and `:hover`/`:focus`
+ * stay in sync for keyboard users — neither of which the previous
+ * `onMouseDown`/`onMouseEnter` inline-style mutation could do.
+ *
  * Renders a link when `href` is set, otherwise a button.
  */
 export default function Button({
@@ -47,55 +40,32 @@ export default function Button({
   type = "button",
   href,
   onClick,
+  className,
   style,
   ...rest
 }: ButtonProps) {
-  const base: CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    width: full ? "100%" : "auto",
-    fontFamily: "var(--font-display)",
-    fontWeight: 700,
-    textTransform: "uppercase",
-    borderRadius: "var(--radius-control)",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.45 : 1,
-    transition: "transform var(--dur-button) var(--ease-out), filter var(--dur-hover) var(--ease-out)",
-    whiteSpace: "nowrap",
-    textDecoration: "none",
-    ...sizes[size],
-    ...variants[variant],
-    ...style,
-  };
-
-  const press = {
-    onMouseDown: (e: React.MouseEvent<HTMLElement>) => {
-      if (!disabled) e.currentTarget.style.transform = "translateY(1px)";
-    },
-    onMouseUp: (e: React.MouseEvent<HTMLElement>) => {
-      e.currentTarget.style.transform = "translateY(0)";
-    },
-    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
-      if (!disabled) e.currentTarget.style.filter = "brightness(0.92)";
-    },
-    onMouseLeave: (e: React.MouseEvent<HTMLElement>) => {
-      e.currentTarget.style.filter = "brightness(1)";
-      e.currentTarget.style.transform = "translateY(0)";
-    },
-  };
+  const classes = [
+    "bow-button",
+    `bow-button-${variant}`,
+    `bow-button-${size}`,
+    full ? "bow-button-full" : "",
+    className ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   if (href && !disabled) {
     return (
-      <Link href={href} className="bow-button" style={base} onClick={onClick} {...press} {...rest}>
+      <Link href={href} className={classes} style={style} onClick={onClick} {...rest}>
         {children}
       </Link>
     );
   }
 
+  // A disabled `href` still renders as a button so it is genuinely inert —
+  // an anchor with aria-disabled remains keyboard-activatable.
   return (
-    <button className="bow-button" type={type} disabled={disabled} onClick={onClick} style={base} {...press} {...rest}>
+    <button className={classes} type={type} disabled={disabled} onClick={onClick} style={style} {...rest}>
       {children}
     </button>
   );

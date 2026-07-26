@@ -19,7 +19,7 @@ export default async function AboutPage() {
     <div data-screen-label="About">
       {/* ===== HERO ===== */}
       <section style={{ background: "var(--bow-ink)", color: "#fff", padding: "clamp(48px,6vw,96px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--bow-dark-border)", overflow: "hidden", position: "relative" }}>
-        <div className="bow-para-upbig" aria-hidden style={{ position: "absolute", right: "-3%", top: "-10%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,24vw,400px)", lineHeight: 0.8, color: "rgba(255,255,255,0.04)", pointerEvents: "none", textTransform: "uppercase", letterSpacing: "-0.04em" }}>BOW</div>
+        <div className="bow-ghost bow-para-upbig" aria-hidden style={{ position: "absolute", right: "-3%", top: "-10%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,24vw,400px)", lineHeight: 0.8, color: "rgba(255,255,255,0.04)", pointerEvents: "none", textTransform: "uppercase", letterSpacing: "-0.04em" }}>BOW</div>
         <div className="bow-container-wide" style={{ position: "relative" }}>
           <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-orange)" }}>About BOW Sports Capital</span>
           <h1 style={{ margin: "14px 0 0", fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(36px,5.5vw,70px)", lineHeight: 0.98, letterSpacing: "-0.015em", maxWidth: "18ch", textWrap: "balance" }}>The economics debate was already happening. We gave it a front office.</h1>
@@ -65,7 +65,7 @@ export default async function AboutPage() {
 
       {/* ===== PROOF (dark) ===== */}
       <section className="bow-front-office" style={{ background: "var(--bow-ink)", color: "#fff", padding: "clamp(56px,8vw,120px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--bow-dark-border)", position: "relative", overflow: "clip" }}>
-        <div className="bow-para-far" aria-hidden style={{ position: "absolute", right: "-4%", top: "-6%", fontFamily: "var(--font-editorial)", fontStyle: "italic", fontWeight: 600, fontSize: "clamp(120px,20vw,360px)", lineHeight: 0.78, color: "rgba(255,255,255,0.035)", letterSpacing: "-0.02em", pointerEvents: "none", zIndex: 0 }}>Proof</div>
+        <div className="bow-ghost bow-para-far" aria-hidden style={{ position: "absolute", right: "-4%", top: "-6%", fontFamily: "var(--font-editorial)", fontStyle: "italic", fontWeight: 600, fontSize: "clamp(120px,20vw,360px)", lineHeight: 0.78, color: "rgba(255,255,255,0.035)", letterSpacing: "-0.02em", pointerEvents: "none", zIndex: 0 }}>Proof</div>
         <div className="bow-container-wide" style={{ position: "relative" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 1, background: "var(--bow-dark-border)", border: "1px solid var(--bow-dark-border)", marginBottom: 44 }}>
             {impact.map((i) => (

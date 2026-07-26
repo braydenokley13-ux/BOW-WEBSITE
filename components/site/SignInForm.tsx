@@ -33,7 +33,11 @@ export default function SignInForm() {
   return (
     <div
       className="bow-front-office"
-      style={{ background: "var(--bow-ink)", color: "#fff", minHeight: "80vh", display: "flex", flexDirection: "column" }}
+      /* Sized to the content rather than to 80vh. At 80vh the panel was ~720px
+       * tall around ~330px of content, so both columns floated in a large
+       * void — and the page still overflowed the viewport once the footer
+       * was added. */
+      style={{ background: "var(--bow-ink)", color: "#fff", minHeight: "clamp(440px, 60vh, 620px)", display: "flex", flexDirection: "column" }}
     >
       <div
         style={{
@@ -41,6 +45,9 @@ export default function SignInForm() {
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))",
           alignItems: "stretch",
+          maxWidth: "var(--wide-max)",
+          margin: "0 auto",
+          width: "100%",
         }}
       >
         {/* brand panel */}
@@ -177,15 +184,21 @@ export default function SignInForm() {
               className="bow-field"
               style={{ ...inputStyle, marginBottom: 8 }}
             />
+            {/* Rendered as a link, not as grey body text. At #9a9da6 with no
+              * underline it read as a static caption, so the one recovery
+              * route out of a failed sign-in didn't look clickable. */}
             <Link
               href="/forgot-password"
               style={{
                 fontFamily: "var(--font-interface)",
-                fontSize: 12.5,
-                color: "#9a9da6",
-                display: "inline-block",
-                marginBottom: 22,
+                fontSize: "var(--type-body-sm)",
+                color: "var(--text-link)",
+                textDecoration: "underline",
                 textUnderlineOffset: 3,
+                display: "inline-flex",
+                alignItems: "center",
+                minHeight: 40,
+                marginBottom: 14,
               }}
             >
               Forgot your password?

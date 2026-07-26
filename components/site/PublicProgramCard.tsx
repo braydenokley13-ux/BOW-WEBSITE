@@ -61,11 +61,11 @@ export default function PublicProgramCard({ program }: { program: ProgramCardDat
           </span>
         )}
       </div>
-      <h3 style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: 22, lineHeight: 1.15 }}>
+      <h3 style={{ margin: 0, fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "var(--type-card)", lineHeight: "var(--lh-card)" }}>
         {program.name}
       </h3>
       {program.shortDescription && (
-        <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14.5, lineHeight: 1.55, color: "var(--bow-slate)", flex: 1 }}>
+        <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: "var(--type-body-sm)", lineHeight: "var(--lh-body)", color: "var(--text-secondary)", flex: 1 }}>
           {program.shortDescription}
         </p>
       )}
@@ -88,7 +88,11 @@ export default function PublicProgramCard({ program }: { program: ProgramCardDat
         cta.disabled ? (
           <Button variant="secondary" size="md" full disabled>{cta.label}</Button>
         ) : (
-          <Button href={cta.href} variant={program.status === "open" ? "emphasis" : "secondary"} size="md" full>
+          // Registering is the primary action on the public site, so it wears
+          // the primary colour. It previously used `emphasis` (brick orange),
+          // which put a second "most important button" colour on a page whose
+          // every other primary action is Franchise Blue.
+          <Button href={cta.href} variant={program.status === "open" ? "primary" : "secondary"} size="md" full>
             {cta.label}
           </Button>
         )

@@ -13,9 +13,23 @@
 
   /* ---- Neutral (raw) ---- */
   --bow-slate: #6a6d75;        /* Metadata on paper/white (4.55:1 minimum) */
+  /* Alias for --bow-slate. ~30 files across app/app/admin and
+   * components/learn/builder reference `var(--bow-muted-text, #767a85)`; the
+   * property was never actually declared, so every one of them silently fell
+   * through to the hardcoded fallback. Declaring it makes those call sites
+   * track the palette instead of a literal. */
+  --bow-muted-text: var(--bow-slate);
   --bow-border: #d8d5ce;       /* Borders, section dividers (on paper/white) */
   --bow-dark-surface: #151518; /* Charcoal panels in front-office mode */
   --bow-dark-border: #2a2a2f;  /* Hairline rules on dark */
+
+  /* ---- Type on ink. Three steps, so dark surfaces stop inventing their own.
+   * These were previously hardcoded as #9a9da6 / #b9bcc4 / #c8cad0 at ~200
+   * call sites, which is why "muted on dark" drifted between screens. ---- */
+  --bow-on-ink:        #ffffff;  /* Primary type on ink */
+  --bow-on-ink-muted:  #c3c6cd;  /* Body copy on ink (7.9:1) */
+  --bow-on-ink-subtle: #9a9da6;  /* Metadata / labels on ink (5.4:1) */
+  --bow-on-ink-faint:  #6d7078;  /* Non-essential only — never body copy */
 
   /* ---- Functional / semantic (raw) ---- */
   --bow-positive: #158a55;     /* Positive result */
@@ -68,8 +82,8 @@
   --surface-raised:  var(--bow-dark-surface);
   --surface-inverse: var(--bow-paper);
 
-  --text-primary:    var(--bow-white);
-  --text-secondary:  #9a9da6;
+  --text-primary:    var(--bow-on-ink);
+  --text-secondary:  var(--bow-on-ink-muted);
   --text-inverse:    var(--bow-ink);
   --text-link:       #6f8bff;
 

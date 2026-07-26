@@ -28,7 +28,7 @@ export default function SchoolsPage() {
     <div data-screen-label="Schools">
       {/* ===== HERO ===== */}
       <section style={{ background: "var(--bow-ink)", color: "#fff", padding: "clamp(56px,8vw,120px) clamp(18px,4vw,40px) clamp(48px,7vw,96px)", borderBottom: "1px solid var(--bow-dark-border)", position: "relative", overflow: "hidden" }}>
-        <div aria-hidden style={{ position: "absolute", right: "-2%", top: "-10%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,26vw,440px)", lineHeight: 0.78, color: "rgba(255,255,255,0.04)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none" }}>GM</div>
+        <div className="bow-ghost" aria-hidden style={{ position: "absolute", right: "-2%", top: "-10%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,26vw,440px)", lineHeight: 0.78, color: "rgba(255,255,255,0.04)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none" }}>GM</div>
         <div className="bow-container" style={{ position: "relative" }}>
           <nav aria-label="Breadcrumb" style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#6d7078", marginBottom: 28 }}>
             <Link href="/" style={{ color: "#6f8bff" }}>Home</Link>
@@ -255,7 +255,7 @@ export default function SchoolsPage() {
 
       {/* ===== CTA ===== */}
       <section style={{ background: "var(--bow-blue)", color: "#fff", padding: SECTION_PAD, position: "relative", overflow: "hidden" }}>
-        <div aria-hidden style={{ position: "absolute", right: -20, bottom: -60, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(140px,22vw,360px)", lineHeight: 0.7, color: "rgba(255,255,255,0.08)", pointerEvents: "none" }}>GM</div>
+        <div className="bow-ghost" aria-hidden style={{ position: "absolute", right: -20, bottom: -60, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(140px,22vw,360px)", lineHeight: 0.7, color: "rgba(255,255,255,0.08)", pointerEvents: "none" }}>GM</div>
         <div className="bow-container" style={{ position: "relative", display: "flex", flexWrap: "wrap", gap: 24, alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ maxWidth: 540 }}>
             <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(32px,5vw,64px)", lineHeight: 0.9, letterSpacing: "-0.02em", textTransform: "uppercase" }}>Let&apos;s build the right program together.</h2>

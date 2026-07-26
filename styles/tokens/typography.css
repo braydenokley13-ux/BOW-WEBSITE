@@ -1,13 +1,22 @@
 /* BOW Sports Capital — Typography
  * Four voices: Display (Barlow Condensed), Editorial (Newsreader),
  * Interface (Inter), Data (IBM Plex Mono).
+ *
+ * The scale is fluid by construction: every step is a single `clamp()` that
+ * carries its own mobile floor, so a page never has to restate a size at a
+ * breakpoint. The previous fixed-desktop scale is why nearly every call site
+ * ended up hand-writing its own `clamp()`, each one slightly different from
+ * the last — the sizes below replace that drift with seven decisions.
  */
 :root {
-  /* ---- Families ---- */
-  --font-display:   "Barlow Condensed", "Arial Narrow", sans-serif;
-  --font-editorial: "Newsreader", Georgia, "Times New Roman", serif;
-  --font-interface: "Inter", system-ui, -apple-system, sans-serif;
-  --font-data:      "IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace;
+  /* ---- Families ----
+   * `--font-*-loaded` is published on <html> by lib/fonts.ts via next/font.
+   * The literal stacks are the fallback for any context rendering without
+   * the root layout. */
+  --font-display:   var(--font-display-loaded, "Barlow Condensed", "Arial Narrow", sans-serif);
+  --font-editorial: var(--font-editorial-loaded, Newsreader, Georgia, "Times New Roman", serif);
+  --font-interface: var(--font-interface-loaded, Inter, system-ui, -apple-system, sans-serif);
+  --font-data:      var(--font-data-loaded, "IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace);
 
   /* ---- Weights ---- */
   --fw-regular: 400; /* @kind font */
@@ -16,33 +25,44 @@
   --fw-bold:    700; /* @kind font */
   --fw-black:   900; /* @kind font */
 
-  /* ---- Type scale (desktop): size / line-height ---- */
-  --type-campaign:  96px;  /* @kind font */
-  --lh-campaign:  0.88;    /* @kind font */
-  --type-lead:      68px;  /* @kind font */
-  --lh-lead:      0.94;    /* @kind font */
-  --type-page:      52px;  /* @kind font */
-  --lh-page:      1.0;     /* @kind font */
-  --type-section:   36px;  /* @kind font */
-  --lh-section:   1.05;    /* @kind font */
-  --type-card:      24px;  /* @kind font */
-  --lh-card:      1.1;     /* @kind font */
-  --type-body-lead: 21px;  /* @kind font */
-  --lh-body-lead: 1.5;     /* @kind font */
-  --type-body:      17px;  /* @kind font */
-  --lh-body:      1.65;    /* @kind font */
+  /* ---- Fluid type scale: mobile floor → desktop ceiling ---- */
+  --type-campaign:  clamp(44px, 8vw, 108px);   /* @kind font */ /* Cover / final CTA */
+  --type-lead:      clamp(38px, 5.6vw, 76px);  /* @kind font */ /* Hero headline */
+  --type-page:      clamp(31px, 4.2vw, 54px);  /* @kind font */ /* Section headline */
+  --type-section:   clamp(25px, 3vw, 36px);    /* @kind font */ /* Sub-section headline */
+  --type-card:      clamp(19px, 1.8vw, 24px);  /* @kind font */ /* Card / list heading */
+  --type-body-lead: clamp(17px, 1.35vw, 21px); /* @kind font */ /* Standfirst, intro copy */
+  --type-body:      16px;  /* @kind font */
+  --type-body-sm:   14px;  /* @kind font */
   --type-meta:      13px;  /* @kind font */
-  --lh-meta:      1.3;     /* @kind font */
   --type-eyebrow:   12px;  /* @kind font */
+
+  /* ---- Line heights, paired to the step above ---- */
+  --lh-campaign:  0.88;    /* @kind font */
+  --lh-lead:      0.96;    /* @kind font */
+  --lh-page:      1.02;    /* @kind font */
+  --lh-section:   1.08;    /* @kind font */
+  --lh-card:      1.15;    /* @kind font */
+  --lh-body-lead: 1.5;     /* @kind font */
+  --lh-body:      1.6;     /* @kind font */
+  --lh-meta:      1.35;    /* @kind font */
   --lh-eyebrow:   1.0;     /* @kind font */
 
   /* ---- Tracking ---- */
-  --track-eyebrow: 0.1em;   /* @kind font */
-  --track-display: -0.01em; /* @kind font */
-  --track-data:    0.02em;  /* @kind font */
+  --track-eyebrow:   0.1em;    /* @kind font */
+  --track-display:   -0.02em;  /* @kind font */
+  --track-editorial: -0.015em; /* @kind font */
+  --track-data:      0.02em;   /* @kind font */
+
+  /* ---- Measure — the line lengths copy is allowed to reach ---- */
+  --measure-body: 62ch;
+  --measure-lead: 46ch;
 }
 
-/* ---- Reusable type roles (optional helpers) ---- */
+/* ============================================================
+ * Type roles. Prefer these over restating family/size/weight inline —
+ * the role is the unit of consistency, not the font-size.
+ * ============================================================ */
 .bow-eyebrow {
   font-family: var(--font-display);
   font-weight: var(--fw-bold);
@@ -51,22 +71,63 @@
   letter-spacing: var(--track-eyebrow);
   text-transform: uppercase;
 }
+
+/* Data-voice eyebrow — machine/telemetry labels rather than editorial ones. */
+.bow-eyebrow-data {
+  font-family: var(--font-data);
+  font-weight: var(--fw-semibold);
+  font-size: var(--type-eyebrow);
+  line-height: var(--lh-eyebrow);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .bow-headline {
   font-family: var(--font-editorial);
   font-weight: var(--fw-semibold);
-  line-height: var(--lh-section);
-  letter-spacing: 0;
+  font-size: var(--type-page);
+  line-height: var(--lh-page);
+  letter-spacing: var(--track-editorial);
+  text-wrap: balance;
 }
+
 .bow-display {
   font-family: var(--font-display);
   font-weight: var(--fw-black);
-  text-transform: uppercase;
-  letter-spacing: var(--track-display);
+  font-size: var(--type-page);
   line-height: var(--lh-page);
+  letter-spacing: var(--track-display);
+  text-transform: uppercase;
+  text-wrap: balance;
 }
+
+.bow-lead {
+  font-family: var(--font-interface);
+  font-size: var(--type-body-lead);
+  line-height: var(--lh-body-lead);
+  color: var(--text-secondary);
+  max-width: var(--measure-lead);
+}
+
+.bow-body {
+  font-family: var(--font-interface);
+  font-size: var(--type-body);
+  line-height: var(--lh-body);
+  max-width: var(--measure-body);
+}
+
 .bow-data {
   font-family: var(--font-data);
   font-weight: var(--fw-medium);
   letter-spacing: var(--track-data);
   font-variant-numeric: tabular-nums;
+}
+
+/* Stat numerals — tabular, tight, never italicised by a parent. */
+.bow-stat {
+  font-family: var(--font-data);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  font-style: normal;
 }

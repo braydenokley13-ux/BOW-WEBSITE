@@ -21,7 +21,7 @@ export default function YouthOrganizationsPage() {
     <div data-screen-label="Youth Organizations">
       {/* ===== HERO ===== */}
       <section style={{ background: "var(--bow-ink)", color: "#fff", padding: "clamp(56px,8vw,120px) clamp(18px,4vw,40px) clamp(48px,7vw,96px)", borderBottom: "1px solid var(--bow-dark-border)", position: "relative", overflow: "hidden" }}>
-        <div aria-hidden style={{ position: "absolute", right: "-2%", top: "-10%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,26vw,440px)", lineHeight: 0.78, color: "rgba(255,255,255,0.04)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none" }}>Club</div>
+        <div className="bow-ghost" aria-hidden style={{ position: "absolute", right: "-2%", top: "-10%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,26vw,440px)", lineHeight: 0.78, color: "rgba(255,255,255,0.04)", letterSpacing: "-0.04em", textTransform: "uppercase", pointerEvents: "none" }}>Club</div>
         <div className="bow-container" style={{ position: "relative" }}>
           <nav aria-label="Breadcrumb" style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#6d7078", marginBottom: 28 }}>
             <Link href="/" style={{ color: "#6f8bff" }}>Home</Link>

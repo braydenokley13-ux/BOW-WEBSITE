@@ -14,7 +14,7 @@ export default function Track301Page() {
     <div data-screen-label="Track 301" className="bow-front-office" style={{ background: "var(--bow-ink)", color: "#fff" }}>
       {/* ===== HERO ===== */}
       <section style={{ padding: "clamp(48px,6vw,96px) clamp(18px,4vw,40px) clamp(40px,5vw,64px)", borderBottom: "1px solid var(--bow-dark-border)", overflow: "hidden", position: "relative" }}>
-        <div className="bow-para-upbig" aria-hidden style={{ position: "absolute", right: -20, top: -70, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(220px,32vw,520px)", lineHeight: 0.7, color: "rgba(255,255,255,0.045)", pointerEvents: "none" }}>301</div>
+        <div className="bow-ghost bow-para-upbig" aria-hidden style={{ position: "absolute", right: -20, top: -70, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(220px,32vw,520px)", lineHeight: 0.7, color: "rgba(255,255,255,0.045)", pointerEvents: "none" }}>301</div>
         <div className="bow-drift-l" aria-hidden style={{ position: "absolute", left: 0, top: "60%", width: "50%", height: 6, background: "rgba(255,179,0,0.18)", pointerEvents: "none", zIndex: 0 }} />
         <div className="bow-container" style={{ position: "relative" }}>
           <nav aria-label="Breadcrumb" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.04em", color: "#9a9da6" }}>

@@ -116,13 +116,13 @@ export default function DecisionCard({
             fontWeight: 600,
             letterSpacing: "0.12em",
             textTransform: "uppercase",
-            color: "var(--bow-orange)",
+            color: "var(--bow-blue)",
           }}
         >
           {desk}
         </span>
         {round && (
-          <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.12em", color: "#9a9da6" }}>
+          <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.12em", color: "var(--bow-on-ink-subtle)" }}>
             · {round}
           </span>
         )}
@@ -139,7 +139,7 @@ export default function DecisionCard({
           {unknowns.map((u, i) => (
             <span
               key={i}
-              style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "#9a9da6" }}
+              style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-on-ink-subtle)" }}
             >
               {u}
             </span>
@@ -174,7 +174,7 @@ export default function DecisionCard({
               >
                 <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 16 }}>{opt.label}</span>
                 {opt.detail && (
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.02em", color: "#9a9da6" }}>
+                  <span style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.02em", color: "var(--bow-on-ink-subtle)" }}>
                     {opt.detail}
                   </span>
                 )}
@@ -214,7 +214,7 @@ export default function DecisionCard({
           <strong style={{ fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: 21, lineHeight: 1.2 }}>
             {result.headline}
           </strong>
-          <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.55, color: "#c8cad0" }}>
+          <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.55, color: "var(--bow-on-ink-muted)" }}>
             {result.body}
           </p>
         </div>
@@ -230,7 +230,7 @@ export default function DecisionCard({
             {busy ? "Recording Decision…" : primaryLabel}
           </Button>
           {onSecondary && (
-            <Button variant="ghost" disabled={busy} onClick={onSecondary} style={{ color: "#9a9da6" }}>
+            <Button variant="ghost" disabled={busy} onClick={onSecondary} style={{ color: "var(--bow-on-ink-subtle)" }}>
               {secondaryLabel}
             </Button>
           )}
@@ -249,7 +249,7 @@ export default function DecisionCard({
         </Button>
       )}
       {busy && (
-        <p role="status" style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, color: "#b9bcc4" }}>
+        <p role="status" style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, color: "var(--bow-on-ink-muted)" }}>
           Saving this round before revealing the consequence…
         </p>
       )}

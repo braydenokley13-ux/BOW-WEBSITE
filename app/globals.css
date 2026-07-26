@@ -35,11 +35,103 @@ img { max-width: 100%; display: block; }
 a { color: inherit; text-decoration: none; }
 input, textarea, select, button { font-family: inherit; }
 
+/* ============================================================
+ * Button.
+ * Interaction lives in CSS, not in React mouse handlers — that is what lets
+ * <Button> stay a server component, and it is the only way `:active` fires
+ * on touch and hover/focus stay in sync for keyboard users.
+ * ============================================================ */
+.bow-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-hover) var(--ease-out),
+              border-color var(--dur-hover) var(--ease-out),
+              color var(--dur-hover) var(--ease-out),
+              transform var(--dur-button) var(--ease-out);
+}
+.bow-button:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(1px); }
+/* Disabled buttons stay legible. A flat 0.45 opacity made a disabled primary
+ * on an ink surface read as a rendering fault rather than a "choose an option
+ * first" state, so on dark we desaturate instead of fading out. */
+.bow-button:disabled,
+.bow-button[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+.bow-section-ink .bow-button:disabled,
+.bow-front-office .bow-button:disabled {
+  opacity: 1;
+  background: var(--bow-dark-surface);
+  border-color: var(--bow-dark-border);
+  color: var(--bow-on-ink-subtle);
+}
+
+/* Sizes. Every size clears the 44px touch minimum except `sm`, which is for
+ * dense toolbars and inline controls only. */
+.bow-button-sm { font-size: 13px; padding: 8px 16px; min-height: 36px; }
+.bow-button-md { font-size: 15px; padding: 12px 22px; min-height: 46px; }
+.bow-button-lg { font-size: 17px; padding: 15px 30px; min-height: 54px; }
+.bow-button-full { width: 100%; }
+
+/* Variants. Hover shifts the actual colour rather than filtering brightness,
+ * so a transparent button doesn't dim the page behind it. */
+.bow-button-primary { background: var(--bow-blue); color: #fff; border-color: var(--bow-blue); }
+.bow-button-primary:hover:not(:disabled) { background: #2547e0; border-color: #2547e0; }
+
+.bow-button-emphasis { background: var(--bow-orange-solid); color: #fff; border-color: var(--bow-orange-solid); }
+.bow-button-emphasis:hover:not(:disabled) { background: #a8331b; border-color: #a8331b; }
+
+.bow-button-ink { background: var(--bow-ink); color: #fff; border-color: var(--bow-ink); }
+.bow-button-ink:hover:not(:disabled) { background: #26262c; border-color: #26262c; }
+
+.bow-button-secondary { background: transparent; color: var(--text-primary); border-color: var(--border-strong); }
+.bow-button-secondary:hover:not(:disabled) { background: var(--text-primary); color: var(--surface-page); }
+
+.bow-button-ghost { background: transparent; color: var(--text-link); border-color: transparent; }
+.bow-button-ghost:hover:not(:disabled) { background: var(--bow-blue-tint); }
+.bow-section-ink .bow-button-ghost:hover:not(:disabled),
+.bow-front-office .bow-button-ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
+
+/* On ink, the secondary outline reads off the dark surface. */
+.bow-section-ink .bow-button-secondary,
+.bow-front-office .bow-button-secondary { color: #fff; border-color: rgba(255, 255, 255, 0.42); }
+.bow-section-ink .bow-button-secondary:hover:not(:disabled),
+.bow-front-office .bow-button-secondary:hover:not(:disabled) { background: #fff; color: var(--bow-ink); border-color: #fff; }
+
+/* Standalone text CTA — the "→" links. Padded to a real tap target on touch
+ * instead of being a 15px-tall line of text. */
+.bow-cta-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--type-body-sm);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-link);
+  min-height: 44px;
+  transition: gap var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
+}
+.bow-cta-link::after { content: "→"; transition: transform var(--dur-hover) var(--ease-out); }
+.bow-cta-link:hover::after { transform: translateX(3px); }
+
 .bow-button:focus-visible,
+.bow-cta-link:focus-visible,
 .bow-invitation-submit:focus-visible {
   outline: 3px solid var(--text-link);
   outline-offset: 3px;
 }
+.bow-section-ink .bow-button:focus-visible,
+.bow-section-ink .bow-cta-link:focus-visible { outline-color: #fff; }
 
 /* Shared, intentional keyboard focus for form fields that live outside the
  * operations form shell. Inline form styles must not erase this signal. */
@@ -119,25 +211,244 @@ h1, h2, h3, h4, h5, h6, p, figure, blockquote { margin: 0; }
 /* The one continuous motion BOW allows: the data ticker. */
 .bow-marquee { animation: bowMarquee 38s linear infinite; }
 
+/* Ghost typography — the oversized watermark word behind a section.
+ * It only works when there is enough canvas for the letterforms to read as a
+ * deliberate device; below ~900px it clips to a couple of ambiguous shapes
+ * that look like a rendering fault, so it is withheld rather than shrunk. */
+.bow-ghost {
+  position: absolute;
+  font-family: var(--font-display);
+  font-weight: var(--fw-black);
+  line-height: 0.78;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+  color: rgba(10, 10, 11, 0.04);
+}
+.bow-ghost-light { color: rgba(255, 255, 255, 0.07); }
+@media (max-width: 900px) { .bow-ghost { display: none; } }
+
 /* Editorial card hover — a restrained 4px nudge + whisper shadow. */
 .bow-card { transition: transform var(--dur-card) var(--ease-out), box-shadow var(--dur-card) var(--ease-out); }
 .bow-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-card); }
 
-/* Layout helpers */
+/* ============================================================
+ * Layout primitives.
+ * A section's shape is declared once here rather than restated as an inline
+ * style on every marketing route.
+ * ============================================================ */
+/* Containers stay width-only. The horizontal inset belongs to the *section*,
+ * because most existing routes already pad their own <section> — putting the
+ * inset on the container as well would silently double it site-wide. */
 .bow-container { max-width: var(--content-max); margin: 0 auto; }
 .bow-container-wide { max-width: var(--wide-max); margin: 0 auto; }
+.bow-container-reading { max-width: var(--reading-max); margin: 0 auto; }
 
-/* ===== Masthead navigation =====
- * Below 900px the inline nav and account cluster collapse into the toggle. */
+/* Section = vertical rhythm + horizontal inset + a hairline close. Modifiers
+ * change pacing and surface without a page having to know the values. */
+.bow-section {
+  padding-block: var(--section-y);
+  padding-inline: var(--page-inset);
+  border-bottom: 1px solid var(--border-rule);
+  position: relative;
+}
+.bow-section-tight { padding-block: var(--section-y-tight); }
+.bow-section-loose { padding-block: var(--section-y-loose); }
+.bow-section-flush { border-bottom: none; }
+.bow-section-paper { background: var(--bow-paper); }
+.bow-section-raised { background: var(--bow-white); }
+.bow-section-ink { background: var(--bow-ink); color: var(--bow-on-ink); border-bottom-color: var(--bow-dark-border); }
+.bow-section-ink .bow-lead { color: var(--bow-on-ink-muted); }
+
+/* Section intro — the eyebrow/headline/standfirst stack that opens a section.
+ * Constrained measure is the point: headlines stop running the full 1240px. */
+.bow-section-intro { display: flex; flex-direction: column; gap: var(--space-3); max-width: 34ch; }
+.bow-section-intro .bow-lead { margin-top: var(--space-2); max-width: var(--measure-lead); }
+.bow-section-intro-wide { max-width: 52ch; }
+/* Inside a split, the column already sets the measure. Keeping the intro's
+ * own `max-width` there stacked two constraints on top of each other and
+ * left a wide dead gutter between the headline and the facing column. */
+.bow-split > .bow-section-intro,
+.bow-split > .bow-section-intro .bow-lead { max-width: none; }
+
+/* ---- Grids with declared column counts ----
+ * `repeat(auto-fit, minmax(...))` was leaving visibly empty cells whenever
+ * the item count didn't happen to divide into the resolved column count
+ * (8 items across 5 columns, 6 across 4). Declaring the counts per breakpoint
+ * means a grid is only ever as wide as it can fill. */
+.bow-grid { display: grid; gap: var(--gap-grid); }
+.bow-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.bow-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bow-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* Hairline grid — children sit on a 1px rule matrix instead of each carrying
+ * its own border, so interior rules never double up. */
+.bow-grid-ruled { gap: 1px; background: var(--border-rule); border: 1px solid var(--border-rule); }
+.bow-section-ink .bow-grid-ruled { background: var(--bow-dark-border); border-color: var(--bow-dark-border); }
+
+/* Split section — two columns that start at the top rather than centring,
+ * which is what left the tall/short column pairs with dead space above and
+ * below the shorter side. */
+.bow-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--gap-columns); align-items: start; }
+.bow-split-center { align-items: center; }
+
+@media (max-width: 1000px) {
+  .bow-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bow-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .bow-grid-2, .bow-grid-3, .bow-grid-4 { grid-template-columns: minmax(0, 1fr); }
+  .bow-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Action row. Buttons go full-width below 480px instead of wrapping into a
+ * ragged stack of mismatched widths. */
+.bow-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+@media (max-width: 480px) {
+  .bow-actions { flex-direction: column; align-items: stretch; }
+  .bow-actions > .bow-button { width: 100%; }
+}
+
+/* Skip link — visible only once focused. */
+.bow-skip-link {
+  position: absolute; left: -9999px; top: 0; z-index: 1000;
+  background: var(--bow-blue); color: #fff; padding: 12px 20px;
+  font-family: var(--font-display); font-weight: var(--fw-bold);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.bow-skip-link:focus { left: 0; }
+
+/* ============================================================
+ * Masthead.
+ * Below 900px the inline nav and account cluster collapse into the toggle.
+ * ============================================================ */
+.bow-masthead {
+  background: var(--bow-ink);
+  color: var(--bow-on-ink);
+  border-bottom: 1px solid var(--bow-dark-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.bow-masthead-bar {
+  padding-inline: var(--page-inset);
+  height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+.bow-masthead-account { align-items: center; gap: var(--space-4); flex-shrink: 0; }
+
+.bow-wordmark { display: flex; flex-direction: column; line-height: 0.8; flex-shrink: 0; }
+.bow-wordmark-name {
+  font-family: var(--font-display); font-weight: var(--fw-black);
+  font-size: 28px; letter-spacing: -0.02em; text-transform: uppercase;
+}
+.bow-wordmark-sub {
+  font-family: var(--font-display); font-weight: var(--fw-semibold);
+  font-size: 9.5px; letter-spacing: 0.34em; text-transform: uppercase;
+  color: var(--bow-on-ink-subtle); margin-top: 3px;
+}
+
 .bow-nav-desktop { display: flex; }
+.bow-nav-desktop[aria-label="Primary"] { gap: clamp(10px, 1.2vw, 22px); flex: 1; justify-content: center; }
+
+/* Nav links carry their own hit area rather than being a bare 13px baseline. */
+.bow-nav-link {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-display); font-weight: var(--fw-semibold);
+  font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--bow-on-ink-subtle); white-space: nowrap;
+  height: 66px; border-bottom: 2px solid transparent;
+  transition: color var(--dur-hover) var(--ease-out);
+}
+.bow-nav-link:hover { color: var(--bow-on-ink); }
+.bow-nav-link[data-active] { color: var(--bow-on-ink); border-bottom-color: var(--bow-blue); }
+.bow-nav-link:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
+
 .bow-nav-mobile { display: none; }
 .bow-nav-mobile-toggle { display: none; }
 
+.bow-nav-mobile-toggle {
+  background: transparent; border: 1px solid var(--bow-dark-border);
+  color: var(--bow-on-ink); width: 44px; height: 42px;
+  border-radius: var(--radius-control); cursor: pointer;
+  align-items: center; justify-content: center; flex-shrink: 0;
+}
+.bow-nav-mobile-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* Burger → close, as one element so the change of state is legible. */
+.bow-burger, .bow-burger::before, .bow-burger::after {
+  display: block; width: 18px; height: 2px; background: currentColor;
+  transition: transform var(--dur-hover) var(--ease-out), opacity var(--dur-hover) var(--ease-out);
+}
+.bow-burger { position: relative; }
+.bow-burger::before, .bow-burger::after { content: ""; position: absolute; left: 0; }
+.bow-burger::before { top: -6px; }
+.bow-burger::after { top: 6px; }
+.bow-burger[data-open] { background: transparent; }
+.bow-burger[data-open]::before { transform: translateY(6px) rotate(45deg); }
+.bow-burger[data-open]::after { transform: translateY(-6px) rotate(-45deg); }
+
 @media (max-width: 900px) {
   .bow-nav-desktop { display: none; }
-  .bow-nav-mobile { display: flex; }
+  .bow-nav-mobile { display: block; }
   .bow-nav-mobile-toggle { display: flex; }
 }
+
+/* The sheet fills what's left of the viewport rather than pushing the page
+ * down, so a long nav can never clip off the bottom of a short screen. */
+.bow-nav-mobile {
+  border-top: 1px solid var(--bow-dark-border);
+  padding: var(--space-3) var(--page-inset) var(--space-8);
+  background: var(--bow-ink);
+  max-height: calc(100dvh - 66px);
+  overflow-y: auto;
+  animation: bowSheetIn 220ms var(--ease-out) both;
+}
+.bow-nav-mobile nav { display: flex; flex-direction: column; }
+.bow-nav-mobile-link {
+  font-family: var(--font-display); font-weight: var(--fw-semibold);
+  font-size: 22px; letter-spacing: 0.02em; text-transform: uppercase;
+  padding: 14px 0; border-bottom: 1px solid var(--bow-dark-border);
+  color: var(--bow-on-ink-muted); min-height: 52px; display: flex; align-items: center;
+}
+.bow-nav-mobile-link[data-active] { color: var(--bow-on-ink); }
+.bow-nav-mobile-link:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+
+@keyframes bowSheetIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ============================================================
+ * Footer
+ * ============================================================ */
+.bow-footer {
+  background: var(--bow-ink);
+  color: var(--bow-on-ink);
+  padding: clamp(48px, 6vw, 80px) var(--page-inset) 32px;
+}
+.bow-footer-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-8); }
+.bow-footer-brand { grid-column: 1 / -1; max-width: 46ch; display: flex; flex-direction: column; gap: var(--space-4); }
+.bow-footer-col { display: flex; flex-direction: column; }
+.bow-footer-col .bow-eyebrow { margin-bottom: var(--space-2); }
+/* Footer links were 16px-tall baselines — below any reasonable touch target. */
+.bow-footer-link {
+  font-family: var(--font-interface); font-size: var(--type-body-sm);
+  color: var(--bow-on-ink-muted); min-height: 40px; display: flex; align-items: center;
+  transition: color var(--dur-hover) var(--ease-out);
+}
+.bow-footer-link:hover { color: var(--bow-on-ink); }
+.bow-footer-link:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.bow-footer-base {
+  margin-top: var(--space-12); padding-top: var(--space-6);
+  border-top: 1px solid var(--bow-dark-border);
+  display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between;
+  font-size: var(--type-meta); color: var(--bow-on-ink-faint);
+}
+@media (max-width: 900px) { .bow-footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .bow-footer-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); } }
 
 /* Editorial link hover (links brighten / shift to franchise blue) */
 .bow-link { transition: color var(--dur-hover) var(--ease-out); }

@@ -22,7 +22,7 @@ export default function Track101Page() {
     <div data-screen-label="Track 101">
       {/* ===== HERO ===== */}
       <section style={{ background: "var(--bow-paper)", padding: "clamp(40px,5vw,72px) clamp(18px,4vw,40px) clamp(32px,4vw,56px)", borderBottom: "1px solid var(--border-rule)", overflow: "hidden", position: "relative" }}>
-        <div className="bow-para-upbig" aria-hidden style={{ position: "absolute", right: -20, top: -60, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(220px,32vw,520px)", lineHeight: 0.7, color: "rgba(10,10,11,0.04)", pointerEvents: "none" }}>101</div>
+        <div className="bow-ghost bow-para-upbig" aria-hidden style={{ position: "absolute", right: -20, top: -60, fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(220px,32vw,520px)", lineHeight: 0.7, color: "rgba(10,10,11,0.04)", pointerEvents: "none" }}>101</div>
         <div className="bow-drift-l" aria-hidden style={{ position: "absolute", left: 0, top: "64%", width: "46%", height: 6, background: "rgba(49,87,255,0.12)", pointerEvents: "none", zIndex: 0 }} />
         <div className="bow-para-sink" aria-hidden style={{ position: "absolute", left: "4%", bottom: "8%", fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(10,10,11,0.16)", pointerEvents: "none", zIndex: 0 }}>FOUNDATION · TRACK 101</div>
         <div className="bow-container" style={{ position: "relative" }}>
@@ -98,18 +98,18 @@ export default function Track101Page() {
       <section style={{ background: "#fff", padding: "clamp(48px,7vw,96px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
         <div className="bow-container">
           <SectionHeader kicker="How a lesson moves" title="The track experience" style={{ marginBottom: 36 }} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", borderTop: "1px solid var(--border-rule)", borderLeft: "1px solid var(--border-rule)" }}>
+          <ol className="bow-grid bow-grid-4 bow-grid-ruled" style={{ margin: 0, padding: 0, listStyle: "none" }}>
             {lessonSteps.map((s: LessonStep) => (
-              <div key={s.n} style={{ borderRight: "1px solid var(--border-rule)", borderBottom: "1px solid var(--border-rule)", padding: "22px 22px 26px", background: "#fff", display: "flex", flexDirection: "column", gap: 10 }}>
+              <li key={s.n} style={{ padding: "22px 22px 26px", background: s.decisive ? "var(--bow-paper)" : "var(--bow-white)", display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-                  <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 34, lineHeight: 0.8, color: s.numColor }}>{s.n}</span>
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: s.tagColor }}>{s.tag}</span>
+                  <span className="bow-display" style={{ fontSize: 34, lineHeight: 0.8, color: "var(--bow-blue)" }}>{s.n}</span>
+                  <span className="bow-eyebrow-data" style={{ color: "var(--text-secondary)" }}>{s.tag}</span>
                 </div>
-                <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, textTransform: "uppercase", letterSpacing: "0.01em", lineHeight: 1.05 }}>{s.label}</span>
-                <span style={{ fontFamily: "var(--font-interface)", fontSize: 13.5, lineHeight: 1.5, color: "var(--bow-slate)" }}>{s.body}</span>
-              </div>
+                <span className="bow-display" style={{ fontSize: 17 }}>{s.label}</span>
+                <span style={{ fontFamily: "var(--font-interface)", fontSize: "var(--type-body-sm)", lineHeight: "var(--lh-body)", color: "var(--text-secondary)" }}>{s.body}</span>
+              </li>
             ))}
-          </div>
+          </ol>
         </div>
       </section>
 

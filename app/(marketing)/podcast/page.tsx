@@ -13,7 +13,7 @@ export default function PodcastPage() {
     <div data-screen-label="Podcast">
       {/* ===== HERO ===== */}
       <section style={{ background: "var(--bow-ink)", color: "#fff", padding: "clamp(48px,6vw,96px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--bow-dark-border)", overflow: "hidden", position: "relative" }}>
-        <div className="bow-para-upbig" aria-hidden style={{ position: "absolute", right: "-4%", top: "-8%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,24vw,440px)", lineHeight: 0.8, color: "rgba(255,255,255,0.04)", pointerEvents: "none", letterSpacing: "-0.04em", textTransform: "uppercase" }}>Air</div>
+        <div className="bow-ghost bow-para-upbig" aria-hidden style={{ position: "absolute", right: "-4%", top: "-8%", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(160px,24vw,440px)", lineHeight: 0.8, color: "rgba(255,255,255,0.04)", pointerEvents: "none", letterSpacing: "-0.04em", textTransform: "uppercase" }}>Air</div>
         <div className="bow-container" style={{ position: "relative" }}>
           <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-orange)" }}>The BOW Sports Capital Podcast</span>
           <h1 style={{ margin: "14px 0 0", fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(36px,5.5vw,72px)", lineHeight: 0.98, letterSpacing: "-0.015em", maxWidth: "16ch", textWrap: "balance" }}>The conversations behind the decisions.</h1>
