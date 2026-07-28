@@ -325,12 +325,12 @@ async function seedDomain(sql: postgres.Sql): Promise<void> {
     ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, updated_at = ${NOW}
   `;
   await sql`
-    INSERT INTO inquiries (id, name, email, message, status, created_at)
+    INSERT INTO inquiries (id, name, email, type, org_name, date, summary, status, submitted_at, created_at)
     VALUES
-      ('dev-inq-westview', 'Alicia Moore', 'amoore@westview.k12.us',
-       'Westview School District would like to run BOW for two middle schools next semester.', 'new', ${day(-2)}),
-      ('dev-inq-parent', 'Rob Tanaka', 'rob.tanaka@example.com',
-       'Is there a spring cohort my daughter could join?', 'new', ${day(-1)})
+      ('dev-inq-westview', 'Alicia Moore', 'amoore@westview.k12.us', 'Partnership', 'Westview School District',
+       ${onDate(-2)}, 'Westview would like to run BOW for two middle schools next semester.', 'new', ${day(-2)}, ${day(-2)}),
+      ('dev-inq-parent', 'Rob Tanaka', 'rob.tanaka@example.com', 'Family', NULL,
+       ${onDate(-1)}, 'Asking whether there is a spring cohort his daughter could join.', 'new', ${day(-1)}, ${day(-1)})
     ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status
   `;
 

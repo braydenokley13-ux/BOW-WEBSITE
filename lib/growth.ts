@@ -662,7 +662,9 @@ async function metricActual(
         ));
   }
   return (await count(
-      `SELECT COALESCE(SUM(MAX(0, COALESCE(c.capacity, 0) - COALESCE(enrolled.count, 0))), 0) AS count
+      // GREATEST, not MAX: SQLite's two-argument scalar MAX() has no Postgres
+      // equivalent, and toPostgresSql() does not translate it.
+      `SELECT COALESCE(SUM(GREATEST(0, COALESCE(c.capacity, 0) - COALESCE(enrolled.count, 0))), 0) AS count
        FROM classes c
        LEFT JOIN (
          SELECT class_id, COUNT(*) AS count FROM class_enrollments WHERE status = 'enrolled' GROUP BY class_id
