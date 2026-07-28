@@ -566,3 +566,194 @@ dbTest("a clean merge moves history onto the canonical child and tombstones the 
     "a stale id must still lead a reader to the real child",
   );
 });
+
+/* ---------------------------------------------------------------- */
+/* Cross-program transfer                                            */
+/* ---------------------------------------------------------------- */
+
+dbTest("a transfer moves the child atomically and frees the original seat", async () => {
+  const { getDb } = await import("@/lib/db");
+  const { transferProgram } = await import("@/lib/program-operations");
+  const { seatCounts } = await import("@/lib/enrollment");
+  const db = getDb();
+
+  const from = await makeProgram({ capacity: 1 });
+  const to = await makeProgram({ capacity: 5 });
+  const guardian = await makeGuardian();
+  const child = await makeChild("Mover One", "6");
+
+  const original = await register(from, child, "Mover One", "6", guardian);
+  assert.equal(original.status, "confirmed");
+
+  const result = await transferProgram(original.registrationId!, to.programId, ACTOR, "Family asked to move.");
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "confirmed");
+
+  const source = (await db
+    .prepare("SELECT status, holds_seat, transferred_to_registration_id FROM program_registrations WHERE id = ?")
+    .get(original.registrationId)) as {
+    status: string;
+    holds_seat: boolean;
+    transferred_to_registration_id: string | null;
+  };
+  // The original is given up, and says where it went rather than looking like
+  // an ordinary withdrawal.
+  assert.equal(source.status, "withdrawn");
+  assert.equal(source.holds_seat, false);
+  assert.equal(source.transferred_to_registration_id, result.registrationId);
+
+  const target = (await db
+    .prepare(
+      "SELECT program_id, status, holds_seat, transferred_from_registration_id FROM program_registrations WHERE id = ?",
+    )
+    .get(result.registrationId)) as {
+    program_id: string;
+    status: string;
+    holds_seat: boolean;
+    transferred_from_registration_id: string | null;
+  };
+  assert.equal(target.program_id, to.programId);
+  assert.equal(target.holds_seat, true);
+  assert.equal(target.transferred_from_registration_id, original.registrationId);
+
+  // The seat the child gave up is genuinely free again, not just marked so.
+  const freed = await seatCounts(from.classId, 1);
+  assert.equal(freed.taken, 0);
+  assert.equal(freed.remaining, 1);
+});
+
+dbTest("a transfer into a full program leaves the original placement untouched", async () => {
+  const { getDb } = await import("@/lib/db");
+  const { transferProgram } = await import("@/lib/program-operations");
+  const db = getDb();
+
+  const from = await makeProgram({ capacity: 5 });
+  // Destination is full AND has no waitlist, so there is no placement to be had.
+  const to = await makeProgram({ capacity: 1, waitlistMode: "disabled" });
+  const guardian = await makeGuardian();
+  const sitting = await makeChild("Already There", "6");
+  const child = await makeChild("Mover Two", "6");
+
+  await register(to, sitting, "Already There", "6", guardian);
+  const original = await register(from, child, "Mover Two", "6", guardian);
+  assert.equal(original.status, "confirmed");
+
+  const result = await transferProgram(
+    original.registrationId!,
+    to.programId,
+    ACTOR,
+    "Try to move into a full program.",
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.error ?? "", /untouched/);
+
+  // The whole point: the child is still where they were. A manual
+  // withdraw-then-register would have left them in neither program.
+  const source = (await db
+    .prepare("SELECT status, holds_seat, class_id FROM program_registrations WHERE id = ?")
+    .get(original.registrationId)) as { status: string; holds_seat: boolean; class_id: string | null };
+  assert.equal(source.status, "confirmed");
+  assert.equal(source.holds_seat, true);
+  assert.equal(source.class_id, from.classId);
+
+  // And the rollback left no orphan behind in the destination.
+  const stray = (await db
+    .prepare("SELECT COUNT(*) AS n FROM program_registrations WHERE program_id = ? AND student_id = ?")
+    .get(to.programId, child)) as { n: string | number };
+  assert.equal(Number(stray.n), 0);
+});
+
+dbTest("a transfer into a full program with a waitlist lands on the waitlist, not a seat", async () => {
+  const { getDb } = await import("@/lib/db");
+  const { transferProgram } = await import("@/lib/program-operations");
+  const { seatCounts } = await import("@/lib/enrollment");
+  const db = getDb();
+
+  const from = await makeProgram({ capacity: 5 });
+  const to = await makeProgram({ capacity: 1, waitlistMode: "automatic" });
+  const guardian = await makeGuardian();
+  const sitting = await makeChild("Already There Too", "6");
+  const child = await makeChild("Mover Three", "6");
+
+  await register(to, sitting, "Already There Too", "6", guardian);
+  const original = await register(from, child, "Mover Three", "6", guardian);
+
+  const result = await transferProgram(original.registrationId!, to.programId, ACTOR, "Move and wait.");
+  assert.equal(result.ok, true);
+  // A transfer is not a way past capacity. The destination has one seat and it
+  // is taken, so the transfer lands on the waitlist.
+  assert.equal(result.status, "waitlisted");
+
+  const target = (await db
+    .prepare("SELECT holds_seat, waitlist_seq FROM program_registrations WHERE id = ?")
+    .get(result.registrationId)) as { holds_seat: boolean; waitlist_seq: number | null };
+  assert.equal(target.holds_seat, false);
+  assert.ok(target.waitlist_seq != null);
+
+  const counts = await seatCounts(to.classId, 1);
+  assert.equal(counts.taken, 1);
+
+  // One message about one event, and it must not read like a confirmation.
+  const notes = (await db
+    .prepare("SELECT kind, body FROM family_notifications WHERE registration_id = ?")
+    .all(result.registrationId)) as { kind: string; body: string }[];
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].kind, "transfer_approved");
+  assert.match(notes[0].body, /waitlist/i);
+});
+
+dbTest("a transfer is refused without a reason, to the same program, and for a terminal registration", async () => {
+  const { transferProgram } = await import("@/lib/program-operations");
+  const { getDb } = await import("@/lib/db");
+  const db = getDb();
+
+  const from = await makeProgram({ capacity: 5 });
+  const to = await makeProgram({ capacity: 5 });
+  const guardian = await makeGuardian();
+  const child = await makeChild("Mover Four", "6");
+  const original = await register(from, child, "Mover Four", "6", guardian);
+
+  const noReason = await transferProgram(original.registrationId!, to.programId, ACTOR, "   ");
+  assert.equal(noReason.ok, false);
+
+  const samePlace = await transferProgram(original.registrationId!, from.programId, ACTOR, "Same program.");
+  assert.equal(samePlace.ok, false);
+  assert.match(samePlace.error ?? "", /class placement/i);
+
+  await db
+    .prepare("UPDATE program_registrations SET status = 'withdrawn', holds_seat = false WHERE id = ?")
+    .run(original.registrationId);
+  const terminal = await transferProgram(original.registrationId!, to.programId, ACTOR, "Already gone.");
+  assert.equal(terminal.ok, false);
+  assert.match(terminal.error ?? "", /no placement to transfer/i);
+});
+
+dbTest("a transfer records both halves of the move in the audit history", async () => {
+  const { getDb } = await import("@/lib/db");
+  const { transferProgram } = await import("@/lib/program-operations");
+  const db = getDb();
+
+  const from = await makeProgram({ capacity: 5 });
+  const to = await makeProgram({ capacity: 5 });
+  const guardian = await makeGuardian();
+  const child = await makeChild("Mover Five", "6");
+  const original = await register(from, child, "Mover Five", "6", guardian);
+
+  const result = await transferProgram(original.registrationId!, to.programId, ACTOR, "Audit check.");
+  assert.equal(result.ok, true);
+
+  const events = (await db
+    .prepare(
+      `SELECT action, program_id, reason FROM registration_audit_events
+        WHERE student_id = ? AND action IN ('program_transfer_out', 'program_transfer_in')
+        ORDER BY action`,
+    )
+    .all(child)) as { action: string; program_id: string; reason: string | null }[];
+  assert.equal(events.length, 2);
+  assert.equal(events[0].action, "program_transfer_in");
+  assert.equal(events[0].program_id, to.programId);
+  assert.equal(events[1].action, "program_transfer_out");
+  assert.equal(events[1].program_id, from.programId);
+  // The reason an operator typed is what the audit stores.
+  assert.ok(events.every((e) => e.reason === "Audit check."));
+});

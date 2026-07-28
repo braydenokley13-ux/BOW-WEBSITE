@@ -26,11 +26,15 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import {
+  decideSeat,
   holdsSeat,
+  isTerminal,
   loadRegistrationProgram,
   primaryClassFor,
   recordAudit,
   recordNotification,
+  registrationLabel,
+  releaseClassSeat,
   seatCounts,
   type RegistrationStatus,
 } from "@/lib/enrollment";
@@ -659,4 +663,241 @@ export async function resolveDuplicateReview(
   });
 
   return { ok: true };
+}
+
+/* ===================================================================== */
+/* Cross-program transfer                                                */
+/* ===================================================================== */
+
+export interface TransferResult {
+  ok: boolean;
+  error?: string;
+  /** The registration created in the destination program. */
+  registrationId?: string;
+  status?: RegistrationStatus;
+}
+
+/**
+ * Move a child from one program to another as a single atomic step.
+ *
+ * The failure this exists to prevent is a child in *neither* program. Doing
+ * the move by hand — withdraw here, register there — has a window between the
+ * two writes where the seat has been given up and the new one has not been
+ * secured, and if the second half fails (the destination filled up in the
+ * meantime, the child turns out to be ineligible for it) the family is left
+ * with nothing and an operator has to notice and repair it.
+ *
+ * So the order here is deliberately the opposite of the manual one: the new
+ * placement is taken FIRST, inside the transaction, and the original is only
+ * released once the replacement is known to exist. Any outcome that does not
+ * produce a real placement in the destination — ineligible, full with no
+ * waitlist, already registered there — rolls the whole thing back and leaves
+ * the original placement exactly as it was.
+ *
+ * The destination seat is decided by `decideSeat`, the same function a family
+ * registration goes through: same class lock, same eligibility check, same
+ * capacity arithmetic, same duplicate check, same requirement instantiation.
+ * A transfer is therefore not a way into a full program, and cannot become
+ * one — there is no capacity code here to drift from the real thing.
+ */
+export async function transferProgram(
+  registrationId: string,
+  targetProgramId: string,
+  actor: Actor,
+  reason: string,
+): Promise<TransferResult> {
+  const db = getDb();
+  const trimmed = reason.trim();
+  if (!trimmed) return { ok: false, error: "Record why this child is being transferred." };
+
+  const source = (await db
+    .prepare(
+      `SELECT r.id, r.program_id, r.class_id, r.student_id, r.guardian_person_id, r.status,
+              r.holds_seat, s.name AS student_name, s.grade AS grade, p.name AS program_name
+         FROM program_registrations r
+         JOIN students s ON s.id = r.student_id
+         LEFT JOIN programs p ON p.id = r.program_id
+        WHERE r.id = ?`,
+    )
+    .get(registrationId)) as
+    | {
+        id: string;
+        program_id: string;
+        class_id: string | null;
+        student_id: string;
+        guardian_person_id: string | null;
+        status: string;
+        holds_seat: boolean;
+        student_name: string;
+        grade: string | null;
+        program_name: string | null;
+      }
+    | undefined;
+  if (!source) return { ok: false, error: "Registration not found." };
+
+  if (source.program_id === targetProgramId) {
+    // Moving between classes inside one program is a different operation with
+    // different capacity behaviour; `placeInClass` owns it.
+    return { ok: false, error: "That is the same program. To change class, use class placement instead." };
+  }
+  if (isTerminal(source.status)) {
+    return {
+      ok: false,
+      error: `This registration is ${registrationLabel(source.status).toLowerCase()} and has no placement to transfer.`,
+    };
+  }
+  if (!source.guardian_person_id) {
+    return { ok: false, error: "This registration has no guardian on file. Fix the family link before transferring." };
+  }
+
+  const targetProgram = await loadRegistrationProgram(targetProgramId);
+  const targetClass = await primaryClassFor(targetProgramId);
+  if (!targetProgram || !targetClass) {
+    return { ok: false, error: "The destination program is not set up to accept registrations." };
+  }
+
+  const now = Date.now();
+
+  // Lock both classes, lowest id first. Two transfers running in opposite
+  // directions between the same pair of programs would otherwise be able to
+  // take the two locks in opposite orders and deadlock.
+  const lockIds = [...new Set([source.class_id, targetClass.id].filter((id): id is string => Boolean(id)))].sort();
+
+  await db.exec("BEGIN");
+  try {
+    for (const id of lockIds) {
+      await db.prepare("SELECT id FROM classes WHERE id = ? FOR UPDATE").get(id);
+    }
+
+    const decision = await decideSeat({
+      program: targetProgram,
+      primaryClass: targetClass,
+      studentId: source.student_id,
+      studentName: source.student_name,
+      grade: source.grade,
+      guardianPersonId: source.guardian_person_id,
+      // A transfer is one logical event per source registration, so the source
+      // id is the natural idempotency key: replaying it cannot mint a second
+      // destination registration.
+      requestKey: `transfer:${source.id}`,
+      payloadFingerprint: `transfer:${source.id}:${targetProgramId}`,
+      createdVia: "admin",
+      createdByUserId: actor.userId,
+      // One message is sent below, naming both programs and the real outcome.
+      announce: false,
+      now,
+    });
+
+    // Anything that is not a real placement in the destination leaves the
+    // child where they already are. This is the whole point of the ordering.
+    if (
+      decision.registrationId == null ||
+      decision.status == null ||
+      decision.outcome === "already_registered" ||
+      decision.outcome === "ineligible" ||
+      decision.outcome === "unavailable"
+    ) {
+      await db.exec("ROLLBACK");
+      const detail =
+        decision.outcome === "already_registered"
+          ? `${source.student_name} already has a registration in ${targetProgram.name}.`
+          : decision.message;
+      return { ok: false, error: `${detail} Nothing was changed — the original place is untouched.` };
+    }
+
+    // The replacement exists. Only now is the original given up.
+    await db
+      .prepare(
+        `UPDATE program_registrations
+            SET status = 'withdrawn', holds_seat = false, reservation_expires_at = NULL,
+                withdrawn_at = ?, decision_reason = ?, decided_by_user_id = ?, decided_at = ?,
+                transferred_to_registration_id = ?, updated_at = ?
+          WHERE id = ?`,
+      )
+      .run(now, trimmed, actor.userId, now, decision.registrationId, now, source.id);
+    await releaseClassSeat(source.student_id, source.class_id, now);
+
+    await db
+      .prepare("UPDATE program_registrations SET transferred_from_registration_id = ?, updated_at = ? WHERE id = ?")
+      .run(source.id, now, decision.registrationId);
+
+    await db.exec("COMMIT");
+
+    await recordAudit({
+      registrationId: source.id,
+      studentId: source.student_id,
+      programId: source.program_id,
+      actorUserId: actor.userId,
+      actorLabel: actor.label,
+      action: "program_transfer_out",
+      previousState: source.status,
+      newState: "withdrawn",
+      reason: trimmed,
+    });
+    await recordAudit({
+      registrationId: decision.registrationId,
+      studentId: source.student_id,
+      programId: targetProgramId,
+      actorUserId: actor.userId,
+      actorLabel: actor.label,
+      action: "program_transfer_in",
+      previousState: source.program_id,
+      newState: decision.status,
+      reason: trimmed,
+    });
+
+    // One message about one event. It has to state the resulting status
+    // honestly: a transfer that lands on the destination's waitlist is not the
+    // same news as one that lands on a confirmed seat, and saying "transferred"
+    // without saying which would be the same mistake as calling a held seat a
+    // confirmation.
+    const landing: Record<string, { body: string; urgency: "normal" | "important" | "urgent" }> = {
+      confirmed: {
+        body: `${source.student_name} now has a confirmed place in ${targetProgram.name}. We will send the schedule and joining details before the first session.`,
+        urgency: "important",
+      },
+      seat_reserved: {
+        body:
+          `We are holding a seat for ${source.student_name} in ${targetProgram.name}. This is not confirmed yet — ` +
+          "complete the outstanding requirements before the deadline and the place is confirmed.",
+        urgency: "urgent",
+      },
+      under_review: {
+        body: `${targetProgram.name} reviews each registration before confirming a place. We will be in touch with the decision.`,
+        urgency: "important",
+      },
+      waitlisted: {
+        body:
+          `${targetProgram.name} is currently full, so ${source.student_name} is on its waitlist. ` +
+          "If a seat opens we will offer it to you and hold it while you respond.",
+        urgency: "important",
+      },
+    };
+    const message = landing[decision.status] ?? {
+      body: `${source.student_name} has been moved to ${targetProgram.name}.`,
+      urgency: "important" as const,
+    };
+
+    await recordNotification({
+      personId: source.guardian_person_id,
+      studentId: source.student_id,
+      programId: targetProgramId,
+      registrationId: decision.registrationId,
+      kind: "transfer_approved",
+      title: `${source.student_name} moved to ${targetProgram.name}`,
+      body: `${source.student_name} has been transferred out of ${source.program_name ?? "the previous program"}. ${message.body}`,
+      urgency: message.urgency,
+      actionLabel: decision.status === "seat_reserved" ? "Complete requirements" : "View program",
+      actionHref: "/family",
+    });
+
+    return { ok: true, registrationId: decision.registrationId, status: decision.status };
+  } catch (error) {
+    try {
+      await db.exec("ROLLBACK");
+    } catch {
+      /* preserve the original error */
+    }
+    throw error;
+  }
 }
