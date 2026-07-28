@@ -757,3 +757,45 @@ dbTest("a transfer records both halves of the move in the audit history", async 
   // The reason an operator typed is what the audit stores.
   assert.ok(events.every((e) => e.reason === "Audit check."));
 });
+
+dbTest("a destination that fills after the admin looked yields a waitlist place, never an overbooked class", async () => {
+  const { getDb } = await import("@/lib/db");
+  const { transferProgram } = await import("@/lib/program-operations");
+  const { seatCounts } = await import("@/lib/enrollment");
+  const db = getDb();
+
+  const from = await makeProgram({ capacity: 5 });
+  const to = await makeProgram({ capacity: 1, waitlistMode: "automatic" });
+  const guardian = await makeGuardian();
+  const child = await makeChild("Mover Six", "6");
+  const latecomer = await makeChild("Took The Seat", "6");
+
+  const original = await register(from, child, "Mover Six", "6", guardian);
+
+  // What the admin saw when the transfer dialog rendered: one seat free.
+  const asSeenByAdmin = await seatCounts(to.classId, 1);
+  assert.equal(asSeenByAdmin.remaining, 1);
+
+  // Someone else takes it before the admin clicks confirm.
+  await register(to, latecomer, "Took The Seat", "6", guardian);
+
+  const result = await transferProgram(original.registrationId!, to.programId, ACTOR, "Confirmed on a stale count.");
+
+  // The transfer still succeeds, but on the waitlist — the count the admin saw
+  // described the choice, it did not reserve anything. Trusting it here is how
+  // a class ends up over capacity.
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "waitlisted");
+
+  const counts = await seatCounts(to.classId, 1);
+  assert.equal(counts.taken, 1, "the destination must never hold more seats than its capacity");
+
+  // And the child is not left in both programs.
+  const live = (await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM program_registrations
+        WHERE student_id = ? AND holds_seat = true`,
+    )
+    .get(child)) as { n: string | number };
+  assert.equal(Number(live.n), 0, "a waitlisted transfer holds no seat in either program");
+});
