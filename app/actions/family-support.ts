@@ -14,8 +14,13 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireStaff } from "@/lib/dal";
-import { recordAudit } from "@/lib/enrollment";
-import { checkRestorable, restoreRegistration as restoreRegistrationOp, type RestoreCheck } from "@/lib/program-operations";
+import { recordAudit, seatCounts } from "@/lib/enrollment";
+import {
+  checkRestorable,
+  restoreRegistration as restoreRegistrationOp,
+  transferProgram as transferProgramOp,
+  type RestoreCheck,
+} from "@/lib/program-operations";
 
 export interface ActionResult {
   ok: boolean;
@@ -265,4 +270,86 @@ export async function restoreRegistrationChecked(registrationId: string, reason:
   refresh(null, null);
   revalidatePath("/app/family-support");
   return { ok: true };
+}
+
+/* ===================================================================== */
+/* Cross-program transfer                                                */
+/* ===================================================================== */
+
+export interface TransferTarget {
+  id: string;
+  name: string;
+  startDate: number | null;
+  remaining: number | null;
+  waitlistMode: string;
+}
+
+/**
+ * The programs a child could be transferred into, with the seat position the
+ * dialog has to state before an admin commits.
+ *
+ * `remaining` is read here only to describe the choice. It is deliberately NOT
+ * trusted by the transfer itself: `transferProgram` re-counts under the class
+ * lock, so a seat taken between this page render and the click changes the
+ * outcome to the waitlist rather than overselling the class.
+ */
+export async function listTransferTargets(registrationId: string): Promise<TransferTarget[]> {
+  await requireStaff();
+  const db = getDb();
+  const rows = (await db
+    .prepare(
+      `SELECT p.id, p.name, p.start_date, p.capacity, p.waitlist_mode,
+              c.id AS class_id, c.capacity AS class_capacity
+         FROM programs p
+         JOIN LATERAL (
+           SELECT id, capacity FROM classes
+            WHERE program_id = p.id AND status NOT IN ('completed', 'cancelled')
+            ORDER BY created_at, id LIMIT 1
+         ) c ON true
+        WHERE p.is_public = true
+          AND p.public_status IN ('open', 'coming_soon')
+          AND p.id <> (SELECT program_id FROM program_registrations WHERE id = ?)
+        ORDER BY p.start_date NULLS LAST, p.name`,
+    )
+    .all(registrationId)) as {
+    id: string;
+    name: string;
+    start_date: number | null;
+    capacity: number | null;
+    waitlist_mode: string;
+    class_id: string;
+    class_capacity: number | null;
+  }[];
+
+  const targets: TransferTarget[] = [];
+  for (const row of rows) {
+    const counts = await seatCounts(row.class_id, row.class_capacity ?? row.capacity);
+    targets.push({
+      id: row.id,
+      name: row.name,
+      startDate: row.start_date == null ? null : Number(row.start_date),
+      remaining: counts.remaining,
+      waitlistMode: row.waitlist_mode,
+    });
+  }
+  return targets;
+}
+
+export async function transferToProgram(
+  registrationId: string,
+  targetProgramId: string,
+  reason: string,
+): Promise<ActionResult & { status?: string }> {
+  const me = await requireStaff();
+  const result = await transferProgramOp(
+    registrationId,
+    targetProgramId,
+    { userId: me.id, label: actorLabel(me.name) },
+    reason,
+  );
+  if (!result.ok) return { ok: false, error: result.error ?? "Could not transfer this registration." };
+  refresh(null, null);
+  revalidatePath("/app/family-support");
+  revalidatePath("/app/programs");
+  return { ok: true, status: result.status };
 }
