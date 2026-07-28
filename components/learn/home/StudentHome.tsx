@@ -4,12 +4,16 @@ import type { DailyQuestionView } from "@/lib/daily-question";
 import DailyQuestionCard from "@/components/selfpaced/DailyQuestionCard";
 import IdentityPanel from "@/components/learn/home/IdentityPanel";
 import CareerMap from "@/components/learn/home/CareerMap";
+import ProgramBand from "@/components/learn/home/ProgramBand";
+import type { StudentProgram } from "@/lib/student-program";
 import LeaderboardTile, { type LeaderboardTileProps } from "@/components/learn/home/LeaderboardTile";
 
 interface Props {
   firstName: string;
   home: StudentHomeData;
   dailyQuestion: DailyQuestionView | null;
+  /** The student's real-world class, when they are enrolled in one. */
+  program?: StudentProgram | null;
   leaderboard: LeaderboardTileProps;
 }
 
@@ -94,7 +98,7 @@ function ContinueCard({ home }: { home: StudentHomeData }) {
   );
 }
 
-export default function StudentHome({ firstName, home, dailyQuestion, leaderboard }: Props) {
+export default function StudentHome({ firstName, home, dailyQuestion, leaderboard, program }: Props) {
   return (
     <div style={{ background: "var(--bow-paper)", minHeight: "100vh", padding: "clamp(24px,4vw,44px) clamp(16px,4vw,32px) 96px" }}>
       <div style={{ maxWidth: 1080, margin: "0 auto" }}>
@@ -106,6 +110,12 @@ export default function StudentHome({ firstName, home, dailyQuestion, leaderboar
             Welcome back, {firstName}.
           </h1>
         </div>
+
+        {program ? (
+          <div style={{ marginBottom: 24 }}>
+            <ProgramBand program={program} />
+          </div>
+        ) : null}
 
         <div style={{ marginBottom: 28 }}>
           <ContinueCard home={home} />

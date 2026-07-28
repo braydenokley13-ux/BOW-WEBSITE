@@ -34,6 +34,16 @@ loadEnvConfig(process.cwd());
 const NOW = Date.now();
 const DAY = 86_400_000;
 const day = (offset: number) => NOW + offset * DAY;
+/**
+ * Offset days from now, pinned to a wall-clock hour (UTC). Class sessions
+ * need a plausible time of day — seeding them at "now o'clock" makes the
+ * student and instructor screens read "Today · 2:46 AM".
+ */
+const dayAt = (offset: number, hour: number) => {
+  const d = new Date(day(offset));
+  d.setUTCHours(hour, 0, 0, 0);
+  return d.getTime();
+};
 const onDate = (offset: number) => new Date(day(offset)).toISOString().slice(0, 10);
 
 function connectionUrl(): string {
@@ -247,11 +257,11 @@ async function seedDomain(sql: postgres.Sql): Promise<void> {
     INSERT INTO class_sessions (id, class_id, session_date, session_on, timezone, location, created_at)
     VALUES
       -- past, and deliberately missing its report: the instructor follow-up case
-      ('dev-sess-past', 'dev-class-lincoln-a', ${day(-7)}, ${onDate(-7)}, 'America/Chicago', 'Lincoln HS — Gym B', ${day(-60)}),
-      ('dev-sess-reported', 'dev-class-lincoln-a', ${day(-14)}, ${onDate(-14)}, 'America/Chicago', 'Lincoln HS — Gym B', ${day(-60)}),
-      ('dev-sess-today', 'dev-class-lincoln-a', ${day(0)}, ${onDate(0)}, 'America/Chicago', 'Lincoln HS — Gym B', ${day(-60)}),
-      ('dev-sess-next', 'dev-class-lincoln-a', ${day(7)}, ${onDate(7)}, 'America/Chicago', 'Lincoln HS — Gym B', ${day(-60)}),
-      ('dev-sess-later', 'dev-class-lincoln-a', ${day(14)}, ${onDate(14)}, 'America/Chicago', 'Lincoln HS — Gym B', ${day(-60)})
+      ('dev-sess-past', 'dev-class-lincoln-a', ${dayAt(-7, 16)}, ${onDate(-7)}, 'America/Chicago', 'Lincoln HS — Gym B', ${day(-60)}),
+      ('dev-sess-reported', 'dev-class-lincoln-a', ${dayAt(-14, 16)}, ${onDate(-14)}, 'America/Chicago', 'Lincoln HS — Gym B', ${day(-60)}),
+      ('dev-sess-today', 'dev-class-lincoln-a', ${dayAt(0, 16)}, ${onDate(0)}, 'America/Chicago', 'Lincoln HS — Gym B', ${day(-60)}),
+      ('dev-sess-next', 'dev-class-lincoln-a', ${dayAt(7, 16)}, ${onDate(7)}, 'America/Chicago', 'Lincoln HS — Gym B', ${day(-60)}),
+      ('dev-sess-later', 'dev-class-lincoln-a', ${dayAt(14, 16)}, ${onDate(14)}, 'America/Chicago', 'Lincoln HS — Gym B', ${day(-60)})
     ON CONFLICT (id) DO UPDATE SET session_date = EXCLUDED.session_date, session_on = EXCLUDED.session_on
   `;
   await sql`

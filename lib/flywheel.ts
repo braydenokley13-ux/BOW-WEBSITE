@@ -17,6 +17,7 @@
  * ============================================================ */
 
 import { getDb } from "@/lib/db";
+import { formatCanonicalDate } from "@/lib/timezone";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -163,7 +164,7 @@ export async function getGrowthActions(now = Date.now(), limit = 8): Promise<Gro
       severity: num(task.handoff_to_founder) === 1 || task.priority === "urgent" ? "act_now" : "next_up",
       entityLabel: String(task.title),
       entityHref: "/app/tasks",
-      reason: task.due_on ? `Due ${task.due_on}.` : "Handed to the founder.",
+      reason: task.due_on ? `Due ${formatCanonicalDate(task.due_on)}.` : "Handed to the founder.",
       action: task.recommended_action || "Complete this task.",
       ageDays: days(now, num(task.created_at)),
       ctaLabel: "Open Work",

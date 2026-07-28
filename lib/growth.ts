@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { canonicalDateInZone } from "@/lib/timezone";
+import { canonicalDateInZone, formatCanonicalDate } from "@/lib/timezone";
 import {
   GROWTH_METRICS,
   type CampaignMetric,
@@ -923,7 +923,7 @@ function readExceptions(
         id: `goal-behind-${goal.id}`,
         severity: "warning",
         title: `${goal.scopeLabel} is behind on ${goal.metric.replace(/_/g, " ")}`,
-        detail: `${goal.actualValue.toLocaleString()} of ${goal.targetValue.toLocaleString()} achieved; the window ends ${goal.endsOn}.`,
+        detail: `${goal.actualValue.toLocaleString()} of ${goal.targetValue.toLocaleString()} achieved; the window ends ${formatCanonicalDate(goal.endsOn)}.`,
         href: "/app/growth#goals",
         owner: goal.ownerName,
       });
