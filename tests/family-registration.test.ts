@@ -84,6 +84,15 @@ async function createChild(sql: postgres.Sql, name: string, grade: string | null
 }
 
 
+async function createGuardian(sql: postgres.Sql, email: string): Promise<string> {
+  const now = Date.now();
+  const id = `per-test-${randomUUID().slice(0, 8)}`;
+  await sql`
+    INSERT INTO people (id, name, email, phone, created_at, updated_at)
+    VALUES (${id}, 'Test Guardian', ${email}, '', ${now}, ${now})`;
+  return id;
+}
+
 function connect(): postgres.Sql {
   return postgres(CONNECTION, { prepare: false, max: 1, idle_timeout: 5 });
 }
@@ -362,5 +371,104 @@ test("internal registration stages never leak into family-facing labels", async 
     const label = registrationLabel(status);
     assert.ok(label.length > 0, `${status} needs a family-facing label`);
     assert.ok(!label.includes("_"), `${status} label must not expose the internal token`);
+  }
+});
+
+/* ---------------------------------------------------------------- */
+/* Returning-family reconciliation                                   */
+/* ---------------------------------------------------------------- */
+
+/**
+ * The predicate app/actions/family-registration.ts uses to decide whether an
+ * unauthenticated returning parent is re-entering a child we already know.
+ * Asserted here because getting it wrong in either direction is expensive: too
+ * loose merges two different children, too strict gives one child a second
+ * record and a second seat in the same program.
+ */
+async function reconcile(sql: postgres.Sql, guardianId: string, identityKey: string) {
+  const rows = await sql`
+    SELECT s.id FROM students s
+      JOIN student_guardians g ON g.student_id = s.id
+     WHERE g.person_id = ${guardianId} AND g.status = 'active'
+       AND s.identity_key = ${identityKey} AND s.merged_into_student_id IS NULL
+     ORDER BY s.created_at LIMIT 1`;
+  return rows[0]?.id ?? null;
+}
+
+async function linkChild(sql: postgres.Sql, guardianId: string, name: string, grade: string) {
+  const now = Date.now();
+  const id = `stu-test-${randomUUID().slice(0, 8)}`;
+  await sql`
+    INSERT INTO students (id, name, grade, identity_key, enrollment_status, form_status, created_at, updated_at)
+    VALUES (${id}, ${name}, ${grade}, ${`${name.toLowerCase()}|${grade.toLowerCase()}`}, 'active', 'missing', ${now}, ${now})`;
+  await sql`
+    INSERT INTO student_guardians (id, student_id, person_id, relationship, is_primary, status, created_at, updated_at)
+    VALUES (${`sg-test-${randomUUID().slice(0, 8)}`}, ${id}, ${guardianId}, 'parent', true, 'active', ${now}, ${now})`;
+  return id;
+}
+
+describeDb("a returning parent's known child is reused, not duplicated", async () => {
+  const sql = connect();
+  try {
+    const guardian = await createGuardian(sql, `returning-${randomUUID().slice(0, 8)}@example.test`);
+    const child = await linkChild(sql, guardian, "Ava Reyes", "7");
+
+    assert.equal(
+      await reconcile(sql, guardian, "ava reyes|7"),
+      child,
+      "the same guardian re-entering the same child must resolve to the existing record",
+    );
+  } finally {
+    await sql.end();
+  }
+});
+
+describeDb("an identical name under a different guardian is never reused", async () => {
+  const sql = connect();
+  try {
+    const ours = await createGuardian(sql, `ours-${randomUUID().slice(0, 8)}@example.test`);
+    const stranger = await createGuardian(sql, `stranger-${randomUUID().slice(0, 8)}@example.test`);
+    await linkChild(sql, ours, "Jordan Blake", "8");
+
+    assert.equal(
+      await reconcile(sql, stranger, "jordan blake|8"),
+      null,
+      "two families with a same-named child must stay two different children",
+    );
+  } finally {
+    await sql.end();
+  }
+});
+
+describeDb("a revoked guardian cannot reconcile onto a child they lost access to", async () => {
+  const sql = connect();
+  try {
+    const guardian = await createGuardian(sql, `revoked-${randomUUID().slice(0, 8)}@example.test`);
+    const child = await linkChild(sql, guardian, "Casey Lane", "9");
+    await sql`UPDATE student_guardians SET status = 'revoked' WHERE person_id = ${guardian} AND student_id = ${child}`;
+
+    assert.equal(
+      await reconcile(sql, guardian, "casey lane|9"),
+      null,
+      "reconciliation must require a live guardian link, not merely a historical one",
+    );
+  } finally {
+    await sql.end();
+  }
+});
+
+describeDb("a different grade is treated as a different child pending review", async () => {
+  const sql = connect();
+  try {
+    const guardian = await createGuardian(sql, `grade-${randomUUID().slice(0, 8)}@example.test`);
+    await linkChild(sql, guardian, "Sam Reed", "6");
+
+    assert.equal(
+      await reconcile(sql, guardian, "sam reed|8"),
+      null,
+      "name alone must never be enough to reuse a child record",
+    );
+  } finally {
+    await sql.end();
   }
 });

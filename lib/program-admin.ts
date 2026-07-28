@@ -218,10 +218,10 @@ export async function listRegistrations(
     statusLabel: registrationLabel(row.status),
     classId: row.class_id,
     className: row.class_title,
-    reservationExpiresAt: row.reservation_expires_at,
+    reservationExpiresAt: row.reservation_expires_at == null ? null : Number(row.reservation_expires_at),
     waitlistSeq: row.waitlist_seq,
     requirementsOutstanding: Number(row.requirements_outstanding ?? 0),
-    createdAt: row.created_at,
+    createdAt: Number(row.created_at),
   }));
 }
 
@@ -359,7 +359,7 @@ export async function loadRegistrationDetail(
       blocksConfirmation: r.blocks_confirmation,
       visibility: r.visibility,
       status: r.status,
-      dueAt: r.due_at,
+      dueAt: r.due_at == null ? null : Number(r.due_at),
       response: r.response,
       reviewNote: r.review_note,
     }));
@@ -421,10 +421,10 @@ export async function loadRegistrationDetail(
       status: g.status,
     })),
     holdsSeat: row.holds_seat,
-    reservationExpiresAt: row.reservation_expires_at,
+    reservationExpiresAt: row.reservation_expires_at == null ? null : Number(row.reservation_expires_at),
     waitlistSeq: row.waitlist_seq,
-    createdAt: row.created_at,
-    confirmedAt: row.confirmed_at,
+    createdAt: Number(row.created_at),
+    confirmedAt: row.confirmed_at == null ? null : Number(row.confirmed_at),
     decisionReason: row.decision_reason,
     adminNotes: row.admin_notes,
     requirements,
@@ -435,7 +435,7 @@ export async function loadRegistrationDetail(
       title: n.title,
       body: n.body,
       urgency: n.urgency,
-      createdAt: n.created_at,
+      createdAt: Number(n.created_at),
       emailStatus: n.email_status,
     })),
     auditEvents: auditEvents.map((a) => ({
@@ -445,7 +445,7 @@ export async function loadRegistrationDetail(
       previousState: a.previous_state,
       newState: a.new_state,
       reason: a.reason,
-      createdAt: a.created_at,
+      createdAt: Number(a.created_at),
     })),
   };
 }
@@ -516,7 +516,7 @@ export async function needsAttention(programId: string): Promise<AttentionItem[]
         r.reservation_expires_at < now
           ? "Reservation deadline has passed and is awaiting the next sweep."
           : "Seat reservation expires within 48 hours.",
-      deadline: r.reservation_expires_at,
+      deadline: r.reservation_expires_at == null ? null : Number(r.reservation_expires_at),
       actionHref: `${base}?open=${r.id}`,
       actionLabel: "Extend or review",
     });
@@ -544,7 +544,7 @@ export async function needsAttention(programId: string): Promise<AttentionItem[]
       guardianName: r.guardian_name,
       programId,
       problem: "A confirmation-blocking requirement is still outstanding.",
-      deadline: r.due_at,
+      deadline: r.due_at == null ? null : Number(r.due_at),
       actionHref: `${base}?open=${r.id}`,
       actionLabel: "Review requirement",
     });
@@ -655,7 +655,7 @@ export async function needsAttention(programId: string): Promise<AttentionItem[]
       guardianName: r.guardian_name,
       programId,
       problem: "Waitlist offer expires within 48 hours.",
-      deadline: r.expires_at,
+      deadline: Number(r.expires_at),
       actionHref: `/app/programs/${programId}/waitlist`,
       actionLabel: "View offer",
     });

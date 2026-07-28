@@ -277,9 +277,40 @@ export async function submitFamilyRegistration(
           continue;
         }
 
+        const identityKey = `${child.name.toLowerCase()}|${(child.grade ?? "").toLowerCase()}`;
+
+        // A returning family, not signed in, re-entering a child we already
+        // know. Reuse that child rather than creating a second record — which
+        // would otherwise take a second seat in the same program, because the
+        // one-live-registration constraint keys on student_id.
+        //
+        // This is NOT a name-only merge: the match is name AND grade AND an
+        // existing active guardian link to *this* guardian, whose email was
+        // resolved to one canonical Person. A guardian with two same-name,
+        // same-grade children is not a real case; a stranger sharing a child's
+        // name is, and cannot reach this branch.
+        const known = (await db
+          .prepare(
+            `SELECT s.id FROM students s
+               JOIN student_guardians g ON g.student_id = s.id
+              WHERE g.person_id = ? AND g.status = 'active'
+                AND s.identity_key = ? AND s.merged_into_student_id IS NULL
+              ORDER BY s.created_at
+              LIMIT 1`,
+          )
+          .get(guardianPersonId, identityKey)) as { id: string } | undefined;
+        if (known) {
+          child.existingStudentId = known.id;
+          if (child.school) {
+            await db
+              .prepare("UPDATE students SET school = COALESCE(school, ?), updated_at = ? WHERE id = ?")
+              .run(child.school, now, known.id);
+          }
+          continue;
+        }
+
         // Deterministic id: a replayed submission resolves to the same child.
         const studentId = `stu-${digest(requestKey, String(child.index)).slice(0, 20)}`;
-        const identityKey = `${child.name.toLowerCase()}|${(child.grade ?? "").toLowerCase()}`;
         await db
           .prepare(
             `INSERT INTO students

@@ -207,10 +207,15 @@ export async function getPublicProgramDetail(id: string): Promise<PublicProgramD
     registrationMode: row.registration_mode,
     waitlistMode: row.waitlist_mode,
     instructors: instructors.map((i) => ({ name: i.name, role: i.role === "lead" ? "Lead instructor" : "Instructor" })),
-    upcomingSessions: upcomingSessions.map((s) => ({
-      date: new Date(s.session_date).toISOString().slice(0, 10),
-      title: s.title,
-    })),
+    // `session_date` is a bigint, which the driver returns as a string —
+    // passing that straight to Date() yields an Invalid Date and throws on
+    // toISOString(), so it must be coerced. A session with an unreadable date
+    // is dropped rather than allowed to break the whole public page.
+    upcomingSessions: upcomingSessions.flatMap((s) => {
+      const date = new Date(Number(s.session_date));
+      if (Number.isNaN(date.getTime())) return [];
+      return [{ date: date.toISOString().slice(0, 10), title: s.title }];
+    }),
     requirements: requirements.map((r) => ({ kind: r.kind, prompt: r.prompt, required: r.required })),
   };
 }

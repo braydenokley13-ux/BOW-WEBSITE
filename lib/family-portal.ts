@@ -13,6 +13,11 @@
 
 import "server-only";
 
+// Timestamp columns are bigint, which the Postgres driver returns as a
+// string. Every one is coerced with Number() where it is read: a string
+// reaching new Date() produces an Invalid Date, which formats as garbage
+// on the dashboard and throws outright from toISOString().
+
 import { getDb } from "@/lib/db";
 import { registrationLabel, type RegistrationStatus } from "@/lib/enrollment-shared";
 import { guardianCanAccessStudent, studentIdsForGuardian } from "@/lib/parent-activation";
@@ -203,7 +208,7 @@ export async function loadFamilyDashboard(personId: string): Promise<FamilyDashb
       status: r.status as RegistrationStatus,
       statusLabel: registrationLabel(r.status),
       holdsSeat: r.holds_seat,
-      reservationExpiresAt: r.reservation_expires_at,
+      reservationExpiresAt: r.reservation_expires_at == null ? null : Number(r.reservation_expires_at),
       classId: r.class_id,
       scheduleLabel: r.schedule_label,
       timezone: r.schedule_timezone,
@@ -282,7 +287,7 @@ async function nextSessionsByClass(classIds: string[]): Promise<Map<string, Sess
       studentName: "",
       programId: "",
       programName: "",
-      sessionDate: row.session_date,
+      sessionDate: Number(row.session_date),
       sessionOn: row.session_on,
       title: row.title,
       timezone: row.timezone,
@@ -337,7 +342,7 @@ export async function familySchedule(studentIds: string[]): Promise<SessionRow[]
     studentName: row.student_name,
     programId: row.program_id,
     programName: row.program_name,
-    sessionDate: row.session_date,
+    sessionDate: Number(row.session_date),
     sessionOn: row.session_on,
     title: row.title,
     timezone: row.timezone,
@@ -399,7 +404,7 @@ async function familyRequirements(registrationIds: string[]): Promise<Requiremen
     choices: row.choices,
     status: row.status,
     response: row.response,
-    dueAt: row.due_at,
+    dueAt: row.due_at == null ? null : Number(row.due_at),
     blocksConfirmation: row.blocks_confirmation,
     staffApprovalRequired: row.staff_approval_required,
     visibility: row.visibility,
@@ -450,8 +455,8 @@ async function familyNotifications(personId: string): Promise<FamilyNotification
     actionHref: row.action_href,
     urgency: row.urgency,
     requiresAcknowledgment: row.requires_acknowledgment,
-    acknowledgedAt: row.acknowledged_at,
-    createdAt: row.created_at,
+    acknowledgedAt: row.acknowledged_at == null ? null : Number(row.acknowledged_at),
+    createdAt: Number(row.created_at),
   }));
 }
 
@@ -499,9 +504,9 @@ async function completedProgramsFor(studentIds: string[]): Promise<CompletedProg
     outcome: row.outcome,
     sessionsAttended: row.sessions_attended,
     sessionsTotal: row.sessions_total,
-    completedAt: row.completed_at,
+    completedAt: row.completed_at == null ? null : Number(row.completed_at),
     certificateSerial: row.certificate_serial,
-    certificateIssuedAt: row.certificate_issued_at,
+    certificateIssuedAt: row.certificate_issued_at == null ? null : Number(row.certificate_issued_at),
     feedbackSubmitted: row.feedback_submitted,
     recommendedNextProgramId: row.next_program_id,
     recommendedNextProgramName: row.next_program_name,
@@ -542,7 +547,7 @@ async function openOffersFor(registrationIds: string[]): Promise<OfferRow[]> {
     programId: row.program_id,
     programName: row.program_name,
     status: row.status,
-    expiresAt: row.expires_at,
+    expiresAt: Number(row.expires_at),
     supportContact: row.support_contact,
   }));
 }
@@ -601,7 +606,7 @@ export async function loadOfferForGuardian(offerId: string, personId: string): P
     programId: row.program_id,
     programName: row.program_name,
     status: row.status,
-    expiresAt: row.expires_at,
+    expiresAt: Number(row.expires_at),
     supportContact: row.support_contact,
     requirementsPreview: requirements,
     expired: row.status === "expired" || (row.status === "sent" && row.expires_at < Date.now()),
@@ -693,7 +698,7 @@ export async function loadRequirementForGuardian(
     choices: row.choices,
     status: row.status,
     response: row.response,
-    dueAt: row.due_at,
+    dueAt: row.due_at == null ? null : Number(row.due_at),
     blocksConfirmation: row.blocks_confirmation,
     staffApprovalRequired: row.staff_approval_required,
     visibility: row.visibility,
@@ -921,7 +926,7 @@ export async function loadStudentProgramHome(
     studentName: "",
     programId: reg.program_id,
     programName: reg.program_name,
-    sessionDate: row.session_date,
+    sessionDate: Number(row.session_date),
     sessionOn: row.session_on,
     title: row.title,
     timezone: row.timezone,

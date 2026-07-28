@@ -39,9 +39,15 @@ const fieldStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = { fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14 };
 const fieldWrap: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 6 };
 
-function newChild(preselectedProgramId: string | null): ChildForm {
+// The caller supplies the key. It cannot be random and it cannot come from a
+// module-level counter: this component is server-rendered before it hydrates,
+// and both of those produce a different value on the server than on the
+// client — a hydration mismatch that breaks every htmlFor/id pairing on the
+// form. The counter therefore lives in the component, where the first render
+// is identical on both sides and only client interaction advances it.
+function newChild(preselectedProgramId: string | null, key: string): ChildForm {
   return {
-    key: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    key,
     firstName: "",
     lastName: "",
     grade: "",
@@ -67,7 +73,8 @@ export default function FamilyRegistrationWizard({
   preselectedProgramId: string | null;
 }) {
   const [step, setStep] = useState<Step>("children");
-  const [children, setChildren] = useState<ChildForm[]>([newChild(preselectedProgramId)]);
+  const [children, setChildren] = useState<ChildForm[]>([newChild(preselectedProgramId, "child-0")]);
+  const nextChildKey = useRef(1);
   const [parentName, setParentName] = useState("");
   const [parentEmail, setParentEmail] = useState("");
   const [parentPhone, setParentPhone] = useState("");
@@ -89,7 +96,8 @@ export default function FamilyRegistrationWizard({
   const updateChild = (key: string, patch: Partial<ChildForm>) => {
     setChildren((prev) => prev.map((c) => (c.key === key ? { ...c, ...patch } : c)));
   };
-  const addChild = () => setChildren((prev) => [...prev, newChild(null)]);
+  const addChild = () =>
+    setChildren((prev) => [...prev, newChild(null, `child-${nextChildKey.current++}`)]);
   const removeChild = (key: string) => setChildren((prev) => (prev.length > 1 ? prev.filter((c) => c.key !== key) : prev));
 
   const toggleProgram = (childKey: string, programId: string) => {
