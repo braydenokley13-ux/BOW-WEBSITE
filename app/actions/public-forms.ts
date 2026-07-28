@@ -185,8 +185,8 @@ export async function submitPublicInquiry(input: PublicInquiryInput): Promise<Ac
       organizationId = topology.organizationId;
 
       (await db.prepare(
-                `INSERT INTO inquiries (id, organization_id, name, email, type, org_name, date, status, summary)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)`,
+                `INSERT INTO inquiries (id, organization_id, name, email, type, org_name, date, status, summary, submitted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`,
               ).run(
                 inquiryId,
                 organizationId,
@@ -196,6 +196,7 @@ export async function submitPublicInquiry(input: PublicInquiryInput): Promise<Ac
                 orgName,
                 formatCanonicalDate(canonicalDateInZone(now)),
                 summary,
+                now,
               ));
       (await recordPublicLearnerTouchpoint(db, {
                 inquiryId,
@@ -399,9 +400,9 @@ export async function submitPartnershipInquiry(input: PartnershipInquiryInput): 
         timeZone: "UTC",
       }).format(now);
       (await db.prepare(
-                `INSERT INTO inquiries (id, organization_id, name, email, type, org_name, date, status, summary)
-         VALUES (?, ?, ?, ?, 'Partnership', ?, ?, 'new', ?)`,
-              ).run(inquiryId, organizationId, contactName, contactEmail, orgName, submittedDate, summary));
+                `INSERT INTO inquiries (id, organization_id, name, email, type, org_name, date, status, summary, submitted_at)
+         VALUES (?, ?, ?, ?, 'Partnership', ?, ?, 'new', ?, ?)`,
+              ).run(inquiryId, organizationId, contactName, contactEmail, orgName, submittedDate, summary, now));
 
       if (organizationId) {
         (await logActivity(

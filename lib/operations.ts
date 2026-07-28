@@ -92,7 +92,13 @@ async function loadSnapshot(): Promise<OperationsSnapshot> {
     feedback: (await db.prepare("SELECT * FROM instructor_feedback ORDER BY created_at DESC").all()) as any[],
     development: (await db.prepare("SELECT * FROM instructor_development_items ORDER BY created_at DESC").all()) as any[],
     activity: (await db.prepare("SELECT * FROM crm_activity ORDER BY created_at DESC").all()) as any[],
-    inquiries: (await db.prepare("SELECT * FROM inquiries ORDER BY date DESC").all()) as any[],
+    // `date` is free text written in two different formats by the two public
+    // form paths, so it does not sort. Order by the epoch-ms `submitted_at`
+    // (016_inquiries_operations_columns.sql), keeping `date` as a tiebreaker
+    // for any legacy row whose text could not be backfilled.
+    inquiries: (await db
+        .prepare("SELECT * FROM inquiries ORDER BY submitted_at DESC NULLS LAST, date DESC")
+        .all()) as any[],
   };
 }
 

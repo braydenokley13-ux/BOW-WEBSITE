@@ -325,12 +325,11 @@ ON CONFLICT (user_id, cohort_id) DO NOTHING;
 
 -- requireTeachingUser (lib/dal.ts) gates /app/instructor/* on a live
 -- `instructors` row (the hiring-pipeline table, unrelated to the cohort
--- ownership modeled above) joined through `people.user_id` — without this,
--- the seeded instructor bounces to /app/settings instead of the console.
-INSERT INTO people (id, name, email, user_id, created_at, updated_at)
-VALUES ('person-instr-1', 'Ivy Instructor', 'instructor@bow.test', 'user-instr-1', extract(epoch from now())*1000, extract(epoch from now())*1000)
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO instructors (id, person_id, stage, eligibility_status, created_at, updated_at)
-VALUES ('instr-1', 'person-instr-1', 'active', 'eligible', extract(epoch from now())*1000, extract(epoch from now())*1000)
-ON CONFLICT (id) DO NOTHING;
+-- ownership modeled above) joined through `people.user_id`.
+--
+-- No placeholder instructor is created here on purpose. One used to be
+-- ("Ivy Instructor"), and it showed up in the founder attention queue as a
+-- real eligible-but-unassigned instructor needing a decision. Representative
+-- instructors now come from scripts/seed-dev.ts (`npm run db:seed`), which is
+-- where fixture data belongs; this file stays schema-only plus the minimum
+-- rows the app's own invariants require.

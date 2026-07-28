@@ -270,13 +270,8 @@ export default async function TeachHomePage() {
             )
             .all(...classIds)) as { id: string; class_id: string; session_date: number }[])
     : [];
-  const upcomingClassSessions = sessionRows
-    .filter((s) => s.session_date >= now - DAY_MS && s.session_date <= now + 14 * DAY_MS)
-    .sort((a, b) => a.session_date - b.session_date)
-    .slice(0, 8);
-
   const reportedSessionIds = new Set(
-    (classIds.length
+    (sessionRows.length
       ? ((await db
                 .prepare(
                   `SELECT session_id FROM class_session_reports WHERE session_id IN (${sessionRows.map(() => "?").join(",")})`,
@@ -285,7 +280,21 @@ export default async function TeachHomePage() {
       : []
     ).map((r) => r.session_id),
   );
-  const followUpsDue = sessionRows.filter((s) => s.session_date < now && !reportedSessionIds.has(s.id));
+
+  // Split on the calendar day, not on `now`, and make the two lists disjoint.
+  // Today's session belongs under "Sessions to teach" for the whole day even
+  // once its start time has passed — it used to also appear under "Follow-ups
+  // due" the moment the clock went past it, so the same session was
+  // simultaneously something to prepare for and something to report on.
+  const isPastDay = (s: { session_date: number }) =>
+    s.session_date < now && !isSameCalendarDay(s.session_date, now);
+
+  const upcomingClassSessions = sessionRows
+    .filter((s) => !isPastDay(s) && s.session_date <= now + 14 * DAY_MS)
+    .sort((a, b) => a.session_date - b.session_date)
+    .slice(0, 8);
+
+  const followUpsDue = sessionRows.filter((s) => isPastDay(s) && !reportedSessionIds.has(s.id));
   const impact = await getInstructorImpact(instructor.id, now).catch(() => null);
   const visibleImpact = impact ? impactStats(impact).filter((stat) => stat.value > 0) : [];
 

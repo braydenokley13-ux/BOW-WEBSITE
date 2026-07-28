@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { canonicalDateInZone } from "@/lib/timezone";
+import { canonicalDateInZone, formatCanonicalDate } from "@/lib/timezone";
 import {
   GROWTH_METRICS,
   type CampaignMetric,
@@ -662,7 +662,9 @@ async function metricActual(
         ));
   }
   return (await count(
-      `SELECT COALESCE(SUM(MAX(0, COALESCE(c.capacity, 0) - COALESCE(enrolled.count, 0))), 0) AS count
+      // GREATEST, not MAX: SQLite's two-argument scalar MAX() has no Postgres
+      // equivalent, and toPostgresSql() does not translate it.
+      `SELECT COALESCE(SUM(GREATEST(0, COALESCE(c.capacity, 0) - COALESCE(enrolled.count, 0))), 0) AS count
        FROM classes c
        LEFT JOIN (
          SELECT class_id, COUNT(*) AS count FROM class_enrollments WHERE status = 'enrolled' GROUP BY class_id
@@ -921,7 +923,7 @@ function readExceptions(
         id: `goal-behind-${goal.id}`,
         severity: "warning",
         title: `${goal.scopeLabel} is behind on ${goal.metric.replace(/_/g, " ")}`,
-        detail: `${goal.actualValue.toLocaleString()} of ${goal.targetValue.toLocaleString()} achieved; the window ends ${goal.endsOn}.`,
+        detail: `${goal.actualValue.toLocaleString()} of ${goal.targetValue.toLocaleString()} achieved; the window ends ${formatCanonicalDate(goal.endsOn)}.`,
         href: "/app/growth#goals",
         owner: goal.ownerName,
       });

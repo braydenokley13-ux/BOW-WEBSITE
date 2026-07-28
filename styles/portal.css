@@ -257,6 +257,22 @@
 .ds-page-header__meta-item dt { margin: 0; font-family: var(--font-data); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
 .ds-page-header__meta-item dd { margin: 0; font-family: var(--font-interface); font-size: 13px; color: var(--text-primary); }
 
+/* On narrow viewports a PageHeader action is usually a group of several
+   inline links ("Instructor command / Hiring pipeline / Training"). Held at
+   flex-shrink: 0 beside the title, that group pushed /app/people 54px wider
+   than the viewport. Give it its own row and let it wrap. */
+@media (max-width: 640px) {
+  .ds-page-header__row { gap: 12px; }
+  .ds-page-header__action {
+    flex-basis: 100%;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+  }
+}
+
 .ds-page-section { padding: 18px 0; border-top: 1px solid var(--border-rule); }
 .ds-page-section--no-rule { border-top: 0; padding-top: 0; }
 .ds-page-section__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }

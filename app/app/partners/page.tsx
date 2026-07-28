@@ -17,6 +17,17 @@ export default async function PartnersPage() {
             Partner organizations BOW runs classes with. {organizations.length} total.
           </p>
         </div>
+        {/*
+          The staff-led partner demo tour had no entry point anywhere in the
+          product — it was reachable only by typing /demo. Partners is where a
+          staff member preparing a partner call already is, so it lives here
+          rather than taking a slot in the primary nav.
+        */}
+        <div>
+          <Button href="/demo" variant="secondary">
+            Open partner demo
+          </Button>
+        </div>
       </header>
 
       {organizations.length === 0 ? (

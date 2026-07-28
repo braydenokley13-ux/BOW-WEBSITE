@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/dal";
 import { getDailyQuestionView } from "@/lib/daily-question";
 import { loadStudentHome } from "@/lib/learn/home";
 import { getXPLeaderboard, getStudentRank, getStudentLeaderboardRow } from "@/lib/leaderboard";
+import { getStudentProgram } from "@/lib/student-program";
 import StudentHome from "@/components/learn/home/StudentHome";
 
 /**
@@ -19,11 +20,14 @@ export default async function DashboardPage() {
 
   const orgScope = me.orgId ?? null;
 
-  const [home, dailyQuestion, top5, myRank] = await Promise.all([
+  const [home, dailyQuestion, top5, myRank, program] = await Promise.all([
     loadStudentHome(me.id, me.first),
     getDailyQuestionView(me.id),
     getXPLeaderboard(orgScope),
     getStudentRank(me.id, "xp", orgScope),
+    // A student enrolled in a real class needs to see it before the Playbook.
+    // Self-paced-only learners have none; the band is simply not rendered.
+    getStudentProgram(me.id).catch(() => null),
   ]);
   const top5Rows = top5.slice(0, 5);
   // Only fetch the viewer's own row when they're not already visible in the
@@ -38,6 +42,7 @@ export default async function DashboardPage() {
       home={home}
       dailyQuestion={dailyQuestion}
       leaderboard={{ top5: top5Rows, myRank, myRow }}
+      program={program}
     />
   );
 }
