@@ -971,3 +971,336 @@ export async function registrationReadiness(programId: string): Promise<Registra
 
   return { state, blockers, warnings };
 }
+
+/* ===================================================================== */
+/* Global registration/family needs-action feed                          */
+/* ===================================================================== */
+
+export interface RegistrationAttentionItem {
+  key: string;
+  kind:
+    | "reservation_expiring"
+    | "requirement_overdue"
+    | "registration_review"
+    | "possible_duplicate"
+    | "activation_failure"
+    | "offer_expiring"
+    | "unplaced_confirmed"
+    | "failed_communication"
+    | "family_request";
+  severity: "blocker" | "warning" | "info";
+  programId: string | null;
+  programName: string | null;
+  studentId: string | null;
+  studentName: string | null;
+  problem: string;
+  deadline: string | null;
+  consequence: string;
+  actionLabel: string;
+  href: string;
+}
+
+/**
+ * Every item here comes from a real query against the family/registration
+ * tables — nothing is a placeholder. Rows a query cannot legitimately
+ * produce (e.g. no reservations currently expiring) simply don't appear;
+ * this never pads the list with stub content.
+ */
+export async function registrationNeedsAction(limitPerKind = 8): Promise<RegistrationAttentionItem[]> {
+  const db = getDb();
+  const now = Date.now();
+  const items: RegistrationAttentionItem[] = [];
+
+  const expiring = (await db
+    .prepare(
+      `SELECT r.id, r.reservation_expires_at, p.id AS program_id, p.name AS program_name, s.id AS student_id, s.name AS student_name
+         FROM program_registrations r JOIN programs p ON p.id = r.program_id JOIN students s ON s.id = r.student_id
+        WHERE r.status IN ('seat_reserved', 'requirements_pending')
+          AND r.reservation_expires_at IS NOT NULL
+          AND r.reservation_expires_at < ?
+        ORDER BY r.reservation_expires_at ASC LIMIT ?`,
+    )
+    .all(now + 48 * 3600 * 1000, limitPerKind)) as unknown as Array<{
+    id: string;
+    reservation_expires_at: number;
+    program_id: string;
+    program_name: string;
+    student_id: string;
+    student_name: string;
+  }>;
+  for (const r of expiring) {
+    const overdue = r.reservation_expires_at < now;
+    items.push({
+      key: `reservation-${r.id}`,
+      kind: "reservation_expiring",
+      severity: overdue ? "blocker" : "warning",
+      programId: r.program_id,
+      programName: r.program_name,
+      studentId: r.student_id,
+      studentName: r.student_name,
+      problem: overdue ? "Reservation deadline has passed — seat will auto-release." : "Reservation seat expires within 48 hours.",
+      deadline: new Date(r.reservation_expires_at).toISOString(),
+      consequence: "Seat releases back to the waitlist unless extended or the requirements are completed.",
+      actionLabel: "Review reservation",
+      href: `/app/family-support?studentId=${r.student_id}`,
+    });
+  }
+
+  const overdueRequirements = (await db
+    .prepare(
+      `SELECT rr.id, rr.due_at, p.id AS program_id, p.name AS program_name, s.id AS student_id, s.name AS student_name, pr.prompt
+         FROM registration_requirements rr
+         JOIN program_requirements pr ON pr.id = rr.requirement_id
+         JOIN program_registrations r ON r.id = rr.registration_id
+         JOIN programs p ON p.id = r.program_id
+         JOIN students s ON s.id = r.student_id
+        WHERE pr.blocks_confirmation = true AND rr.status NOT IN ('approved', 'waived')
+          AND rr.due_at IS NOT NULL AND rr.due_at < ?
+          AND r.status NOT IN ('withdrawn', 'cancelled', 'declined', 'expired', 'completed')
+        ORDER BY rr.due_at ASC LIMIT ?`,
+    )
+    .all(now, limitPerKind)) as unknown as Array<{
+    id: string;
+    due_at: number;
+    program_id: string;
+    program_name: string;
+    student_id: string;
+    student_name: string;
+    prompt: string;
+  }>;
+  for (const r of overdueRequirements) {
+    items.push({
+      key: `requirement-${r.id}`,
+      kind: "requirement_overdue",
+      severity: "blocker",
+      programId: r.program_id,
+      programName: r.program_name,
+      studentId: r.student_id,
+      studentName: r.student_name,
+      problem: `Blocking requirement overdue: ${r.prompt}`,
+      deadline: new Date(r.due_at).toISOString(),
+      consequence: "Seat cannot be confirmed until this is approved or waived.",
+      actionLabel: "Resolve requirement",
+      href: `/app/family-support?studentId=${r.student_id}`,
+    });
+  }
+
+  const needsReview = (await db
+    .prepare(
+      `SELECT r.id, r.created_at, p.id AS program_id, p.name AS program_name, s.id AS student_id, s.name AS student_name
+         FROM program_registrations r JOIN programs p ON p.id = r.program_id JOIN students s ON s.id = r.student_id
+        WHERE r.status IN ('under_review', 'pending', 'submitted')
+        ORDER BY r.created_at ASC LIMIT ?`,
+    )
+    .all(limitPerKind)) as unknown as Array<{
+    id: string;
+    created_at: number;
+    program_id: string;
+    program_name: string;
+    student_id: string;
+    student_name: string;
+  }>;
+  for (const r of needsReview) {
+    const ageHours = Math.round((now - r.created_at) / 3600000);
+    items.push({
+      key: `review-${r.id}`,
+      kind: "registration_review",
+      severity: ageHours > 48 ? "warning" : "info",
+      programId: r.program_id,
+      programName: r.program_name,
+      studentId: r.student_id,
+      studentName: r.student_name,
+      problem: `Registration awaiting eligibility review (${ageHours}h old).`,
+      deadline: null,
+      consequence: "Family gets no seat decision until a staff member reviews it.",
+      actionLabel: "Review registration",
+      href: `/app/family-support?studentId=${r.student_id}`,
+    });
+  }
+
+  const duplicates = (await db
+    .prepare(
+      `SELECT sdr.id, sdr.student_id, s1.name AS student_name, sdr.other_student_id, s2.name AS other_name, sdr.detected_reason
+         FROM student_duplicate_reviews sdr
+         JOIN students s1 ON s1.id = sdr.student_id
+         JOIN students s2 ON s2.id = sdr.other_student_id
+        WHERE sdr.status = 'open'
+        ORDER BY sdr.created_at ASC LIMIT ?`,
+    )
+    .all(limitPerKind)) as unknown as Array<{
+    id: string;
+    student_id: string;
+    student_name: string;
+    other_student_id: string;
+    other_name: string;
+    detected_reason: string | null;
+  }>;
+  for (const d of duplicates) {
+    items.push({
+      key: `duplicate-${d.id}`,
+      kind: "possible_duplicate",
+      severity: "warning",
+      programId: null,
+      programName: null,
+      studentId: d.student_id,
+      studentName: `${d.student_name} / ${d.other_name}`,
+      problem: d.detected_reason ?? "Two child records may be the same person.",
+      deadline: null,
+      consequence: "Both records keep operating independently (double capacity use, split history) until reviewed.",
+      actionLabel: "Review identity",
+      href: `/app/family-support?studentId=${d.student_id}`,
+    });
+  }
+
+  const activationFailures = (await db
+    .prepare(
+      `SELECT DISTINCT ON (pa.person_id) pa.person_id, pa.state, pe.name, pe.email
+         FROM parent_activations pa JOIN people pe ON pe.id = pa.person_id
+        WHERE pa.state IN ('failed', 'support_required')
+        ORDER BY pa.person_id, pa.created_at DESC LIMIT ?`,
+    )
+    .all(limitPerKind)) as unknown as Array<{ person_id: string; state: string; name: string; email: string | null }>;
+  for (const a of activationFailures) {
+    items.push({
+      key: `activation-${a.person_id}`,
+      kind: "activation_failure",
+      severity: a.state === "support_required" ? "blocker" : "warning",
+      programId: null,
+      programName: null,
+      studentId: null,
+      studentName: a.name,
+      problem:
+        a.state === "support_required"
+          ? `${a.name}'s email matches an existing staff account — activation cannot proceed automatically.`
+          : `${a.name}'s account activation failed on provisioning.`,
+      deadline: null,
+      consequence: "Guardian cannot sign in to manage their registration.",
+      actionLabel: "Diagnose activation",
+      href: `/app/family-support?personId=${a.person_id}`,
+    });
+  }
+
+  const offersExpiring = (await db
+    .prepare(
+      `SELECT o.id, o.expires_at, p.id AS program_id, p.name AS program_name, s.id AS student_id, s.name AS student_name
+         FROM waitlist_offers o
+         JOIN program_registrations r ON r.id = o.registration_id
+         JOIN programs p ON p.id = o.program_id
+         JOIN students s ON s.id = r.student_id
+        WHERE o.status = 'sent' AND o.expires_at < ?
+        ORDER BY o.expires_at ASC LIMIT ?`,
+    )
+    .all(now + 24 * 3600 * 1000, limitPerKind)) as unknown as Array<{
+    id: string;
+    expires_at: number;
+    program_id: string;
+    program_name: string;
+    student_id: string;
+    student_name: string;
+  }>;
+  for (const o of offersExpiring) {
+    const overdue = o.expires_at < now;
+    items.push({
+      key: `offer-${o.id}`,
+      kind: "offer_expiring",
+      severity: overdue ? "blocker" : "warning",
+      programId: o.program_id,
+      programName: o.program_name,
+      studentId: o.student_id,
+      studentName: o.student_name,
+      problem: overdue ? "Waitlist offer has expired — seat will release to the next family." : "Waitlist offer expires within 24 hours.",
+      deadline: new Date(o.expires_at).toISOString(),
+      consequence: "Seat releases back to the waitlist and refills automatically once expired.",
+      actionLabel: "Review offer",
+      href: `/app/family-support?studentId=${o.student_id}`,
+    });
+  }
+
+  const unplaced = (await db
+    .prepare(
+      `SELECT r.id, p.id AS program_id, p.name AS program_name, s.id AS student_id, s.name AS student_name
+         FROM program_registrations r JOIN programs p ON p.id = r.program_id JOIN students s ON s.id = r.student_id
+        WHERE r.status = 'confirmed' AND r.class_id IS NULL
+        ORDER BY r.confirmed_at ASC LIMIT ?`,
+    )
+    .all(limitPerKind)) as unknown as Array<{ id: string; program_id: string; program_name: string; student_id: string; student_name: string }>;
+  for (const u of unplaced) {
+    items.push({
+      key: `unplaced-${u.id}`,
+      kind: "unplaced_confirmed",
+      severity: "warning",
+      programId: u.program_id,
+      programName: u.program_name,
+      studentId: u.student_id,
+      studentName: u.student_name,
+      problem: "Confirmed registration has no class placement.",
+      deadline: null,
+      consequence: "Family shows as confirmed but their child has nowhere to show up to.",
+      actionLabel: "Place in class",
+      href: `/app/family-support?studentId=${u.student_id}`,
+    });
+  }
+
+  const failedComms = (await db
+    .prepare(
+      `SELECT n.id, n.title, p.id AS program_id, p.name AS program_name, s.id AS student_id, s.name AS student_name
+         FROM family_notifications n
+         LEFT JOIN programs p ON p.id = n.program_id
+         LEFT JOIN students s ON s.id = n.student_id
+        WHERE n.email_status = 'failed'
+        ORDER BY n.updated_at DESC LIMIT ?`,
+    )
+    .all(limitPerKind)) as unknown as Array<{
+    id: string;
+    title: string;
+    program_id: string | null;
+    program_name: string | null;
+    student_id: string | null;
+    student_name: string | null;
+  }>;
+  for (const c of failedComms) {
+    items.push({
+      key: `comm-${c.id}`,
+      kind: "failed_communication",
+      severity: "warning",
+      programId: c.program_id,
+      programName: c.program_name,
+      studentId: c.student_id,
+      studentName: c.student_name,
+      problem: `Delivery failed: "${c.title}"`,
+      deadline: null,
+      consequence: "Family never received this message.",
+      actionLabel: "Retry delivery",
+      href: "/app/family-support/communications",
+    });
+  }
+
+  const familyRequests = (await db
+    .prepare(
+      `SELECT fr.id, fr.kind, fr.created_at, s.id AS student_id, s.name AS student_name
+         FROM family_requests fr JOIN students s ON s.id = fr.student_id
+        WHERE fr.status IN ('submitted', 'under_review')
+        ORDER BY fr.created_at ASC LIMIT ?`,
+    )
+    .all(limitPerKind)) as unknown as Array<{ id: string; kind: string; created_at: number; student_id: string; student_name: string }>;
+  for (const fr of familyRequests) {
+    items.push({
+      key: `request-${fr.id}`,
+      kind: "family_request",
+      severity: "info",
+      programId: null,
+      programName: null,
+      studentId: fr.student_id,
+      studentName: fr.student_name,
+      problem: `${fr.kind.replace(/_/g, " ")} request awaiting a decision.`,
+      deadline: null,
+      consequence: "Family is waiting on a schedule/transfer/withdrawal decision.",
+      actionLabel: "Resolve request",
+      href: `/app/family-support?studentId=${fr.student_id}`,
+    });
+  }
+
+  const order = { blocker: 0, warning: 1, info: 2 } as const;
+  items.sort((a, b) => order[a.severity] - order[b.severity]);
+  return items;
+}

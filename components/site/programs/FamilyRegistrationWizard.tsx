@@ -296,7 +296,7 @@ export default function FamilyRegistrationWizard({
               <input id="guardian-phone" type="tel" style={fieldStyle} value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} autoComplete="tel" />
             </div>
           )}
-          <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <Button type="button" variant="ghost" size="md" onClick={goBack}>Back</Button>
             <Button type="button" variant="primary" size="lg" onClick={goNext}>Continue</Button>
           </div>
@@ -355,7 +355,7 @@ export default function FamilyRegistrationWizard({
               </div>
             </div>
           ))}
-          <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <Button type="button" variant="ghost" size="md" onClick={goBack}>Back</Button>
             <Button type="button" variant="primary" size="lg" onClick={goNext}>Continue to review</Button>
           </div>
@@ -395,7 +395,7 @@ export default function FamilyRegistrationWizard({
             Submitting sends one registration. Anything a program still needs — forms, waivers, deadlines — is
             shown on the result and emailed to {parentEmail || "your email"}.
           </p>
-          <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <Button type="button" variant="ghost" size="md" onClick={goBack} disabled={pending}>Back</Button>
             <Button type="button" variant="primary" size="lg" onClick={submit} disabled={pending}>
               {pending ? "Submitting…" : "Submit registration"}
@@ -430,6 +430,55 @@ function outcomeBadgeStatus(outcome: ChildSelectionResult["outcome"]): "positive
   }
 }
 
+// The next-step sentence and primary action per outcome. Kept in one place so
+// every result the family sees — confirmed, reserved, waitlisted, review,
+// interest, duplicate, ineligible, unavailable — tells them what happens next
+// and gives exactly one thing to do, per the decision record's rule that a
+// reserved seat is never described with confirmation language.
+function nextStepFor(result: ChildSelectionResult): { note: string | null; action: { label: string; href: string } | null } {
+  switch (result.outcome) {
+    case "confirmed":
+      return {
+        note: "Your child has a confirmed spot. We'll email details before the first session.",
+        action: { label: "Go to your dashboard", href: "/family" },
+      };
+    case "seat_reserved":
+      return {
+        note:
+          result.blockingRequirements > 0
+            ? `This seat is reserved, not confirmed — complete ${result.blockingRequirements === 1 ? "the remaining step" : `the ${result.blockingRequirements} remaining steps`} to keep it.`
+            : "This seat is reserved, not confirmed, until the remaining steps are complete.",
+        action: { label: "Complete requirements", href: "/family" },
+      };
+    case "under_review":
+      return {
+        note: "No seat is held yet. Our team will follow up by email once this has been reviewed.",
+        action: { label: "Go to your dashboard", href: "/family" },
+      };
+    case "waitlisted":
+      return {
+        note: "We can't promise a place or a date — we'll email you if a seat opens.",
+        action: { label: "View on your dashboard", href: "/family" },
+      };
+    case "interest_recorded":
+      return {
+        note: "This is not a registration — no seat has been held. We'll email you when registration opens.",
+        action: { label: "Find another program", href: "/programs/find" },
+      };
+    case "already_registered":
+      return {
+        note: "This child already has a registration for this program — nothing new was created.",
+        action: { label: "View on your dashboard", href: "/family" },
+      };
+    case "ineligible":
+      return { note: null, action: { label: "Find an eligible program", href: "/programs/find" } };
+    case "unavailable":
+      return { note: null, action: { label: "Find another program", href: "/programs/find" } };
+    default:
+      return { note: null, action: null };
+  }
+}
+
 function ResultView({ results, activationEmail }: { results: ChildSelectionResult[]; activationEmail: string | null }) {
   const byChild = new Map<string, ChildSelectionResult[]>();
   for (const result of results) {
@@ -450,35 +499,37 @@ function ResultView({ results, activationEmail }: { results: ChildSelectionResul
         <div key={key} style={{ border: "1px solid var(--border-rule)", borderRadius: "var(--radius-control)", padding: "20px 18px", background: "#fff" }}>
           <h3 style={{ margin: "0 0 14px", fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: 17 }}>{childResults[0].studentName}</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {childResults.map((result) => (
-              <div key={`${result.programId}-${result.registrationId ?? "none"}`} style={{ padding: "12px 14px", background: "var(--bow-paper)", borderRadius: "var(--radius-control)", display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <Badge status={outcomeBadgeStatus(result.outcome)}>{outcomeHeading(result.outcome)}</Badge>
-                  <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 15 }}>{result.programName}</span>
+            {childResults.map((result) => {
+              const { note, action } = nextStepFor(result);
+              return (
+                <div key={`${result.programId}-${result.registrationId ?? "none"}`} style={{ padding: "12px 14px", background: "var(--bow-paper)", borderRadius: "var(--radius-control)", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <Badge status={outcomeBadgeStatus(result.outcome)}>{outcomeHeading(result.outcome)}</Badge>
+                    <span style={{ fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 15 }}>{result.programName}</span>
+                  </div>
+                  <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.6, color: "var(--text-primary)" }}>{result.message}</p>
+                  {result.status && (
+                    <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                      Status: {registrationLabel(result.status)}
+                    </p>
+                  )}
+                  {/* Deadline, when there is one — never phrased as a confirmation. */}
+                  {result.outcome === "seat_reserved" && result.reservationExpiresAt && (
+                    <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, fontWeight: 600, color: "var(--bow-orange)" }}>
+                      Complete the required steps by {new Date(result.reservationExpiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric" })} to keep this seat.
+                    </p>
+                  )}
+                  {note && (
+                    <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>{note}</p>
+                  )}
+                  {action && (
+                    <div style={{ marginTop: 2 }}>
+                      <Button href={action.href} variant="secondary" size="sm">{action.label}</Button>
+                    </div>
+                  )}
                 </div>
-                <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 14, lineHeight: 1.6, color: "var(--text-primary)" }}>{result.message}</p>
-                {result.status && (
-                  <p style={{ margin: 0, fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    Status: {registrationLabel(result.status)}
-                  </p>
-                )}
-                {result.outcome === "seat_reserved" && result.reservationExpiresAt && (
-                  <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-orange)" }}>
-                    Complete the required steps by {new Date(result.reservationExpiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric" })} to keep this seat.
-                  </p>
-                )}
-                {result.outcome === "waitlisted" && (
-                  <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>
-                    We can&apos;t promise a place or a date — we&apos;ll email you if a seat opens.
-                  </p>
-                )}
-                {result.outcome === "interest_recorded" && (
-                  <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--bow-slate)" }}>
-                    This is not a registration — no seat has been held.
-                  </p>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}

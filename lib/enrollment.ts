@@ -60,7 +60,8 @@ import {
 const PROGRAM_COLUMNS = `id, name, is_public, public_status, capacity, registration_mode,
     full_capacity_behavior, registration_deadline, registration_opens_at, reservation_enabled,
     reservation_hours, waitlist_mode, waitlist_offer_hours, grade_min, grade_max,
-    start_date, schedule_timezone`;
+    start_date, schedule_timezone, reservations_paused, auto_offers_paused,
+    operations_hold_reason`;
 
 export async function loadRegistrationProgram(programId: string): Promise<RegistrationProgram | null> {
   const db = getDb();
@@ -184,6 +185,128 @@ export async function recordAudit(event: AuditInput): Promise<void> {
       event.reason ?? null,
       Date.now(),
     );
+}
+
+/* ===================================================================== */
+/* Waitlist eligibility                                                  */
+/* ===================================================================== */
+
+export type WaitlistEligibility = "eligible" | "ineligible" | "needs_review" | "staff_rejected";
+
+/**
+ * Set a waitlisted registration's eligibility and record why.
+ *
+ * Eligibility is orthogonal to status: this never moves a registration through
+ * the lifecycle, and it never touches `holds_seat`. A waitlisted family holds
+ * no seat regardless of eligibility, and an eligible/ineligible flip must not
+ * be able to change that — which is exactly why it is a separate column rather
+ * than more status values.
+ *
+ * "Locked" in the name means the caller may already hold the class lock; this
+ * writes only to the registration and the event log, so it is safe inside one.
+ */
+export async function markWaitlistEligibilityLocked(options: {
+  registrationId: string;
+  programId: string;
+  eligibility: WaitlistEligibility;
+  reason: string | null;
+  source: "system" | "staff";
+  actorUserId: string | null;
+  actorLabel: string;
+  now?: number;
+}): Promise<void> {
+  const db = getDb();
+  const now = options.now ?? Date.now();
+
+  const current = (await db
+    .prepare("SELECT waitlist_eligibility FROM program_registrations WHERE id = ?")
+    .get(options.registrationId)) as { waitlist_eligibility: string | null } | undefined;
+  const previous = current?.waitlist_eligibility ?? null;
+
+  await db
+    .prepare(
+      `UPDATE program_registrations
+          SET waitlist_eligibility = ?, waitlist_eligibility_reason = ?,
+              waitlist_eligibility_checked_at = ?, updated_at = ?
+        WHERE id = ?`,
+    )
+    .run(options.eligibility, options.reason, now, now, options.registrationId);
+
+  // Only a real transition is worth an event row. Every refill pass re-checks
+  // every skipped family, so logging unchanged results would bury the actual
+  // changes under sweep noise within a day.
+  if (previous === options.eligibility) return;
+
+  await db
+    .prepare(
+      `INSERT INTO waitlist_eligibility_events
+         (id, registration_id, program_id, previous_eligibility, new_eligibility,
+          reason, source, actor_user_id, actor_label, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      `wle-${randomUUID().slice(0, 12)}`,
+      options.registrationId,
+      options.programId,
+      previous,
+      options.eligibility,
+      options.reason,
+      options.source,
+      options.actorUserId,
+      options.actorLabel,
+      now,
+    );
+}
+
+/**
+ * Re-check every non-eligible waitlist entry for a program and restore the ones
+ * that now qualify.
+ *
+ * Called when something that feeds eligibility changes (a grade correction, a
+ * completed prerequisite, a widened grade band). `staff_rejected` is left
+ * alone: it records a human decision, and a sweep must not silently overturn
+ * one. `needs_review` is likewise left for a human.
+ */
+export async function reevaluateWaitlistEligibility(
+  programId: string,
+  actor: { userId?: string | null; label: string } = { label: "Automatic re-evaluation" },
+  now = Date.now(),
+): Promise<{ restored: number; stillIneligible: number }> {
+  const db = getDb();
+  const program = await loadRegistrationProgram(programId);
+  if (!program) return { restored: 0, stillIneligible: 0 };
+
+  const rows = (await db
+    .prepare(
+      `SELECT r.id, s.grade
+         FROM program_registrations r
+         JOIN students s ON s.id = r.student_id
+        WHERE r.program_id = ? AND r.status = 'waitlisted'
+          AND r.waitlist_eligibility = 'ineligible'`,
+    )
+    .all(programId)) as unknown as { id: string; grade: string | null }[];
+
+  let restored = 0;
+  let stillIneligible = 0;
+  for (const row of rows) {
+    const result = checkEligibility(program, row.grade);
+    if (result.eligible) {
+      await markWaitlistEligibilityLocked({
+        registrationId: row.id,
+        programId,
+        eligibility: "eligible",
+        reason: null,
+        source: actor.userId ? "staff" : "system",
+        actorUserId: actor.userId ?? null,
+        actorLabel: actor.label,
+        now,
+      });
+      restored += 1;
+    } else {
+      stillIneligible += 1;
+    }
+  }
+  return { restored, stillIneligible };
 }
 
 export interface NotificationInput {
@@ -336,6 +459,14 @@ export async function decideSeat(options: {
   requestKey: string;
   payloadFingerprint: string;
   referralSource?: string | null;
+  /**
+   * Provenance only. An admin registering on a family's behalf runs this exact
+   * function — same lock, same eligibility check, same capacity math, same
+   * duplicate check, same requirement instantiation. Nothing below branches on
+   * this to skip a check, and nothing may be added that does.
+   */
+  createdVia?: "family" | "admin" | "import";
+  createdByUserId?: string | null;
   now: number;
 }): Promise<ChildSelectionResult> {
   const db = getDb();
@@ -392,7 +523,14 @@ export async function decideSeat(options: {
   let status: RegistrationStatus;
   let reservationExpiresAt: number | null = null;
 
-  if (seatAvailable) {
+  // The reservations brake. A paused program still records the registration —
+  // turning a family away entirely would lose them — but it does not hand out a
+  // seat while an operator is investigating a capacity problem. Review is the
+  // honest holding state: it makes no promise the program may not be able to
+  // keep, and an operator clears the queue explicitly once the hold is lifted.
+  if (program.reservations_paused && seatAvailable) {
+    status = "under_review";
+  } else if (seatAvailable) {
     if (program.registration_mode === "approval") {
       status = "under_review";
     } else if (program.reservation_enabled && blocking > 0) {
@@ -429,8 +567,8 @@ export async function decideSeat(options: {
       `INSERT INTO program_registrations
          (id, program_id, class_id, student_id, guardian_person_id, submitted_by_person_id, status,
           referral_source, request_key, payload_fingerprint, reservation_expires_at, waitlist_seq,
-          holds_seat, confirmed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          holds_seat, confirmed_at, created_via, created_by_user_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       registrationId,
@@ -447,6 +585,8 @@ export async function decideSeat(options: {
       waitlistSeq,
       seat,
       status === "confirmed" ? now : null,
+      options.createdVia ?? "family",
+      options.createdByUserId ?? null,
       now,
       now,
     );
@@ -461,10 +601,59 @@ export async function decideSeat(options: {
     registrationId,
     studentId,
     programId: program.id,
-    actorLabel: "Family registration",
+    actorUserId: options.createdByUserId ?? null,
+    actorLabel:
+      options.createdVia === "admin"
+        ? "Admin registration on behalf of family"
+        : options.createdVia === "import"
+          ? "Imported registration"
+          : "Family registration",
     action: "registration_submitted",
     newState: status,
+    reason: program.reservations_paused ? "Reservations paused — held for review." : null,
   });
+
+  // The acknowledgement. Every registration produces exactly one message
+  // stating what actually happened, because the result page is not durable —
+  // a parent who closes the tab has no other record that they registered.
+  //
+  // The four outcomes are worded separately on purpose. A reserved seat is the
+  // one most easily got wrong: it is NOT a confirmation, it has a deadline, and
+  // saying "you're in" to a family who then loses the seat is the exact failure
+  // this wording exists to prevent.
+  const announcement: Record<
+    "confirmed" | "seat_reserved" | "under_review" | "waitlisted",
+    { kind: string; title: string; body: string; urgency: "normal" | "important" | "urgent" }
+  > = {
+    confirmed: {
+      kind: "registration_confirmed",
+      title: `${studentName} has a place in ${program.name}`,
+      body: "The registration is confirmed. We will send the schedule and joining details before the first session.",
+      urgency: "normal",
+    },
+    seat_reserved: {
+      kind: "seat_reserved",
+      title: `A seat is being held for ${studentName}`,
+      body:
+        `This is not a confirmation yet. We are holding a seat in ${program.name} until the deadline below. ` +
+        "Complete the outstanding requirements before then and the place is confirmed; if the deadline passes, the seat is released to the next family.",
+      urgency: "urgent",
+    },
+    under_review: {
+      kind: "registration_received",
+      title: `We received the registration for ${studentName}`,
+      body: `${program.name} reviews each registration before confirming a place. We will be in touch with the decision.`,
+      urgency: "normal",
+    },
+    waitlisted: {
+      kind: "registration_waitlisted",
+      title: `${studentName} is on the waitlist for ${program.name}`,
+      body:
+        "The program is currently full, so we added this registration to the waitlist. " +
+        "If a seat opens we will offer it to you and hold it while you respond.",
+      urgency: "normal",
+    },
+  };
 
   const outcome: SubmissionOutcome =
     status === "confirmed"
@@ -474,6 +663,20 @@ export async function decideSeat(options: {
         : status === "under_review"
           ? "under_review"
           : "waitlisted";
+
+  const message = announcement[outcome];
+  await recordNotification({
+    personId: guardianPersonId,
+    studentId,
+    programId: program.id,
+    registrationId,
+    kind: message.kind,
+    title: message.title,
+    body: message.body,
+    urgency: message.urgency,
+    actionLabel: outcome === "seat_reserved" ? "Complete requirements" : "View registration",
+    actionHref: "/family",
+  });
 
   return {
     ...base,
@@ -823,6 +1026,11 @@ export async function refillFromWaitlist(programId: string, now = Date.now()): P
   const db = getDb();
   const program = await loadRegistrationProgram(programId);
   if (!program || program.waitlist_mode !== "automatic") return 0;
+  // The emergency brake. Seats released while offers are paused simply stay
+  // open until an operator lifts the hold — deliberately, because the reason to
+  // pause is that something about the program is wrong, and handing a family a
+  // seat in a program with a broken schedule is the outcome being prevented.
+  if (program.auto_offers_paused) return 0;
   const primary = await primaryClassFor(programId);
   if (!primary) return 0;
 
@@ -848,6 +1056,10 @@ export async function refillFromWaitlist(programId: string, now = Date.now()): P
              FROM program_registrations r
              JOIN students s ON s.id = r.student_id
             WHERE r.program_id = ? AND r.status = 'waitlisted'
+              -- Only families the sweep may act on. 'ineligible',
+              -- 'needs_review', and 'staff_rejected' entries keep their place
+              -- in the queue and are simply not considered here.
+              AND r.waitlist_eligibility = 'eligible'
               -- Defensive: the engine keeps status and offers consistent, but a
               -- row left inconsistent by a partial failure or a manual fix must
               -- be skipped rather than crash the sweep for every other program.
@@ -866,18 +1078,29 @@ export async function refillFromWaitlist(programId: string, now = Date.now()): P
         break;
       }
 
-      // An ineligible family is skipped, not offered — but it must not block
-      // the queue forever, so it is moved out of 'waitlisted'.
+      // A family that no longer satisfies the eligibility rules is skipped, not
+      // terminated. Marking them 'declined' — as this did before — was wrong in
+      // the way that matters most: 'declined' means *the family said no*, and it
+      // is terminal, so a child who simply had the wrong grade on file was
+      // permanently dropped from a queue they were entitled to stay in, with a
+      // reason that blamed them for it.
+      //
+      // They keep status 'waitlisted' and their sequence, and become invisible
+      // to this query via `waitlist_eligibility`. That is what stops the loop
+      // spinning on them without ending their claim: fixing the underlying fact
+      // and re-running eligibility puts them back in line where they were.
       const eligibility = checkEligibility(program, next.grade);
       if (!eligibility.eligible) {
-        await db
-          .prepare(
-            `UPDATE program_registrations
-                SET status = 'declined', holds_seat = false,
-                    decision_reason = ?, decided_at = ?, updated_at = ?
-              WHERE id = ?`,
-          )
-          .run(eligibility.reason ?? "No longer eligible.", now, now, next.id);
+        await markWaitlistEligibilityLocked({
+          registrationId: next.id,
+          programId,
+          eligibility: "ineligible",
+          reason: eligibility.reason ?? "No longer meets the program's eligibility rules.",
+          source: "system",
+          actorUserId: null,
+          actorLabel: "Automatic waitlist sweep",
+          now,
+        });
         await db.exec("COMMIT");
         continue;
       }

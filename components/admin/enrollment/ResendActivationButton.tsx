@@ -7,7 +7,9 @@ export default function ResendActivationButton({ personId, guardianName }: { per
   return (
     <ConfirmSubmitButton
       action={() => resendActivation(personId)}
-      confirmMessage={`Resend an activation invitation to ${guardianName}?`}
+      confirmMessage="Sends a new activation invitation email. Any prior invitation link stops working once this is sent."
+      details={[{ label: "Guardian", value: guardianName }]}
+      notice="Guardian receives a new activation email."
       variant="secondary"
     >
       Resend activation

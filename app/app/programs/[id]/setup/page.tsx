@@ -90,7 +90,7 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
         context="A program starts as a draft — every section below saves independently and incomplete work is fine."
         action={
           <div style={{ display: "flex", gap: 8 }}>
-            <DuplicateSetupButton sourceProgramId={id} />
+            <DuplicateSetupButton sourceProgramId={id} programName={program.name} />
             <Link href={`/app/programs/${id}/enrollment`} className="bow-button bow-button--secondary bow-button--sm">
               Enrollment
             </Link>
@@ -119,7 +119,13 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
             ))}
           </ul>
           <div style={{ marginTop: 10 }}>
-            <OpenRegistrationButton programId={id} hasBlockers={readiness.blockers.length > 0} />
+            <OpenRegistrationButton
+              programId={id}
+              programName={program.name}
+              hasBlockers={readiness.blockers.length > 0}
+              blockerLabels={readiness.blockers.map((b) => b.label)}
+              capacity={program.capacity}
+            />
           </div>
         </PageSection>
       )}

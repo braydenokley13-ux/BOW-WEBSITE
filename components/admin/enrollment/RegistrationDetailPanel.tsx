@@ -86,13 +86,27 @@ export default function RegistrationDetailPanel({
           <>
             <ConfirmSubmitButton
               action={() => confirmEligibility(detail.id)}
-              confirmMessage={`Confirm eligibility for ${detail.studentName}? This gives them a seat immediately.`}
+              confirmMessage="Gives this registration a seat immediately, ahead of any requirements still outstanding."
+              details={[
+                { label: "Child", value: detail.studentName },
+                { label: "Current state", value: detail.statusLabel },
+                { label: "Resulting state", value: "Seat reserved / confirmed" },
+              ]}
+              notice="Family is notified their registration is eligible."
             >
               Confirm eligibility
             </ConfirmSubmitButton>
             <ReasonSubmitButton
               action={(reason) => rejectIneligible(detail.id, reason)}
               promptLabel="Why is this registration ineligible? (sent to the family)"
+              details={[
+                { label: "Child", value: detail.studentName },
+                { label: "Current state", value: detail.statusLabel },
+                { label: "Resulting state", value: "Declined" },
+              ]}
+              notice="Family is notified their registration was declined, including your reason."
+              reversible={false}
+              destructive
               variant="ghost"
             >
               Reject as ineligible
@@ -104,6 +118,12 @@ export default function RegistrationDetailPanel({
           <ReasonSubmitButton
             action={(reason) => adminExtendReservation(detail.id, 72, reason)}
             promptLabel="Reason for extending this reservation (72 hours added):"
+            details={[
+              { label: "Child", value: detail.studentName },
+              { label: "Current deadline", value: fmt(detail.reservationExpiresAt) },
+              { label: "Resulting deadline", value: "+ 72 hours" },
+            ]}
+            notice="None sent automatically."
             variant="secondary"
           >
             Extend reservation 72h
@@ -113,7 +133,13 @@ export default function RegistrationDetailPanel({
         {["seat_reserved", "requirements_pending"].includes(detail.status) && (
           <ConfirmSubmitButton
             action={() => confirmSeat(detail.id)}
-            confirmMessage={`Confirm this seat for ${detail.studentName}? Any outstanding required forms must already be approved or waived.`}
+            confirmMessage="Any outstanding required forms must already be approved or waived — this does not skip them."
+            details={[
+              { label: "Child", value: detail.studentName },
+              { label: "Current state", value: detail.statusLabel },
+              { label: "Resulting state", value: "Confirmed" },
+            ]}
+            notice="Family is notified the seat is confirmed."
           >
             Confirm seat
           </ConfirmSubmitButton>
@@ -123,7 +149,14 @@ export default function RegistrationDetailPanel({
           <ReasonSubmitButton
             action={(reason) => adminSendManualOffer(detail.id, reason)}
             promptLabel="Internal reason for offering this seat to this family:"
-            confirmMessage={`Send a waitlist offer to ${detail.studentName}'s family? This takes a seat and starts the offer's expiration clock.`}
+            confirmMessage="Takes a seat immediately and starts the offer's expiration clock."
+            details={[
+              { label: "Child", value: detail.studentName },
+              { label: "Current state", value: "Waitlisted" },
+              { label: "Resulting state", value: "Offer sent (holds a seat)" },
+              { label: "Capacity consequence", value: "1 seat taken from availability" },
+            ]}
+            notice="Family is emailed the offer and its expiration deadline."
           >
             Send waitlist offer
           </ReasonSubmitButton>
@@ -133,6 +166,14 @@ export default function RegistrationDetailPanel({
           <ReasonSubmitButton
             action={(reason) => moveToWaitlist(detail.id, reason)}
             promptLabel="Why is this registration moving to the waitlist? (releases the seat)"
+            details={[
+              { label: "Child", value: detail.studentName },
+              { label: "Current state", value: detail.statusLabel },
+              { label: "Resulting state", value: "Waitlisted" },
+              { label: "Capacity consequence", value: "1 seat released for the waitlist" },
+            ]}
+            notice="Family is notified of the change."
+            destructive
           >
             Move to waitlist
           </ReasonSubmitButton>
@@ -142,7 +183,13 @@ export default function RegistrationDetailPanel({
           <ReasonSubmitButton
             action={(reason) => adminPlaceInClass(detail.id, classId, reason)}
             promptLabel="Reason for this class placement:"
-            confirmMessage="Place this student in the program's primary class?"
+            confirmMessage="Places this student in the program's primary class. Destination capacity is enforced before the origin seat is released."
+            details={[
+              { label: "Child", value: detail.studentName },
+              { label: "Current class", value: detail.className ?? "Not placed" },
+              { label: "Resulting class", value: "Program's primary class" },
+            ]}
+            notice="None sent automatically."
           >
             Place in class
           </ReasonSubmitButton>
@@ -153,7 +200,17 @@ export default function RegistrationDetailPanel({
             <ReasonSubmitButton
               action={(reason) => releaseRegistrationSeat(detail.id, "withdrawn", reason)}
               promptLabel="Reason for withdrawing this registration:"
-              confirmMessage={`Withdraw ${detail.studentName}'s registration? This releases the seat.`}
+              confirmMessage="Releases the seat this registration holds."
+              details={[
+                { label: "Child", value: detail.studentName },
+                { label: "Current state", value: detail.statusLabel },
+                { label: "Resulting state", value: "Withdrawn" },
+                { label: "Capacity consequence", value: detail.holdsSeat ? "1 seat released" : "No seat currently held" },
+              ]}
+              notice="Family is notified of the withdrawal."
+              reversible
+              reversibleNote="can be restored to the waitlist"
+              destructive
               variant="ghost"
             >
               Withdraw
@@ -161,7 +218,17 @@ export default function RegistrationDetailPanel({
             <ReasonSubmitButton
               action={(reason) => releaseRegistrationSeat(detail.id, "cancelled", reason)}
               promptLabel="Reason for cancelling this registration:"
-              confirmMessage={`Cancel ${detail.studentName}'s registration? This releases the seat.`}
+              confirmMessage="Releases the seat this registration holds."
+              details={[
+                { label: "Child", value: detail.studentName },
+                { label: "Current state", value: detail.statusLabel },
+                { label: "Resulting state", value: "Cancelled" },
+                { label: "Capacity consequence", value: detail.holdsSeat ? "1 seat released" : "No seat currently held" },
+              ]}
+              notice="Family is notified of the cancellation."
+              reversible
+              reversibleNote="can be restored to the waitlist"
+              destructive
               variant="ghost"
             >
               Cancel
@@ -173,6 +240,12 @@ export default function RegistrationDetailPanel({
           <ReasonSubmitButton
             action={(reason) => restoreRegistration(detail.id, reason)}
             promptLabel="Reason for restoring this registration to the waitlist:"
+            details={[
+              { label: "Child", value: detail.studentName },
+              { label: "Current state", value: detail.statusLabel },
+              { label: "Resulting state", value: "Waitlisted" },
+            ]}
+            notice="Family is notified their registration is active again on the waitlist."
           >
             Restore to waitlist
           </ReasonSubmitButton>
@@ -200,7 +273,15 @@ export default function RegistrationDetailPanel({
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <ConfirmSubmitButton
                         action={() => approveRequirement(r.id, null)}
-                        confirmMessage="Approve this requirement's response?"
+                        confirmMessage="Marks this requirement satisfied for this registration."
+                        details={[
+                          { label: "Child", value: detail.studentName },
+                          { label: "Requirement", value: r.prompt },
+                          { label: "Current state", value: r.status },
+                          { label: "Resulting state", value: "Approved" },
+                          ...(r.blocksConfirmation ? [{ label: "Capacity consequence", value: "May unblock seat confirmation" }] : []),
+                        ]}
+                        notice={null}
                         size="sm"
                       >
                         Approve
@@ -208,6 +289,14 @@ export default function RegistrationDetailPanel({
                       <ReasonSubmitButton
                         action={(note) => returnRequirementForCorrection(r.id, note)}
                         promptLabel="What needs to be corrected? (sent to the family)"
+                        confirmMessage="Sends this requirement back to the family with your note attached."
+                        details={[
+                          { label: "Child", value: detail.studentName },
+                          { label: "Requirement", value: r.prompt },
+                          { label: "Current state", value: r.status },
+                          { label: "Resulting state", value: "Needs correction" },
+                        ]}
+                        notice="Family is notified with your correction note."
                         size="sm"
                         variant="ghost"
                       >
@@ -217,6 +306,15 @@ export default function RegistrationDetailPanel({
                         <ReasonSubmitButton
                           action={(reason) => waiveRequirement(r.id, reason)}
                           promptLabel="Why waive this requirement?"
+                          confirmMessage="Marks this requirement satisfied without a family response."
+                          details={[
+                            { label: "Child", value: detail.studentName },
+                            { label: "Requirement", value: r.prompt },
+                            { label: "Current state", value: r.status },
+                            { label: "Resulting state", value: "Waived" },
+                            ...(r.blocksConfirmation ? [{ label: "Capacity consequence", value: "May unblock seat confirmation" }] : []),
+                          ]}
+                          notice={null}
                           size="sm"
                           variant="ghost"
                         >

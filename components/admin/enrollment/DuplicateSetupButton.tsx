@@ -1,37 +1,45 @@
 "use client";
 
-import { useTransition, useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ds/Button";
+import ActionDialog from "@/components/admin/dialogs/ActionDialog";
 import { duplicateProgramSetup } from "@/app/actions/program-setup";
 
-export default function DuplicateSetupButton({ sourceProgramId }: { sourceProgramId: string }) {
+export default function DuplicateSetupButton({ sourceProgramId, programName }: { sourceProgramId: string; programName?: string }) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   return (
-    <div style={{ display: "inline-flex", flexDirection: "column", gap: 4 }}>
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        disabled={pending}
-        onClick={() => {
-          if (!window.confirm("Duplicate this program's setup and requirements into a new draft program?")) return;
-          startTransition(async () => {
-            const result = await duplicateProgramSetup(sourceProgramId);
-            if (!result.ok || !result.newProgramId) {
-              setError(result.error ?? "Could not duplicate this program.");
-              return;
-            }
-            router.push(`/app/programs/${result.newProgramId}/setup`);
-          });
-        }}
-      >
+    <>
+      <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={() => setOpen(true)}>
         {pending ? "Duplicating…" : "Duplicate as new draft"}
       </Button>
-      {error && <span style={{ fontSize: 12, color: "var(--bow-red, #b3261e)" }}>{error}</span>}
-    </div>
+      <ActionDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        onConfirm={() =>
+          new Promise((resolve) => {
+            startTransition(async () => {
+              const result = await duplicateProgramSetup(sourceProgramId);
+              if (!result.ok || !result.newProgramId) {
+                resolve({ ok: false, error: result.error ?? "Could not duplicate this program." });
+                return;
+              }
+              resolve({ ok: true });
+              router.push(`/app/programs/${result.newProgramId}/setup`);
+            });
+          })
+        }
+        title="Duplicate program setup"
+        description="Creates a new draft program that copies this program's basics, schedule, capacity, requirements, and communication setup. Registrations, roster, and history are not copied."
+        details={[{ label: "Source program", value: programName ?? sourceProgramId }, { label: "Resulting state", value: "New program in Draft" }]}
+        notice={null}
+        reversible
+        reversibleNote="the new draft can be deleted before it opens registration"
+        confirmLabel="Duplicate as new draft"
+      />
+    </>
   );
 }

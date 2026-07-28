@@ -5,6 +5,13 @@ import { listPrograms, programStageLabel, type ProgramSummary } from "@/lib/oper
 import { getFounderProgramsData } from "@/lib/delivery";
 import { prepStatusLabel, PIPELINE_GROUPS, type AttentionSeverity } from "@/lib/delivery-shared";
 import { formatDateTimeInZone } from "@/lib/timezone";
+import { registrationNeedsAction, type RegistrationAttentionItem } from "@/lib/program-admin";
+
+function registrationAttentionTone(severity: RegistrationAttentionItem["severity"]): "negative" | "warning" | "info" {
+  if (severity === "blocker") return "negative";
+  if (severity === "warning") return "warning";
+  return "info";
+}
 
 function attentionTone(severity: AttentionSeverity): "negative" | "warning" | "info" {
   if (severity === "blocker") return "negative";
@@ -38,6 +45,7 @@ export default async function ProgramsPage({
   const attentionCap = 12;
   const attentionShown = data.attention.slice(0, attentionCap);
   const attentionHidden = data.attention.length - attentionShown.length;
+  const registrationAttention = await registrationNeedsAction(8);
 
   return (
     <main className="ops-page">
@@ -89,6 +97,49 @@ export default async function ProgramsPage({
             {attentionHidden > 0 && (
               <p className="ops-record-meta">{attentionHidden} more item{attentionHidden === 1 ? "" : "s"} not shown.</p>
             )}
+          </div>
+        )}
+      </PageSection>
+
+      <PageSection title="Families and registrations needing action" noRule>
+        <p className="ops-record-meta" style={{ marginBottom: 10 }}>
+          Decisions and exceptions across every program&apos;s registrations — each backed by a live query, never a stub.
+        </p>
+        {registrationAttention.length === 0 ? (
+          <p className="ops-record-meta">Nothing needs action on the registration side right now.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {registrationAttention.map((item) => (
+              <div
+                key={item.key}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 16,
+                  flexWrap: "wrap",
+                  padding: "clamp(10px, 2vw, 14px)",
+                  border: "1px solid var(--border-rule)",
+                  borderRadius: "var(--radius-control)",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <Badge status={registrationAttentionTone(item.severity)}>
+                      {item.severity === "blocker" ? "Blocked" : item.severity === "warning" ? "Needs action" : "Watch"}
+                    </Badge>
+                    {item.programName && <span className="ops-record-meta">{item.programName}</span>}
+                    {item.studentName && <span className="ops-record-meta">· {item.studentName}</span>}
+                  </div>
+                  <span className="ops-record-name" style={{ fontSize: 14 }}>{item.problem}</span>
+                  <span className="ops-record-meta">
+                    {item.consequence}
+                    {item.deadline ? ` · Deadline ${new Date(item.deadline).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : ""}
+                  </span>
+                </div>
+                <Button href={item.href} variant="secondary" size="sm">{item.actionLabel}</Button>
+              </div>
+            ))}
           </div>
         )}
       </PageSection>
