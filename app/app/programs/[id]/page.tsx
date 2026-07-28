@@ -5,6 +5,7 @@ import ProgramActions from "@/components/app/programs/ProgramActions";
 import PublicListingPanel from "@/components/app/programs/PublicListingPanel";
 import DuplicateProgramButton from "@/components/app/programs/DuplicateProgramButton";
 import PendingRegistrations from "@/components/app/programs/PendingRegistrations";
+import ProposeAssignmentForm from "@/components/app/programs/ProposeAssignmentForm";
 import { requireStaff } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import {
@@ -17,6 +18,8 @@ import {
   programStageLabel,
   type ProgramDetail,
 } from "@/lib/operations";
+import { listAssignmentsForClass, listSessionsForClass } from "@/lib/delivery";
+import { assignmentRoleLabel, assignmentStatusLabel, prepStatusLabel, sessionStatusLabel, type InstructorAssignment, type ClassSession } from "@/lib/delivery-shared";
 import { coerceEpochMs, formatDateTimeInZone } from "@/lib/timezone";
 
 type TabKey = "overview" | "classes" | "people" | "schedule" | "activity";
@@ -53,6 +56,23 @@ export default async function ProgramDetailPage({
   const options = await getProgramFormOptions();
   const pendingRegistrations = await listPendingProgramRegistrations(id);
   const program = detail.program;
+  const db = getDb();
+
+  // Assignment status/role per class — the existing People tab only carries
+  // eligibility, not whether the instructor has actually accepted the seat.
+  const assignmentsByClass = new Map<string, InstructorAssignment[]>();
+  const sessionsByClass = new Map<string, ClassSession[]>();
+  for (const classRecord of detail.classes) {
+    assignmentsByClass.set(classRecord.id, await listAssignmentsForClass(classRecord.id));
+    sessionsByClass.set(classRecord.id, await listSessionsForClass(classRecord.id));
+  }
+  const eligibleInstructors = (await db
+    .prepare(
+      `SELECT i.id, pe.name FROM instructors i JOIN people pe ON pe.id = i.person_id
+        WHERE i.stage IN ('eligible', 'active') AND i.eligibility_status = 'eligible'
+        ORDER BY pe.name`,
+    )
+    .all()) as { id: string; name: string | null }[];
 
   const isActive = program.stage === "active";
   const isHistorical = ["completed", "renewal_review", "renewed", "closed"].includes(program.stage);
@@ -65,7 +85,6 @@ export default async function ProgramDetailPage({
   // resolve instructors.id/students.id -> people.id in one batch read so
   // each row can link straight to the canonical person record instead of
   // bouncing through the legacy /app/instructors or /app/students routes.
-  const db = getDb();
   const instructorIds = detail.instructors.map((i) => i.id);
   const studentIds = detail.students.map((s) => s.id);
   const instructorPersonMap = new Map<string, string>();
@@ -147,6 +166,9 @@ export default async function ProgramDetailPage({
           isActive={isActive}
           isHistorical={isHistorical}
           showReadiness={showReadiness}
+          assignmentsByClass={assignmentsByClass}
+          sessionsByClass={sessionsByClass}
+          eligibleInstructors={eligibleInstructors.map((i) => ({ id: i.id, name: i.name ?? "Unnamed" }))}
         />
       )}
       {activeTab === "classes" && <ClassesTab detail={detail} program={program} />}
@@ -224,12 +246,18 @@ function OverviewTab({
   isActive,
   isHistorical,
   showReadiness,
+  assignmentsByClass,
+  sessionsByClass,
+  eligibleInstructors,
 }: {
   me: { role: string };
   detail: ProgramDetail;
   isActive: boolean;
   isHistorical: boolean;
   showReadiness: boolean;
+  assignmentsByClass: Map<string, InstructorAssignment[]>;
+  sessionsByClass: Map<string, ClassSession[]>;
+  eligibleInstructors: { id: string; name: string }[];
 }) {
   const program = detail.program;
   const firstBlocker = detail.readiness.blockers[0];
@@ -376,6 +404,90 @@ function OverviewTab({
           </div>
         </PageSection>
       )}
+
+      <PageSection title="Staffing">
+        <div id="staffing" style={{ display: "grid", gap: 20 }}>
+          {detail.classes.length === 0 ? (
+            <p className="ops-record-meta">No Class exists yet, so there is nothing to staff.</p>
+          ) : (
+            detail.classes.map((classRecord) => {
+              const assignments = assignmentsByClass.get(classRecord.id) ?? [];
+              return (
+                <div key={classRecord.id}>
+                  <span className="ops-label">{classRecord.title}</span>
+                  {assignments.length === 0 ? (
+                    <p className="ops-record-meta" style={{ marginTop: 6 }}>Nobody is staffed on this Class yet.</p>
+                  ) : (
+                    <div className="ops-list" style={{ marginTop: 6 }}>
+                      {assignments.map((assignment) => (
+                        <div className="ops-list-row ops-list-row--compact" key={assignment.id}>
+                          <div>
+                            <span className="ops-record-name">{assignment.instructorName ?? "Unnamed"}</span>
+                            <span className="ops-record-meta">{assignmentRoleLabel(assignment.role)}</span>
+                          </div>
+                          <Badge status={assignment.status === "accepted" ? "positive" : assignment.status === "declined" ? "negative" : "warning"}>
+                            {assignmentStatusLabel(assignment.status)}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 12 }}>
+                    <ProposeAssignmentForm classId={classRecord.id} className={classRecord.title} instructors={eligibleInstructors} />
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </PageSection>
+
+      <PageSection title="Classes and sessions">
+        <div id="classes" style={{ display: "grid", gap: 20 }}>
+          {detail.classes.length === 0 ? (
+            <p className="ops-record-meta">No Class exists yet.</p>
+          ) : (
+            detail.classes.map((classRecord) => {
+              const sessions = sessionsByClass.get(classRecord.id) ?? [];
+              return (
+                <div key={classRecord.id}>
+                  <Link className="ops-record-name" href={`/app/classes/${classRecord.id}`}>{classRecord.title}</Link>
+                  {sessions.length === 0 ? (
+                    <p className="ops-record-meta" style={{ marginTop: 6 }}>No sessions scheduled.</p>
+                  ) : (
+                    <div className="ops-list" style={{ marginTop: 6 }}>
+                      {sessions.map((session) => (
+                        <div className="ops-list-row ops-list-row--compact" key={session.id}>
+                          <div>
+                            <Link className="ops-record-name" href={`/app/classes/${classRecord.id}/sessions/${session.id}`}>
+                              {session.title ?? "Untitled session"}
+                            </Link>
+                            <span className="ops-record-meta">{formatDateTimeInZone(session.sessionDate, session.timezone)}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <Badge status={session.status === "completed" ? "positive" : session.status === "cancelled" ? "negative" : "neutral"}>
+                              {sessionStatusLabel(session.status)}
+                            </Badge>
+                            <Badge status={session.prepStatus === "ready" ? "positive" : session.prepStatus === "in_preparation" ? "warning" : "neutral"}>
+                              {prepStatusLabel(session.prepStatus)}
+                            </Badge>
+                            {session.status === "scheduled" && !session.attendanceRecorded && new Date(session.sessionDate).getTime() < Date.now() && (
+                              <Badge status="negative">Attendance missing</Badge>
+                            )}
+                            {session.status === "scheduled" && !session.reportCompleted && new Date(session.sessionDate).getTime() < Date.now() && (
+                              <Badge status="negative">Report missing</Badge>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </PageSection>
     </div>
   );
 }

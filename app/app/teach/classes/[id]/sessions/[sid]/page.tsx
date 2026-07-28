@@ -8,6 +8,10 @@ import { parseLessonSnapshot, resolveAttendanceStatus } from "@/lib/session-evid
 import { formatDateTimeInZone } from "@/lib/timezone";
 import LessonGuide from "@/components/app/LessonGuide";
 import SessionAttendanceForm from "@/components/app/teach/SessionAttendanceForm";
+import SessionPrepForm from "@/components/app/teach/SessionPrepForm";
+import { getSessionDetail, isAcceptedClassMember } from "@/lib/delivery";
+import { getMySessionPrep } from "@/app/actions/delivery";
+import { assignmentRoleLabel } from "@/lib/delivery-shared";
 
 interface ClassSessionRow {
   session_date: number;
@@ -47,10 +51,9 @@ export default async function TeachSessionDetailPage({ params }: { params: Promi
     ).get(sid, id)) as ClassSessionRow | undefined;
   if (!session) notFound();
 
-  const isMember = (await db.prepare(
-      "SELECT 1 FROM class_instructors WHERE class_id = ? AND instructor_id = ? AND removed_at IS NULL",
-    ).get(id, instructor.id));
-  if (!isMember) redirect("/app/teach/classes");
+  // Only an instructor who has actually accepted this class may read its
+  // roster and plan — an unanswered or declined proposal grants nothing.
+  if (!(await isAcceptedClassMember(id, instructor.id))) redirect("/app/teach/classes");
   const cls = (await db.prepare(
       `SELECT c.title, c.schedule_timezone, curriculum.title AS curriculum_title
        FROM classes c
@@ -121,6 +124,9 @@ export default async function TeachSessionDetailPage({ params }: { params: Promi
   const lesson = storedLesson ?? liveLesson;
   const sessionTimeZone = session.timezone ?? cls.schedule_timezone;
 
+  const detail = await getSessionDetail(sid);
+  const myPrep = await getMySessionPrep(sid);
+
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
       <Link href={`/app/teach/classes/${id}`} style={{ width: "fit-content", fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
@@ -131,6 +137,84 @@ export default async function TeachSessionDetailPage({ params }: { params: Promi
         <Badge status="info">{cls.curriculum_title ?? "Curriculum not named"}</Badge>
         {session.location && <Badge status="neutral">{session.location}</Badge>}
       </div>
+
+      {detail && (
+        <section aria-labelledby="session-preparation" style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22, display: "flex", flexDirection: "column", gap: 18 }}>
+          <div>
+            <h2 id="session-preparation" style={{ margin: "0 0 6px", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, textTransform: "uppercase", color: "var(--bow-ink)" }}>
+              Preparation
+            </h2>
+            <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 13, lineHeight: 1.5, color: "var(--bow-slate)" }}>
+              What this session needs to accomplish, who else is teaching it, and who is in the room.
+            </p>
+          </div>
+
+          <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+            <div>
+              <span className="ops-label">Objective</span>
+              <p className="ops-body" style={{ margin: "4px 0 0" }}>{detail.session.objective ?? "Not set yet."}</p>
+            </div>
+            <div>
+              <span className="ops-label">Agenda</span>
+              <p className="ops-body" style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{detail.session.agenda ?? "Not set yet."}</p>
+            </div>
+            <div>
+              <span className="ops-label">Materials</span>
+              <p className="ops-body" style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{detail.session.materials ?? "Not set yet."}</p>
+            </div>
+            <div>
+              <span className="ops-label">Meeting link / location</span>
+              <p className="ops-body" style={{ margin: "4px 0 0" }}>
+                {detail.session.meetingLink ? (
+                  <a href={detail.session.meetingLink} target="_blank" rel="noreferrer" className="ops-inline-link">Join meeting →</a>
+                ) : (
+                  detail.session.location ?? "Not set yet."
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <span className="ops-label">Co-instructors</span>
+            {detail.instructors.length <= 1 ? (
+              <p className="ops-body" style={{ margin: "4px 0 0" }}>You are the only instructor on this class.</p>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                {detail.instructors
+                  .filter((i) => i.instructorId !== instructor.id)
+                  .map((i) => (
+                    <Badge key={i.instructorId} status={i.status === "accepted" ? "neutral" : "warning"}>
+                      {i.name ?? "Unnamed"} — {assignmentRoleLabel(i.role)}
+                    </Badge>
+                  ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <span className="ops-label">Roster ({detail.roster.length})</span>
+            {detail.roster.length === 0 ? (
+              <p className="ops-body" style={{ margin: "4px 0 0" }}>No students rostered for this session.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", marginTop: 6 }}>
+                {detail.roster.map((s) => (
+                  <div key={s.studentId} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border-rule)" }}>
+                    <span style={{ fontFamily: "var(--font-interface)", fontSize: 13 }}>{s.name}</span>
+                    {s.grade && <span className="ops-label">Grade {s.grade}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <SessionPrepForm
+            sessionId={sid}
+            initialChecklist={myPrep?.checklist ?? []}
+            initialBlockers={myPrep?.blockers ?? ""}
+            initialStatus={myPrep?.status ?? "not_started"}
+          />
+        </section>
+      )}
 
       <section aria-labelledby="session-delivery-record" style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: 6, padding: 22 }}>
         <h2 id="session-delivery-record" style={{ margin: "0 0 6px", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, textTransform: "uppercase", color: "var(--bow-ink)" }}>

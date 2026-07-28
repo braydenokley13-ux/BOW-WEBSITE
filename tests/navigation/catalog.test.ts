@@ -25,6 +25,8 @@ test("staff nav resolves every surviving route to exactly one primary item", () 
     ["/app/students/abc123", "people"],
     ["/app/hiring", "people"],
     ["/app/hiring/applications/abc123", "people"],
+    ["/app/instructor-ops", "people"],
+    ["/app/instructor-ops#staffing", "people"],
     ["/app/training", "people"],
     ["/app/tasks", "work"],
     ["/app/tasks/abc123", "work"],

@@ -77,7 +77,7 @@ export function buildNavCatalog(): NavEntry[] {
       aliases: ["/app/classes", "/app/curriculum", "/app/regions", "/app/locations"],
     }),
     link("people", "People", "/app/people", STAFF, {
-      aliases: ["/app/instructors", "/app/students", "/app/hiring", "/app/training"],
+      aliases: ["/app/instructors", "/app/students", "/app/hiring", "/app/training", "/app/instructor-ops"],
     }),
     link("work", "Work", "/app/tasks", STAFF),
 
