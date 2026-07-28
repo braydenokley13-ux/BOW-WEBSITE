@@ -33,9 +33,24 @@ function connectionUrl(): string {
 }
 
 function listMigrationFiles(): string[] {
-  return readdirSync(MIGRATIONS_DIR)
+  const all = readdirSync(MIGRATIONS_DIR)
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  // `--through <numeric-prefix>` stops after the named migration. Used by
+  // `npm run db:setup`, which has to interleave the SQL migrations with
+  // `scripts/migrate-people-work-os.ts`: 008 extends `role_assignments`,
+  // which that TypeScript migration creates, and that migration in turn
+  // needs `tasks` from 000. Without the split, a fresh database cannot be
+  // built. Forward-only ordering is unchanged; this only truncates the list.
+  const flagIndex = process.argv.indexOf("--through");
+  if (flagIndex === -1) return all;
+
+  const through = (process.argv[flagIndex + 1] ?? "").trim();
+  if (!through) throw new Error("[migrate] --through requires a migration number, e.g. --through 000");
+  const stopAt = all.findIndex((name) => name.startsWith(through));
+  if (stopAt === -1) throw new Error(`[migrate] --through ${through}: no migration matches that prefix`);
+  return all.slice(0, stopAt + 1);
 }
 
 async function ensureMigrationsTable(sql: postgres.Sql): Promise<void> {
