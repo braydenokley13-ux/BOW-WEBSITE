@@ -330,7 +330,14 @@ function readinessFor(snapshot: OperationsSnapshot, program: Program): ProgramRe
       && isValidTimeZone(program.scheduleTimezone),
   );
 
-  const leadAssignments = rows.classInstructors.filter((assignment) => assignment.role === "lead");
+  // A proposed assignment is an offer, not coverage. Readiness counts only
+  // assignments the instructor has actually accepted — otherwise a Program
+  // reads as staffed the instant a founder sends an invitation nobody
+  // answered. Pending offers surface as their own readiness item below.
+  const pendingAssignments = rows.classInstructors.filter((assignment) => assignment.assignment_status === "proposed");
+  const leadAssignments = rows.classInstructors.filter(
+    (assignment) => assignment.role === "lead" && (assignment.assignment_status ?? "accepted") === "accepted",
+  );
   const staffingClearances = leadAssignments.map((assignment) => {
     const instructor = assignedById.get(assignment.instructor_id);
     const classRow = rows.classes.find((candidate) => candidate.id === assignment.class_id);
@@ -559,6 +566,18 @@ function readinessFor(snapshot: OperationsSnapshot, program: Program): ProgramRe
         rows.classes.length > 0 && classesMissingEligibleLead.length === 0
           ? `Every delivery Class has an eligible lead instructor.`
           : `${classesMissingEligibleLead.length || rows.classes.length} Class${(classesMissingEligibleLead.length || rows.classes.length) === 1 ? " is" : "es are"} missing an eligible lead.`,
+      owner: "Instructor manager",
+      actionLabel: "Review Staffing",
+      actionHref: `${programHref}#staffing`,
+    },
+    {
+      key: "assignment_response",
+      label: "Assignments accepted",
+      state: pendingAssignments.length === 0 ? "complete" : "warning",
+      detail:
+        pendingAssignments.length === 0
+          ? "Every instructor on this Program has accepted their assignment."
+          : `${pendingAssignments.length} assignment${pendingAssignments.length === 1 ? " is" : "s are"} still awaiting an instructor response.`,
       owner: "Instructor manager",
       actionLabel: "Review Staffing",
       actionHref: `${programHref}#staffing`,

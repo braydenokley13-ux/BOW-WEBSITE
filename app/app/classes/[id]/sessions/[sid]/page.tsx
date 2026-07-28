@@ -6,6 +6,9 @@ import { formatDateTimeInZone } from "@/lib/timezone";
 import { parseLessonSnapshot, resolveAttendanceStatus } from "@/lib/session-evidence";
 import SessionAttendanceForm from "@/components/app/teach/SessionAttendanceForm";
 import LessonGuide from "@/components/app/LessonGuide";
+import SessionPlanForm from "@/components/app/classes/SessionPlanForm";
+import { getSessionDetail } from "@/lib/delivery";
+import { prepStatusLabel } from "@/lib/delivery-shared";
 
 /**
  * Staff-guarded view of a class session (attendance grid + session
@@ -72,6 +75,7 @@ export default async function StaffSessionDetailPage({ params }: { params: Promi
     ? parseLessonSnapshot(report.lesson_snapshot, report.lesson_id)
     : null;
   const sessionTimeZone = session.timezone ?? cls?.schedule_timezone;
+  const detail = await getSessionDetail(sid);
 
   return (
     <main className="ops-page" style={{ maxWidth: 720 }}>
@@ -83,6 +87,52 @@ export default async function StaffSessionDetailPage({ params }: { params: Promi
       {report?.flagged === 1 && (
         <div className="ops-status-line" style={{ marginTop: -8 }}>
           <Badge status="negative">Flagged: {report.flag_reason || "See notes"}</Badge>
+        </div>
+      )}
+      {detail && (
+        <div className="ops-panel">
+          <span className="ops-label">Session plan</span>
+          <div className="ops-meta-grid" style={{ marginTop: 8 }}>
+            <div className="ops-meta"><span className="ops-label">Title</span><span className="ops-value">{detail.session.title ?? "Untitled"}</span></div>
+            <div className="ops-meta"><span className="ops-label">Objective</span><span className="ops-value">{detail.session.objective ?? "Not set"}</span></div>
+            <div className="ops-meta"><span className="ops-label">Agenda</span><span className="ops-value" style={{ whiteSpace: "pre-wrap" }}>{detail.session.agenda ?? "Not set"}</span></div>
+            <div className="ops-meta"><span className="ops-label">Materials</span><span className="ops-value" style={{ whiteSpace: "pre-wrap" }}>{detail.session.materials ?? "Not set"}</span></div>
+            <div className="ops-meta"><span className="ops-label">Meeting link</span><span className="ops-value">{detail.session.meetingLink ?? "Not set"}</span></div>
+          </div>
+
+          {detail.preps.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <span className="ops-label">Instructor preparation</span>
+              <div className="ops-list" style={{ marginTop: 6 }}>
+                {detail.preps.map((prep) => (
+                  <div className="ops-list-row ops-list-row--compact" key={prep.instructorId}>
+                    <div>
+                      <span className="ops-record-name">{prep.instructorName ?? "Unnamed"}</span>
+                      {prep.blockers && <span className="ops-record-meta">{prep.blockers}</span>}
+                    </div>
+                    <Badge status={prep.status === "ready" ? "positive" : prep.status === "in_preparation" ? "warning" : "neutral"}>
+                      {prepStatusLabel(prep.status)}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginTop: 16 }}>
+            <SessionPlanForm
+              sessionId={sid}
+              status={detail.session.status}
+              plan={{
+                title: detail.session.title ?? "",
+                objective: detail.session.objective ?? "",
+                agenda: detail.session.agenda ?? "",
+                materials: detail.session.materials ?? "",
+                meetingLink: detail.session.meetingLink ?? "",
+                location: detail.session.location ?? "",
+              }}
+            />
+          </div>
         </div>
       )}
       <div className="ops-panel">

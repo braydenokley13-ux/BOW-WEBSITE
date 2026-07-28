@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, PageHeader, PageSection } from "@/components/ds";
+import { Badge, Button, PageHeader, PageSection } from "@/components/ds";
 import { requireInstructorSelf } from "@/lib/dal";
 import { getDb } from "@/lib/db";
 import { getInstructorDetail, listClassesForInstructor, listTrainingModules, listTrainingSessions } from "@/lib/hiring";
@@ -10,11 +10,14 @@ import { formatDateTimeInZone, canonicalDateInZone } from "@/lib/timezone";
 import SubmitWorkControls from "@/components/app/tasks/SubmitWorkControls";
 import MissionUpdateForm from "@/components/app/teach/MissionUpdateForm";
 import InstructorReferralForm from "@/components/app/teach/InstructorReferralForm";
+import AssignmentResponse from "@/components/app/teach/AssignmentResponse";
 import { sessionHref } from "@/lib/routes";
 import { getMissionWithUpdates } from "@/lib/instructor-missions";
 import { getInstructorImpact } from "@/lib/instructor-growth";
 import { impactHeadline, impactStats } from "@/lib/instructor-growth-shared";
 import { missionAreaMeta, missionIsOverdue, MISSION_UPDATE_KIND_LABEL, type InstructorMission, type MissionUpdate } from "@/lib/instructor-missions-shared";
+import { getInstructorHome, type InstructorNextAction } from "@/lib/delivery";
+import { assignmentRoleLabel, prepStatusLabel, type InstructorReadiness } from "@/lib/delivery-shared";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_STAGES = ["eligible", "active"];
@@ -84,6 +87,148 @@ function MissionCard({
   );
 }
 
+const TONE_TO_BADGE: Record<InstructorNextAction["tone"], "negative" | "warning" | "info" | "positive"> = {
+  blocker: "negative",
+  warning: "warning",
+  info: "info",
+  calm: "positive",
+};
+
+const TONE_LABEL: Record<InstructorNextAction["tone"], string> = {
+  blocker: "Overdue",
+  warning: "Do this next",
+  info: "Coming up",
+  calm: "Up to date",
+};
+
+/** The single dominant "what do I do next" card. Always first on the page. */
+function PrimaryActionCard({ action }: { action: InstructorNextAction | null }) {
+  if (!action) {
+    return (
+      <div className="ops-alert" data-tone="positive">
+        <p className="ops-alert__title" style={{ margin: "0 0 4px" }}>You&rsquo;re all caught up</p>
+        <p className="ops-body" style={{ margin: 0 }}>Nothing needs your attention right now. Check back before your next session.</p>
+      </div>
+    );
+  }
+  const tone = action.tone === "blocker" ? "negative" : action.tone === "warning" ? "warning" : action.tone === "info" ? "info" : "positive";
+  return (
+    <div className="ops-alert" data-tone={tone} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <Badge status={TONE_TO_BADGE[action.tone]}>{TONE_LABEL[action.tone]}</Badge>
+      </div>
+      <p className="ops-alert__title" style={{ margin: 0 }}>{action.title}</p>
+      <p className="ops-body" style={{ margin: 0 }}>{action.detail}</p>
+      <div>
+        <Button href={action.href} variant="primary" size="sm">{action.actionLabel}</Button>
+      </div>
+    </div>
+  );
+}
+
+/** The instructor's next scheduled session, with prep status. */
+function NextSessionCard({ session }: { session: Awaited<ReturnType<typeof getInstructorHome>>["nextSession"] }) {
+  if (!session) return null;
+  return (
+    <PageSection title="Next session" noRule>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div>
+          <span style={{ fontFamily: "var(--font-interface)", fontSize: 15, fontWeight: 600 }}>
+            {session.programName ? `${session.programName} — ` : ""}{session.className}
+          </span>
+          <p className="ops-label" style={{ margin: "4px 0 0" }}>{formatDateTimeInZone(session.sessionDate, session.timezone)}</p>
+          <p className="ops-body" style={{ margin: "4px 0 0" }}>
+            {session.meetingLink ? "Online session" : session.location ?? "Location not set yet"}
+          </p>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+          <Badge status={session.prepStatus === "ready" ? "positive" : session.prepStatus === "in_preparation" ? "warning" : "neutral"}>
+            {prepStatusLabel(session.prepStatus)}
+          </Badge>
+          <Link href={`/app/teach/classes/${session.classId}/sessions/${session.id}`} className="ops-inline-link">Open session →</Link>
+        </div>
+      </div>
+    </PageSection>
+  );
+}
+
+/** Onboarding requirement checklist — collapses to a single line once ready. */
+function OnboardingProgress({ readiness }: { readiness: InstructorReadiness | null }) {
+  if (!readiness) return null;
+  if (readiness.ready) {
+    return (
+      <section id="onboarding" className="ops-anchor">
+        <p className="ops-body" style={{ margin: 0 }}>
+          <Badge status="positive">Ready to teach</Badge> Every onboarding requirement is complete.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <PageSection title="Onboarding progress">
+      <div id="onboarding" className="ops-anchor ops-checklist">
+        {readiness.requirements.map((req) => (
+          <div key={req.key} className="ops-check" data-state={req.done ? "complete" : "blocked"}>
+            <span className="ops-check__dot" />
+            <span className="ops-check__name">{req.label}</span>
+            <span className="ops-check__detail">{req.detail}</span>
+            <span className="ops-check__owner">
+              {req.done ? "Done" : req.href ? <Link href={req.href} className="ops-inline-link">Continue →</Link> : "Waiting on BOW"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </PageSection>
+  );
+}
+
+/** Proposed assignments the instructor has not yet accepted or declined. */
+function PendingAssignmentsSection({ assignments }: { assignments: Awaited<ReturnType<typeof getInstructorHome>>["pendingAssignments"] }) {
+  if (assignments.length === 0) return null;
+  return (
+    <PageSection title="Assignments awaiting your response">
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        {assignments.map((a) => (
+          <div key={a.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "14px 0", borderBottom: "1px solid var(--border-rule)" }}>
+            <div>
+              <span style={{ fontFamily: "var(--font-interface)", fontSize: 15, fontWeight: 600 }}>
+                {a.programName ? `${a.programName} — ` : ""}{a.className}
+              </span>
+              <p className="ops-label" style={{ margin: "4px 0 0" }}>{assignmentRoleLabel(a.role)}</p>
+            </div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              {a.expectedCommitment && <span className="ops-body">Commitment: {a.expectedCommitment}</span>}
+              {a.startDate && <span className="ops-body">Starts: {a.startDate}</span>}
+            </div>
+            <AssignmentResponse assignmentId={a.id} />
+          </div>
+        ))}
+      </div>
+    </PageSection>
+  );
+}
+
+/** Sessions with attendance or a report still outstanding. */
+function FollowUpsSection({ followUps }: { followUps: Awaited<ReturnType<typeof getInstructorHome>>["followUps"] }) {
+  if (followUps.length === 0) return null;
+  return (
+    <PageSection title="Follow-ups">
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        {followUps.map((s) => (
+          <Link
+            key={s.id}
+            href={`/app/teach/classes/${s.classId}/sessions/${s.id}`}
+            style={{ display: "flex", justifyContent: "space-between", gap: 12, textDecoration: "none", color: "var(--bow-ink)", padding: "10px 0", borderBottom: "1px solid var(--border-rule)" }}
+          >
+            <span style={{ fontFamily: "var(--font-interface)", fontSize: 14 }}>{s.className}</span>
+            <Badge status="warning">{s.reason === "attendance" ? "Submit attendance" : "Complete report"}</Badge>
+          </Link>
+        ))}
+      </div>
+    </PageSection>
+  );
+}
+
 function upcomingSorted<T extends { scheduledAt: number }>(sessions: T[], now: number): T[] {
   return sessions.filter((s) => s.scheduledAt >= now).sort((a, b) => a.scheduledAt - b.scheduledAt);
 }
@@ -119,6 +264,7 @@ export default async function TeachHomePage() {
   // Resilient: never break an instructor's own home if the mission migration
   // is briefly behind the deployed code.
   const missionData = await getMissionWithUpdates(instructor.id).catch(() => null);
+  const home = await getInstructorHome(instructor.id, now);
 
   const modules = (await listTrainingModules());
   const moduleViews = new Map(
@@ -174,6 +320,12 @@ export default async function TeachHomePage() {
           }
         />
 
+        <PrimaryActionCard action={home.primaryAction} />
+        <NextSessionCard session={home.nextSession} />
+        <OnboardingProgress readiness={home.readiness} />
+        <PendingAssignmentsSection assignments={home.pendingAssignments} />
+        <FollowUpsSection followUps={home.followUps} />
+
         <MissionCard data={missionData} showEmpty={false} now={now} />
 
         {nextTrainingSession && (
@@ -202,14 +354,16 @@ export default async function TeachHomePage() {
           </div>
         </PageSection>
 
-        <PageSection title="Training modules">
-          {trainingModules.length === 0 && <p className="ops-body">Nothing to complete.</p>}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {(await Promise.all(trainingModules.map(async (module) => (
-                                <TrainingModuleCard key={module.id} instructorId={instructor.id} module={module} completed={completedModuleIds.has(module.id)} initialViewedAt={(await moduleViews.get(module.id)) ?? null} renderedAt={now} />
-                              ))))}
-          </div>
-        </PageSection>
+        <div id="training" className="ops-anchor">
+          <PageSection title="Training modules">
+            {trainingModules.length === 0 && <p className="ops-body">Nothing to complete.</p>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {(await Promise.all(trainingModules.map(async (module) => (
+                                  <TrainingModuleCard key={module.id} instructorId={instructor.id} module={module} completed={completedModuleIds.has(module.id)} initialViewedAt={(await moduleViews.get(module.id)) ?? null} renderedAt={now} />
+                                ))))}
+            </div>
+          </PageSection>
+        </div>
 
         {upcomingTrainingSessions.length > 1 && (
           <PageSection title="Other upcoming sessions">
@@ -231,12 +385,14 @@ export default async function TeachHomePage() {
           </PageSection>
         )}
 
+        <div id="availability" className="ops-anchor">
         <PageSection title="Availability">
           <AvailabilityEditor
             instructorId={instructor.id}
             initialSlots={detail.availability.map((a) => ({ dayOfWeek: a.dayOfWeek, startTime: a.startTime, endTime: a.endTime, notes: a.notes ?? "" }))}
           />
         </PageSection>
+        </div>
 
         {openTasks.length > 0 && (
           <PageSection title="Your work">
@@ -301,6 +457,12 @@ export default async function TeachHomePage() {
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px clamp(16px,4vw,32px) 96px", display: "flex", flexDirection: "column", gap: 24 }}>
       <PageHeader eyebrow="My BOW" title="Today" context={`${classes.length} assigned class${classes.length === 1 ? "" : "es"}.`} />
+
+      <PrimaryActionCard action={home.primaryAction} />
+      <NextSessionCard session={home.nextSession} />
+      <OnboardingProgress readiness={home.readiness} />
+      <PendingAssignmentsSection assignments={home.pendingAssignments} />
+      <FollowUpsSection followUps={home.followUps} />
 
       <MissionCard data={missionData} showEmpty now={now} />
 

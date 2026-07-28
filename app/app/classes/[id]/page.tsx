@@ -5,6 +5,7 @@ import { getDb, rowToPerson } from "@/lib/db";
 import { getClassDetail, listEligibleInstructors, listStudents, listActivity, classStatusFlags } from "@/lib/hiring";
 import { sessionHref } from "@/lib/routes";
 import ClassDetailActions, { RemoveInstructorButton, WithdrawStudentButton } from "@/components/app/classes/ClassDetailActions";
+import RecurringSessionsForm from "@/components/app/classes/RecurringSessionsForm";
 import { coerceEpochMs, formatDateTimeInZone } from "@/lib/timezone";
 import ConfirmEnrollmentButton from "@/components/app/classes/ConfirmEnrollmentButton";
 import CloseoutPanel from "@/components/app/classes/CloseoutPanel";
@@ -143,6 +144,14 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ id
             </Link>
           ))}
         </div>
+        {!historical && (
+          <div style={{ marginTop: 18 }}>
+            <span className="ops-label">Schedule recurring sessions</span>
+            <div style={{ marginTop: 8 }}>
+              <RecurringSessionsForm classId={id} defaultTimeZone={cls.scheduleTimezone} defaultLocation={cls.location} />
+            </div>
+          </div>
+        )}
       </PageSection>
 
       <PageSection title="Enrolled students">
