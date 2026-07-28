@@ -192,7 +192,7 @@ dbTest("a family activation link can never claim a staff account", async () => {
     )
     .run(`usr-perm-${randomUUID().slice(0, 8)}`, guardian.email, orgId, now);
 
-  const ticket = await queueActivation(guardian.personId, guardian.email, "Staff Person");
+  const ticket = await queueActivation(guardian.personId, guardian.email);
   assert.equal(ticket, null, "no activation token may be issued for an email that belongs to a staff account");
 
   const activation = (await db
@@ -208,7 +208,7 @@ dbTest("a family activation link can never claim a staff account", async () => {
 dbTest("an expired activation link cannot be used", async () => {
   const { queueActivation, inspectActivation } = await import("@/lib/parent-activation");
   const guardian = await makeGuardian("expiring");
-  const ticket = await queueActivation(guardian.personId, guardian.email, "Expiring Parent");
+  const ticket = await queueActivation(guardian.personId, guardian.email);
   assert.ok(ticket, "a fresh guardian must receive an activation ticket");
 
   const valid = await inspectActivation(ticket.token);
@@ -227,7 +227,7 @@ dbTest("a completed activation cannot be replayed to re-open a family", async ()
   const { queueActivation, inspectActivation, linkFamilyToAccount } = await import("@/lib/parent-activation");
   const guardian = await makeGuardian("replayed");
   await makeChildOf(guardian.personId, "Linked Child");
-  const ticket = await queueActivation(guardian.personId, guardian.email, "Replay Parent");
+  const ticket = await queueActivation(guardian.personId, guardian.email);
   assert.ok(ticket);
 
   const userId = `usr-perm-${randomUUID().slice(0, 8)}`;
@@ -238,7 +238,7 @@ dbTest("a completed activation cannot be replayed to re-open a family", async ()
   assert.equal(afterUse?.state, "complete", "a consumed link must report as already used rather than valid");
 
   // A second invitation is not issued for an already-activated guardian.
-  const second = await queueActivation(guardian.personId, guardian.email, "Replay Parent");
+  const second = await queueActivation(guardian.personId, guardian.email);
   assert.equal(second, null, "an activated guardian must not be handed another activation token");
 });
 

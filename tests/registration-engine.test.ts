@@ -568,3 +568,67 @@ dbTest("a participation record never carries a certificate", async () => {
   });
   assert.equal(completion.serial, null, "participation is not completion and must not produce a certificate");
 });
+
+/* ---------------------------------------------------------------- */
+/* Schedule changes                                                  */
+/* ---------------------------------------------------------------- */
+
+dbTest("a schedule change reaches seat-holding families and nobody else", async () => {
+  const fixture = await makeProgram({ capacity: 5, waitlistMode: "automatic" });
+  const guardian = await makeGuardian();
+  const attending = await makeChild("Still Enrolled", "7");
+  const gone = await makeChild("Already Withdrew", "7");
+  await register(fixture, attending, "Still Enrolled", "7", guardian);
+  const withdrawn = await register(fixture, gone, "Already Withdrew", "7", guardian);
+
+  const { releaseSeat } = await import("@/lib/enrollment");
+  await releaseSeat(withdrawn.registrationId as string, "withdrawn", { label: "test" });
+
+  const { recordScheduleChange, scheduleChangeHistory } = await import("@/lib/schedule-changes");
+  const change = await recordScheduleChange({
+    kind: "session_rescheduled",
+    programId: fixture.programId,
+    classId: fixture.classId,
+    previousStartsAt: Date.now(),
+    newStartsAt: Date.now() + 86400000,
+    reason: "Instructor conflict.",
+    message: "The first session moved by one day.",
+    actor: { label: "admin" },
+  });
+
+  assert.equal(change.affected, 1, "a withdrawn family must not be told about a program they left");
+  assert.equal(change.notified, 1);
+
+  const history = await scheduleChangeHistory(fixture.programId);
+  assert.equal(history[0].kind, "session_rescheduled");
+  assert.equal(history[0].affectedStudents, 1);
+  assert.equal(history[0].requiresAcknowledgment, true, "a reschedule must be acknowledged, not just sent");
+});
+
+dbTest("the previous schedule survives the change that replaced it", async () => {
+  const fixture = await makeProgram({ capacity: 5 });
+  const guardian = await makeGuardian();
+  const child = await makeChild("History Kept", "7");
+  await register(fixture, child, "History Kept", "7", guardian);
+
+  const before = Date.parse("2026-09-01T17:00:00Z");
+  const after = Date.parse("2026-09-02T17:00:00Z");
+  const { recordScheduleChange } = await import("@/lib/schedule-changes");
+  const change = await recordScheduleChange({
+    kind: "session_rescheduled",
+    programId: fixture.programId,
+    classId: fixture.classId,
+    previousStartsAt: before,
+    newStartsAt: after,
+    reason: "Venue double-booked.",
+    actor: { label: "admin" },
+  });
+
+  const { getDb } = await import("@/lib/db");
+  const row = (await getDb()
+    .prepare("SELECT previous_starts_at, new_starts_at, reason FROM schedule_changes WHERE id = ?")
+    .get(change.changeId)) as { previous_starts_at: number; new_starts_at: number; reason: string };
+  assert.equal(Number(row.previous_starts_at), before, "the old time must remain answerable after the change");
+  assert.equal(Number(row.new_starts_at), after);
+  assert.equal(row.reason, "Venue double-booked.");
+});

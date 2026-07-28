@@ -83,14 +83,6 @@ async function createChild(sql: postgres.Sql, name: string, grade: string | null
   return id;
 }
 
-async function createGuardian(sql: postgres.Sql, email: string): Promise<string> {
-  const now = Date.now();
-  const id = `per-test-${randomUUID().slice(0, 8)}`;
-  await sql`
-    INSERT INTO people (id, name, email, phone, created_at, updated_at)
-    VALUES (${id}, 'Test Guardian', ${email}, '', ${now}, ${now})`;
-  return id;
-}
 
 function connect(): postgres.Sql {
   return postgres(CONNECTION, { prepare: false, max: 1, idle_timeout: 5 });

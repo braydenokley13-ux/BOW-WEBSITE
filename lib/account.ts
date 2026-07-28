@@ -270,13 +270,31 @@ export const cohortLesson = (c: Cohort): Lesson | null => (c.currentLessonId ? g
 
 /* default signed-in user per role (prototype) */
 export const defaultUserForRole = (role: Role): string =>
-  role === "admin" ? "u-admin" : role === "instructor" ? "u-coach" : role === "growth" ? "u-growth" : "u-s1";
+  role === "admin" ? "u-admin" : role === "instructor" ? "u-coach" : role === "growth" ? "u-growth" : role === "parent" ? "u-s1" : "u-s1";
 
 export const roleLabel = (role: Role | null): string =>
-  role === "admin" ? "BOW Administration" : role === "instructor" ? "Instructor" : role === "student" ? "Student" : role === "growth" ? "Growth Lead" : "Not signed in";
+  role === "admin"
+    ? "BOW Administration"
+    : role === "instructor"
+      ? "Instructor"
+      : role === "student"
+        ? "Student"
+        : role === "growth"
+          ? "Growth Lead"
+          : role === "parent"
+            ? "Parent"
+            : "Not signed in";
 
 export const roleAccent = (role: Role | null): string =>
-  role === "admin" ? "var(--bow-orange)" : role === "instructor" ? "var(--bow-positive)" : role === "growth" ? "var(--bow-orange)" : "var(--bow-blue)";
+  role === "admin"
+    ? "var(--bow-orange)"
+    : role === "instructor"
+      ? "var(--bow-positive)"
+      : role === "growth"
+        ? "var(--bow-orange)"
+        : role === "parent"
+          ? "var(--bow-positive)"
+          : "var(--bow-blue)";
 
 export const initials = (name: string): string =>
   name.split(" ").map((w) => w[0]).slice(0, 2).join("");

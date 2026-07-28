@@ -63,11 +63,7 @@ const PRIVILEGED_ROLES: ReadonlySet<string> = new Set(["admin", "growth", "instr
  * path: the caller treats failure as "resend it later from the support
  * centre", because the registration itself already succeeded.
  */
-export async function queueActivation(
-  personId: string,
-  email: string,
-  _name: string,
-): Promise<ActivationTicket | null> {
+export async function queueActivation(personId: string, email: string): Promise<ActivationTicket | null> {
   const db = getDb();
   const now = Date.now();
   const normalized = email.trim().toLowerCase();

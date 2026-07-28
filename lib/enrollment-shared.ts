@@ -297,3 +297,44 @@ export function outcomeHeading(outcome: SubmissionOutcome): string {
       return "Not available";
   }
 }
+
+/* ===================================================================== */
+/* Requirement vocabulary                                                */
+/* ===================================================================== */
+
+// Kept here rather than beside the admin actions because a "use server" file
+// may only export async functions, and both the admin builder and the family
+// requirement forms need these labels.
+export const REQUIREMENT_KINDS = [
+  "emergency_contact",
+  "medical",
+  "accessibility",
+  "photo_consent",
+  "agreement",
+  "waiver",
+  "student_interests",
+  "prior_experience",
+  "school",
+  "grade_verification",
+  "logistics_ack",
+  "short_response",
+  "choice",
+  "file_upload",
+] as const;
+
+export const REQUIREMENT_KIND_LABELS: Record<(typeof REQUIREMENT_KINDS)[number], string> = {
+  emergency_contact: "Emergency contact",
+  medical: "Medical information",
+  accessibility: "Accessibility needs",
+  photo_consent: "Photo / media consent",
+  agreement: "Program agreement",
+  waiver: "Liability waiver",
+  student_interests: "Student interests",
+  prior_experience: "Prior experience",
+  school: "School",
+  grade_verification: "Grade verification",
+  logistics_ack: "Logistics acknowledgment",
+  short_response: "Short response",
+  choice: "Multiple choice",
+  file_upload: "File upload",
+};
