@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/nba-ingest",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/family-maintenance",
+      "schedule": "0 * * * *"
     }
   ]
 }
