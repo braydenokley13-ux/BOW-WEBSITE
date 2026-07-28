@@ -801,8 +801,14 @@ export async function sweepExpirations(now = Date.now()): Promise<SweepResult> {
     ).map((r) => r.program_id),
   ]);
 
+  // Isolated per program: the sweep runs unattended across every program, so
+  // one program's bad data must not stop the others from being refilled.
   for (const programId of programsToRefill) {
-    result.offersCreated += await refillFromWaitlist(programId, now);
+    try {
+      result.offersCreated += await refillFromWaitlist(programId, now);
+    } catch (error) {
+      console.error(`[enrollment] waitlist refill failed for program ${programId}`, error);
+    }
   }
 
   return result;
@@ -842,6 +848,13 @@ export async function refillFromWaitlist(programId: string, now = Date.now()): P
              FROM program_registrations r
              JOIN students s ON s.id = r.student_id
             WHERE r.program_id = ? AND r.status = 'waitlisted'
+              -- Defensive: the engine keeps status and offers consistent, but a
+              -- row left inconsistent by a partial failure or a manual fix must
+              -- be skipped rather than crash the sweep for every other program.
+              AND NOT EXISTS (
+                SELECT 1 FROM waitlist_offers o
+                 WHERE o.registration_id = r.id AND o.status = 'sent'
+              )
             ORDER BY r.waitlist_seq NULLS LAST, r.created_at
             LIMIT 1`,
         )

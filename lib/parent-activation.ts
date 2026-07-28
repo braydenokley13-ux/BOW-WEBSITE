@@ -219,7 +219,10 @@ export async function guardianPersonForUser(userId: string): Promise<string | nu
   const rows = (await db
     .prepare("SELECT id FROM people WHERE user_id = ? ORDER BY created_at, id")
     .all(userId)) as unknown as { id: string }[];
-  if (rows.length !== 1) return rows[0]?.id ?? null;
+  // Ambiguity must stop the read, not pick a winner: an account linked to two
+  // People is an identity conflict, and guessing could open the wrong family.
+  // The admin duplicate-review queue is where this gets resolved.
+  if (rows.length !== 1) return null;
   return rows[0].id;
 }
 
