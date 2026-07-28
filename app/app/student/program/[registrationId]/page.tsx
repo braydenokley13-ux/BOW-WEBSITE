@@ -32,9 +32,35 @@ export default async function StudentProgramPage({ params }: { params: Promise<{
           {home.location && <span>Location: {home.location}</span>}
         </div>
         {home.nextSession ? (
-          <div style={{ marginTop: 14, padding: "12px 16px", background: "#fff4ec", border: "1px solid #f0c9ab", borderRadius: 8 }}>
-            <strong>Next session:</strong> {new Date(home.nextSession.sessionDate).toLocaleString()}
-            {home.nextSession.location ? ` · ${home.nextSession.location}` : home.nextSession.meetingLink ? " · Online" : ""}
+          <div style={{ marginTop: 14, padding: "12px 16px", background: "#fff4ec", border: "1px solid #f0c9ab", borderRadius: 8, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div>
+              <strong>Next session:</strong> {new Date(home.nextSession.sessionDate).toLocaleString()}
+              {home.nextSession.location ? ` · ${home.nextSession.location}` : home.nextSession.meetingLink ? " · Online" : ""}
+            </div>
+            {/* The one immediate action: join the link when it's the way in. Never hidden behind hover — it's the primary CTA for this screen. */}
+            {home.nextSession.meetingLink && (
+              <a
+                href={home.nextSession.meetingLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  alignSelf: "flex-start",
+                  minHeight: 44,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "10px 18px",
+                  fontFamily: "var(--font-interface)",
+                  fontWeight: 700,
+                  fontSize: 14,
+                  color: "#fff",
+                  background: "var(--bow-orange, #d4531f)",
+                  borderRadius: 6,
+                  textDecoration: "none",
+                }}
+              >
+                Join session
+              </a>
+            )}
           </div>
         ) : (
           <p style={{ marginTop: 14, fontSize: 14 }}>No upcoming session scheduled yet.</p>
@@ -47,6 +73,13 @@ export default async function StudentProgramPage({ params }: { params: Promise<{
           {home.shortDescription && <p style={pStyle}>{home.shortDescription}</p>}
           {home.longDescription && <p style={pStyle}>{home.longDescription}</p>}
           {home.instructorName && <p style={pStyle}>Your instructor is {home.instructorName}.</p>}
+        </section>
+      )}
+
+      {home.whatToBring && (
+        <section style={sectionStyle}>
+          <h2 style={h2Style}>How to prepare</h2>
+          <p style={pStyle}>{home.whatToBring}</p>
         </section>
       )}
 

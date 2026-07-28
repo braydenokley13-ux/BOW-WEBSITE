@@ -19,6 +19,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { sweepExpirations } from "@/lib/enrollment";
 import { deliverPending } from "@/lib/family-communications";
+import { validateEnvironment } from "@/lib/env-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,19 +34,55 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // The sweep and the delivery pass are two independent pieces of work; one
+  // failing must never be reported as the other's success, and neither
+  // failing may render as a quiet "nothing to do". Each is run and reported
+  // separately so the cron dashboard can tell "no expired reservations" from
+  // "the sweep query itself failed".
+  const startedAt = Date.now();
+  let sweep: Awaited<ReturnType<typeof sweepExpirations>> | null = null;
+  let sweepError: string | null = null;
   try {
-    const sweep = await sweepExpirations();
+    sweep = await sweepExpirations();
+  } catch (error) {
+    sweepError = error instanceof Error ? error.message : "Sweep failed.";
+    console.error("[family-maintenance] sweep failed", error);
+  }
+
+  let delivery: Awaited<ReturnType<typeof deliverPending>> | null = null;
+  let deliveryError: string | null = null;
+  try {
     // Delivery runs after the sweep so the notifications it just wrote go out
     // in the same invocation rather than waiting an hour for the next one.
-    const delivery = await deliverPending(100);
-    return NextResponse.json({ ok: true, sweep, delivery });
+    // Runs even if the sweep failed, so notifications already queued by
+    // earlier admin/family actions still get delivered.
+    delivery = await deliverPending(100);
   } catch (error) {
-    // Surface the failure to the cron dashboard instead of reporting success:
-    // a silently failing sweep looks exactly like a healthy one with no work.
-    console.error("[family-maintenance] sweep failed", error);
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Sweep failed." },
-      { status: 500 },
-    );
+    deliveryError = error instanceof Error ? error.message : "Delivery failed.";
+    console.error("[family-maintenance] delivery failed", error);
   }
+
+  // Config problems (no mail key, no public app URL) make delivery report all
+  // 'skipped' every run, which looks identical to "nothing was queued" unless
+  // it is called out explicitly.
+  const env = validateEnvironment();
+  const envIssues = env.checks.filter((c) => c.status !== "ok");
+
+  const ok = sweepError == null && deliveryError == null;
+  return NextResponse.json(
+    {
+      ok,
+      durationMs: Date.now() - startedAt,
+      sweep,
+      sweepError,
+      delivery,
+      deliveryError,
+      // What may be retried: a sweep failure is safe to retry on the next
+      // scheduled run (sweepExpirations is idempotent); a delivery failure is
+      // retried per-message from the admin communications view.
+      retryable: { sweep: sweepError != null, delivery: deliveryError != null },
+      envIssues: envIssues.length ? envIssues : undefined,
+    },
+    { status: ok ? 200 : 500 },
+  );
 }

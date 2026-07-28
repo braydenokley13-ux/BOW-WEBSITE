@@ -866,7 +866,7 @@ export async function loadStudentProgramHome(
   const reg = (await db
     .prepare(
       `SELECT r.id, r.student_id, r.program_id, p.name AS program_name, p.short_description,
-              p.long_description, r.status, r.class_id, p.schedule_timezone, c.location,
+              p.long_description, p.what_to_bring, r.status, r.class_id, p.schedule_timezone, c.location,
               (SELECT ppl.name FROM class_instructors ci
                  JOIN instructors i ON i.id = ci.instructor_id
                  JOIN people ppl ON ppl.id = i.person_id
@@ -886,6 +886,7 @@ export async function loadStudentProgramHome(
         program_name: string;
         short_description: string | null;
         long_description: string | null;
+        what_to_bring: string | null;
         status: string;
         class_id: string | null;
         schedule_timezone: string | null;
@@ -953,7 +954,7 @@ export async function loadStudentProgramHome(
     programName: reg.program_name,
     shortDescription: reg.short_description,
     longDescription: reg.long_description,
-    whatToBring: null,
+    whatToBring: reg.what_to_bring,
     status: reg.status as RegistrationStatus,
     instructorName: reg.instructor_name,
     location: reg.location,

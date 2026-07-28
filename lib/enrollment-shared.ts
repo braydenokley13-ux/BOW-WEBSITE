@@ -126,6 +126,16 @@ export interface RegistrationProgram {
   grade_max: number | null;
   start_date: string | null;
   schedule_timezone: string | null;
+  /**
+   * Emergency brakes (migration 021). Separate from `registration_open`
+   * because they stop different things: pausing reservations stops new seats
+   * being taken while leaving the program discoverable, and pausing automatic
+   * offers stops the refill sweep without touching anyone already holding a
+   * seat. Neither ever alters an existing registration.
+   */
+  reservations_paused: boolean;
+  auto_offers_paused: boolean;
+  operations_hold_reason: string | null;
 }
 
 /* ===================================================================== */

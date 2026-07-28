@@ -19,6 +19,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
+import { requireStaff } from "@/lib/dal";
 import { logActivity } from "@/lib/hiring";
 import { PersonIdentityError, resolveGuardianPerson } from "@/lib/people-identity";
 import { clientAddressBucket, consumeRateLimit } from "@/lib/rate-limit";
@@ -88,12 +89,49 @@ function digest(...parts: string[]): string {
 }
 
 /**
+ * Staff acting on a family's behalf. Never part of `FamilyRegistrationInput`,
+ * because every parameter of a server action is client-controlled — a caller
+ * that could put this in the payload could register as an administrator. It is
+ * only ever constructed inside `submitAdminRegistration`, after `requireStaff()`
+ * has returned.
+ */
+interface AdminActor {
+  userId: string;
+  label: string;
+}
+
+/**
  * PUBLIC. Rate-limited by network and by guardian email. Idempotent on
  * `requestKey`; a replay carrying a materially different payload fails safely
  * rather than silently returning a result that does not match what was sent.
  */
 export async function submitFamilyRegistration(
   input: FamilyRegistrationInput,
+): Promise<FamilyRegistrationResult> {
+  return runRegistration(input, null);
+}
+
+/**
+ * STAFF ONLY. Registers a child on behalf of a family — the phone-call case.
+ *
+ * This is not a bypass and there is deliberately no bypass to build: it runs
+ * the same `runRegistration` body, which means the same capacity lock, the same
+ * eligibility check, the same duplicate detection, the same canonical family
+ * identity, the same requirement instantiation, and the same audit trail. The
+ * only differences are that the per-family rate limits do not apply (a staff
+ * member legitimately registers many unrelated families) and the registration
+ * records `created_via = 'admin'` so its provenance is never ambiguous.
+ */
+export async function submitAdminRegistration(
+  input: FamilyRegistrationInput,
+): Promise<FamilyRegistrationResult> {
+  const staff = await requireStaff();
+  return runRegistration(input, { userId: staff.id, label: `${staff.name} (staff)` });
+}
+
+async function runRegistration(
+  input: FamilyRegistrationInput,
+  admin: AdminActor | null,
 ): Promise<FamilyRegistrationResult> {
   const requestKey = typeof input?.requestKey === "string" ? input.requestKey.trim() : "";
   if (!validRequestKey(requestKey)) {
@@ -222,7 +260,11 @@ export async function submitFamilyRegistration(
   }
 
   /* ---- Rate limits. ---------------------------------------------------- */
-  const address = await clientAddressBucket();
+  // Skipped for staff only. The limits exist to stop an anonymous visitor
+  // enumerating or flooding registrations; a signed-in staff member registering
+  // twenty unrelated families in an afternoon is the intended use, and would
+  // otherwise be blocked by the per-email bucket after ten.
+  const address = admin ? null : await clientAddressBucket();
   if (address) {
     const networkLimit = await consumeRateLimit("family-registration-network", address, {
       limit: 20,
@@ -233,16 +275,18 @@ export async function submitFamilyRegistration(
       return { ok: false, error: "Too many registrations were submitted from this network. Try again tomorrow." };
     }
   }
-  const identityLimit = await consumeRateLimit("family-registration-email", parentEmail, {
-    limit: 10,
-    windowMs: 7 * 24 * 60 * 60 * 1000,
-    blockMs: 7 * 24 * 60 * 60 * 1000,
-  });
-  if (!identityLimit.allowed) {
-    return {
-      ok: false,
-      error: "This email has submitted several recent registrations. Contact BOW directly if this is urgent.",
-    };
+  if (!admin) {
+    const identityLimit = await consumeRateLimit("family-registration-email", parentEmail, {
+      limit: 10,
+      windowMs: 7 * 24 * 60 * 60 * 1000,
+      blockMs: 7 * 24 * 60 * 60 * 1000,
+    });
+    if (!identityLimit.allowed) {
+      return {
+        ok: false,
+        error: "This email has submitted several recent registrations. Contact BOW directly if this is urgent.",
+      };
+    }
   }
 
   const now = Date.now();
@@ -410,6 +454,8 @@ export async function submitFamilyRegistration(
             requestKey: childKey,
             payloadFingerprint,
             referralSource,
+            createdVia: admin ? "admin" : "family",
+            createdByUserId: admin?.userId ?? null,
             now,
           });
           await db.exec("COMMIT");

@@ -182,7 +182,10 @@ export async function recordScheduleChange(input: ScheduleChangeInput): Promise<
     session_rescheduled: "schedule_change",
     class_paused: "schedule_change",
     program_cancelled: "program_cancelled",
-    location_changed: "schedule_change",
+    // Its own kind, not a schedule change. A family that misses a time change
+    // is late; a family that misses a venue change drives to the wrong place
+    // and a child is left somewhere nobody is expecting them.
+    location_changed: "location_change",
   };
 
   let notified = 0;
