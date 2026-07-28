@@ -2,9 +2,9 @@ import Link from "next/link";
 import { getDb } from "@/lib/db";
 import { requireStaff } from "@/lib/dal";
 import { PageHeader, PageSection, Badge } from "@/components/ds";
-import { primaryClassFor } from "@/lib/enrollment";
+import { isTerminal, primaryClassFor, registrationLabel } from "@/lib/enrollment";
 import { loadRegistrationDetail } from "@/lib/program-admin";
-import { getRestoreCheck } from "@/app/actions/family-support";
+import { getRestoreCheck, listTransferTargets, type TransferTarget } from "@/app/actions/family-support";
 import RegistrationDetailPanel from "@/components/admin/enrollment/RegistrationDetailPanel";
 import ResendActivationButton from "@/components/admin/enrollment/ResendActivationButton";
 import ContactCorrectionDialog from "@/components/admin/family-support/ContactCorrectionDialog";
@@ -13,6 +13,7 @@ import RemoveGuardianButton from "@/components/admin/family-support/RemoveGuardi
 import AddSupportNoteForm from "@/components/admin/family-support/AddSupportNoteForm";
 import ResolveRequestButtons from "@/components/admin/family-support/ResolveRequestButtons";
 import RestoreRegistrationButton from "@/components/admin/family-support/RestoreRegistrationButton";
+import TransferProgramDialog from "@/components/admin/family-support/TransferProgramDialog";
 
 function fmt(ms: number | null | undefined): string {
   if (!ms) return "—";
@@ -151,6 +152,20 @@ export default async function FamilySupportPage({
       .map(async (d) => [d!.id, await getRestoreCheck(d!.id)] as const),
   );
   const restoreCheckById = new Map(restoreChecks);
+
+  // Transfer is offered only on a registration that still has a placement to
+  // move. A withdrawn or expired one has nothing to transfer — that case is
+  // restoration, which is the button directly above.
+  const transferTargets = await Promise.all(
+    registrationDetails
+      .filter((d) => d && !isTerminal(d.status))
+      .map(async (d) => [d!.id, await listTransferTargets(d!.id)] as const),
+  );
+  const transferTargetsById = new Map<string, TransferTarget[]>(
+    // A registration with nowhere to go does not get a button that can only
+    // fail; the dialog is offered when a real destination exists.
+    transferTargets.filter(([, targets]) => targets.length > 0),
+  );
 
   const requests = student
     ? ((await db
@@ -311,6 +326,17 @@ export default async function FamilySupportPage({
                           studentName={detail.studentName}
                           programName={detail.programName}
                           check={restoreCheckById.get(detail.id)!}
+                        />
+                      </div>
+                    )}
+                    {transferTargetsById.has(detail.id) && (
+                      <div style={{ marginTop: 10 }}>
+                        <TransferProgramDialog
+                          registrationId={detail.id}
+                          studentName={detail.studentName}
+                          currentProgramName={detail.programName}
+                          currentStatusLabel={registrationLabel(detail.status)}
+                          targets={transferTargetsById.get(detail.id)!}
                         />
                       </div>
                     )}
