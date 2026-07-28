@@ -525,7 +525,8 @@ export async function needsAttention(programId: string): Promise<AttentionItem[]
   // Missing a required, confirmation-blocking form.
   const missingRequirements = (await db
     .prepare(
-      `SELECT DISTINCT r.id, r.student_id, s.name AS student_name, g.name AS guardian_name, rr.due_at
+      `SELECT DISTINCT r.id, r.student_id, s.name AS student_name, g.name AS guardian_name,
+              rr.due_at, r.reservation_expires_at
          FROM program_registrations r
          JOIN students s ON s.id = r.student_id
          LEFT JOIN people g ON g.id = r.guardian_person_id
@@ -534,8 +535,23 @@ export async function needsAttention(programId: string): Promise<AttentionItem[]
         WHERE r.program_id = ? AND r.holds_seat = true AND pr.active = true
           AND pr.blocks_confirmation = true AND rr.status NOT IN ('approved', 'waived')`,
     )
-    .all(programId)) as unknown as Array<{ id: string; student_id: string; student_name: string; guardian_name: string | null; due_at: number | null }>;
+    .all(programId)) as unknown as Array<{
+    id: string;
+    student_id: string;
+    student_name: string;
+    guardian_name: string | null;
+    due_at: number | null;
+    reservation_expires_at: number | null;
+  }>;
   for (const r of missingRequirements) {
+    // The real deadline is whichever comes first: the requirement's own due
+    // date, or the moment the reserved seat is released. Showing only the
+    // former would let an admin triage a seat that expires tonight as if it
+    // had a week left. A requirement with no due date still has the seat's.
+    const dueAt = r.due_at == null ? null : Number(r.due_at);
+    const seatExpiry = r.reservation_expires_at == null ? null : Number(r.reservation_expires_at);
+    const deadline =
+      dueAt != null && seatExpiry != null ? Math.min(dueAt, seatExpiry) : (dueAt ?? seatExpiry);
     items.push({
       kind: "requirement_missing",
       registrationId: r.id,
@@ -544,7 +560,7 @@ export async function needsAttention(programId: string): Promise<AttentionItem[]
       guardianName: r.guardian_name,
       programId,
       problem: "A confirmation-blocking requirement is still outstanding.",
-      deadline: r.due_at == null ? null : Number(r.due_at),
+      deadline,
       actionHref: `${base}?open=${r.id}`,
       actionLabel: "Review requirement",
     });
