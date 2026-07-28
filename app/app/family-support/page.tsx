@@ -214,7 +214,7 @@ export default async function FamilySupportPage({
             placeholder="Guardian name, child name, email, phone, program, or registration id"
             style={{ flex: 1, padding: 8, border: "1px solid var(--border-rule)", borderRadius: 6 }}
           />
-          <button type="submit" className="bow-button bow-button--primary bow-button--sm">
+          <button type="submit" className="bow-button bow-button-primary bow-button-sm">
             Search
           </button>
         </form>
@@ -299,7 +299,7 @@ export default async function FamilySupportPage({
                   <div key={detail.id} style={{ border: "1px solid var(--border-rule)", borderRadius: 8, padding: 14 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                       <strong style={{ fontSize: 15 }}>{detail.programName}</strong>
-                      <Link href={`/app/programs/${detail.programId}/enrollment?open=${detail.id}`} className="bow-button bow-button--ghost bow-button--sm">
+                      <Link href={`/app/programs/${detail.programId}/enrollment?open=${detail.id}`} className="bow-button bow-button-ghost bow-button-sm">
                         Open in program
                       </Link>
                     </div>

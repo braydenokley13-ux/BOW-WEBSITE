@@ -35,7 +35,7 @@ export default async function RequirementsPage({ params }: { params: Promise<{ i
         title={program.name}
         context="What families must complete before a seat confirms. Never exposed to families as database fields — only the prompt and help text below are ever shown."
         action={
-          <Link href={`/app/programs/${id}/enrollment`} className="bow-button bow-button--secondary bow-button--sm">
+          <Link href={`/app/programs/${id}/enrollment`} className="bow-button bow-button-secondary bow-button-sm">
             Back to enrollment
           </Link>
         }
@@ -63,7 +63,7 @@ export default async function RequirementsPage({ params }: { params: Promise<{ i
                         "use server";
                         await reorderRequirement(r.id, "up");
                       }}
-                      className="bow-button bow-button--ghost bow-button--sm"
+                      className="bow-button bow-button-ghost bow-button-sm"
                       disabled={i === 0}
                     >
                       Move up
@@ -73,7 +73,7 @@ export default async function RequirementsPage({ params }: { params: Promise<{ i
                         "use server";
                         await reorderRequirement(r.id, "down");
                       }}
-                      className="bow-button bow-button--ghost bow-button--sm"
+                      className="bow-button bow-button-ghost bow-button-sm"
                       disabled={i === requirements.length - 1}
                     >
                       Move down
@@ -83,7 +83,7 @@ export default async function RequirementsPage({ params }: { params: Promise<{ i
                         "use server";
                         await deactivateRequirement(r.id);
                       }}
-                      className="bow-button bow-button--ghost bow-button--sm"
+                      className="bow-button bow-button-ghost bow-button-sm"
                     >
                       Deactivate
                     </button>
@@ -125,7 +125,7 @@ export default async function RequirementsPage({ params }: { params: Promise<{ i
                     Due (days before program start)
                     <input type="number" name="dueDaysBeforeStart" defaultValue={r.due_days_before_start ?? ""} style={{ ...inputStyle, width: 80, marginTop: 2 }} />
                   </label>
-                  <button type="submit" className="bow-button bow-button--primary bow-button--sm">
+                  <button type="submit" className="bow-button bow-button-primary bow-button-sm">
                     Save
                   </button>
                 </div>
@@ -190,7 +190,7 @@ export default async function RequirementsPage({ params }: { params: Promise<{ i
           </label>
           <input type="hidden" name="scope" value="student" />
           <div>
-            <button type="submit" className="bow-button bow-button--primary bow-button--sm">
+            <button type="submit" className="bow-button bow-button-primary bow-button-sm">
               Add requirement
             </button>
           </div>

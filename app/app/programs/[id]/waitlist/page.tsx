@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { requireStaff } from "@/lib/dal";
-import { PageHeader, PageSection, DataTable } from "@/components/ds";
+import { PageHeader, PageSection } from "@/components/ds";
 import { sweepExpirations } from "@/lib/enrollment";
 import { loadProgramSummary } from "@/lib/program-admin";
 import WaitlistOfferButton from "@/components/admin/enrollment/WaitlistOfferButton";
@@ -81,7 +81,7 @@ export default async function WaitlistBoardPage({ params }: { params: Promise<{ 
         title={summary.name}
         context={`Waitlist mode: ${program?.waitlist_mode ?? "disabled"}. Ordering is first-waitlisted, first-offered — never shown to families as a position.`}
         action={
-          <Link href={`/app/programs/${id}/enrollment`} className="bow-button bow-button--secondary bow-button--sm">
+          <Link href={`/app/programs/${id}/enrollment`} className="bow-button bow-button-secondary bow-button-sm">
             Back to enrollment
           </Link>
         }
@@ -89,24 +89,40 @@ export default async function WaitlistBoardPage({ params }: { params: Promise<{ 
 
       {program?.waitlist_mode === "manual" && (
         <PageSection title="Waiting — select a family to offer a seat" noRule>
-          <DataTable
-            columns={["Child", "Grade", "Guardian", "Waiting since", ""]}
-            minWidth={720}
-            isEmpty={(columns.get("waiting") ?? []).length === 0}
-            emptyLabel="No families are waiting."
-          >
-            {(columns.get("waiting") ?? []).map((row) => (
-              <tr key={row.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
-                <td style={{ padding: "10px 12px" }}>{row.student_name}</td>
-                <td style={{ padding: "10px 12px" }}>{row.grade ?? "—"}</td>
-                <td style={{ padding: "10px 12px" }}>{row.guardian_name ?? "—"}</td>
-                <td style={{ padding: "10px 12px" }}>{fmt(row.created_at)}</td>
-                <td style={{ padding: "10px 12px", textAlign: "right" }}>
+          {(columns.get("waiting") ?? []).length === 0 ? (
+            <div className="ops-empty">
+              <p className="ops-empty__body" style={{ margin: 0 }}>No families are waiting.</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {(columns.get("waiting") ?? []).map((row) => (
+                <div
+                  key={row.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 16,
+                    flexWrap: "wrap",
+                    padding: "clamp(10px, 2vw, 14px)",
+                    border: "1px solid var(--border-rule)",
+                    borderRadius: "var(--radius-control)",
+                  }}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                    <span className="ops-record-name" style={{ fontSize: 14 }}>
+                      {row.student_name}
+                      {row.grade ? ` · Grade ${row.grade}` : ""}
+                    </span>
+                    <span className="ops-record-meta">
+                      {row.guardian_name ?? "No guardian"} · Waiting since {fmt(row.created_at)}
+                    </span>
+                  </div>
                   <WaitlistOfferButton registrationId={row.id} studentName={row.student_name} />
-                </td>
-              </tr>
-            ))}
-          </DataTable>
+                </div>
+              ))}
+            </div>
+          )}
         </PageSection>
       )}
 

@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireStaff } from "@/lib/dal";
-import { recordAudit, seatCounts } from "@/lib/enrollment";
+import { recordAudit, recordNotification, seatCounts } from "@/lib/enrollment";
 import {
   checkRestorable,
   restoreRegistration as restoreRegistrationOp,
@@ -226,8 +226,19 @@ export async function resolveFamilyRequest(
   const me = await requireStaff();
   if (!note.trim()) return { ok: false, error: "Record a resolution note before closing this request." };
   const db = getDb();
-  const request = (await db.prepare("SELECT id, student_id, status FROM family_requests WHERE id = ?").get(requestId)) as
-    | { id: string; student_id: string; status: string }
+  const request = (await db
+    .prepare(
+      "SELECT id, kind, student_id, registration_id, requested_by_person_id, status FROM family_requests WHERE id = ?",
+    )
+    .get(requestId)) as
+    | {
+        id: string;
+        kind: string;
+        student_id: string;
+        registration_id: string | null;
+        requested_by_person_id: string | null;
+        status: string;
+      }
     | undefined;
   if (!request) return { ok: false, error: "Request not found." };
   if (["completed", "cancelled", "declined"].includes(request.status)) {
@@ -248,6 +259,34 @@ export async function resolveFamilyRequest(
     newState: outcome,
     reason: note.trim(),
   });
+
+  // A declined transfer needs its own message. The approved case deliberately
+  // does NOT send one here: approving the request is not the move, and telling
+  // a family "transfer approved" before the seat exists is the same broken
+  // promise as calling a held seat a confirmation. The message goes out from
+  // transferProgram, when the child is actually in the new program.
+  if (request.kind === "transfer" && outcome === "declined" && request.requested_by_person_id) {
+    const programId = request.registration_id
+      ? (
+          (await db.prepare("SELECT program_id FROM program_registrations WHERE id = ?").get(request.registration_id)) as
+            | { program_id: string }
+            | undefined
+        )?.program_id ?? null
+      : null;
+    await recordNotification({
+      personId: request.requested_by_person_id,
+      studentId: request.student_id,
+      programId,
+      registrationId: request.registration_id,
+      kind: "transfer_declined",
+      title: "About your transfer request",
+      body: `We were not able to make this transfer. ${note.trim()} The current place is unchanged — nothing has been lost.`,
+      urgency: "important",
+      actionLabel: "View program",
+      actionHref: "/family",
+    });
+  }
+
   refresh(null, request.student_id);
   return { ok: true };
 }

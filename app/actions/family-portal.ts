@@ -221,6 +221,48 @@ export async function submitFamilyRequest(_prev: ActionState, formData: FormData
     )
     .run(`fam-${randomUUID().slice(0, 12)}`, kind, registrationId, studentId, personId, detail, reason, now, now);
 
+  // A receipt for the kinds where the family is otherwise left wondering
+  // whether anything happened. The success banner on this page is not durable
+  // — a parent who closes the tab has no other record that they asked. It is
+  // deliberately only an acknowledgement: it promises a follow-up, never an
+  // outcome, because staff have not decided anything yet.
+  const receipt: Record<string, { kind: string; title: string; body: string }> = {
+    transfer: {
+      kind: "transfer_requested",
+      title: "We received your transfer request",
+      body:
+        "Your request to move to another program has been passed to BOW staff. Nothing has changed yet — the current " +
+        "place is still held while we review it, and we will be in touch with the decision.",
+    },
+    absence_notice: {
+      kind: "absence_acknowledged",
+      title: "Thanks for letting us know",
+      body: "We have recorded the absence you reported and passed it to the instructor. No further action is needed.",
+    },
+  };
+  const message = receipt[kind];
+  if (message) {
+    const programId = registrationId
+      ? (
+          (await db.prepare("SELECT program_id FROM program_registrations WHERE id = ?").get(registrationId)) as
+            | { program_id: string }
+            | undefined
+        )?.program_id ?? null
+      : null;
+    await recordNotification({
+      personId,
+      studentId,
+      programId,
+      registrationId,
+      kind: message.kind,
+      title: message.title,
+      body: message.body,
+      urgency: "normal",
+      actionLabel: "View requests",
+      actionHref: "/family",
+    });
+  }
+
   revalidatePath("/family");
   return { status: "success", message: "Request submitted. BOW staff will follow up." };
 }
