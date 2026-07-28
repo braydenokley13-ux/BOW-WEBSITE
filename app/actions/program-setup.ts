@@ -209,13 +209,14 @@ export async function saveProgramCommunication(programId: string, formData: Form
   if (!(await requireProgram(programId))) return { ok: false, error: "Program not found." };
   await getDb()
     .prepare(
-      `UPDATE programs SET confirmation_message = ?, next_steps_message = ?, support_contact = ?, updated_at = ?
+      `UPDATE programs SET confirmation_message = ?, next_steps_message = ?, support_contact = ?, what_to_bring = ?, updated_at = ?
        WHERE id = ?`,
     )
     .run(
       clean(formData.get("confirmationMessage"), 2000),
       clean(formData.get("nextStepsMessage"), 2000),
       clean(formData.get("supportContact"), 300),
+      clean(formData.get("whatToBring"), 2000),
       Date.now(),
       programId,
     );

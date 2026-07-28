@@ -117,6 +117,13 @@ export default async function StudentProgramPage({ params }: { params: Promise<{
           </p>
         )}
       </section>
+
+      {home.supportContact && (
+        <section style={sectionStyle}>
+          <h2 style={h2Style}>Need help?</h2>
+          <p style={pStyle}>{home.supportContact}</p>
+        </section>
+      )}
     </div>
   );
 }

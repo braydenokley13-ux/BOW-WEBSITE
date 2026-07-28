@@ -21,6 +21,16 @@ import {
 import { listAssignmentsForClass, listSessionsForClass } from "@/lib/delivery";
 import { assignmentRoleLabel, assignmentStatusLabel, prepStatusLabel, sessionStatusLabel, type InstructorAssignment, type ClassSession } from "@/lib/delivery-shared";
 import { coerceEpochMs, formatDateTimeInZone } from "@/lib/timezone";
+import {
+  enrollmentCounts,
+  needsAttention,
+  registrationReadiness,
+  listFailedCommunications,
+  type EnrollmentCounts,
+  type AttentionItem,
+  type RegistrationReadiness,
+  type FailedCommunication,
+} from "@/lib/program-admin";
 
 type TabKey = "overview" | "classes" | "people" | "schedule" | "activity";
 
@@ -57,6 +67,16 @@ export default async function ProgramDetailPage({
   const pendingRegistrations = await listPendingProgramRegistrations(id);
   const program = detail.program;
   const db = getDb();
+
+  // Command-center data: same lifecycle-aware read helpers the Enrollment
+  // and Waitlist pages already use — no reinvented queries, just surfaced
+  // here where an admin already lands first.
+  const [readiness, counts, attention, failedComms] = await Promise.all([
+    registrationReadiness(id),
+    enrollmentCounts(id),
+    needsAttention(id),
+    listFailedCommunications(id),
+  ]);
 
   // Assignment status/role per class — the existing People tab only carries
   // eligibility, not whether the instructor has actually accepted the seat.
@@ -128,11 +148,22 @@ export default async function ProgramDetailPage({
       actions={
         <div className="ops-actions" style={{ margin: 0 }}>
           <Button href="/app/programs" variant="secondary">All Programs</Button>
+          <Button href={`/app/programs/${id}/first-session`} variant="secondary">First-session prep</Button>
           <DuplicateProgramButton programId={id} />
           {!planLocked && <Button href={`/app/programs/${id}/edit`} variant="emphasis">Edit Program Plan</Button>}
         </div>
       }
     >
+      <CommandCenter
+        programId={id}
+        detail={detail}
+        showReadiness={showReadiness}
+        isHistorical={isHistorical}
+        readiness={readiness}
+        counts={counts}
+        attention={attention}
+      />
+
       <nav aria-label="Program record sections" style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border-rule)", marginBottom: 4, flexWrap: "wrap" }}>
         {TABS.map((t) => (
           <Link
@@ -169,6 +200,10 @@ export default async function ProgramDetailPage({
           assignmentsByClass={assignmentsByClass}
           sessionsByClass={sessionsByClass}
           eligibleInstructors={eligibleInstructors.map((i) => ({ id: i.id, name: i.name ?? "Unnamed" }))}
+          readiness={readiness}
+          counts={counts}
+          attention={attention}
+          failedComms={failedComms}
         />
       )}
       {activeTab === "classes" && <ClassesTab detail={detail} program={program} />}
@@ -236,6 +271,120 @@ export default async function ProgramDetailPage({
 }
 
 /* ---------------------------------------------------------------------- */
+/* Command center — the four questions that decide what to do RIGHT NOW,   */
+/* in priority order: immediate blocker, next session, enrollment state,   */
+/* required action. Everything below on the page is supporting detail.     */
+/* ---------------------------------------------------------------------- */
+
+function fmtWhen(ms: number | null): string {
+  if (ms == null) return "—";
+  return new Date(ms).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+// Plain helpers (not components) so the "now" read lives outside a
+// component body — keeps the surrounding render functions pure per the
+// project's react-hooks/purity lint rule.
+function pickNextSession(sessions: ProgramDetail["sessions"]): ProgramDetail["sessions"][number] | null {
+  const now = Date.now();
+  const upcoming = [...sessions].filter((s) => s.sessionDate >= now).sort((a, b) => a.sessionDate - b.sessionDate);
+  return upcoming[0] ?? null;
+}
+
+function findMissingAttendance(
+  classes: ProgramDetail["classes"],
+  sessionsByClass: Map<string, ClassSession[]>,
+): { session: ClassSession; classTitle: string }[] {
+  const now = Date.now();
+  const missing: { session: ClassSession; classTitle: string }[] = [];
+  for (const classRecord of classes) {
+    const sessions = sessionsByClass.get(classRecord.id) ?? [];
+    for (const session of sessions) {
+      if (session.status === "scheduled" && !session.attendanceRecorded && session.sessionDate < now) {
+        missing.push({ session, classTitle: classRecord.title });
+      }
+    }
+  }
+  return missing;
+}
+
+function CommandCenter({
+  programId,
+  detail,
+  showReadiness,
+  isHistorical,
+  readiness,
+  counts,
+  attention,
+}: {
+  programId: string;
+  detail: ProgramDetail;
+  showReadiness: boolean;
+  isHistorical: boolean;
+  readiness: RegistrationReadiness | null;
+  counts: EnrollmentCounts;
+  attention: AttentionItem[];
+}) {
+  const nextSession = pickNextSession(detail.sessions);
+
+  const immediateBlocker = showReadiness ? readiness?.blockers?.[0] ?? null : null;
+  const topAction = attention[0] ?? null;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12, marginBottom: 20 }}>
+      <div style={{ border: "1px solid var(--border-rule)", borderTop: `3px solid ${immediateBlocker ? "var(--bow-negative)" : "var(--bow-positive)"}`, borderRadius: 6, padding: 14, background: "var(--bow-white)" }}>
+        <span className="ops-label">Immediate blocker</span>
+        {immediateBlocker ? (
+          <>
+            <p className="ops-body" style={{ marginTop: 6, fontWeight: 600 }}>{immediateBlocker.label}</p>
+            <p className="ops-record-meta" style={{ marginTop: 2 }}>{immediateBlocker.why}</p>
+            <Link className="ops-inline-link" href={immediateBlocker.fixHref} style={{ display: "inline-block", marginTop: 8 }}>Fix it →</Link>
+          </>
+        ) : (
+          <p className="ops-body" style={{ marginTop: 6 }}>{showReadiness ? "None — registration conditions are satisfied." : "None."}</p>
+        )}
+      </div>
+
+      <div style={{ border: "1px solid var(--border-rule)", borderTop: "3px solid var(--bow-blue)", borderRadius: 6, padding: 14, background: "var(--bow-white)" }}>
+        <span className="ops-label">Next session</span>
+        {nextSession ? (
+          <>
+            <p className="ops-body" style={{ marginTop: 6, fontWeight: 600 }}>{nextSession.classTitle}</p>
+            <p className="ops-record-meta" style={{ marginTop: 2 }}>{formatDateTimeInZone(nextSession.sessionDate, nextSession.scheduleTimezone)}</p>
+            <Link className="ops-inline-link" href={`/app/classes/${nextSession.classId}/sessions/${nextSession.id}`} style={{ display: "inline-block", marginTop: 8 }}>Open session →</Link>
+          </>
+        ) : (
+          <p className="ops-body" style={{ marginTop: 6 }}>{isHistorical ? "Delivery has ended." : "No upcoming session is scheduled."}</p>
+        )}
+      </div>
+
+      <div style={{ border: "1px solid var(--border-rule)", borderTop: "3px solid var(--bow-blue)", borderRadius: 6, padding: 14, background: "var(--bow-white)" }}>
+        <span className="ops-label">Enrollment state</span>
+        <p className="ops-body" style={{ marginTop: 6, fontWeight: 600 }}>
+          {counts.confirmed + counts.reserved} holding a seat{counts.capacity != null ? ` of ${counts.capacity}` : ""}
+        </p>
+        <p className="ops-record-meta" style={{ marginTop: 2 }}>
+          {counts.remaining != null ? `${counts.remaining} seats remaining · ` : ""}{counts.waitlisted} waitlisted · {counts.underReview} under review
+        </p>
+        <Link className="ops-inline-link" href={`/app/programs/${programId}/enrollment`} style={{ display: "inline-block", marginTop: 8 }}>Open enrollment →</Link>
+      </div>
+
+      <div style={{ border: "1px solid var(--border-rule)", borderTop: `3px solid ${topAction ? "var(--bow-warning)" : "var(--bow-positive)"}`, borderRadius: 6, padding: 14, background: "var(--bow-white)" }}>
+        <span className="ops-label">Required action{attention.length > 0 ? ` (${attention.length})` : ""}</span>
+        {topAction ? (
+          <>
+            <p className="ops-body" style={{ marginTop: 6, fontWeight: 600 }}>{topAction.studentName}</p>
+            <p className="ops-record-meta" style={{ marginTop: 2 }}>{topAction.problem}{topAction.deadline ? ` · Due ${fmtWhen(topAction.deadline)}` : ""}</p>
+            <Link className="ops-inline-link" href={topAction.actionHref} style={{ display: "inline-block", marginTop: 8 }}>{topAction.actionLabel} →</Link>
+          </>
+        ) : (
+          <p className="ops-body" style={{ marginTop: 6 }}>Nothing needs action right now.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
 /* Overview — decision-first: status, unresolved items, quick facts,       */
 /* lineage, top actions. Not a data dump.                                 */
 /* ---------------------------------------------------------------------- */
@@ -249,11 +398,19 @@ function OverviewTab({
   assignmentsByClass,
   sessionsByClass,
   eligibleInstructors,
+  readiness,
+  counts,
+  attention,
+  failedComms,
 }: {
   me: { role: string };
   detail: ProgramDetail;
   isActive: boolean;
   isHistorical: boolean;
+  readiness: RegistrationReadiness | null;
+  counts: EnrollmentCounts;
+  attention: AttentionItem[];
+  failedComms: FailedCommunication[];
   showReadiness: boolean;
   assignmentsByClass: Map<string, InstructorAssignment[]>;
   sessionsByClass: Map<string, ClassSession[]>;
@@ -327,6 +484,41 @@ function OverviewTab({
 
       <PageSection title="Quick facts">
         <DataStrip items={dataStripItems} />
+      </PageSection>
+
+      {readiness && (
+        <PageSection title="Registration readiness">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <Badge status={readiness.state === "blocked" ? "negative" : readiness.state === "ready" || readiness.state === "open" || readiness.state === "running" ? "positive" : "warning"}>
+              {readiness.state.replace(/_/g, " ")}
+            </Badge>
+            {readiness.blockers.length > 0 && <Badge status="negative">{readiness.blockers.length} blocker{readiness.blockers.length === 1 ? "" : "s"}</Badge>}
+            {readiness.warnings.length > 0 && <Badge status="warning">{readiness.warnings.length} warning{readiness.warnings.length === 1 ? "" : "s"}</Badge>}
+          </div>
+          <p className="ops-body">
+            {readiness.state === "blocked"
+              ? "Registration cannot open until every blocker below is resolved."
+              : readiness.state === "ready" || readiness.state === "almost_ready"
+                ? "Registration setup is ready to open to families."
+                : readiness.state === "running"
+                  ? "Program is delivering — registration setup is a moot check now."
+                  : "Registration is open to families."}
+          </p>
+        </PageSection>
+      )}
+
+      <PageSection title="Enrollment">
+        <DataStrip
+          items={[
+            { label: "Capacity", value: counts.capacity != null ? String(counts.capacity) : "Not set" },
+            { label: "Remaining", value: counts.remaining != null ? String(counts.remaining) : "—" },
+            { label: "Confirmed", value: String(counts.confirmed) },
+            { label: "Reserved", value: String(counts.reserved) },
+            { label: "Requirements pending", value: String(counts.requirementsPending) },
+            { label: "Under review", value: String(counts.underReview) },
+          ]}
+        />
+        <Link className="ops-inline-link" href={`/app/programs/${detail.program.id}/enrollment`} style={{ display: "inline-block", marginTop: 10 }}>Open enrollment roster →</Link>
       </PageSection>
 
       {showReadiness && (
@@ -487,6 +679,97 @@ function OverviewTab({
             })
           )}
         </div>
+      </PageSection>
+
+      <PageSection title="Requirements">
+        {counts.requirementsPending > 0 ? (
+          <p className="ops-body">
+            {counts.requirementsPending} registration{counts.requirementsPending === 1 ? "" : "s"} {counts.requirementsPending === 1 ? "has" : "have"} an outstanding confirmation-blocking requirement.
+          </p>
+        ) : (
+          <p className="ops-body">No registration is currently blocked on an outstanding requirement.</p>
+        )}
+        <Link className="ops-inline-link" href={`/app/programs/${detail.program.id}/requirements`} style={{ display: "inline-block", marginTop: 8 }}>Manage requirements →</Link>
+      </PageSection>
+
+      <PageSection title="Waitlist">
+        <p className="ops-body">
+          {counts.waitlisted} waitlisted · {counts.offersOutstanding} offer{counts.offersOutstanding === 1 ? "" : "s"} outstanding.
+        </p>
+        <Link className="ops-inline-link" href={`/app/programs/${detail.program.id}/waitlist`} style={{ display: "inline-block", marginTop: 8 }}>Open waitlist board →</Link>
+      </PageSection>
+
+      <PageSection title="Family issues">
+        {(() => {
+          const familyIssues = attention.filter((a) => ["duplicate_child", "activation_failed", "family_request"].includes(a.kind));
+          return familyIssues.length === 0 ? (
+            <p className="ops-body">No open duplicate, activation, or family request issues.</p>
+          ) : (
+            <div className="ops-list">
+              {familyIssues.map((item, i) => (
+                <div className="ops-list-row ops-list-row--compact" key={`${item.kind}-${item.studentId}-${i}`}>
+                  <div>
+                    <span className="ops-record-name">{item.studentName}</span>
+                    <span className="ops-record-meta">{item.problem}</span>
+                  </div>
+                  <Link className="ops-inline-link" href={item.actionHref}>{item.actionLabel} →</Link>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </PageSection>
+
+      <PageSection title="Communications">
+        {failedComms.length === 0 ? (
+          <p className="ops-body">No failed family communications for this program.</p>
+        ) : (
+          <div className="ops-list">
+            {failedComms.map((c) => (
+              <div className="ops-list-row ops-list-row--compact" key={c.id}>
+                <div>
+                  <span className="ops-record-name">{c.title}</span>
+                  <span className="ops-record-meta">{c.studentName ?? "Unlinked"} · Failed {new Date(c.createdAt).toLocaleDateString()}</span>
+                </div>
+                <Link className="ops-inline-link" href="/app/family-support/communications">Retry delivery →</Link>
+              </div>
+            ))}
+          </div>
+        )}
+      </PageSection>
+
+      <PageSection title="Attendance">
+        {(() => {
+          const missing = findMissingAttendance(detail.classes, sessionsByClass);
+          return missing.length === 0 ? (
+            <p className="ops-body">Every past session has attendance recorded.</p>
+          ) : (
+            <>
+              <p className="ops-body">{missing.length} past session{missing.length === 1 ? "" : "s"} missing attendance.</p>
+              <div className="ops-list" style={{ marginTop: 8 }}>
+                {missing.map(({ session, classTitle }) => (
+                  <div className="ops-list-row ops-list-row--compact" key={session.id}>
+                    <div>
+                      <span className="ops-record-name">{classTitle}</span>
+                      <span className="ops-record-meta">{formatDateTimeInZone(session.sessionDate, session.timezone)}</span>
+                    </div>
+                    <Link className="ops-inline-link" href={`/app/classes/${session.classId}/sessions/${session.id}`}>Record attendance →</Link>
+                  </div>
+                ))}
+              </div>
+            </>
+          );
+        })()}
+      </PageSection>
+
+      <PageSection title="Completion">
+        {isHistorical ? (
+          <p className="ops-body">
+            {detail.program.outcomeSummary ?? `Delivery is ${detail.program.stage.replace(/_/g, " ")}. Renewal status: ${detail.program.renewalStatus.replace(/_/g, " ")}.`}
+          </p>
+        ) : (
+          <p className="ops-body">Program has not reached a completion stage yet.</p>
+        )}
       </PageSection>
     </div>
   );
