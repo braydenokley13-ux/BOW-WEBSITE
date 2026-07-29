@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import { Badge, Button, SectionHeader } from "@/components/ds";
 import { getPublicProgramDetail } from "@/lib/program-discovery";
 
+// getPublicProgramDetail() reads from the database; must not run at build time.
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const program = await getPublicProgramDetail(id);

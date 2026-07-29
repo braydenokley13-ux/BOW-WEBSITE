@@ -3,6 +3,9 @@ import OpeningApplicationForm from "@/components/site/OpeningApplicationForm";
 import { Badge, CapLine } from "@/components/ds";
 import { getPublicOpening, publicEngagementLabel } from "@/lib/people-work";
 
+// getPublicOpening() reads from the database; must not run at build time.
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: { params: Promise<{ openingSlug: string }> }) {
   const { openingSlug } = await params;
   const opening = await getPublicOpening(openingSlug);

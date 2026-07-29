@@ -8,6 +8,9 @@ export const metadata = {
   description: "Register one or more children for BOW Sports Capital programs in a single form.",
 };
 
+// listRegisterablePrograms() reads from the database; must not run at build time.
+export const dynamic = "force-dynamic";
+
 export default async function FamilyRegistrationPage({
   searchParams,
 }: {

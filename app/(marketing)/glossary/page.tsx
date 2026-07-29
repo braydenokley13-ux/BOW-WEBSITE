@@ -19,6 +19,9 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
+// getGlossaryTerms() reads from the database; must not run at build time.
+export const dynamic = "force-dynamic";
+
 export default async function GlossaryPage() {
   const terms = (await getGlossaryTerms());
 

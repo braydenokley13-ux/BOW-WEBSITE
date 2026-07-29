@@ -5,6 +5,9 @@ import { getAnalyticsPlayers } from "@/lib/nba";
 import { getPublishedArticles } from "@/lib/articles";
 import { teamSlug } from "@/lib/nba-teams";
 
+// Reads partner/player/article data from the database; must not run at build time.
+export const dynamic = "force-dynamic";
+
 /** Static marketing routes; lesson-detail routes are appended below. */
 const ROUTES = [
   "/",

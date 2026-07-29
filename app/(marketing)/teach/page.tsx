@@ -6,6 +6,9 @@ export const metadata = {
   description: "Help young people learn economics, finance, leadership, and strategy through sports-business decisions.",
 };
 
+// getPublicOpening() reads from the database; must not run at build time.
+export const dynamic = "force-dynamic";
+
 const PAD = "clamp(56px,8vw,108px) clamp(18px,4vw,40px)";
 
 export default async function TeachPage() {

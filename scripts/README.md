@@ -69,20 +69,24 @@ thrown, so a bad run can never take the site down; it just leaves the
 cache stale. Never scrapes Basketball Reference; never runs at
 page-request time.
 
-### Nightly refresh on Vercel — `app/api/cron/nba-ingest`
+### Nightly refresh on Vercel — `app/api/cron/daily`
 
 Vercel has no persistent background worker, so the nightly refresh is
 a [Vercel Cron](https://vercel.com/docs/cron-jobs) hitting a route
-handler that runs the identical `lib/nba-ingest.ts` logic:
+handler that runs the identical `lib/nba-ingest.ts` logic. The Hobby
+plan only allows cron schedules that fire at most once a day, so this
+same route also runs the registration lifecycle sweep (expiring seat
+reservations/waitlist offers and delivering pending family
+notifications) that used to be a separate hourly cron:
 
 ```json
 // vercel.json
 {
-  "crons": [{ "path": "/api/cron/nba-ingest", "schedule": "0 9 * * *" }]
+  "crons": [{ "path": "/api/cron/daily", "schedule": "0 9 * * *" }]
 }
 ```
 
-The route (`app/api/cron/nba-ingest/route.ts`) requires
+The route (`app/api/cron/daily/route.ts`) requires
 `Authorization: Bearer $CRON_SECRET` in production — set `CRON_SECRET`
 in the Vercel project's environment variables (Vercel's cron
 dispatcher sends this header automatically once the env var exists).
@@ -90,8 +94,8 @@ Outside production (`NODE_ENV !== "production"`) the check is skipped
 so you can hit it locally, e.g.:
 
 ```bash
-curl http://localhost:3000/api/cron/nba-ingest
-curl "http://localhost:3000/api/cron/nba-ingest?dryRun=1&season=2025-26"
+curl http://localhost:3000/api/cron/daily
+curl "http://localhost:3000/api/cron/daily?dryRun=1&season=2025-26"
 ```
 
 **Important reality check about Vercel + SQLite**: `data/bow.db` lives
