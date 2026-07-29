@@ -12,7 +12,7 @@
  *   npm run ingest -- --csv path/to/contracts.csv     # curated-list fallback override
  *
  * Safe to re-run any time (idempotent upserts); the Vercel cron route
- * (app/api/cron/nba-ingest/route.ts) runs this same logic nightly.
+ * (app/api/cron/daily/route.ts) runs this same logic nightly.
  * Run from the repo root, or pass --csv for a non-default fallback path.
  */
 
