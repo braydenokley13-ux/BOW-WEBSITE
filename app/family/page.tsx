@@ -6,8 +6,38 @@ import { loadFamilyDashboard } from "@/lib/family-portal";
 import { computeNextAction } from "@/components/family/next-action";
 import NotificationCard from "@/components/family/NotificationCard";
 import RequirementList from "@/components/family/RequirementList";
+import type { SessionRow } from "@/lib/family-portal";
 
 export const metadata: Metadata = { title: "Dashboard" };
+
+function icsDate(ms: number): string {
+  return new Date(ms).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+}
+
+/**
+ * Client-side "add to calendar" — a data: URI .ics file, no calendar
+ * integration to stand up. One event, one hour default length (session
+ * end time isn't tracked), title/location/link taken from the session.
+ */
+function buildCalendarLink(programName: string, session: SessionRow): string {
+  const start = icsDate(session.sessionDate);
+  const end = icsDate(session.sessionDate + 60 * 60 * 1000);
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//BOW Sports Capital//Family Portal//EN",
+    "BEGIN:VEVENT",
+    `UID:${session.id}@bowsportscapital.org`,
+    `DTSTART:${start}`,
+    `DTEND:${end}`,
+    `SUMMARY:${(session.title || programName).replace(/\r?\n/g, " ")}`,
+    session.location ? `LOCATION:${session.location.replace(/\r?\n/g, " ")}` : null,
+    session.meetingLink ? `DESCRIPTION:${session.meetingLink}` : null,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].filter((l): l is string => l != null);
+  return `data:text/calendar;charset=utf-8,${encodeURIComponent(lines.join("\r\n"))}`;
+}
 
 export default async function FamilyDashboardPage() {
   const me = await requireRole("parent");
@@ -76,11 +106,30 @@ export default async function FamilyDashboardPage() {
                 <StatusPill label={child.statusLabel} />
               </div>
               {child.nextSession && (
-                <p style={{ margin: "10px 0 0", ...smallStyle }}>
-                  Next session: {new Date(child.nextSession.sessionDate).toLocaleString()}
-                  {child.nextSession.location ? ` · ${child.nextSession.location}` : ""}
-                </p>
+                <>
+                  <p style={{ margin: "10px 0 0", ...smallStyle }}>
+                    Next session: {new Date(child.nextSession.sessionDate).toLocaleString()}
+                    {child.nextSession.location ? ` · ${child.nextSession.location}` : ""}
+                  </p>
+                  <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
+                    {child.nextSession.meetingLink && (
+                      <a href={child.nextSession.meetingLink} target="_blank" rel="noopener noreferrer" style={ctaLinkStyle}>
+                        Join session →
+                      </a>
+                    )}
+                    <a
+                      href={buildCalendarLink(child.programName, child.nextSession)}
+                      download={`${child.programName.replace(/[^a-z0-9]+/gi, "-")}.ics`}
+                      style={ctaLinkStyle}
+                    >
+                      Add to calendar →
+                    </a>
+                  </div>
+                </>
               )}
+              {child.instructorName && <p style={{ margin: "8px 0 0", ...smallStyle }}>Instructor: {child.instructorName}</p>}
+              {child.whatToBring && <p style={{ margin: "4px 0 0", ...smallStyle }}>What to bring: {child.whatToBring}</p>}
+              {child.supportContact && <p style={{ margin: "4px 0 0", ...smallStyle }}>Need help? {child.supportContact}</p>}
               {child.missingRequirements > 0 && (
                 <p style={{ margin: "6px 0 0", fontSize: 13, color: "#a0451f", fontWeight: 600 }}>
                   {child.missingRequirements} step{child.missingRequirements === 1 ? "" : "s"} remaining
@@ -105,7 +154,16 @@ export default async function FamilyDashboardPage() {
                 </p>
                 <p style={{ margin: "4px 0 0", ...smallStyle }}>
                   {new Date(s.sessionDate).toLocaleString()} {s.timezone ? `(${s.timezone})` : ""}
-                  {s.location ? ` · ${s.location}` : s.meetingLink ? " · Online" : ""}
+                  {s.location
+                    ? ` · ${s.location}`
+                    : s.meetingLink && (
+                        <>
+                          {" · "}
+                          <a href={s.meetingLink} target="_blank" rel="noopener noreferrer">
+                            Join online
+                          </a>
+                        </>
+                      )}
                 </p>
               </li>
             ))}

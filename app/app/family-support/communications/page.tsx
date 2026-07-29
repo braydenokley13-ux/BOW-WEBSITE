@@ -24,7 +24,7 @@ export default async function FamilyCommunicationsPage() {
         title="Failed communications"
         context="Every email that did not reach a family. Retrying records who requested it and never claims success it can't back up."
         action={
-          <Link href="/app/family-support" className="bow-button bow-button--ghost bow-button--sm">
+          <Link href="/app/family-support" className="bow-button bow-button-ghost bow-button-sm">
             Back to family search
           </Link>
         }

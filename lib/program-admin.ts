@@ -1304,3 +1304,227 @@ export async function registrationNeedsAction(limitPerKind = 8): Promise<Registr
   items.sort((a, b) => order[a.severity] - order[b.severity]);
   return items;
 }
+
+/* ===================================================================== */
+/* Program-scoped communication failures                                */
+/* ===================================================================== */
+
+export interface FailedCommunication {
+  id: string;
+  title: string;
+  studentId: string | null;
+  studentName: string | null;
+  createdAt: number;
+}
+
+/**
+ * Failed family_notifications deliveries scoped to a single program — the
+ * program detail page needs "is communication working for THIS program",
+ * not the global cross-program feed registrationNeedsAction already covers.
+ */
+export async function listFailedCommunications(programId: string, limit = 20): Promise<FailedCommunication[]> {
+  const db = getDb();
+  const rows = (await db
+    .prepare(
+      `SELECT n.id, n.title, n.student_id, s.name AS student_name, n.created_at
+         FROM family_notifications n
+         LEFT JOIN students s ON s.id = n.student_id
+        WHERE n.program_id = ? AND n.email_status = 'failed'
+        ORDER BY n.created_at DESC LIMIT ?`,
+    )
+    .all(programId, limit)) as unknown as Array<{
+    id: string;
+    title: string;
+    student_id: string | null;
+    student_name: string | null;
+    created_at: number;
+  }>;
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    studentId: r.student_id,
+    studentName: r.student_name,
+    createdAt: Number(r.created_at),
+  }));
+}
+
+/* ===================================================================== */
+/* First-session preparation                                            */
+/* ===================================================================== */
+
+export interface PortalAccessGap {
+  registrationId: string;
+  studentId: string;
+  studentName: string;
+}
+
+export interface LogisticsQuestion {
+  id: string;
+  note: string;
+  studentId: string | null;
+  studentName: string | null;
+  personId: string | null;
+  guardianName: string | null;
+  createdAt: number;
+}
+
+export interface FirstSessionClassPrep {
+  classId: string;
+  className: string;
+  firstSession: import("@/lib/delivery-shared").ClassSession | null;
+  assignments: import("@/lib/delivery-shared").InstructorAssignment[];
+}
+
+export interface ActivationGap {
+  registrationId: string | null;
+  studentId: string;
+  studentName: string;
+  personId: string;
+  guardianName: string | null;
+}
+
+export interface FirstSessionPrep {
+  programId: string;
+  programName: string;
+  startDate: string | null;
+  confirmed: number;
+  reserved: number;
+  attention: AttentionItem[];
+  activationFailures: ActivationGap[];
+  studentsMissingPortalAccess: PortalAccessGap[];
+  unresolvedLogistics: LogisticsQuestion[];
+  failedReminders: FailedCommunication[];
+  classes: FirstSessionClassPrep[];
+}
+
+/**
+ * Everything an admin needs to get one program's upcoming start across the
+ * line, assembled from the same reads the rest of the admin surface already
+ * trusts (needsAttention, enrollmentCounts, listFailedCommunications) plus
+ * two reads that had no home yet: portal-access gaps and open logistics
+ * questions. Nothing here is computed from a heuristic guess — a section is
+ * only ever populated by a query that can honestly answer it.
+ */
+export async function getFirstSessionPrep(programId: string): Promise<FirstSessionPrep | null> {
+  const db = getDb();
+  const program = (await db
+    .prepare("SELECT id, name, start_date FROM programs WHERE id = ?")
+    .get(programId)) as { id: string; name: string; start_date: string | null } | undefined;
+  if (!program) return null;
+
+  const { listAssignmentsForClass, listSessionsForClass } = await import("@/lib/delivery");
+
+  const counts = await enrollmentCounts(programId);
+  const attention = await needsAttention(programId);
+  const failedReminders = await listFailedCommunications(programId);
+
+  // Same failed-activation set needsAttention flags, but carrying the
+  // guardian's person id so "resend activation" has something to call.
+  const activationRows = (await db
+    .prepare(
+      `SELECT DISTINCT r.id AS registration_id, s.id AS student_id, s.name AS student_name, g.id AS person_id, g.name AS guardian_name
+         FROM program_registrations r
+         JOIN students s ON s.id = r.student_id
+         JOIN people g ON g.id = r.guardian_person_id
+         JOIN parent_activations pa ON pa.person_id = g.id
+        WHERE r.program_id = ? AND pa.state IN ('failed', 'support_required')
+          AND r.status NOT IN ('withdrawn', 'expired', 'declined', 'cancelled')`,
+    )
+    .all(programId)) as unknown as Array<{
+    registration_id: string;
+    student_id: string;
+    student_name: string;
+    person_id: string;
+    guardian_name: string | null;
+  }>;
+  const activationFailures: ActivationGap[] = activationRows.map((r) => ({
+    registrationId: r.registration_id,
+    studentId: r.student_id,
+    studentName: r.student_name,
+    personId: r.person_id,
+    guardianName: r.guardian_name,
+  }));
+
+  // Confirmed seats with no portal access yet — the student's own login,
+  // not the guardian's activation (that is `activation_failed` above).
+  const portalGapRows = (await db
+    .prepare(
+      `SELECT DISTINCT r.id AS registration_id, s.id AS student_id, s.name AS student_name
+         FROM program_registrations r
+         JOIN students s ON s.id = r.student_id
+        WHERE r.program_id = ? AND r.status = 'confirmed' AND s.user_id IS NULL`,
+    )
+    .all(programId)) as unknown as Array<{ registration_id: string; student_id: string; student_name: string }>;
+  const studentsMissingPortalAccess: PortalAccessGap[] = portalGapRows.map((r) => ({
+    registrationId: r.registration_id,
+    studentId: r.student_id,
+    studentName: r.student_name,
+  }));
+
+  // Open "issue" support notes scoped to this program — the family's own
+  // words about something unresolved, distinct from a registration blocker.
+  const logisticsRows = (await db
+    .prepare(
+      `SELECT fsn.id, fsn.note, fsn.student_id, s.name AS student_name, fsn.person_id, p.name AS guardian_name, fsn.created_at
+         FROM family_support_notes fsn
+         LEFT JOIN students s ON s.id = fsn.student_id
+         LEFT JOIN people p ON p.id = fsn.person_id
+        WHERE fsn.program_id = ? AND fsn.kind = 'issue' AND fsn.resolved_at IS NULL
+        ORDER BY fsn.created_at ASC`,
+    )
+    .all(programId)) as unknown as Array<{
+    id: string;
+    note: string;
+    student_id: string | null;
+    student_name: string | null;
+    person_id: string | null;
+    guardian_name: string | null;
+    created_at: number;
+  }>;
+  const unresolvedLogistics: LogisticsQuestion[] = logisticsRows.map((r) => ({
+    id: r.id,
+    note: r.note,
+    studentId: r.student_id,
+    studentName: r.student_name,
+    personId: r.person_id,
+    guardianName: r.guardian_name,
+    createdAt: Number(r.created_at),
+  }));
+
+  // Instructor assignment + session readiness, per live class on this program.
+  const classRows = (await db
+    .prepare(
+      `SELECT id, title FROM classes WHERE program_id = ? AND status NOT IN ('completed', 'cancelled') ORDER BY created_at`,
+    )
+    .all(programId)) as unknown as Array<{ id: string; title: string | null }>;
+  const classes: FirstSessionClassPrep[] = [];
+  const now = Date.now();
+  for (const c of classRows) {
+    const assignments = await listAssignmentsForClass(c.id);
+    const sessions = await listSessionsForClass(c.id);
+    const firstSession =
+      sessions.find((s) => s.status === "scheduled" && s.sessionDate >= now) ??
+      sessions.find((s) => s.status === "scheduled") ??
+      null;
+    classes.push({
+      classId: c.id,
+      className: c.title ?? "Class",
+      firstSession,
+      assignments,
+    });
+  }
+
+  return {
+    programId: program.id,
+    programName: program.name,
+    startDate: program.start_date,
+    confirmed: counts.confirmed,
+    reserved: counts.reserved,
+    attention,
+    activationFailures,
+    studentsMissingPortalAccess,
+    unresolvedLogistics,
+    failedReminders,
+    classes,
+  };
+}

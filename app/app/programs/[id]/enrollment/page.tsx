@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge, DataTable, PageHeader, PageSection } from "@/components/ds";
+import { Badge, PageHeader, PageSection } from "@/components/ds";
 import { requireStaff } from "@/lib/dal";
 import { sweepExpirations } from "@/lib/enrollment";
 import {
@@ -75,13 +75,13 @@ export default async function EnrollmentPage({
         context="Registration lifecycle, requirements, and seat decisions for this program."
         action={
           <div style={{ display: "flex", gap: 8 }}>
-            <Link href={`/app/programs/${id}/waitlist`} className="bow-button bow-button--secondary bow-button--sm">
+            <Link href={`/app/programs/${id}/waitlist`} className="bow-button bow-button-secondary bow-button-sm">
               Waitlist board
             </Link>
-            <Link href={`/app/programs/${id}/requirements`} className="bow-button bow-button--secondary bow-button--sm">
+            <Link href={`/app/programs/${id}/requirements`} className="bow-button bow-button-secondary bow-button-sm">
               Requirements
             </Link>
-            <Link href={`/app/programs/${id}/setup`} className="bow-button bow-button--secondary bow-button--sm">
+            <Link href={`/app/programs/${id}/setup`} className="bow-button bow-button-secondary bow-button-sm">
               Setup
             </Link>
           </div>
@@ -115,24 +115,36 @@ export default async function EnrollmentPage({
         {attention.length === 0 ? (
           <p style={{ color: "var(--bow-slate)" }}>Nothing needs attention right now.</p>
         ) : (
-          <DataTable columns={["Child", "Guardian", "Problem", "Deadline", ""]} minWidth={760}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {attention.map((item, i) => (
-              <tr key={`${item.registrationId ?? item.studentId}-${i}`} style={{ borderBottom: "1px solid var(--border-rule)" }}>
-                <td style={{ padding: "10px 12px" }}>{item.studentName}</td>
-                <td style={{ padding: "10px 12px" }}>{item.guardianName ?? "—"}</td>
-                <td style={{ padding: "10px 12px" }}>
-                  <Badge status="warning">{ATTENTION_LABEL[item.kind] ?? item.kind}</Badge>{" "}
-                  <span style={{ color: "var(--bow-slate)" }}>{item.problem}</span>
-                </td>
-                <td style={{ padding: "10px 12px" }}>{fmtDeadline(item.deadline)}</td>
-                <td style={{ padding: "10px 12px", textAlign: "right" }}>
-                  <Link href={item.actionHref} className="bow-button bow-button--ghost bow-button--sm">
-                    {item.actionLabel}
-                  </Link>
-                </td>
-              </tr>
+              <div
+                key={`${item.registrationId ?? item.studentId}-${i}`}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 16,
+                  flexWrap: "wrap",
+                  padding: "clamp(10px, 2vw, 14px)",
+                  border: "1px solid var(--border-rule)",
+                  borderRadius: "var(--radius-control)",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <Badge status="warning">{ATTENTION_LABEL[item.kind] ?? item.kind}</Badge>
+                    <span className="ops-record-name" style={{ fontSize: 14 }}>{item.studentName}</span>
+                    {item.guardianName && <span className="ops-record-meta">· {item.guardianName}</span>}
+                  </div>
+                  <span className="ops-record-meta">{item.problem}</span>
+                  {item.deadline && <span className="ops-record-meta">Deadline {fmtDeadline(item.deadline)}</span>}
+                </div>
+                <Link href={item.actionHref} className="bow-button bow-button-ghost bow-button-sm">
+                  {item.actionLabel}
+                </Link>
+              </div>
             ))}
-          </DataTable>
+          </div>
         )}
       </PageSection>
 
@@ -148,39 +160,55 @@ export default async function EnrollmentPage({
             <Link
               key={f.key || "all"}
               href={`/app/programs/${id}/enrollment${f.key ? `?status=${f.key}` : ""}`}
-              className="bow-button bow-button--ghost bow-button--sm"
+              className="bow-button bow-button-ghost bow-button-sm"
               style={(status || "") === f.key ? { textDecoration: "underline" } : undefined}
             >
               {f.label}
             </Link>
           ))}
         </div>
-        <DataTable
-          columns={["Child", "Grade", "Guardian", "Status", "Class", "Reservation", "Requirements", ""]}
-          minWidth={880}
-          isEmpty={registrations.length === 0}
-          emptyLabel="No registrations match this filter."
-        >
-          {registrations.map((r) => (
-            <tr key={r.id} style={{ borderBottom: "1px solid var(--border-rule)" }}>
-              <td style={{ padding: "10px 12px" }}>{r.studentName}</td>
-              <td style={{ padding: "10px 12px" }}>{r.grade ?? "—"}</td>
-              <td style={{ padding: "10px 12px" }}>
-                {r.guardianName ?? "—"}
-                {r.guardianEmail ? <div style={{ fontSize: 11, color: "var(--bow-slate)" }}>{r.guardianEmail}</div> : null}
-              </td>
-              <td style={{ padding: "10px 12px" }}>{r.statusLabel}</td>
-              <td style={{ padding: "10px 12px" }}>{r.className ?? "—"}</td>
-              <td style={{ padding: "10px 12px" }}>{fmtDeadline(r.reservationExpiresAt)}</td>
-              <td style={{ padding: "10px 12px" }}>{r.requirementsOutstanding > 0 ? `${r.requirementsOutstanding} pending` : "Complete"}</td>
-              <td style={{ padding: "10px 12px", textAlign: "right" }}>
-                <Link href={`/app/programs/${id}/enrollment?open=${r.id}`} className="bow-button bow-button--ghost bow-button--sm">
+        {registrations.length === 0 ? (
+          <div className="ops-empty">
+            <p className="ops-empty__body" style={{ margin: 0 }}>No registrations match this filter.</p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {registrations.map((r) => (
+              <div
+                key={r.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 16,
+                  flexWrap: "wrap",
+                  padding: "clamp(10px, 2vw, 14px)",
+                  border: "1px solid var(--border-rule)",
+                  borderRadius: "var(--radius-control)",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span className="ops-record-name" style={{ fontSize: 14 }}>{r.studentName}</span>
+                    {r.grade && <span className="ops-record-meta">· Grade {r.grade}</span>}
+                    <Badge status="info">{r.statusLabel}</Badge>
+                  </div>
+                  <span className="ops-record-meta">
+                    {r.guardianName ?? "No guardian"}
+                    {r.guardianEmail ? ` (${r.guardianEmail})` : ""}
+                  </span>
+                  <span className="ops-record-meta">
+                    {r.className ?? "Not placed"} · Reservation {fmtDeadline(r.reservationExpiresAt)} ·{" "}
+                    {r.requirementsOutstanding > 0 ? `${r.requirementsOutstanding} requirement${r.requirementsOutstanding === 1 ? "" : "s"} pending` : "Requirements complete"}
+                  </span>
+                </div>
+                <Link href={`/app/programs/${id}/enrollment?open=${r.id}`} className="bow-button bow-button-ghost bow-button-sm">
                   Open
                 </Link>
-              </td>
-            </tr>
-          ))}
-        </DataTable>
+              </div>
+            ))}
+          </div>
+        )}
       </PageSection>
     </div>
   );

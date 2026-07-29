@@ -14,8 +14,13 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireStaff } from "@/lib/dal";
-import { recordAudit } from "@/lib/enrollment";
-import { checkRestorable, restoreRegistration as restoreRegistrationOp, type RestoreCheck } from "@/lib/program-operations";
+import { recordAudit, recordNotification, seatCounts } from "@/lib/enrollment";
+import {
+  checkRestorable,
+  restoreRegistration as restoreRegistrationOp,
+  transferProgram as transferProgramOp,
+  type RestoreCheck,
+} from "@/lib/program-operations";
 
 export interface ActionResult {
   ok: boolean;
@@ -221,8 +226,19 @@ export async function resolveFamilyRequest(
   const me = await requireStaff();
   if (!note.trim()) return { ok: false, error: "Record a resolution note before closing this request." };
   const db = getDb();
-  const request = (await db.prepare("SELECT id, student_id, status FROM family_requests WHERE id = ?").get(requestId)) as
-    | { id: string; student_id: string; status: string }
+  const request = (await db
+    .prepare(
+      "SELECT id, kind, student_id, registration_id, requested_by_person_id, status FROM family_requests WHERE id = ?",
+    )
+    .get(requestId)) as
+    | {
+        id: string;
+        kind: string;
+        student_id: string;
+        registration_id: string | null;
+        requested_by_person_id: string | null;
+        status: string;
+      }
     | undefined;
   if (!request) return { ok: false, error: "Request not found." };
   if (["completed", "cancelled", "declined"].includes(request.status)) {
@@ -243,6 +259,34 @@ export async function resolveFamilyRequest(
     newState: outcome,
     reason: note.trim(),
   });
+
+  // A declined transfer needs its own message. The approved case deliberately
+  // does NOT send one here: approving the request is not the move, and telling
+  // a family "transfer approved" before the seat exists is the same broken
+  // promise as calling a held seat a confirmation. The message goes out from
+  // transferProgram, when the child is actually in the new program.
+  if (request.kind === "transfer" && outcome === "declined" && request.requested_by_person_id) {
+    const programId = request.registration_id
+      ? (
+          (await db.prepare("SELECT program_id FROM program_registrations WHERE id = ?").get(request.registration_id)) as
+            | { program_id: string }
+            | undefined
+        )?.program_id ?? null
+      : null;
+    await recordNotification({
+      personId: request.requested_by_person_id,
+      studentId: request.student_id,
+      programId,
+      registrationId: request.registration_id,
+      kind: "transfer_declined",
+      title: "About your transfer request",
+      body: `We were not able to make this transfer. ${note.trim()} The current place is unchanged — nothing has been lost.`,
+      urgency: "important",
+      actionLabel: "View program",
+      actionHref: "/family",
+    });
+  }
+
   refresh(null, request.student_id);
   return { ok: true };
 }
@@ -265,4 +309,86 @@ export async function restoreRegistrationChecked(registrationId: string, reason:
   refresh(null, null);
   revalidatePath("/app/family-support");
   return { ok: true };
+}
+
+/* ===================================================================== */
+/* Cross-program transfer                                                */
+/* ===================================================================== */
+
+export interface TransferTarget {
+  id: string;
+  name: string;
+  startDate: number | null;
+  remaining: number | null;
+  waitlistMode: string;
+}
+
+/**
+ * The programs a child could be transferred into, with the seat position the
+ * dialog has to state before an admin commits.
+ *
+ * `remaining` is read here only to describe the choice. It is deliberately NOT
+ * trusted by the transfer itself: `transferProgram` re-counts under the class
+ * lock, so a seat taken between this page render and the click changes the
+ * outcome to the waitlist rather than overselling the class.
+ */
+export async function listTransferTargets(registrationId: string): Promise<TransferTarget[]> {
+  await requireStaff();
+  const db = getDb();
+  const rows = (await db
+    .prepare(
+      `SELECT p.id, p.name, p.start_date, p.capacity, p.waitlist_mode,
+              c.id AS class_id, c.capacity AS class_capacity
+         FROM programs p
+         JOIN LATERAL (
+           SELECT id, capacity FROM classes
+            WHERE program_id = p.id AND status NOT IN ('completed', 'cancelled')
+            ORDER BY created_at, id LIMIT 1
+         ) c ON true
+        WHERE p.is_public = true
+          AND p.public_status IN ('open', 'coming_soon')
+          AND p.id <> (SELECT program_id FROM program_registrations WHERE id = ?)
+        ORDER BY p.start_date NULLS LAST, p.name`,
+    )
+    .all(registrationId)) as {
+    id: string;
+    name: string;
+    start_date: number | null;
+    capacity: number | null;
+    waitlist_mode: string;
+    class_id: string;
+    class_capacity: number | null;
+  }[];
+
+  const targets: TransferTarget[] = [];
+  for (const row of rows) {
+    const counts = await seatCounts(row.class_id, row.class_capacity ?? row.capacity);
+    targets.push({
+      id: row.id,
+      name: row.name,
+      startDate: row.start_date == null ? null : Number(row.start_date),
+      remaining: counts.remaining,
+      waitlistMode: row.waitlist_mode,
+    });
+  }
+  return targets;
+}
+
+export async function transferToProgram(
+  registrationId: string,
+  targetProgramId: string,
+  reason: string,
+): Promise<ActionResult & { status?: string }> {
+  const me = await requireStaff();
+  const result = await transferProgramOp(
+    registrationId,
+    targetProgramId,
+    { userId: me.id, label: actorLabel(me.name) },
+    reason,
+  );
+  if (!result.ok) return { ok: false, error: result.error ?? "Could not transfer this registration." };
+  refresh(null, null);
+  revalidatePath("/app/family-support");
+  revalidatePath("/app/programs");
+  return { ok: true, status: result.status };
 }

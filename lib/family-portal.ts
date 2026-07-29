@@ -41,6 +41,9 @@ export interface ChildRegistration {
   scheduleLabel: string | null;
   timezone: string | null;
   missingRequirements: number;
+  whatToBring: string | null;
+  supportContact: string | null;
+  instructorName: string | null;
   nextSession: SessionRow | null;
 }
 
@@ -168,7 +171,13 @@ export async function loadFamilyDashboard(personId: string): Promise<FamilyDashb
     .prepare(
       `SELECT r.id AS registration_id, r.student_id, s.name AS student_name, r.program_id,
               p.name AS program_name, p.short_description, r.status, r.holds_seat,
-              r.reservation_expires_at, r.class_id, p.schedule_label, p.schedule_timezone
+              r.reservation_expires_at, r.class_id, p.schedule_label, p.schedule_timezone,
+              p.what_to_bring, p.support_contact,
+              (SELECT ppl.name FROM class_instructors ci
+                 JOIN instructors i ON i.id = ci.instructor_id
+                 JOIN people ppl ON ppl.id = i.person_id
+                WHERE ci.class_id = r.class_id AND ci.role = 'lead' AND ci.removed_at IS NULL
+                LIMIT 1) AS instructor_name
          FROM program_registrations r
          JOIN students s ON s.id = r.student_id
          JOIN programs p ON p.id = r.program_id
@@ -188,6 +197,9 @@ export async function loadFamilyDashboard(personId: string): Promise<FamilyDashb
     class_id: string | null;
     schedule_label: string | null;
     schedule_timezone: string | null;
+    what_to_bring: string | null;
+    support_contact: string | null;
+    instructor_name: string | null;
   }[];
 
   const registrationIds = registrations.map((r) => r.registration_id);
@@ -213,6 +225,9 @@ export async function loadFamilyDashboard(personId: string): Promise<FamilyDashb
       scheduleLabel: r.schedule_label,
       timezone: r.schedule_timezone,
       missingRequirements: missingByRegistration.get(r.registration_id) ?? 0,
+      whatToBring: r.what_to_bring,
+      supportContact: r.support_contact,
+      instructorName: r.instructor_name,
       nextSession: r.class_id ? (nextSessionByClass.get(r.class_id) ?? null) : null,
     }));
 
@@ -843,6 +858,7 @@ export interface StudentProgramHome {
   instructorName: string | null;
   location: string | null;
   timezone: string | null;
+  supportContact: string | null;
   nextSession: StudentSessionRow | null;
   sessions: StudentSessionRow[];
   sessionsAttended: number;
@@ -867,6 +883,7 @@ export async function loadStudentProgramHome(
     .prepare(
       `SELECT r.id, r.student_id, r.program_id, p.name AS program_name, p.short_description,
               p.long_description, p.what_to_bring, r.status, r.class_id, p.schedule_timezone, c.location,
+              p.support_contact,
               (SELECT ppl.name FROM class_instructors ci
                  JOIN instructors i ON i.id = ci.instructor_id
                  JOIN people ppl ON ppl.id = i.person_id
@@ -891,6 +908,7 @@ export async function loadStudentProgramHome(
         class_id: string | null;
         schedule_timezone: string | null;
         location: string | null;
+        support_contact: string | null;
         instructor_name: string | null;
       }
     | undefined;
@@ -959,6 +977,7 @@ export async function loadStudentProgramHome(
     instructorName: reg.instructor_name,
     location: reg.location,
     timezone: reg.schedule_timezone,
+    supportContact: reg.support_contact,
     nextSession,
     sessions: mapped,
     sessionsAttended,

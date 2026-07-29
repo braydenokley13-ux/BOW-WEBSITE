@@ -49,6 +49,7 @@ interface ProgramRow {
   confirmation_message: string | null;
   next_steps_message: string | null;
   support_contact: string | null;
+  what_to_bring: string | null;
   completion_min_attendance: number | null;
   completion_requires_instructor: boolean;
   completion_requires_admin: boolean;
@@ -91,7 +92,7 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
         action={
           <div style={{ display: "flex", gap: 8 }}>
             <DuplicateSetupButton sourceProgramId={id} programName={program.name} />
-            <Link href={`/app/programs/${id}/enrollment`} className="bow-button bow-button--secondary bow-button--sm">
+            <Link href={`/app/programs/${id}/enrollment`} className="bow-button bow-button-secondary bow-button-sm">
               Enrollment
             </Link>
           </div>
@@ -196,7 +197,7 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
             </label>
           </div>
           <div>
-            <button type="submit" className="bow-button bow-button--primary bow-button--sm">
+            <button type="submit" className="bow-button bow-button-primary bow-button-md">
               Save basics
             </button>
           </div>
@@ -232,7 +233,7 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
             <input type="time" name="sessionEndTime" defaultValue={program.schedule_end_time ?? ""} style={inputStyle} />
           </label>
           <div style={{ gridColumn: "1 / -1" }}>
-            <button type="submit" className="bow-button bow-button--primary bow-button--sm">
+            <button type="submit" className="bow-button bow-button-primary bow-button-md">
               Save schedule
             </button>
           </div>
@@ -260,7 +261,7 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
             <input type="date" name="registrationDeadline" defaultValue={program.registration_deadline ?? ""} style={inputStyle} />
           </label>
           <div style={{ gridColumn: "1 / -1" }}>
-            <button type="submit" className="bow-button bow-button--primary bow-button--sm">
+            <button type="submit" className="bow-button bow-button-primary bow-button-md">
               Save capacity
             </button>
           </div>
@@ -305,7 +306,7 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
             <input type="number" name="reservationHours" defaultValue={program.reservation_hours} style={inputStyle} />
           </label>
           <div style={{ gridColumn: "1 / -1" }}>
-            <button type="submit" className="bow-button bow-button--primary bow-button--sm">
+            <button type="submit" className="bow-button bow-button-primary bow-button-md">
               Save registration
             </button>
           </div>
@@ -333,7 +334,7 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
             <input type="number" name="waitlistOfferHours" defaultValue={program.waitlist_offer_hours} style={inputStyle} />
           </label>
           <div style={{ gridColumn: "1 / -1" }}>
-            <button type="submit" className="bow-button bow-button--primary bow-button--sm">
+            <button type="submit" className="bow-button bow-button-primary bow-button-md">
               Save waitlist
             </button>
           </div>
@@ -360,8 +361,18 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
             Support contact
             <input name="supportContact" defaultValue={program.support_contact ?? ""} style={inputStyle} />
           </label>
+          <label style={fieldLabel}>
+            What to bring
+            <textarea
+              name="whatToBring"
+              defaultValue={program.what_to_bring ?? ""}
+              rows={2}
+              style={inputStyle}
+              placeholder="e.g. Cleats, shin guards, a water bottle"
+            />
+          </label>
           <div>
-            <button type="submit" className="bow-button bow-button--primary bow-button--sm">
+            <button type="submit" className="bow-button bow-button-primary bow-button-md">
               Save communication
             </button>
           </div>
@@ -393,7 +404,7 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
             <input type="checkbox" name="feedbackEnabled" defaultChecked={program.feedback_enabled} /> Collect feedback
           </label>
           <div style={{ gridColumn: "1 / -1" }}>
-            <button type="submit" className="bow-button bow-button--primary bow-button--sm">
+            <button type="submit" className="bow-button bow-button-primary bow-button-md">
               Save completion
             </button>
           </div>

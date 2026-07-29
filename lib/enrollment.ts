@@ -467,6 +467,17 @@ export async function decideSeat(options: {
    */
   createdVia?: "family" | "admin" | "import";
   createdByUserId?: string | null;
+  /**
+   * Suppress the standard "here is what happened to your registration"
+   * message. Only a caller that sends its own, more accurate message may set
+   * this — today that is the program transfer, where the outcome the family
+   * needs is "the move to the new program succeeded, and here is the resulting
+   * status", not two separate messages about one event.
+   *
+   * This suppresses the announcement only. The registration, the audit event,
+   * and the capacity write all still happen exactly as they otherwise would.
+   */
+  announce?: boolean;
   now: number;
 }): Promise<ChildSelectionResult> {
   const db = getDb();
@@ -665,18 +676,20 @@ export async function decideSeat(options: {
           : "waitlisted";
 
   const message = announcement[outcome];
-  await recordNotification({
-    personId: guardianPersonId,
-    studentId,
-    programId: program.id,
-    registrationId,
-    kind: message.kind,
-    title: message.title,
-    body: message.body,
-    urgency: message.urgency,
-    actionLabel: outcome === "seat_reserved" ? "Complete requirements" : "View registration",
-    actionHref: "/family",
-  });
+  if (options.announce !== false) {
+    await recordNotification({
+      personId: guardianPersonId,
+      studentId,
+      programId: program.id,
+      registrationId,
+      kind: message.kind,
+      title: message.title,
+      body: message.body,
+      urgency: message.urgency,
+      actionLabel: outcome === "seat_reserved" ? "Complete requirements" : "View registration",
+      actionHref: "/family",
+    });
+  }
 
   return {
     ...base,
