@@ -14,12 +14,31 @@
  * DB in this container — this script is correct by construction and
  * validated locally against zod + validateLessonDoc before any DB write, so
  * a bad doc fails loudly before touching the database either way.
+ *
+ * Local/CI only: refuses to run against a non-loopback database host unless
+ * ALLOW_REMOTE_DB_SETUP=1, matching scripts/seed-dev.ts's guard.
  * ============================================================ */
 
 import { randomUUID, createHash } from "node:crypto";
 import { sqlLearn } from "../lib/db-sql";
 import { LessonDocSchema, type LessonDoc } from "../lib/learn/schema";
 import { validateLessonDoc } from "../lib/learn/validate";
+
+function assertLocal(): void {
+  if (process.env.ALLOW_REMOTE_DB_SETUP === "1") return;
+  const raw = (process.env.POSTGRES_URL ?? process.env.DATABASE_URL ?? "").trim();
+  let host = "";
+  try {
+    host = raw ? new URL(raw).hostname : "";
+  } catch {
+    /* non-URL DSNs fall through */
+  }
+  if (!(host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "")) {
+    throw new Error(
+      `[seed-learn-demo] Refusing to seed non-local host "${host}". Set ALLOW_REMOTE_DB_SETUP=1 if certain.`,
+    );
+  }
+}
 
 const doc: LessonDoc = {
   schemaVersion: 1,
@@ -516,6 +535,7 @@ const stage6Doc: LessonDoc = {
 };
 
 async function main() {
+  assertLocal();
   // Validate before touching the DB — correct by construction.
   const parsed = LessonDocSchema.parse(doc);
   const validation = validateLessonDoc(parsed);
