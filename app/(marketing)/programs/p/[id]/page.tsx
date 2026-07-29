@@ -1,18 +1,47 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { Badge, Button, SectionHeader } from "@/components/ds";
-import { getPublicProgramDetail } from "@/lib/program-discovery";
+import { Badge, Button } from "@/components/ds";
+import ContentNotice from "@/components/site/ContentNotice";
+import FaqList from "@/components/site/FaqList";
+import SectionRenderer from "@/components/site/sections/SectionRenderer";
+import { Paragraphs } from "@/components/site/sections/shell";
+import { formatDeliveryFormat } from "@/components/site/OfferingCard";
+import { getProgramForPreview, getPublicProgramBySlug, type PublicProgram } from "@/lib/cms/offerings";
+import { getFaqsForScope, getGlobalSettings, getPageDocument, type PageDocument, type SiteFaq } from "@/lib/cms/read";
+import { contentMetadata } from "@/lib/cms/metadata";
+import { describe, notice, type ContentNotice as Notice } from "@/lib/cms/errors";
+import { previewEnabled, staffDiagnosticsEnabled } from "@/lib/cms/preview";
+import { REGISTRATION_STATUS_LABELS } from "@/lib/cms/status";
+import { DEFAULT_GLOBAL_SETTINGS, type GlobalSettingsData } from "@/lib/cms/sections";
 
-// getPublicProgramDetail() reads from the database; must not run at build time.
+/**
+ * A program's public page.
+ *
+ * Every fact on it — grades, format, dates, price, what students do, what the
+ * button says — is a field on the program record, edited at
+ * /app/website/programs. The call to action is derived from the program's
+ * registration status rather than written by hand, so the words and the
+ * behaviour cannot disagree.
+ *
+ * The `[id]` segment accepts either the founder-set public slug or the
+ * program's internal id, so links shared before slugs existed keep working.
+ */
+
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const program = await getPublicProgramDetail(id);
-  return {
-    title: program ? `${program.name} — BOW Sports Capital` : "Program",
-    description: program?.shortDescription ?? "A BOW Sports Capital program.",
-  };
+  try {
+    const program = await getPublicProgramBySlug(id);
+    if (!program) return contentMetadata(null, { title: "Program", noindex: true });
+    return contentMetadata(`program-${program.slug}`, {
+      title: program.seoTitle || program.title,
+      description: program.seoDescription || program.shortDescription,
+      imageUrl: program.socialImageUrl || program.imageUrl,
+      path: `/programs/p/${program.slug}`,
+    });
+  } catch {
+    return contentMetadata(null, { title: "Program", noindex: true });
+  }
 }
 
 function formatDate(value: string | null): string | null {
@@ -21,8 +50,6 @@ function formatDate(value: string | null): string | null {
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
-
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function formatTime(value: string | null): string | null {
   if (!value) return null;
@@ -34,192 +61,194 @@ function formatTime(value: string | null): string | null {
   return `${display}${minuteStr && minuteStr !== "00" ? `:${minuteStr}` : ""} ${suffix}`;
 }
 
-function deliveryLabel(format: string | null): string {
-  if (format === "online") return "Live online";
-  if (format === "in_person") return "In person";
-  if (format === "hybrid") return "In person and online";
-  return "Format to be announced";
+type Loaded =
+  | { ok: true; program: PublicProgram; document: PageDocument | null; faqs: SiteFaq[]; settings: GlobalSettingsData }
+  | { ok: false; notice: Notice };
+
+async function loadProgram(idOrSlug: string): Promise<Loaded> {
+  const staff = await staffDiagnosticsEnabled();
+  const preview = await previewEnabled();
+  try {
+    const program = preview ? await getProgramForPreview(idOrSlug) : await getPublicProgramBySlug(idOrSlug);
+    if (!program) {
+      return { ok: false, notice: notice("program_not_found", { staff, detail: `program "${idOrSlug}"` }) };
+    }
+    const [document, faqs, settings] = await Promise.all([
+      getPageDocument(`program-${program.slug}`, { preview }),
+      getFaqsForScope("program", program.slug),
+      getGlobalSettings({ preview }).catch(() => DEFAULT_GLOBAL_SETTINGS),
+    ]);
+    return { ok: true, program, document, faqs, settings };
+  } catch (error) {
+    return { ok: false, notice: describe(error, { staff }) };
+  }
 }
 
-const NEXT_STEPS: Record<string, string[]> = {
-  immediate: [
-    "Submit the registration form for your student.",
-    "If a seat is open, it's confirmed right away — no separate approval step.",
-    "You'll get an email confirming the registration and, if any forms are still needed, what to complete before the start date.",
-    "An account activation email follows so you can check status and complete any remaining steps online.",
-  ],
-  approval: [
-    "Submit the registration form for your student.",
-    "BOW's team reviews the registration — this is normal for this program and not a sign of a problem.",
-    "You'll get an email with the result: confirmed, waitlisted, or a request for more information.",
-    "An account activation email follows so you can check status online.",
-  ],
-};
+/** The facts panel — everything a family needs before deciding, in one grid. */
+function programFacts(program: PublicProgram): { label: string; value: string }[] {
+  const facts: { label: string; value: string }[] = [];
+  if (program.gradeRange) facts.push({ label: "Grades", value: program.gradeRange });
+  if (program.audience) facts.push({ label: "Who it\u2019s for", value: program.audience });
+  if (program.deliveryFormat) facts.push({ label: "Format", value: formatDeliveryFormat(program.deliveryFormat) });
+  if (program.locationLabel) facts.push({ label: "Where", value: program.locationLabel });
+
+  const start = formatDate(program.startDate);
+  const end = formatDate(program.endDate);
+  if (start) facts.push({ label: "Dates", value: end && end !== start ? `${start} \u2013 ${end}` : start });
+  if (program.scheduleLabel) facts.push({ label: "Schedule", value: program.scheduleLabel });
+
+  const startTime = formatTime(program.startTime);
+  const endTime = formatTime(program.endTime);
+  if (startTime) {
+    facts.push({
+      label: "Time",
+      value: [endTime ? `${startTime} \u2013 ${endTime}` : startTime, program.timezone].filter(Boolean).join(" "),
+    });
+  }
+  if (program.sessionCount) {
+    facts.push({
+      label: "Sessions",
+      value: program.sessionLengthMinutes
+        ? `${program.sessionCount} sessions \u00b7 ${program.sessionLengthMinutes} min each`
+        : `${program.sessionCount} sessions`,
+    });
+  }
+  if (program.isFree) facts.push({ label: "Cost", value: program.priceNote || "Free" });
+  else if (program.priceLabel) facts.push({ label: "Cost", value: [program.priceLabel, program.priceNote].filter(Boolean).join(" \u00b7 ") });
+  if (program.capacity !== null) {
+    facts.push({
+      label: "Capacity",
+      value: program.seatsRemaining !== null && program.registrationStatus === "registration_open"
+        ? `${program.capacity} students \u00b7 ${program.seatsRemaining} left`
+        : `${program.capacity} students`,
+    });
+  }
+  return facts;
+}
 
 export default async function PublicProgramPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const program = await getPublicProgramDetail(id);
-  if (!program) notFound();
+  const result = await loadProgram(id);
 
-  const badgeStatus = program.availability === "registration_open" || program.availability === "limited_seats"
-    ? "positive"
-    : program.availability === "registration_closed"
-      ? "neutral"
-      : "info";
-
-  const canRegister = program.availability !== "coming_soon" && program.availability !== "registration_closed";
-  const scheduleDayLabel = program.scheduleDay != null ? WEEKDAYS[program.scheduleDay] : null;
-  const scheduleTime = program.scheduleStartTime ? formatTime(program.scheduleStartTime) : null;
-  const scheduleEndTime = program.scheduleEndTime ? formatTime(program.scheduleEndTime) : null;
+  if (!result.ok) return <ContentNotice notice={result.notice} />;
+  const { program, document, faqs, settings } = result;
+  const facts = programFacts(program);
+  const { cta } = program;
 
   return (
-    <div data-screen-label="Public Program Detail">
-      <section style={{ background: "var(--bow-ink)", color: "#fff", padding: "clamp(40px,6vw,72px) clamp(18px,4vw,40px) clamp(28px,4vw,44px)" }}>
-        <div className="bow-container" style={{ maxWidth: 760 }}>
-          <Link href="/programs/find" style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "#b9bcc4" }}>
-            ← Find a Program
+    <div id="main" data-screen-label={program.title}>
+      <section className="bow-section bow-section-paper" style={{ borderBottom: "1px solid var(--border-rule)" }}>
+        <div className="bow-container">
+          <Link href="/programs" style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
+            ← All Programs
           </Link>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 16 }}>
-            <Badge status={badgeStatus}>{program.availabilityLabel}</Badge>
-            {program.availability === "limited_seats" && program.seatsRemaining != null && (
-              <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--bow-orange)" }}>
-                {program.seatsRemaining} {program.seatsRemaining === 1 ? "spot" : "spots"} left
-              </span>
-            )}
+          <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Badge
+              status={
+                program.registrationStatus === "registration_open"
+                  ? "positive"
+                  : program.registrationStatus === "full"
+                    ? "warning"
+                    : "info"
+              }
+            >
+              {REGISTRATION_STATUS_LABELS[program.registrationStatus]}
+            </Badge>
+            {program.trackSlug ? (
+              <Link href={`/programs/${program.trackSlug}`} className="bow-cta-link">
+                See the curriculum
+              </Link>
+            ) : null}
           </div>
-          <h1 style={{ margin: "12px 0 0", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(30px,5vw,52px)", lineHeight: 0.98, letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-            {program.name}
+          <h1
+            style={{
+              margin: "14px 0 0",
+              fontFamily: "var(--font-editorial)",
+              fontWeight: 600,
+              fontSize: "clamp(32px,4.6vw,60px)",
+              lineHeight: 1,
+              letterSpacing: "-0.015em",
+              maxWidth: "20ch",
+              textWrap: "balance",
+            }}
+          >
+            {program.title}
           </h1>
-          {program.shortDescription && (
-            <p style={{ margin: "16px 0 0", fontFamily: "var(--font-interface)", fontSize: "clamp(15px,1.3vw,19px)", lineHeight: 1.6, color: "#b9bcc4", maxWidth: 620 }}>
-              {program.shortDescription}
+          {program.shortDescription ? (
+            <Paragraphs text={program.shortDescription} className="bow-lead" style={{ marginTop: "var(--space-6)", maxWidth: "56ch" }} />
+          ) : null}
+
+          <div className="bow-actions" style={{ marginTop: "var(--space-8)" }}>
+            {cta.behavior === "disabled" ? (
+              <Button variant="secondary" size="lg" disabled>{cta.label}</Button>
+            ) : cta.href ? (
+              <Button href={cta.href} variant={cta.behavior === "register" ? "primary" : "secondary"} size="lg">
+                {cta.label}
+              </Button>
+            ) : null}
+            {cta.secondary ? (
+              <Button href={cta.secondary.href} variant="secondary" size="lg">{cta.secondary.label}</Button>
+            ) : null}
+          </div>
+          {cta.explanation ? (
+            <p style={{ margin: "14px 0 0", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "var(--text-secondary)", maxWidth: "60ch" }}>
+              {cta.explanation}
             </p>
-          )}
-          {canRegister ? (
-            <div style={{ marginTop: 24 }}>
-              <Button href={`/programs/register?program=${program.id}`} variant="primary" size="lg">Register now</Button>
-            </div>
-          ) : program.availability === "coming_soon" ? (
-            <div style={{ marginTop: 24 }}>
-              <Button href="/sign-up" variant="secondary" size="lg">Join the interest list</Button>
-            </div>
           ) : null}
         </div>
       </section>
 
-      <section style={{ background: "var(--bow-paper)", padding: "clamp(32px,5vw,56px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
-        <div className="bow-container" style={{ maxWidth: 760, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
-          <Fact label="Grades" value={program.gradeRangeLabel} />
-          <Fact label="Format" value={deliveryLabel(program.deliveryFormat)} />
-          <Fact label="Location" value={program.location ?? (program.deliveryFormat === "online" ? "Online" : "To be announced")} />
-          <Fact label="Starts" value={formatDate(program.startDate) ?? "To be announced"} />
-          <Fact label="Timezone" value={program.scheduleTimezone ?? "Not yet set"} />
-        </div>
-      </section>
-
-      <section style={{ background: "#fff", padding: "clamp(32px,5vw,56px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--border-rule)" }}>
-        <div className="bow-container" style={{ maxWidth: 760, display: "flex", flexDirection: "column", gap: 40 }}>
-          <div>
-            <SectionHeader kicker="Overview" title="What students do" style={{ marginBottom: 14 }} />
-            <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.7, color: "var(--text-primary)" }}>
-              {program.longDescription ?? program.shortDescription ?? "Details for this program are still being finalized — check back soon or contact BOW directly."}
-            </p>
-          </div>
-
-          <div>
-            <SectionHeader kicker="Outcomes" title="What students learn" style={{ marginBottom: 14 }} />
-            <ul style={{ margin: 0, paddingLeft: 20, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.8, color: "var(--text-primary)" }}>
-              <li>Core concepts from the BOW curriculum applied to real sports-business scenarios.</li>
-              <li>Direct practice through the program&apos;s sessions, not just lecture.</li>
-              <li>A concrete outcome to show for the program — a project, a decision, or a completed track.</li>
-            </ul>
-          </div>
-
-          <div>
-            <SectionHeader kicker="Fit" title="Who this is for" style={{ marginBottom: 14 }} />
-            <ul style={{ margin: 0, paddingLeft: 20, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.8, color: "var(--text-primary)" }}>
-              <li>Grades: {program.gradeRangeLabel}</li>
-              <li>Experience level: {program.experienceLevel ?? "No prior experience required"}</li>
-              <li>Commitment: {program.scheduleLabel ?? "See the schedule below"}</li>
-              <li>New to BOW is welcome — no assumed background beyond the stated grade range.</li>
-            </ul>
-          </div>
-
-          <div>
-            <SectionHeader kicker="Schedule" title="When it meets" style={{ marginBottom: 14 }} />
-            {scheduleDayLabel || scheduleTime ? (
-              <p style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--text-primary)" }}>
-                {scheduleDayLabel ?? "Recurring"}{scheduleTime ? `, ${scheduleTime}${scheduleEndTime ? `–${scheduleEndTime}` : ""}` : ""}
-                {program.scheduleTimezone ? ` (${program.scheduleTimezone})` : ""}
-              </p>
-            ) : (
-              <p style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)" }}>
-                A weekly schedule hasn&apos;t been published yet.
-              </p>
-            )}
-            {program.upcomingSessions.length > 0 && (
-              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
-                {program.upcomingSessions.map((session) => (
-                  <li key={session.date} style={{ fontFamily: "var(--font-data)", fontSize: 13, color: "var(--bow-slate)", display: "flex", gap: 10 }}>
-                    <span>{formatDate(session.date)}</span>
-                    {session.title && <span>— {session.title}</span>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {program.instructors.length > 0 && (
-            <div>
-              <SectionHeader kicker="Staff" title="Who's teaching" style={{ marginBottom: 14 }} />
-              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
-                {program.instructors.map((instructor) => (
-                  <li key={`${instructor.name}-${instructor.role}`} style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--text-primary)" }}>
-                    <strong>{instructor.name}</strong> — {instructor.role}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {program.requirements.length > 0 && (
-            <div>
-              <SectionHeader kicker="Before You Start" title="What we'll ask for" style={{ marginBottom: 14 }} />
-              <ul style={{ margin: 0, paddingLeft: 20, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.8, color: "var(--text-primary)" }}>
-                {program.requirements.map((req) => (
-                  <li key={req.prompt}>
-                    {req.prompt}{req.required ? "" : " (optional)"}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div>
-            <SectionHeader kicker="Process" title="What happens next" style={{ marginBottom: 14 }} />
-            <ol style={{ margin: 0, paddingLeft: 20, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.9, color: "var(--text-primary)" }}>
-              {(NEXT_STEPS[program.registrationMode] ?? NEXT_STEPS.immediate).map((step) => (
-                <li key={step}>{step}</li>
+      {facts.length > 0 ? (
+        <section className="bow-section bow-section-tight">
+          <div className="bow-container">
+            <div className="bow-grid bow-grid-ruled" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+              {facts.map((fact) => (
+                <div key={fact.label} style={{ background: "var(--bow-white)", padding: "20px 18px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span className="bow-eyebrow-data" style={{ color: "var(--text-secondary)" }}>{fact.label}</span>
+                  <span style={{ fontFamily: "var(--font-interface)", fontWeight: "var(--fw-semibold)", fontSize: "var(--type-body)" }}>{fact.value}</span>
+                </div>
               ))}
-            </ol>
-          </div>
-
-          {canRegister && (
-            <div>
-              <Button href={`/programs/register?program=${program.id}`} variant="primary" size="lg">Register now</Button>
             </div>
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
+          </div>
+        </section>
+      ) : null}
 
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--bow-slate)" }}>{label}</div>
-      <div style={{ fontFamily: "var(--font-interface)", fontSize: 15, fontWeight: 600, color: "var(--text-primary)", marginTop: 4 }}>{value}</div>
+      {[
+        { heading: "About this program", body: program.longDescription },
+        { heading: "What you’ll cover", body: program.curriculumSummary },
+        { heading: "What students take away", body: program.learningGoals },
+        { heading: "What a session looks like", body: program.studentExperience },
+      ]
+        .filter((block) => block.body.trim())
+        .map((block, index) => (
+          <section key={block.heading} className={index % 2 === 0 ? "bow-section" : "bow-section bow-section-paper"}>
+            <div className="bow-container">
+              <div className="bow-section-intro bow-section-intro-wide" style={{ marginBottom: 0 }}>
+                <h2 className="bow-headline">{block.heading}</h2>
+                <Paragraphs text={block.body} className="bow-lead" />
+              </div>
+            </div>
+          </section>
+        ))}
+
+      {document && document.sections.length > 0 ? (
+        <SectionRenderer
+          sections={document.sections}
+          context={{ pageSlug: document.slug, defaultEmptyStateText: settings.defaultEmptyStateText }}
+        />
+      ) : null}
+
+      {faqs.length > 0 ? (
+        <section className="bow-section bow-section-paper">
+          <div className="bow-container">
+            <div className="bow-section-intro" style={{ marginBottom: "clamp(28px,3.5vw,44px)" }}>
+              <span className="bow-eyebrow" style={{ color: "var(--bow-blue)" }}>FAQ</span>
+              <h2 className="bow-display">About this program</h2>
+            </div>
+            <FaqList items={faqs.map((faq) => ({ id: faq.id, q: faq.question, a: faq.answer }))} />
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

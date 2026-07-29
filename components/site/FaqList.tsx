@@ -1,9 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import type { Faq } from "@/lib/home";
 
-export default function FaqList({ items }: { items: Faq[] }) {
+/** A published question and answer, as stored in `site_faqs`. */
+export interface FaqListItem {
+  id: string;
+  q: string;
+  a: string;
+}
+
+export default function FaqList({ items }: { items: FaqListItem[] }) {
   const [open, setOpen] = useState<string | null>(null);
   return (
     <div style={{ borderTop: "1px solid var(--border-rule)" }}>

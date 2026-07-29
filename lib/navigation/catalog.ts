@@ -81,6 +81,11 @@ export function buildNavCatalog(): NavEntry[] {
     }),
     link("work", "Work", "/app/tasks", STAFF),
 
+    // The public website. Admin-only: publishing changes what every visitor
+    // reads, so it sits with the founder's own controls rather than with the
+    // shared staff workflows above.
+    link("website", "Website", "/app/website", ["admin"]),
+
     // Platform administration remains available without competing visually
     // with the canonical BOW HQ workflows. Growth staff never see this group.
     {

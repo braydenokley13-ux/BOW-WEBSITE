@@ -12,7 +12,6 @@ import { getDb } from "@/lib/db";
 import { classStaffingRecommendationFingerprint } from "@/lib/operational-decisions";
 import { canonicalDateInZone, isValidTimeZone } from "@/lib/timezone";
 import {
-  derivePublicStatus,
   formatLabel,
   type DeliveryFormat,
   type Location,
@@ -726,90 +725,14 @@ export async function listPrograms(): Promise<ProgramSummary[]> {
 /* No partner/staffing/readiness data crosses into these DTOs.           */
 /* ===================================================================== */
 
-export interface PublicProgramCard {
-  id: string;
-  name: string;
-  shortDescription: string | null;
-  gradeRange: string | null;
-  deliveryFormat: DeliveryFormat;
-  imageUrl: string | null;
-  status: PublicProgramStatus;
-  nextSessionDate: string | null;
-  startDate: string | null;
-  endDate: string | null;
-  capacity: number | null;
-  registeredCount: number;
-  registrationDeadline: string | null;
-  registrationMode: Program["registrationMode"];
-  fullCapacityBehavior: Program["fullCapacityBehavior"];
-  primaryClassId: string | null;
-  curriculumTitle: string | null;
-}
-
-export interface PublicProgramDetail extends PublicProgramCard {
-  longDescription: string | null;
-}
-
-async function publicProgramRows(): Promise<any[]> {
-  const db = getDb();
-  return (await db.prepare(
-        `SELECT
-        p.*,
-        (SELECT c.id FROM classes c
-          WHERE c.program_id = p.id AND c.status NOT IN ('completed', 'cancelled')
-          ORDER BY c.created_at LIMIT 1) AS primary_class_id,
-        (SELECT MIN(cs.session_date) FROM class_sessions cs
-          JOIN classes c ON c.id = cs.class_id
-          WHERE c.program_id = p.id AND cs.session_date >= ?) AS next_session_date,
-        (SELECT COUNT(*) FROM class_enrollments ce
-          JOIN students s ON s.id = ce.student_id
-          WHERE ce.class_id = (SELECT c.id FROM classes c
-                                 WHERE c.program_id = p.id AND c.status NOT IN ('completed', 'cancelled')
-                                 ORDER BY c.created_at LIMIT 1)
-            AND ce.status = 'enrolled' AND s.enrollment_status = 'active') AS registered_count,
-        (SELECT cur.title FROM curricula cur WHERE cur.id = p.curriculum_id) AS curriculum_title
-      FROM programs p
-      WHERE p.is_public = true
-      ORDER BY next_session_date ASC NULLS LAST, p.updated_at DESC`,
-      ).all(Date.now())) as any[];
-}
-
-function toPublicCard(row: any): PublicProgramCard {
-  const program = mapProgram(row);
-  const registeredCount = Number(row.registered_count) || 0;
-  const status = derivePublicStatus(program, registeredCount);
-  return {
-    id: program.id,
-    name: program.name,
-    shortDescription: program.shortDescription,
-    gradeRange: program.gradeRange,
-    deliveryFormat: program.deliveryFormat,
-    imageUrl: program.imageUrl,
-    status: status ?? "closed",
-    nextSessionDate: row.next_session_date
-      ? new Date(Number(row.next_session_date)).toISOString().slice(0, 10)
-      : null,
-    startDate: program.startDate,
-    endDate: program.endDate,
-    capacity: program.capacity,
-    registeredCount,
-    registrationDeadline: program.registrationDeadline,
-    registrationMode: program.registrationMode,
-    fullCapacityBehavior: program.fullCapacityBehavior,
-    primaryClassId: row.primary_class_id ?? null,
-    curriculumTitle: row.curriculum_title ?? null,
-  };
-}
-
-/**
- * Upcoming/open/coming-soon public Programs, for the public /programs page
- * and homepage. Completed Programs are excluded from the primary list —
- * archive treatment is a later concern.
+/*
+ * The public program card/detail read models used to live here. They are gone:
+ * lib/cms/offerings.ts is now the single source of truth for what a visitor
+ * sees about a program, because it reads the founder-edited public columns and
+ * derives the call to action from `registration_status` rather than guessing.
+ * Keeping a second reader alive would have meant two places deciding what a
+ * "full" program's button says.
  */
-export async function listPublicPrograms(): Promise<PublicProgramCard[]> {
-  const rows = (await publicProgramRows());
-  return rows.map(toPublicCard).filter((card) => card.status !== "closed");
-}
 
 export interface ProgramRegistrationRow {
   id: string;
@@ -850,32 +773,6 @@ export async function listPendingProgramRegistrations(programId: string): Promis
     referralSource: row.referral_source ?? null,
     createdAt: Number(row.created_at),
   }));
-}
-
-export async function getPublicProgram(id: string): Promise<PublicProgramDetail | null> {
-  const db = getDb();
-  const row = (await db.prepare(
-        `SELECT
-        p.*,
-        (SELECT c.id FROM classes c
-          WHERE c.program_id = p.id AND c.status NOT IN ('completed', 'cancelled')
-          ORDER BY c.created_at LIMIT 1) AS primary_class_id,
-        (SELECT MIN(cs.session_date) FROM class_sessions cs
-          JOIN classes c ON c.id = cs.class_id
-          WHERE c.program_id = p.id AND cs.session_date >= ?) AS next_session_date,
-        (SELECT COUNT(*) FROM class_enrollments ce
-          JOIN students s ON s.id = ce.student_id
-          WHERE ce.class_id = (SELECT c.id FROM classes c
-                                 WHERE c.program_id = p.id AND c.status NOT IN ('completed', 'cancelled')
-                                 ORDER BY c.created_at LIMIT 1)
-            AND ce.status = 'enrolled' AND s.enrollment_status = 'active') AS registered_count,
-        (SELECT cur.title FROM curricula cur WHERE cur.id = p.curriculum_id) AS curriculum_title
-      FROM programs p
-      WHERE p.id = ? AND p.is_public = true`,
-      ).get(Date.now(), id)) as any | undefined;
-  if (!row) return null;
-  const card = toPublicCard(row);
-  return { ...card, longDescription: row.long_description ?? null };
 }
 
 function recommendationScore(

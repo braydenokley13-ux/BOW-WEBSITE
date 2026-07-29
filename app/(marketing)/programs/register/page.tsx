@@ -1,15 +1,23 @@
-import Link from "next/link";
-import { SectionHeader } from "@/components/ds";
+import ContentPage from "@/components/site/ContentPage";
+import ContentNotice from "@/components/site/ContentNotice";
 import FamilyRegistrationWizard from "@/components/site/programs/FamilyRegistrationWizard";
 import { listRegisterablePrograms } from "@/lib/program-discovery";
+import { contentMetadata } from "@/lib/cms/metadata";
+import { describe, notice } from "@/lib/cms/errors";
+import { staffDiagnosticsEnabled } from "@/lib/cms/preview";
 
-export const metadata = {
-  title: "Register",
-  description: "Register one or more children for BOW Sports Capital programs in a single form.",
-};
-
-// listRegisterablePrograms() reads from the database; must not run at build time.
+/**
+ * Family registration — one form covering every child and every program.
+ *
+ * The instructions above the wizard are content (slug `programs-register`).
+ * When nothing is open for registration the page says so plainly instead of
+ * showing a wizard with an empty program list.
+ */
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata() {
+  return contentMetadata("programs-register", { path: "/programs/register" });
+}
 
 export default async function FamilyRegistrationPage({
   searchParams,
@@ -17,24 +25,39 @@ export default async function FamilyRegistrationPage({
   searchParams: Promise<{ program?: string }>;
 }) {
   const { program } = await searchParams;
-  const programs = await listRegisterablePrograms();
-  const preselectedProgramId = program && programs.some((p) => p.id === program) ? program : null;
+  return <ContentPage slug="programs-register" screenLabel="Family Registration" extras={<Wizard preselect={program} />} />;
+}
+
+async function Wizard({ preselect }: { preselect?: string }) {
+  const staff = await staffDiagnosticsEnabled();
+  const result = await loadRegisterablePrograms();
 
   return (
-    <div data-screen-label="Family Registration">
-      <section style={{ background: "var(--bow-paper)", padding: "clamp(36px,6vw,64px) clamp(18px,4vw,40px)" }}>
-        <div className="bow-container" style={{ maxWidth: 720 }}>
-          <Link href="/programs" style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
-            ← All Programs
-          </Link>
-          <SectionHeader kicker="Registration" title="Register your family" style={{ margin: "16px 0 8px" }} />
-          <p style={{ margin: "0 0 28px", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "var(--bow-slate)" }}>
-            Add every child you&apos;re registering and the programs each one is joining. No account is required —
-            one submission covers your whole family.
-          </p>
-          <FamilyRegistrationWizard programs={programs} preselectedProgramId={preselectedProgramId} />
-        </div>
-      </section>
-    </div>
+    <section style={{ background: "var(--bow-paper)", padding: "clamp(24px,4vw,48px) clamp(18px,4vw,40px) clamp(36px,6vw,64px)" }}>
+      <div className="bow-container" style={{ maxWidth: 720 }}>
+        {!result.ok ? (
+          <ContentNotice notice={describe(result.error, { staff })} compact />
+        ) : result.programs.length === 0 ? (
+          <ContentNotice notice={notice("no_programs_available", { staff })} compact />
+        ) : (
+          <FamilyRegistrationWizard
+            programs={result.programs}
+            preselectedProgramId={preselect && result.programs.some((p) => p.id === preselect) ? preselect : null}
+          />
+        )}
+      </div>
+    </section>
   );
+}
+
+type WizardData =
+  | { ok: true; programs: Awaited<ReturnType<typeof listRegisterablePrograms>> }
+  | { ok: false; error: unknown };
+
+async function loadRegisterablePrograms(): Promise<WizardData> {
+  try {
+    return { ok: true, programs: await listRegisterablePrograms() };
+  } catch (error) {
+    return { ok: false, error };
+  }
 }

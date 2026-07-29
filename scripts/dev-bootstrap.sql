@@ -211,6 +211,12 @@ CREATE TABLE IF NOT EXISTS activity (
   created_at bigint
 );
 
+-- These two tables predate the repo's DDL and were recorded here with the
+-- column names an older build used (name/role, title/body). The application
+-- reads student_name/school_name/track_completed and headline/summary/…, which
+-- is what production actually has; migration 024 adds those columns and
+-- backfills from the legacy ones. Keep the legacy columns here so 024's
+-- backfill has something to copy, and add new columns there, not here.
 CREATE TABLE IF NOT EXISTS testimonials (
   id text PRIMARY KEY,
   name text, role text, quote text, active integer NOT NULL DEFAULT 1,
