@@ -3,6 +3,9 @@ import Link from "next/link";
 import ProgramRegistrationForm from "@/components/site/ProgramRegistrationForm";
 import { getPublicProgram } from "@/lib/operations";
 
+// getPublicProgram() reads from the database; must not run at build time.
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const program = await getPublicProgram(id);

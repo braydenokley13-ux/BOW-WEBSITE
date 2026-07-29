@@ -7,6 +7,11 @@ export const metadata = {
   description: "Answer a few short questions and see which BOW Sports Capital programs fit your student.",
 };
 
+// listDiscoveryPrograms() reads live program data from the database; it must
+// not run at build time (no DB access during prerender), so this route is
+// rendered per-request instead of statically.
+export const dynamic = "force-dynamic";
+
 export default async function ProgramFinderPage() {
   const programs = await listDiscoveryPrograms();
 

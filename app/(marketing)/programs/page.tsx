@@ -8,6 +8,9 @@ export const metadata = {
   description: "Real, upcoming BOW Sports Capital programs students can join today — plus the curriculum behind them.",
 };
 
+// listPublicPrograms() reads from the database; must not run at build time.
+export const dynamic = "force-dynamic";
+
 const CURRICULUM_OVERVIEW = [
   { num: "101", title: "Track 101", grades: "Grades 5–6", body: "How a sports business works — money, talent, and the cost of every choice.", href: "/programs/track-101", tone: "var(--bow-blue)" },
   { num: "201", title: "Track 201", grades: "Grades 7–8", body: "Run the front office: cap management, analytics, ownership, and the draft.", href: "/programs/track-201", tone: "var(--bow-orange)" },

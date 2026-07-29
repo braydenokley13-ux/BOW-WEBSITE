@@ -38,6 +38,10 @@ import { getActiveTestimonials } from "@/lib/content";
  *     open instructor call, because that is the only genuine signal.
  * ============================================================ */
 
+// listPublicPrograms() and getActiveTestimonials() read from the database;
+// must not run at build time.
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   // Testimonials are admin-editable and must be real. Only approved rows are
   // shown — no fabricated seed fallback. The section hides itself when empty.

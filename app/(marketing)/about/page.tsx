@@ -9,6 +9,11 @@ export const metadata = {
     "The economics debate was already happening. BOW Sports Capital gave it a front office — a curriculum built around the sports-business decisions students already care about.",
 };
 
+// getActiveTestimonials() reads live testimonial data from the database; it
+// must not run at build time (no DB access during prerender), so this route
+// is rendered per-request instead of statically.
+export const dynamic = "force-dynamic";
+
 export default async function AboutPage() {
   // Only approved, real testimonials — no fabricated seed fallback.
   const testimonials = (await getActiveTestimonials()).map((t) => ({

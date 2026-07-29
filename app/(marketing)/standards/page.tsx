@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
+// getStandardsAlignment() reads from the database; must not run at build time.
+export const dynamic = "force-dynamic";
+
 function StandardsList({ items }: { items: string[] }) {
   if (items.length === 0) return <span style={{ color: "var(--bow-slate)" }}>—</span>;
   return (
