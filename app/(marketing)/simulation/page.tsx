@@ -1,15 +1,14 @@
+import ContentPage from "@/components/site/ContentPage";
 import Simulation from "@/components/site/Simulation";
+import { contentMetadata } from "@/lib/cms/metadata";
 
-export const metadata = {
-  title: "Simulation",
-  description:
-    "Step into the war room. You’re the GM: across three rounds, decide what your young star is really worth — and what you’re willing to give up to win now.",
-};
+/** Framing copy is content (slug `simulation`); the simulation itself is code. */
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata() {
+  return contentMetadata("simulation", { path: "/simulation" });
+}
 
 export default function SimulationPage() {
-  return (
-    <div data-screen-label="Simulation">
-      <Simulation />
-    </div>
-  );
+  return <ContentPage slug="simulation" screenLabel="Simulation" extras={<Simulation />} />;
 }

@@ -1,27 +1,15 @@
-import type { Metadata } from "next";
 import Link from "next/link";
-import { CapLine } from "@/components/ds";
+import ContentPage from "@/components/site/ContentPage";
 import { getStandardsAlignment, buildStandardsHtml, type StandardsEntry } from "@/lib/standards";
 import StandardsDownloadButton from "@/components/site/StandardsDownloadButton";
+import { contentMetadata } from "@/lib/cms/metadata";
 
-const TITLE = "AP Economics Standards Alignment";
-const DESCRIPTION =
-  "How every BOW Sports Capital module maps to specific AP Microeconomics and AP Macroeconomics standards — the document a curriculum committee needs.";
-
-export const metadata: Metadata = {
-  title: TITLE,
-  description: DESCRIPTION,
-  openGraph: {
-    type: "website",
-    title: TITLE,
-    description: DESCRIPTION,
-    url: "/standards",
-  },
-  twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
-};
-
-// getStandardsAlignment() reads from the database; must not run at build time.
+/** Intro copy is content (slug `standards`); the alignment table is live data. */
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata() {
+  return contentMetadata("standards", { path: "/standards" });
+}
 
 function StandardsList({ items }: { items: string[] }) {
   if (items.length === 0) return <span style={{ color: "var(--bow-slate)" }}>—</span>;
@@ -67,54 +55,38 @@ function ModuleCard({ e }: { e: StandardsEntry }) {
   );
 }
 
-export default async function StandardsPage() {
-  const entries = (await getStandardsAlignment());
+export default function StandardsPage() {
+  return <ContentPage slug="standards" screenLabel="Standards Alignment" extras={<Alignment />} />;
+}
+
+async function Alignment() {
+  const entries = await getStandardsAlignment();
   const downloadHtml = buildStandardsHtml(entries);
 
   return (
-    <div data-screen-label="Standards Alignment">
-      {/* HEADER */}
-      <section style={{ background: "var(--bow-ink)", color: "#fff", padding: "clamp(44px,6vw,88px) clamp(18px,4vw,40px)", borderBottom: "1px solid var(--bow-dark-border)" }}>
-        <div className="bow-container-wide">
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--bow-orange)" }}>
-            BOW Sports Capital Curriculum
-          </span>
-          <h1 style={{ margin: "14px 0 0", fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(34px,5vw,64px)", lineHeight: 1.0, letterSpacing: "-0.015em", maxWidth: "18ch", textWrap: "balance" }}>
-            AP Economics Standards Alignment
-          </h1>
-          <p style={{ margin: "20px 0 0", maxWidth: 760, fontFamily: "var(--font-interface)", fontSize: "clamp(16px,1.6vw,19px)", lineHeight: 1.6, color: "#c8cad0" }}>
-            Every BOW module maps to specific AP Microeconomics and AP Macroeconomics standards. This is the document a curriculum committee or partnership team needs to evaluate BOW.
-          </p>
-          <CapLine weight={6} step={14} stepAt={0.42} style={{ maxWidth: 260, marginTop: 28 }} />
+    <section style={{ background: "var(--bow-paper)", padding: "clamp(40px,5vw,72px) clamp(18px,4vw,40px)" }}>
+      <div className="bow-container-wide">
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
+          <StandardsDownloadButton html={downloadHtml} />
         </div>
-      </section>
-
-      {/* MODULES */}
-      <section style={{ background: "var(--bow-paper)", padding: "clamp(40px,5vw,72px) clamp(18px,4vw,40px)" }}>
-        <div className="bow-container-wide">
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
-            <StandardsDownloadButton html={downloadHtml} />
-          </div>
+        {entries.length === 0 ? (
+          <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--bow-slate)" }}>
+            The standards alignment is being prepared. Get in touch and we will send the current version directly.
+          </p>
+        ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {entries.map((e) => (
               <ModuleCard key={e.id} e={e} />
             ))}
           </div>
-
-          {/* STATEMENT */}
-          <div style={{ marginTop: 36, background: "var(--bow-ink)", color: "#fff", borderRadius: 8, padding: "clamp(24px,4vw,40px)" }}>
-            <p style={{ margin: 0, fontFamily: "var(--font-editorial)", fontSize: "clamp(17px,2vw,22px)", lineHeight: 1.5, color: "#e9eaee" }}>
-              BOW Sports Capital is not a sports trivia program. It is an economics education platform that uses sports as the delivery mechanism for concepts that appear on the AP Economics exam. Students who complete both tracks will have been exposed to the majority of AP Micro and AP Macro content — through real decisions, not memorization.
-            </p>
-            <div style={{ marginTop: 22, display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <StandardsDownloadButton html={downloadHtml} />
-              <Link href="/contact" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 26px", border: "1px solid rgba(255,255,255,0.35)", background: "transparent", color: "#fff", borderRadius: 4, textDecoration: "none" }}>
-                Request a Partnership →
-              </Link>
-            </div>
-          </div>
+        )}
+        <div style={{ marginTop: 36, display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <StandardsDownloadButton html={downloadHtml} />
+          <Link href="/contact" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, letterSpacing: "0.05em", textTransform: "uppercase", padding: "13px 26px", border: "1px solid var(--border-rule)", background: "transparent", color: "var(--bow-ink)", borderRadius: 4, textDecoration: "none" }}>
+            Request a Partnership →
+          </Link>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }

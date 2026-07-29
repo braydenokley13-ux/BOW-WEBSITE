@@ -3,15 +3,32 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { NAV, SITE } from "@/lib/site";
 import Button from "@/components/ds/Button";
+import type { NavMenuData } from "@/lib/cms/sections";
+
+/**
+ * Primary navigation.
+ *
+ * Every label, destination, order, and button on this bar comes from the
+ * Navigation document the founder edits in BOW HQ → Website → Navigation. The
+ * component keeps only interaction: the mobile sheet, the escape key, and which
+ * link is marked current.
+ */
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");
 }
 
-export default function Masthead() {
+export default function Masthead({
+  nav,
+  siteName,
+  tagline,
+}: {
+  nav: NavMenuData;
+  siteName: string;
+  tagline: string;
+}) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPath, setMenuPath] = useState(pathname);
@@ -39,34 +56,49 @@ export default function Masthead() {
     };
   }, [menuOpen]);
 
+  const items = nav.items.filter((item) => item.visible && item.label && item.href);
+
   return (
     <header className="bow-masthead">
       <div className="bow-container-wide bow-masthead-bar">
-        <Link href="/" onClick={closeMenu} aria-label={`${SITE.name} home`} className="bow-wordmark">
+        <Link href="/" onClick={closeMenu} aria-label={`${siteName} home`} className="bow-wordmark">
           <span className="bow-wordmark-name">BOW</span>
-          <span className="bow-wordmark-sub">{SITE.tagline}</span>
+          <span className="bow-wordmark-sub">{tagline}</span>
         </Link>
 
         <nav className="bow-nav-desktop" aria-label="Primary">
-          {NAV.map((n) => {
-            const active = isActive(pathname, n.href);
+          {items.map((item) => {
+            const active = isActive(pathname, item.href);
+            const children = item.children.filter((child) => child.visible && child.label && child.href);
             return (
-              <Link
-                key={n.href}
-                href={n.href}
-                className="bow-nav-link"
-                aria-current={active ? "page" : undefined}
-                data-active={active ? "true" : undefined}
-              >
-                {n.label}
-              </Link>
+              <span key={`${item.label}-${item.href}`} className="bow-nav-item">
+                <Link
+                  href={item.href}
+                  className="bow-nav-link"
+                  aria-current={active ? "page" : undefined}
+                  data-active={active ? "true" : undefined}
+                >
+                  {item.label}
+                </Link>
+                {children.length > 0 ? (
+                  <span className="bow-nav-dropdown" role="group" aria-label={`${item.label} links`}>
+                    {children.map((child) => (
+                      <Link key={`${child.label}-${child.href}`} href={child.href} className="bow-nav-dropdown-link">
+                        {child.label}
+                      </Link>
+                    ))}
+                  </span>
+                ) : null}
+              </span>
             );
           })}
         </nav>
 
         <div className="bow-nav-desktop bow-masthead-account">
-          <Link href="/sign-in" className="bow-nav-link">Sign In</Link>
-          <Button href="/programs" variant="primary" size="sm">Find a Program</Button>
+          <Link href={nav.signInHref || "/sign-in"} className="bow-nav-link">{nav.signInLabel || "Sign In"}</Link>
+          {nav.primaryCtaLabel && nav.primaryCtaHref ? (
+            <Button href={nav.primaryCtaHref} variant="primary" size="sm">{nav.primaryCtaLabel}</Button>
+          ) : null}
         </div>
 
         <button
@@ -84,30 +116,47 @@ export default function Masthead() {
       {menuOpen && (
         <div id="bow-mobile-menu" className="bow-nav-mobile">
           <nav aria-label="Primary mobile">
-            {NAV.map((n) => (
+            {items.flatMap((item) => [
               <Link
-                key={n.href}
-                href={n.href}
+                key={`${item.label}-${item.href}`}
+                href={item.href}
                 onClick={closeMenu}
                 className="bow-nav-mobile-link"
-                aria-current={isActive(pathname, n.href) ? "page" : undefined}
-                data-active={isActive(pathname, n.href) ? "true" : undefined}
+                aria-current={isActive(pathname, item.href) ? "page" : undefined}
+                data-active={isActive(pathname, item.href) ? "true" : undefined}
               >
-                {n.label}
-              </Link>
-            ))}
-            <Link href="/sign-in" onClick={closeMenu} className="bow-nav-mobile-link">
-              Sign In
+                {item.label}
+              </Link>,
+              ...item.children
+                .filter((child) => child.visible && child.label && child.href)
+                .map((child) => (
+                  <Link
+                    key={`${item.label}-${child.label}-${child.href}`}
+                    href={child.href}
+                    onClick={closeMenu}
+                    className="bow-nav-mobile-link"
+                    style={{ paddingLeft: 22, fontSize: "0.94em" }}
+                  >
+                    {child.label}
+                  </Link>
+                )),
+            ])}
+            <Link href={nav.signInHref || "/sign-in"} onClick={closeMenu} className="bow-nav-mobile-link">
+              {nav.signInLabel || "Sign In"}
             </Link>
           </nav>
           {/* Stacked: two full-width buttons side by side overflow narrow screens. */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
-            <Button href="/programs" variant="primary" size="md" full onClick={closeMenu}>
-              Find a Program
-            </Button>
-            <Button href="/teach" variant="secondary" size="md" full onClick={closeMenu}>
-              Apply to Teach
-            </Button>
+            {nav.primaryCtaLabel && nav.primaryCtaHref ? (
+              <Button href={nav.primaryCtaHref} variant="primary" size="md" full onClick={closeMenu}>
+                {nav.primaryCtaLabel}
+              </Button>
+            ) : null}
+            {nav.secondaryCtaLabel && nav.secondaryCtaHref ? (
+              <Button href={nav.secondaryCtaHref} variant="secondary" size="md" full onClick={closeMenu}>
+                {nav.secondaryCtaLabel}
+              </Button>
+            ) : null}
           </div>
         </div>
       )}

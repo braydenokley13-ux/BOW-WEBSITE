@@ -1,40 +1,23 @@
-import Link from "next/link";
+import ContentPage from "@/components/site/ContentPage";
 import InquiryForm from "@/components/site/InquiryForm";
+import { contentMetadata } from "@/lib/cms/metadata";
 
-export const metadata = {
-  title: "Get Involved",
-  description:
-    "Step into the front office. Bring BOW to a school, camp, or youth organization, join as a student or family, or explore a partnership.",
-};
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata() {
+  return contentMetadata("get-involved", { path: "/get-involved" });
+}
 
 export default function GetInvolvedPage() {
   return (
-    <div data-screen-label="Get Involved">
-      <section
-        style={{
-          background: "var(--bow-ink)",
-          color: "#fff",
-          padding: "clamp(40px,5vw,72px) clamp(18px,4vw,40px) clamp(48px,7vw,96px)",
-          minHeight: "80vh",
-        }}
-      >
-        <InquiryForm />
-        <p
-          style={{
-            maxWidth: 620,
-            margin: "48px auto 0",
-            fontFamily: "var(--font-interface)",
-            fontSize: 14.5,
-            color: "#9a9da6",
-            textAlign: "center",
-          }}
-        >
-          Want to teach for BOW instead?{" "}
-          <Link href="/get-involved/apply" className="bow-link" style={{ color: "var(--bow-orange)", textDecoration: "underline" }}>
-            Apply to teach →
-          </Link>
-        </p>
-      </section>
-    </div>
+    <ContentPage
+      slug="get-involved"
+      screenLabel="Get Involved"
+      extras={
+        <section style={{ background: "var(--bow-ink)", color: "#fff", padding: "clamp(32px,5vw,64px) clamp(18px,4vw,40px) clamp(48px,7vw,96px)" }}>
+          <InquiryForm />
+        </section>
+      }
+    />
   );
 }

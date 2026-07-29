@@ -369,6 +369,25 @@ h1, h2, h3, h4, h5, h6, p, figure, blockquote { margin: 0; }
 .bow-nav-link[data-active] { color: var(--bow-on-ink); border-bottom-color: var(--bow-blue); }
 .bow-nav-link:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
 
+/* A nav item may carry a dropdown of child links, edited in Website →
+ * Navigation. The panel is hover/focus-revealed and never traps keyboard
+ * users: it stays open while anything inside it holds focus. */
+.bow-nav-item { position: relative; display: inline-flex; align-items: center; }
+.bow-nav-dropdown {
+  position: absolute; top: 66px; left: 50%; transform: translateX(-50%);
+  display: none; flex-direction: column; min-width: 200px; z-index: 40;
+  background: var(--bow-ink); border: 1px solid var(--bow-dark-border);
+  padding: 6px 0;
+}
+.bow-nav-item:hover .bow-nav-dropdown,
+.bow-nav-item:focus-within .bow-nav-dropdown { display: flex; }
+.bow-nav-dropdown-link {
+  font-family: var(--font-interface); font-size: 14px;
+  color: var(--bow-on-ink-subtle); padding: 9px 16px; white-space: nowrap;
+}
+.bow-nav-dropdown-link:hover { color: var(--bow-on-ink); background: var(--bow-dark-surface); }
+.bow-nav-dropdown-link:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+
 .bow-nav-mobile { display: none; }
 .bow-nav-mobile-toggle { display: none; }
 

@@ -8,7 +8,6 @@ import {
   inquiryPaths,
   type InquiryPath,
   type InquiryField,
-  type AudienceFaq as AudienceFaqItem,
 } from "@/lib/get-involved";
 
 /* ============================================================
@@ -357,74 +356,6 @@ export default function InquiryForm({ initialPathId }: { initialPathId?: string 
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ============================================================
- * AudienceFaq — reusable accordion for the audience pages.
- * `tone="dark"` matches the Camps front-office FAQ; `dense`
- * matches the compact Youth Organizations FAQ.
- * ============================================================ */
-
-export function AudienceFaq({
-  items,
-  tone = "light",
-  dense = false,
-}: {
-  items: AudienceFaqItem[];
-  tone?: "light" | "dark";
-  dense?: boolean;
-}) {
-  const [open, setOpen] = useState<string | null>(null);
-  const isDark = tone === "dark";
-  const rule = isDark ? "var(--bow-dark-border)" : "var(--border-rule)";
-  const qColor = isDark ? "#fff" : "var(--bow-ink)";
-  const aColor = isDark ? "#b9bcc4" : "var(--bow-slate)";
-
-  return (
-    <div style={{ borderTop: `1px solid ${rule}` }}>
-      {items.map((f) => {
-        const isOpen = open === f.id;
-        return (
-          <div key={f.id} style={{ borderBottom: `1px solid ${rule}` }}>
-            <button
-              onClick={() => setOpen(isOpen ? null : f.id)}
-              aria-expanded={isOpen}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: dense ? 14 : 18,
-                padding: dense ? "16px" : "20px 0",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              <span
-                style={
-                  dense
-                    ? { fontFamily: "var(--font-interface)", fontWeight: 600, fontSize: 14.5, lineHeight: 1.3, color: qColor }
-                    : { fontFamily: "var(--font-editorial)", fontWeight: 600, fontSize: "clamp(16px,1.7vw,20px)", lineHeight: 1.15, color: qColor }
-                }
-              >
-                {f.q}
-              </span>
-              <span style={{ fontFamily: "var(--font-data)", fontSize: dense ? 18 : 20, fontWeight: 700, color: "var(--bow-blue)", flexShrink: 0, width: dense ? "auto" : 24, textAlign: "center" }}>
-                {isOpen ? "−" : "+"}
-              </span>
-            </button>
-            {isOpen && (
-              <div style={{ padding: dense ? "0 16px 14px" : "0 40px 20px 0", maxWidth: 760 }}>
-                <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: dense ? 14 : "clamp(15px,1.3vw,17px)", lineHeight: dense ? 1.6 : 1.65, color: aColor }}>{f.a}</p>
-              </div>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }

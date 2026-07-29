@@ -6,7 +6,7 @@ import {
   PARTNER_INSTRUCTOR_BULLETS,
   partnerTypeLabel,
 } from "@/lib/account";
-import { SITE } from "@/lib/site";
+import { SITE_URL } from "@/lib/cms/metadata";
 import PartnerLanding from "@/components/partners/PartnerLanding";
 
 /* ============================================================
@@ -31,7 +31,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const title = `${org.name} · BOW Sports Capital`;
   const description = org.customHeadline;
-  const url = `${SITE.url}/partners/${org.slug}`;
+  const url = `${SITE_URL}/partners/${org.slug}`;
 
   return {
     title,

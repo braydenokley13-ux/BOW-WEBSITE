@@ -14,10 +14,25 @@ operational exceptions. It is built with **Next.js (App Router) + TypeScript**.
 
 ```bash
 npm install
-npm run dev      # http://localhost:3000
-npm run build    # production build
-npm run lint     # eslint
+npm run dev        # http://localhost:3000
+npm run build      # production build
+npm run lint       # eslint
+npm run typecheck  # tsc --noEmit
+npm test           # node:test suite
 ```
+
+### Database
+
+```bash
+npm run migrate            # apply pending SQL migrations (forward-only, idempotent)
+npm run content:bootstrap  # load the existing public website into the editor (insert-only)
+npm run db:deploy          # both of the above, in order
+```
+
+Both are safe to re-run and never overwrite founder edits. See
+[docs/website-content-system.md](docs/website-content-system.md) for the
+deployment sequence, the publishing model, and what to do when a page reports a
+fault.
 
 ## Project structure
 
@@ -28,7 +43,9 @@ app/                     App Router routes (one folder per public page)
 components/
   ds/                    Design-system components (Button, CapLine, DecisionCard, …)
   site/                  Site chrome (Masthead, Footer, DataRibbon, ImageSlot, …)
-lib/                     Typed content/config (site nav, page data)
+lib/
+  cms/                   Site content system — schemas, public reads, founder writes
+
 styles/tokens/           Brand design tokens (colors, type, spacing, shape, fonts)
 public/assets/           Brand SVGs (wordmark, monogram, cap line)
 ```

@@ -2,40 +2,28 @@ import type { Metadata } from "next";
 import "./globals.css";
 import SmoothScroll from "@/components/site/SmoothScroll";
 import { fontVariables } from "@/lib/fonts";
-import { SITE } from "@/lib/site";
+import { contentMetadata } from "@/lib/cms/metadata";
+import { SITE_URL } from "@/lib/cms/metadata";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(SITE.url),
-  title: {
-    default: "BOW Sports Capital — The front office for the next generation",
-    template: "%s · BOW Sports Capital",
-  },
-  description: SITE.description,
-  applicationName: SITE.name,
-  keywords: [
-    "sports business education",
-    "sports economics",
-    "front office simulation",
-    "salary cap",
-    "middle school economics",
-    "high school finance",
-    "decision-making",
-  ],
-  openGraph: {
-    type: "website",
-    siteName: SITE.name,
-    title: "BOW Sports Capital — Read the game. Run the business. Make the decision.",
-    description: SITE.description,
-    url: SITE.url,
-    images: [{ url: "/bow-social-preview.png", width: 1200, height: 630, alt: "Students making sports-business decisions with a BOW instructor" }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "BOW Sports Capital",
-    description: SITE.description,
-    images: ["/bow-social-preview.png"],
-  },
-};
+/**
+ * Root metadata is built from Global Settings, so the organisation name, the
+ * default description, the title pattern, and the social-sharing image are all
+ * founder-edited. `contentMetadata` falls back to built-in defaults if the
+ * settings read fails, because a `<head>` must never take the site down.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const base = await contentMetadata(null);
+  return {
+    ...base,
+    metadataBase: new URL(SITE_URL),
+    title: {
+      default: typeof base.title === "string" ? base.title : "BOW Sports Capital",
+      // Nested pages supply their own fully-formed title through
+      // `contentMetadata`, which already applies the founder's title pattern.
+      template: "%s",
+    },
+  };
+}
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ds";
@@ -153,7 +154,7 @@ export default function SignUpForm() {
             </h1>
             <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 17, lineHeight: 1.6, color: "#b9bcc4" }}>
               This joins the interest list — it&apos;s not a confirmed registration. Already know which program you want?{" "}
-              <a href="/programs" style={{ color: "#fff", textDecoration: "underline" }}>Register directly on /programs</a> instead.
+              <Link href="/programs" style={{ color: "#fff", textDecoration: "underline" }}>Register directly on /programs</Link> instead.
             </p>
             <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 10 }}>
               <div
