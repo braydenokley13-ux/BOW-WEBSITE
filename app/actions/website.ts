@@ -16,28 +16,28 @@
 import { revalidatePath } from "next/cache";
 import {
   ContentValidationError,
-  addSection,
   archivePage,
+  archivePublication,
   createPage,
   createTrack,
   deleteAnnouncement,
   deleteFaq,
   discardDraft,
   moveFaq,
-  moveSection,
+  movePublication,
   publishPage,
-  removeSection,
   restoreVersion,
   saveAnnouncement,
   saveFaq,
+  savePageDraft,
+  savePublication,
   saveProgramContent,
-  saveSection,
   saveTrack,
   setProgramStatus,
-  setSectionHidden,
   setTrackPublication,
   unpublishPage,
-  updatePageMeta,
+  type PageDraftInput,
+  type PublicationInput,
   type ProgramContentInput,
   type TrackInput,
 } from "@/lib/cms/admin";
@@ -68,42 +68,10 @@ async function run(fn: () => Promise<void | ActionResult>, revalidate: string[] 
 
 /* ---------- pages ---------- */
 
-export async function addSectionAction(pageId: string, kind: string, atIndex?: number): Promise<ActionResult> {
+export async function savePageDraftAction(pageId: string, input: PageDraftInput): Promise<ActionResult> {
   return run(async () => {
-    await addSection(pageId, kind, atIndex);
-  }, [`/app/website/pages/${pageId}`]);
-}
-
-export async function saveSectionAction(pageId: string, sectionId: string, data: unknown): Promise<ActionResult> {
-  return run(async () => {
-    await saveSection(pageId, sectionId, data);
-  }, [`/app/website/pages/${pageId}`]);
-}
-
-export async function setSectionHiddenAction(pageId: string, sectionId: string, hidden: boolean): Promise<ActionResult> {
-  return run(async () => {
-    await setSectionHidden(pageId, sectionId, hidden);
-  }, [`/app/website/pages/${pageId}`]);
-}
-
-export async function removeSectionAction(pageId: string, sectionId: string): Promise<ActionResult> {
-  return run(async () => {
-    await removeSection(pageId, sectionId);
-  }, [`/app/website/pages/${pageId}`]);
-}
-
-export async function moveSectionAction(pageId: string, sectionId: string, direction: "up" | "down"): Promise<ActionResult> {
-  return run(async () => {
-    await moveSection(pageId, sectionId, direction);
-  }, [`/app/website/pages/${pageId}`]);
-}
-
-export async function savePageMetaAction(
-  pageId: string,
-  input: { name?: string; description?: string; seoTitle?: string; seoDescription?: string; socialImageUrl?: string; noindex?: boolean },
-): Promise<ActionResult> {
-  return run(async () => {
-    await updatePageMeta(pageId, input);
+    await savePageDraft(pageId, input);
+    return { ok: true as const, message: "Draft saved. The public page has not changed." };
   }, [`/app/website/pages/${pageId}`]);
 }
 
@@ -220,6 +188,31 @@ export async function deleteFaqAction(faqId: string): Promise<ActionResult> {
   return run(async () => {
     await deleteFaq(faqId);
   }, ["/app/website/faqs"]);
+}
+
+/* ---------- press coverage ---------- */
+
+export async function savePublicationAction(input: PublicationInput): Promise<ActionResult> {
+  return run(async () => {
+    await savePublication(input);
+    return { ok: true as const, message: input.id ? "Press record updated." : "Press record added." };
+  }, ["/app/website/press", "/"]);
+}
+
+export async function movePublicationAction(
+  publicationId: string,
+  direction: "up" | "down",
+): Promise<ActionResult> {
+  return run(async () => {
+    await movePublication(publicationId, direction);
+  }, ["/app/website/press", "/"]);
+}
+
+export async function archivePublicationAction(publicationId: string): Promise<ActionResult> {
+  return run(async () => {
+    await archivePublication(publicationId);
+    return { ok: true as const, message: "Press record archived. It is no longer public." };
+  }, ["/app/website/press", "/"]);
 }
 
 /* ---------- announcements ---------- */

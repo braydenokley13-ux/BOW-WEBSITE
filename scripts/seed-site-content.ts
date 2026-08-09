@@ -1867,7 +1867,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  console.error("[content] failed:", error);
-  process.exitCode = 1;
-});
+main()
+  .then(async () => {
+    const { upgradeMarketingArchitecture } = await import("./upgrade-marketing-architecture");
+    await upgradeMarketingArchitecture();
+  })
+  .catch((error) => {
+    console.error("[content] failed:", error);
+    process.exitCode = 1;
+  });

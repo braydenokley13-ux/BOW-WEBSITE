@@ -11,14 +11,14 @@ function when(value: number): string {
 }
 
 export default async function WebsitePagesPage() {
-  const pages = (await listAdminPages()).filter((page) => page.kind === "page" || page.kind === "track" || page.kind === "program");
+  const pages = (await listAdminPages()).filter((page) => page.kind === "page" && page.cmsVisible);
 
   return (
     <>
       <PageHeader
         eyebrow="Website"
         title="Pages"
-        context="Every public page on the site. Edit one, preview the draft, then publish when it reads right."
+        context="The primary public pages: Home, Programs, Partner With BOW, About, Teach, and Contact. Edit one, save a draft, preview it, then publish."
       />
 
       {pages.length === 0 ? (

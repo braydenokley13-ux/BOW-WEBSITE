@@ -26,5 +26,12 @@ export default async function EditPageScreen({ params }: { params: Promise<{ id:
   }
 
   const versions = await listVersions(page.page.id);
-  return <PageEditor page={page} versions={versions} faqPageSlug={page.page.slug} />;
+  return (
+    <PageEditor
+      key={`${page.versionId}:${page.page.status}:${page.page.hasDraft}:${page.page.updatedAt}`}
+      page={page}
+      versions={versions}
+      faqPageSlug={page.page.slug}
+    />
+  );
 }

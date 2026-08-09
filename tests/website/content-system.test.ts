@@ -15,7 +15,10 @@ import {
   sectionSpec,
   validateSectionData,
 } from "../../lib/cms/sections";
-import { sectionFields } from "../../lib/cms/fields";
+import { editorialSectionFields, sectionFields } from "../../lib/cms/fields";
+import { isSafeEditorialImageUrl, isSafeEditorialUrl, validateEditorSectionData } from "../../lib/cms/validation";
+import { editableVersionId, hasUnpublishedDraft } from "../../lib/cms/workflow";
+import { isIsoCalendarDate, toIsoDate } from "../../lib/cms/dates";
 import { ContentError, classifyError, describe as describeNotice } from "../../lib/cms/errors";
 import { navForRole } from "../../lib/navigation/catalog";
 
@@ -114,14 +117,61 @@ test("every authorable section kind has editor fields and none exposes raw JSON"
   }
 });
 
-test("writes are validated strictly and report the offending field", () => {
-  const bad = validateSectionData("hero", { headline: 12345, actions: "not a list" });
-  // `.catch()` coerces rather than rejecting, so this must still succeed and
-  // produce a usable shape — the strict path exists to reject unknown kinds.
-  assert.equal(bad.ok, true);
-  const unknown = validateSectionData("does-not-exist", {});
+test("writes are validated strictly while public reads remain tolerant", () => {
+  const bad = validateEditorSectionData("hero", { headline: 12345, actions: "not a list" });
+  assert.equal(bad.ok, false);
+  if (!bad.ok) assert.match(bad.message, /Heading must be text/);
+
+  const tolerant = validateSectionData("hero", { headline: 12345, actions: "not a list" });
+  assert.equal(tolerant.ok, true);
+  const unknown = validateEditorSectionData("does-not-exist", {});
   assert.equal(unknown.ok, false);
   if (!unknown.ok) assert.match(unknown.message, /Unknown section type/);
+});
+
+test("owner fields exclude presentation controls but preserve editorial values", () => {
+  const hero = editorialSectionFields("hero");
+  assert.ok(hero.some((field) => field.name === "headline"));
+  assert.ok(hero.some((field) => field.name === "actions"));
+  assert.ok(!hero.some((field) => field.name === "tone"));
+
+  const action = hero.find((field) => field.name === "actions");
+  assert.ok(action?.itemFields?.some((field) => field.name === "label"));
+  assert.ok(!action?.itemFields?.some((field) => field.name === "variant"));
+});
+
+test("editorial URLs accept site paths and safe web links, not malformed or protocol-relative links", () => {
+  for (const value of ["", "/programs", "/about?from=home", "#tracks", "https://bowsportscapital.com/about", "mailto:hello@bowsportscapital.com"]) {
+    assert.equal(isSafeEditorialUrl(value), true, value);
+  }
+  for (const value of ["programs", "//malicious.example", "javascript:alert(1)", "ht!tp://broken"]) {
+    assert.equal(isSafeEditorialUrl(value), false, value);
+  }
+});
+
+test("image URLs accept only site assets and http(s) images", () => {
+  for (const value of ["", "/bow-social-preview.png", "https://example.com/logo.svg"]) {
+    assert.equal(isSafeEditorialImageUrl(value), true, value);
+  }
+  for (const value of ["#press", "mailto:hello@example.com", "tel:+15551212", "//malicious.example/logo.svg", "javascript:alert(1)"]) {
+    assert.equal(isSafeEditorialImageUrl(value), false, value);
+  }
+});
+
+test("opening an editor selects an existing version without manufacturing a draft", () => {
+  assert.equal(editableVersionId(null, "published-v3"), "published-v3");
+  assert.equal(hasUnpublishedDraft(null), false);
+  assert.equal(editableVersionId("draft-v4", "published-v3"), "draft-v4");
+  assert.equal(hasUnpublishedDraft("draft-v4"), true);
+  assert.equal(editableVersionId(null, null), null);
+});
+
+test("database publication dates become stable calendar dates", () => {
+  assert.equal(toIsoDate(new Date("2026-06-11T00:00:00.000Z")), "2026-06-11");
+  assert.equal(toIsoDate("2026-06-18"), "2026-06-18");
+  assert.equal(toIsoDate("not a date"), "");
+  assert.equal(isIsoCalendarDate("2026-06-19"), true);
+  assert.equal(isIsoCalendarDate("2026-02-31"), false);
 });
 
 test("database faults classify into actionable reasons, not a single catch-all", () => {

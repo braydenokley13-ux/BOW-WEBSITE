@@ -26,8 +26,18 @@ export default async function NavigationScreen() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 40 }}>
-      <PageEditor page={nav} versions={navVersions} faqPageSlug={nav.page.slug} />
-      <PageEditor page={footer} versions={footerVersions} faqPageSlug={footer.page.slug} />
+      <PageEditor
+        key={`${nav.versionId}:${nav.page.hasDraft}:${nav.page.updatedAt}`}
+        page={nav}
+        versions={navVersions}
+        faqPageSlug={nav.page.slug}
+      />
+      <PageEditor
+        key={`${footer.versionId}:${footer.page.hasDraft}:${footer.page.updatedAt}`}
+        page={footer}
+        versions={footerVersions}
+        faqPageSlug={footer.page.slug}
+      />
     </div>
   );
 }

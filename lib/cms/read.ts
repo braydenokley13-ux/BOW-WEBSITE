@@ -24,6 +24,7 @@ import "server-only";
 import { cache } from "react";
 import { sqlLearn } from "@/lib/db-sql";
 import { ContentError, classifyError } from "@/lib/cms/errors";
+import { toIsoDate } from "@/lib/cms/dates";
 import {
   DEFAULT_FOOTER,
   DEFAULT_GLOBAL_SETTINGS,
@@ -331,6 +332,36 @@ export const getPublicTestimonials = cache(async (limit: number): Promise<Public
   }));
 });
 
+/* ---------- press coverage ---------- */
+
+export interface PublicPublication {
+  id: string;
+  name: string;
+  logoUrl: string;
+  articleTitle: string;
+  articleUrl: string;
+  publicationDate: string;
+}
+
+export const getPublicPublications = cache(async (): Promise<PublicPublication[]> => {
+  const rows = await guarded("press coverage", async () =>
+    sqlLearn`
+      SELECT id, name, logo_url, article_title, article_url, publication_date
+        FROM site_publications
+       WHERE status = 'published'
+       ORDER BY ordinal ASC, publication_date DESC NULLS LAST, name ASC
+    `,
+  );
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name ?? ""),
+    logoUrl: String(row.logo_url ?? ""),
+    articleTitle: String(row.article_title ?? ""),
+    articleUrl: String(row.article_url ?? ""),
+    publicationDate: toIsoDate(row.publication_date),
+  }));
+});
+
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* ---------- route discovery (sitemap) ---------- */
@@ -347,16 +378,14 @@ export interface PublishedRoute {
  * way to reach a sitemap or a crawler.
  */
 export async function listPublishedRoutes(): Promise<PublishedRoute[]> {
-  const [pages, tracks, programs] = await Promise.all([
+  const [pages, programs] = await Promise.all([
     guarded("routes:pages", async () =>
       sqlLearn`
         SELECT path, slug, kind FROM site_pages
          WHERE status = 'published' AND published_version_id IS NOT NULL
            AND path IS NOT NULL AND kind IN ('page', 'system')
+           AND cms_visible = true
       `,
-    ),
-    guarded("routes:tracks", async () =>
-      sqlLearn`SELECT public_slug FROM curricula WHERE publication_status = 'published' AND public_slug IS NOT NULL`,
     ),
     guarded("routes:programs", async () =>
       sqlLearn`SELECT public_slug FROM programs WHERE publication_status = 'published' AND public_slug IS NOT NULL`,
@@ -365,7 +394,6 @@ export async function listPublishedRoutes(): Promise<PublishedRoute[]> {
 
   return [
     ...pages.map((row) => ({ path: String(row.path), slug: String(row.slug), kind: String(row.kind) })),
-    ...tracks.map((row) => ({ path: `/programs/${row.public_slug}`, slug: String(row.public_slug), kind: "track" })),
     ...programs.map((row) => ({ path: `/programs/p/${row.public_slug}`, slug: String(row.public_slug), kind: "program" })),
   ];
 }

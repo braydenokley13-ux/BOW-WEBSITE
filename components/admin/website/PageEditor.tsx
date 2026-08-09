@@ -1,34 +1,49 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { Badge, Button } from "@/components/ds";
 import { FieldGroup, SmallButton } from "@/components/admin/website/Fields";
-import { sectionFields } from "@/lib/cms/fields";
-import { AUTHORABLE_SECTION_KINDS, sectionSpec, type SectionKind } from "@/lib/cms/sections";
-import type { EditablePage, VersionRow } from "@/lib/cms/admin";
+import { editorialSectionFields } from "@/lib/cms/fields";
+import { sectionSpec } from "@/lib/cms/sections";
+import type { EditablePage, PageDraftInput, VersionRow } from "@/lib/cms/admin";
 import {
-  addSectionAction,
   discardDraftAction,
-  moveSectionAction,
   publishPageAction,
-  removeSectionAction,
   restoreVersionAction,
-  savePageMetaAction,
-  saveSectionAction,
-  setSectionHiddenAction,
+  savePageDraftAction,
   unpublishPageAction,
   type ActionResult,
 } from "@/app/actions/website";
 
 /* ============================================================
- * The page editor.
+ * The owner-facing page editor.
  *
- * Sections appear in the order a visitor meets them, each as an ordinary form.
- * Everything the founder does here writes to the draft; the public site does
- * not change until Publish. The three recovery routes are always visible:
- * discard the draft, restore an earlier version, or unpublish entirely.
+ * The page's section order and presentation stay in code. This screen edits
+ * only the content inside those sections and saves the whole working copy in
+ * one explicit operation. Preview and publish never race unsaved local state.
  * ============================================================ */
+
+type Operation = "save" | "publish" | "discard" | "restore" | "unpublish";
+
+function editorState(page: EditablePage): PageDraftInput {
+  return {
+    meta: {
+      name: page.page.name,
+      seoTitle: page.seoTitle,
+      seoDescription: page.seoDescription,
+      socialImageUrl: page.socialImageUrl,
+      noindex: page.noindex,
+    },
+    sections: page.sections.map((section) => ({
+      ordinal: section.ordinal,
+      kind: section.kind,
+      data: section.data,
+    })),
+  };
+}
+
+const snapshot = (value: PageDraftInput) => JSON.stringify(value);
 
 export default function PageEditor({
   page,
@@ -39,65 +54,144 @@ export default function PageEditor({
   versions: VersionRow[];
   faqPageSlug: string;
 }) {
+  const [draft, setDraft] = useState<PageDraftInput>(() => editorState(page));
+  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot(editorState(page)));
+  const [hasSavedDraft, setHasSavedDraft] = useState(page.page.hasDraft);
+  const [published, setPublished] = useState(page.page.isPublished);
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string; problems?: string[] } | null>(null);
+  const [operation, setOperation] = useState<Operation | null>(null);
   const [pending, startTransition] = useTransition();
-  const [adding, setAdding] = useState<SectionKind>("text");
+
+  const currentSnapshot = snapshot(draft);
+  const dirty = currentSnapshot !== savedSnapshot;
+  const busy = pending || operation !== null;
+
+  useEffect(() => {
+    if (!dirty) return;
+
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const interceptNavigation = (event: MouseEvent) => {
+      const target = event.target;
+      const anchor = target instanceof Element ? target.closest("a") : null;
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      if (window.confirm("You have unsaved website changes. Leave without saving them?")) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("click", interceptNavigation, true);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      document.removeEventListener("click", interceptNavigation, true);
+    };
+  }, [dirty]);
 
   const report = (result: ActionResult, fallback: string) => {
     if (result.ok) setNotice({ tone: "ok", text: result.message ?? fallback });
     else setNotice({ tone: "bad", text: result.error, problems: result.problems });
   };
 
-  const call = (fn: () => Promise<ActionResult>, fallback: string) => {
-    startTransition(async () => report(await fn(), fallback));
+  const run = (
+    nextOperation: Operation,
+    action: () => Promise<ActionResult>,
+    fallback: string,
+    onSuccess?: () => void,
+  ) => {
+    if (busy) return;
+    setOperation(nextOperation);
+    startTransition(async () => {
+      try {
+        const result = await action();
+        report(result, fallback);
+        if (result.ok) onSuccess?.();
+      } finally {
+        setOperation(null);
+      }
+    });
   };
 
-  const previewHref = page.page.path ? `/api/website/preview?path=${encodeURIComponent(page.page.path)}` : null;
+  const saveDraft = () => {
+    if (!dirty) return;
+    const savingSnapshot = currentSnapshot;
+    run(
+      "save",
+      () => savePageDraftAction(page.page.id, draft),
+      "Draft saved.",
+      () => {
+        setSavedSnapshot(savingSnapshot);
+        setHasSavedDraft(true);
+      },
+    );
+  };
+
+  const previewHref = page.page.path
+    ? hasSavedDraft || !published
+      ? `/api/website/preview?path=${encodeURIComponent(page.page.path)}`
+      : page.page.path
+    : null;
+
+  const saveLabel = operation === "save" ? "Saving…" : dirty ? "Save draft" : "Draft saved";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-      <header
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 14,
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "16px 18px",
-          background: "var(--bow-white)",
-          border: "1px solid var(--border-rule)",
-          borderRadius: "var(--radius-control)",
-          position: "sticky",
-          top: 0,
-          zIndex: 20,
-        }}
-      >
+      <header className="website-editor-toolbar">
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <strong style={{ fontFamily: "var(--font-editorial)", fontSize: 20 }}>{page.page.name}</strong>
-            <Badge status={page.page.isPublished ? "positive" : "warning"}>
-              {page.page.isPublished ? "Published" : page.page.status === "archived" ? "Archived" : "Draft"}
+            <strong style={{ fontFamily: "var(--font-editorial)", fontSize: 20 }}>{draft.meta.name}</strong>
+            <Badge status={published ? "positive" : page.page.status === "archived" ? "neutral" : "warning"}>
+              {published ? "Published" : page.page.status === "archived" ? "Archived" : "Unpublished"}
             </Badge>
-            {page.page.hasDraft && page.page.isPublished ? <Badge status="info">Unpublished changes</Badge> : null}
+            {hasSavedDraft ? <Badge status="info">Draft changes</Badge> : null}
+            {dirty ? <Badge status="warning">Unsaved changes</Badge> : null}
           </div>
-          {page.page.path ? (
-            <div style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
-              {page.page.path}
-            </div>
-          ) : null}
+          <div style={{ fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
+            {page.page.path ?? "Shared site content"} · {dirty
+              ? "Changes are only in this browser until you save."
+              : hasSavedDraft
+                ? "Saved privately. The public site is unchanged."
+                : published
+                  ? "Matches the live site."
+                  : "This page is currently off the public site."}
+          </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {previewHref ? (
-            <Button href={previewHref} variant="secondary" size="sm">Preview draft</Button>
-          ) : null}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <Button onClick={saveDraft} variant="secondary" size="sm" disabled={busy || !dirty}>
+            {saveLabel}
+          </Button>
+          {previewHref && !dirty ? (
+            <a
+              href={previewHref}
+              target="_blank"
+              rel="noreferrer"
+              className="bow-button bow-button-secondary bow-button-sm"
+            >
+              {hasSavedDraft || !published ? "Preview page" : "View live page"}
+            </a>
+          ) : (
+            <Button variant="secondary" size="sm" disabled>
+              Preview draft
+            </Button>
+          )}
           <Button
-            onClick={() => call(() => publishPageAction(page.page.id, page.page.path), "Published.")}
+            onClick={() => run(
+              "publish",
+              () => publishPageAction(page.page.id, page.page.path),
+              "Published.",
+              () => {
+                setHasSavedDraft(false);
+                setPublished(true);
+              },
+            )}
             variant="primary"
             size="sm"
-            disabled={pending}
+            disabled={busy || dirty || (published && !hasSavedDraft)}
           >
-            {pending ? "Working…" : "Publish"}
+            {operation === "publish" ? "Publishing…" : "Publish"}
           </Button>
         </div>
       </header>
@@ -105,6 +199,7 @@ export default function PageEditor({
       {notice ? (
         <div
           role="status"
+          aria-live="polite"
           style={{
             padding: "12px 14px",
             borderRadius: "var(--radius-control)",
@@ -117,85 +212,63 @@ export default function PageEditor({
           {notice.text}
           {notice.problems && notice.problems.length > 0 ? (
             <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
-              {notice.problems.map((problem) => (
-                <li key={problem}>{problem}</li>
-              ))}
+              {notice.problems.map((problem) => <li key={problem}>{problem}</li>)}
             </ul>
           ) : null}
         </div>
       ) : null}
 
-      <MetaCard page={page} onSave={(input) => call(() => savePageMetaAction(page.page.id, input), "Saved.")} pending={pending} />
+      <MetaCard
+        data={draft.meta}
+        onChange={(meta) => setDraft((current) => ({ ...current, meta }))}
+      />
 
       <section>
-        <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 15, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>
-          Sections, in the order visitors see them
-        </h2>
-
-        {page.sections.length === 0 ? (
-          <p style={{ fontFamily: "var(--font-interface)", fontSize: 15, color: "var(--text-secondary)" }}>
-            This page has no sections yet. Add one below.
+        <div style={{ marginBottom: 14 }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 15, letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>
+            Page content
+          </h2>
+          <p style={{ margin: "5px 0 0", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--text-secondary)" }}>
+            Sections stay in the same designed order. Open the section whose wording you want to change.
           </p>
-        ) : null}
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {page.sections.map((section, index) => (
-            <SectionCard
-              key={section.id}
-              pageId={page.page.id}
-              section={section}
-              index={index}
-              total={page.sections.length}
-              pending={pending}
-              faqPageSlug={faqPageSlug}
-              onResult={report}
-              onCall={call}
-            />
-          ))}
         </div>
 
-        <div
-          style={{
-            marginTop: 18,
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            flexWrap: "wrap",
-            padding: "14px 16px",
-            border: "1px dashed var(--border-rule)",
-            borderRadius: "var(--radius-control)",
-            background: "var(--bow-paper)",
-          }}
-        >
-          <label htmlFor="add-section" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 11, letterSpacing: "0.09em", textTransform: "uppercase" }}>
-            Add a section
-          </label>
-          <select
-            id="add-section"
-            value={adding}
-            onChange={(event) => setAdding(event.target.value as SectionKind)}
-            style={{ padding: "8px 10px", border: "1px solid var(--border-rule)", borderRadius: "var(--radius-control)", fontFamily: "var(--font-interface)", fontSize: 14 }}
-          >
-            {AUTHORABLE_SECTION_KINDS.map((kind) => (
-              <option key={kind} value={kind}>{sectionSpec(kind).label}</option>
-            ))}
-          </select>
-          <Button onClick={() => call(() => addSectionAction(page.page.id, adding), "Section added.")} variant="secondary" size="sm" disabled={pending}>
-            Add
-          </Button>
-          <span style={{ fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--text-secondary)" }}>
-            {sectionSpec(adding).summary}
-          </span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {draft.sections.map((section, index) => (
+            <SectionCard
+              key={`${section.ordinal}-${section.kind}`}
+              section={section}
+              index={index}
+              faqPageSlug={faqPageSlug}
+              onChange={(data) => setDraft((current) => ({
+                ...current,
+                sections: current.sections.map((entry) =>
+                  entry.ordinal === section.ordinal ? { ...entry, data } : entry,
+                ),
+              }))}
+            />
+          ))}
         </div>
       </section>
 
       <RecoveryCard
         page={page}
         versions={versions}
-        pending={pending}
-        onDiscard={() => call(() => discardDraftAction(page.page.id), "Draft discarded.")}
-        onUnpublish={() => call(() => unpublishPageAction(page.page.id, page.page.path), "Unpublished.")}
-        onRestore={(versionId) => call(() => restoreVersionAction(page.page.id, versionId), "Restored into a draft.")}
+        pending={busy}
+        hasSavedDraft={hasSavedDraft}
+        published={published}
+        onDiscard={() => {
+          if (!window.confirm("Discard the saved draft and return to exactly what is live?")) return;
+          run("discard", () => discardDraftAction(page.page.id), "Draft discarded.", () => setHasSavedDraft(false));
+        }}
+        onUnpublish={() => {
+          if (!window.confirm("Take this page off the public website? Its content and history will be kept.")) return;
+          run("unpublish", () => unpublishPageAction(page.page.id, page.page.path), "Unpublished.", () => setPublished(false));
+        }}
+        onRestore={(versionId) => {
+          if (!window.confirm("Replace the current saved draft with this earlier version?")) return;
+          run("restore", () => restoreVersionAction(page.page.id, versionId), "Restored into a draft.", () => setHasSavedDraft(true));
+        }}
       />
     </div>
   );
@@ -213,22 +286,12 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 function MetaCard({
-  page,
-  onSave,
-  pending,
+  data,
+  onChange,
 }: {
-  page: EditablePage;
-  onSave: (input: { name: string; seoTitle: string; seoDescription: string; socialImageUrl: string; noindex: boolean }) => void;
-  pending: boolean;
+  data: PageDraftInput["meta"];
+  onChange: (next: PageDraftInput["meta"]) => void;
 }) {
-  const [data, setData] = useState({
-    name: page.page.name,
-    seoTitle: page.seoTitle,
-    seoDescription: page.seoDescription,
-    socialImageUrl: page.socialImageUrl,
-    noindex: page.noindex,
-  });
-
   return (
     <Card title="Page name and search listing">
       <FieldGroup
@@ -240,105 +303,74 @@ function MetaCard({
           { name: "noindex", label: "Hide from search engines", type: "boolean", help: "Keep this page out of Google." },
         ]}
         data={data as unknown as Record<string, unknown>}
-        onChange={(next) => setData(next as typeof data)}
+        onChange={(next) => onChange(next as unknown as PageDraftInput["meta"])}
       />
-      <Button onClick={() => onSave(data)} variant="secondary" size="sm" disabled={pending}>Save</Button>
     </Card>
   );
 }
 
 function SectionCard({
-  pageId,
   section,
   index,
-  total,
-  pending,
   faqPageSlug,
-  onCall,
+  onChange,
 }: {
-  pageId: string;
-  section: EditablePage["sections"][number];
+  section: PageDraftInput["sections"][number];
   index: number;
-  total: number;
-  pending: boolean;
   faqPageSlug: string;
-  onResult: (result: ActionResult, fallback: string) => void;
-  onCall: (fn: () => Promise<ActionResult>, fallback: string) => void;
+  onChange: (data: Record<string, unknown>) => void;
 }) {
   const spec = sectionSpec(section.kind);
-  const [open, setOpen] = useState(false);
-  const [data, setData] = useState<Record<string, unknown>>(section.data);
+  const [open, setOpen] = useState(index === 0);
+  const title = sectionTitle(section.data, spec.label);
 
   return (
-    <article
-      style={{
-        background: "var(--bow-white)",
-        border: "1px solid var(--border-rule)",
-        borderLeft: `4px solid ${section.hidden ? "var(--border-rule)" : "var(--bow-blue)"}`,
-        borderRadius: "var(--radius-control)",
-        opacity: section.hidden ? 0.65 : 1,
-      }}
-    >
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", padding: "12px 16px" }}>
+    <article className="website-section-card">
+      <div className="website-section-card-header">
         <div style={{ minWidth: 0 }}>
-          <span style={{ fontFamily: "var(--font-data)", fontSize: 12, color: "var(--text-secondary)", marginRight: 10 }}>
-            {String(index + 1).padStart(2, "0")}
-          </span>
-          <strong style={{ fontFamily: "var(--font-editorial)", fontSize: 17 }}>{spec.label}</strong>
-          {section.hidden ? <span style={{ marginLeft: 10 }}><Badge status="neutral">Hidden</Badge></span> : null}
+          <div style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-secondary)" }}>
+            {String(index + 1).padStart(2, "0")} · {spec.label}
+          </div>
+          <strong style={{ display: "block", fontFamily: "var(--font-editorial)", fontSize: 17, marginTop: 3 }}>{title}</strong>
           <div style={{ fontFamily: "var(--font-interface)", fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>
-            {summarise(data) || spec.summary}
+            {spec.summary}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <SmallButton onClick={() => onCall(() => moveSectionAction(pageId, section.id, "up"), "Moved.")} disabled={pending || index === 0} label="Move section up">↑</SmallButton>
-          <SmallButton onClick={() => onCall(() => moveSectionAction(pageId, section.id, "down"), "Moved.")} disabled={pending || index === total - 1} label="Move section down">↓</SmallButton>
-          <SmallButton onClick={() => onCall(() => setSectionHiddenAction(pageId, section.id, !section.hidden), "Updated.")} disabled={pending} label={section.hidden ? "Show section" : "Hide section"}>
-            {section.hidden ? "Show" : "Hide"}
-          </SmallButton>
-          <SmallButton onClick={() => setOpen((value) => !value)} label={open ? "Close" : "Edit section"}>
-            {open ? "Close" : "Edit"}
-          </SmallButton>
-          <SmallButton onClick={() => onCall(() => removeSectionAction(pageId, section.id), "Section removed.")} disabled={pending} label="Remove section" tone="danger">
-            Remove
-          </SmallButton>
-        </div>
+        <SmallButton onClick={() => setOpen((value) => !value)} label={open ? `Close ${title}` : `Edit ${title}`}>
+          {open ? "Close" : "Edit"}
+        </SmallButton>
       </div>
 
       {open ? (
-        <div style={{ borderTop: "1px solid var(--border-rule)", padding: "16px 16px 18px" }}>
+        <div style={{ borderTop: "1px solid var(--border-rule)", padding: "16px 16px 2px" }}>
           {section.kind === "faq" ? (
             <p style={{ margin: "0 0 14px", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--text-secondary)" }}>
-              The questions themselves live in{" "}
-              <Link href="/app/website/faqs" className="bow-link">Website → FAQs</Link>. Assign them to{" "}
-              <strong>{faqPageSlug}</strong> and they appear here.
+              The questions themselves live in <Link href="/app/website/faqs" className="bow-link">Website → FAQs</Link>. Assign them to <strong>{faqPageSlug}</strong> and they appear here.
             </p>
           ) : null}
-          <FieldGroup fields={sectionFields(section.kind)} data={data} onChange={setData} />
-          <Button onClick={() => onCall(() => saveSectionAction(pageId, section.id, data), "Saved to the draft.")} variant="secondary" size="sm" disabled={pending}>
-            Save section
-          </Button>
+          <FieldGroup fields={editorialSectionFields(section.kind)} data={section.data} onChange={onChange} />
         </div>
       ) : null}
     </article>
   );
 }
 
-/** A one-line preview of a section, so a collapsed list is still readable. */
-function summarise(data: Record<string, unknown>): string {
-  for (const key of ["headline", "message", "prompt", "organizationName", "description"]) {
+function sectionTitle(data: Record<string, unknown>, fallback: string): string {
+  for (const key of ["headline", "message", "prompt", "organizationName", "description", "eyebrow"]) {
     const value = data[key];
     if (typeof value === "string" && value.trim()) return value.length > 90 ? `${value.slice(0, 90)}…` : value;
   }
   const items = data.items;
-  if (Array.isArray(items) && items.length > 0) return `${items.length} item${items.length === 1 ? "" : "s"}`;
-  return "";
+  if (Array.isArray(items) && items.length > 0) return `${fallback} · ${items.length} item${items.length === 1 ? "" : "s"}`;
+  return fallback;
 }
 
 function RecoveryCard({
   page,
   versions,
   pending,
+  hasSavedDraft,
+  published,
   onDiscard,
   onUnpublish,
   onRestore,
@@ -346,30 +378,32 @@ function RecoveryCard({
   page: EditablePage;
   versions: VersionRow[];
   pending: boolean;
+  hasSavedDraft: boolean;
+  published: boolean;
   onDiscard: () => void;
   onUnpublish: () => void;
   onRestore: (versionId: string) => void;
 }) {
   const restorable = versions.filter((version) => version.state !== "draft");
   return (
-    <Card title="If something goes wrong">
+    <Card title="Restore or take offline">
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
-        <Button onClick={onDiscard} variant="secondary" size="sm" disabled={pending || !page.page.hasDraft}>
-          Discard draft and go back to what’s live
+        <Button onClick={onDiscard} variant="secondary" size="sm" disabled={pending || !hasSavedDraft}>
+          Discard saved draft
         </Button>
         {page.page.isSystem ? null : (
-          <Button onClick={onUnpublish} variant="secondary" size="sm" disabled={pending || !page.page.isPublished}>
+          <Button onClick={onUnpublish} variant="secondary" size="sm" disabled={pending || !published}>
             Unpublish this page
           </Button>
         )}
       </div>
       <p style={{ margin: "0 0 12px", fontFamily: "var(--font-interface)", fontSize: 13.5, color: "var(--text-secondary)" }}>
-        Nothing is ever deleted. Unpublishing takes a page off the public site and keeps every version.
+        Discard returns to exactly what visitors see. Earlier published versions remain available below.
       </p>
       {restorable.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {restorable.slice(0, 8).map((version) => (
-            <div key={version.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderBottom: "1px solid var(--border-rule)", paddingBottom: 8 }}>
+            <div key={version.id} className="website-version-row">
               <span style={{ fontFamily: "var(--font-interface)", fontSize: 14 }}>
                 Version {version.versionNo}
                 {version.state === "published" ? " — currently live" : ""}

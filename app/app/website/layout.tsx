@@ -15,7 +15,7 @@ const TABS = [
   { href: "/app/website", label: "Overview" },
   { href: "/app/website/pages", label: "Pages" },
   { href: "/app/website/programs", label: "Programs" },
-  { href: "/app/website/tracks", label: "Tracks" },
+  { href: "/app/website/press", label: "Press" },
   { href: "/app/website/navigation", label: "Navigation" },
   { href: "/app/website/faqs", label: "FAQs" },
   { href: "/app/website/announcements", label: "Announcements" },

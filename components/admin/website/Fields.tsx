@@ -109,6 +109,16 @@ export function Field({ spec, value, onChange }: { spec: FieldSpec; value: Value
           value={(Array.isArray(value) ? (value as string[]) : []).join("\n")}
           onChange={(event) => onChange(event.target.value.split("\n").map((line) => line.trim()).filter(Boolean))}
         />
+      ) : spec.type === "url" ? (
+        <input
+          {...shared}
+          type="text"
+          inputMode="url"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={asString(value)}
+          onChange={(event) => onChange(event.target.value)}
+        />
       ) : spec.type === "image" ? (
         <>
           <input {...shared} type="url" value={asString(value)} onChange={(event) => onChange(event.target.value)} placeholder="https://… or /uploads/photo.jpg" />

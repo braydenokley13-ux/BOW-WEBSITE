@@ -26,10 +26,14 @@ import type { User } from "@/lib/account";
 import { WEBSITE_EDITOR_ROLES } from "@/lib/cms/preview";
 import {
   isSectionKind,
+  parseSectionData,
   sectionSpec,
   validateSectionData,
   type SectionKind,
 } from "@/lib/cms/sections";
+import { isSafeEditorialImageUrl, validateEditorSectionData } from "@/lib/cms/validation";
+import { isIsoCalendarDate, toIsoDate } from "@/lib/cms/dates";
+import { editableVersionId, hasUnpublishedDraft } from "@/lib/cms/workflow";
 import {
   PUBLICATION_STATUSES,
   REGISTRATION_STATUSES,
@@ -76,6 +80,7 @@ export interface AdminPageRow {
   description: string;
   status: PublicationStatus;
   isSystem: boolean;
+  cmsVisible: boolean;
   hasDraft: boolean;
   isPublished: boolean;
   publishedVersionNo: number | null;
@@ -94,7 +99,8 @@ function toAdminPageRow(row: any): AdminPageRow {
     description: row.description ?? "",
     status: toPublicationStatus(row.status),
     isSystem: Boolean(row.is_system),
-    hasDraft: Boolean(row.draft_version_id),
+    cmsVisible: row.cms_visible === undefined ? true : Boolean(row.cms_visible),
+    hasDraft: hasUnpublishedDraft(row.draft_version_id),
     isPublished: row.status === "published" && Boolean(row.published_version_id),
     publishedVersionNo: row.published_version_no === null || row.published_version_no === undefined ? null : Number(row.published_version_no),
     draftVersionNo: row.draft_version_no === null || row.draft_version_no === undefined ? null : Number(row.draft_version_no),
@@ -170,23 +176,24 @@ async function loadPageRow(pageId: string): Promise<any> {
 }
 
 /**
- * Load a page for editing, creating its draft on demand.
+ * Load the current working copy without mutating anything.
  *
- * Creating the draft here rather than on first keystroke means the editor is
- * always writing to a real row, so a save can never race a "does a draft
- * exist?" check and silently land on the published version.
+ * A published page with no draft returns its published version. The first
+ * explicit Save Draft clones that version before writing. This keeps opening
+ * an editor, generating metadata, and discarding a draft genuinely read-only.
  */
 export async function getEditablePage(pageIdOrSlug: string): Promise<EditablePage | null> {
-  const user = await requireWebsiteEditor();
+  await requireWebsiteEditor();
   const row = await loadPageRow(pageIdOrSlug);
   if (!row) return null;
 
-  const draftId = row.draft_version_id ?? (await createDraftFrom(String(row.id), user.id));
+  const versionId = editableVersionId(row.draft_version_id, row.published_version_id);
+  if (!versionId) return null;
   const versionRows = await sqlLearn`
     SELECT v.*, pv.version_no AS published_no, pv.published_at AS published_at
       FROM site_page_versions v
       LEFT JOIN site_page_versions pv ON pv.id = ${row.published_version_id ?? null}
-     WHERE v.id = ${draftId}
+     WHERE v.id = ${versionId}
      LIMIT 1
   `;
   const version = versionRows[0];
@@ -216,7 +223,7 @@ export async function getEditablePage(pageIdOrSlug: string): Promise<EditablePag
       kind: section.kind as SectionKind,
       ordinal: Number(section.ordinal) || 0,
       hidden: Boolean(section.hidden),
-      data: (section.data ?? {}) as Record<string, unknown>,
+      data: parseSectionData(String(section.kind), section.data),
     })),
   };
 }
@@ -257,38 +264,104 @@ async function createDraftFrom(pageId: string, userId: string): Promise<string> 
   });
 }
 
-export async function updatePageMeta(
-  pageId: string,
-  input: { name?: string; description?: string; title?: string; seoTitle?: string; seoDescription?: string; socialImageUrl?: string; noindex?: boolean },
-): Promise<void> {
-  const user = await requireWebsiteEditor();
-  const draftId = await ensureDraftId(pageId, user.id);
-  await withTransaction(async (tx) => {
-    if (input.name !== undefined || input.description !== undefined) {
-      await tx`
-        UPDATE site_pages
-           SET name = COALESCE(${input.name ?? null}, name),
-               description = COALESCE(${input.description ?? null}, description),
-               updated_at = ${now()}, updated_by_user_id = ${user.id}
-         WHERE id = ${pageId}
-      `;
-    }
-    await tx`
-      UPDATE site_page_versions
-         SET title = COALESCE(${input.title ?? null}, title),
-             seo_title = COALESCE(${input.seoTitle ?? null}, seo_title),
-             seo_description = COALESCE(${input.seoDescription ?? null}, seo_description),
-             social_image_url = COALESCE(${input.socialImageUrl ?? null}, social_image_url),
-             noindex = COALESCE(${input.noindex ?? null}, noindex)
-       WHERE id = ${draftId}
-    `;
-  });
-}
-
 async function ensureDraftId(pageId: string, userId: string): Promise<string> {
   const rows = await sqlLearn`SELECT draft_version_id FROM site_pages WHERE id = ${pageId} LIMIT 1`;
   if (!rows[0]) throw new ContentValidationError("That page no longer exists.");
   return rows[0].draft_version_id ? String(rows[0].draft_version_id) : createDraftFrom(pageId, userId);
+}
+
+export interface PageDraftInput {
+  meta: {
+    name: string;
+    seoTitle: string;
+    seoDescription: string;
+    socialImageUrl: string;
+    noindex: boolean;
+  };
+  sections: {
+    ordinal: number;
+    kind: SectionKind;
+    data: Record<string, unknown>;
+  }[];
+}
+
+/**
+ * Save every editable field in one explicit operation.
+ *
+ * The first save creates the draft; merely opening the editor never does. A
+ * direct Server Action request cannot change the page structure because the
+ * submitted section count, order, and kinds must exactly match the current
+ * code-backed document before any content is written.
+ */
+export async function savePageDraft(pageId: string, input: PageDraftInput): Promise<void> {
+  const user = await requireWebsiteEditor();
+  const meta = input?.meta;
+  if (!meta || typeof meta !== "object") throw new ContentValidationError("The page details are missing.");
+  if (typeof meta.name !== "string" || !meta.name.trim()) throw new ContentValidationError("Page name cannot be empty.");
+  if (typeof meta.seoTitle !== "string" || typeof meta.seoDescription !== "string" || typeof meta.socialImageUrl !== "string") {
+    throw new ContentValidationError("The page’s search and sharing fields must contain text.");
+  }
+  if (typeof meta.noindex !== "boolean") throw new ContentValidationError("The search visibility choice is invalid.");
+  if (!isSafeEditorialImageUrl(meta.socialImageUrl)) {
+    throw new ContentValidationError("Sharing image must be a site path or a complete http(s) web address.");
+  }
+  if (!Array.isArray(input.sections)) throw new ContentValidationError("The page sections are missing.");
+
+  const draftId = await ensureDraftId(pageId, user.id);
+  await withTransaction(async (tx) => {
+    const storedRows = await tx`
+      SELECT id, kind, ordinal
+        FROM site_page_sections
+       WHERE version_id = ${draftId}
+       ORDER BY ordinal ASC, id ASC
+       FOR UPDATE
+    `;
+    const stored = [...storedRows];
+    if (stored.length !== input.sections.length) {
+      throw new ContentValidationError("This page’s section structure changed. Reload the editor before saving.");
+    }
+
+    const byOrdinal = new Map(stored.map((section) => [Number(section.ordinal), section]));
+    const seen = new Set<number>();
+    const updates: { id: string; data: Record<string, unknown> }[] = [];
+
+    for (const section of input.sections) {
+      if (!section || typeof section !== "object" || !Number.isInteger(section.ordinal) || seen.has(section.ordinal)) {
+        throw new ContentValidationError("This page’s section order is invalid. Reload the editor before saving.");
+      }
+      seen.add(section.ordinal);
+      const storedSection = byOrdinal.get(section.ordinal);
+      if (!storedSection || storedSection.kind !== section.kind) {
+        throw new ContentValidationError("This page’s section structure changed. Reload the editor before saving.");
+      }
+      const validated = validateEditorSectionData(section.kind, section.data);
+      if (!validated.ok) {
+        throw new ContentValidationError(`${sectionSpec(section.kind).label}: ${validated.message}`);
+      }
+      updates.push({ id: String(storedSection.id), data: validated.data });
+    }
+
+    for (const update of updates) {
+      await tx`
+        UPDATE site_page_sections
+           SET data = ${tx.json(update.data as never)}, updated_at = ${now()}
+         WHERE id = ${update.id} AND version_id = ${draftId}
+      `;
+    }
+    await tx`
+      UPDATE site_page_versions
+         SET seo_title = ${meta.seoTitle.trim() || null},
+             seo_description = ${meta.seoDescription.trim() || null},
+             social_image_url = ${meta.socialImageUrl.trim() || null},
+             noindex = ${meta.noindex}
+       WHERE id = ${draftId}
+    `;
+    await tx`
+      UPDATE site_pages
+         SET name = ${meta.name.trim()}, updated_at = ${now()}, updated_by_user_id = ${user.id}
+       WHERE id = ${pageId}
+    `;
+  });
 }
 
 export async function addSection(pageId: string, kind: string, atIndex?: number): Promise<string> {
@@ -321,7 +394,7 @@ export async function saveSection(pageId: string, sectionId: string, data: unkno
   const kind = rows[0]?.kind;
   if (!kind) throw new ContentValidationError("That section is no longer part of this draft.");
 
-  const validated = validateSectionData(String(kind), data);
+  const validated = validateEditorSectionData(String(kind), data);
   if (!validated.ok) throw new ContentValidationError(validated.message);
 
   await sqlLearn`
@@ -484,7 +557,7 @@ async function knownInternalPaths(): Promise<Set<string>> {
 
 /** Routes that exist as files rather than as content documents. */
 const STATIC_ROUTES = [
-  "/", "/programs", "/programs/find", "/programs/register", "/get-involved", "/get-involved/apply",
+  "/", "/programs", "/programs/find", "/programs/register", "/partner-with-bow", "/get-involved", "/get-involved/apply",
   "/get-involved/camps", "/get-involved/families", "/get-involved/partner-inquiry", "/get-involved/partners",
   "/get-involved/schools", "/get-involved/youth-organizations", "/about", "/contact", "/teach", "/news",
   "/podcast", "/glossary", "/standards", "/lessons", "/simulation", "/concept-map", "/highway-world",
@@ -1117,6 +1190,128 @@ export async function moveFaq(faqId: string, direction: "up" | "down"): Promise<
 export async function deleteFaq(faqId: string): Promise<void> {
   await requireWebsiteEditor();
   await sqlLearn`DELETE FROM site_faqs WHERE id = ${faqId}`;
+}
+
+/* ------------------------------------------------------------
+ * Press coverage
+ * ---------------------------------------------------------- */
+
+export interface AdminPublication {
+  id: string;
+  name: string;
+  logoUrl: string;
+  articleTitle: string;
+  articleUrl: string;
+  publicationDate: string;
+  status: PublicationStatus;
+  ordinal: number;
+}
+
+export interface PublicationInput {
+  id?: string;
+  name: string;
+  logoUrl: string;
+  articleTitle: string;
+  articleUrl: string;
+  publicationDate: string;
+  status: PublicationStatus;
+}
+
+export async function listAdminPublications(): Promise<AdminPublication[]> {
+  await requireWebsiteEditor();
+  const rows = await sqlLearn`
+    SELECT * FROM site_publications
+     ORDER BY ordinal ASC, publication_date DESC NULLS LAST, name ASC
+  `;
+  return [...rows].map((row) => ({
+    id: String(row.id),
+    name: String(row.name ?? ""),
+    logoUrl: String(row.logo_url ?? ""),
+    articleTitle: String(row.article_title ?? ""),
+    articleUrl: String(row.article_url ?? ""),
+    publicationDate: toIsoDate(row.publication_date),
+    status: toPublicationStatus(row.status),
+    ordinal: Number(row.ordinal) || 0,
+  }));
+}
+
+function isCompleteWebUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export async function savePublication(input: PublicationInput): Promise<string> {
+  const user = await requireWebsiteEditor();
+  const name = input.name.trim();
+  const articleTitle = input.articleTitle.trim();
+  const articleUrl = input.articleUrl.trim();
+  const logoUrl = input.logoUrl.trim();
+  const publicationDate = input.publicationDate.trim();
+
+  if (!name) throw new ContentValidationError("Add the publication name.");
+  if (!articleTitle) throw new ContentValidationError("Add the article title.");
+  if (!isCompleteWebUrl(articleUrl)) throw new ContentValidationError("Article link must be a complete http(s) web address.");
+  if (!isSafeEditorialImageUrl(logoUrl)) throw new ContentValidationError("Logo must be a site path or a complete http(s) web address.");
+  if (publicationDate && !isIsoCalendarDate(publicationDate)) {
+    throw new ContentValidationError("Publication date must be a real calendar date.");
+  }
+  if (!PUBLICATION_STATUSES.includes(input.status)) throw new ContentValidationError("Unknown publication status.");
+
+  const publicationId = input.id ?? id("pub");
+  await withTransaction(async (tx) => {
+    if (input.id) {
+      const existing = await tx`SELECT id FROM site_publications WHERE id = ${publicationId} FOR UPDATE`;
+      if (!existing[0]) throw new ContentValidationError("That press record no longer exists.");
+      await tx`
+        UPDATE site_publications
+           SET name = ${name}, logo_url = ${logoUrl || null}, article_title = ${articleTitle},
+               article_url = ${articleUrl}, publication_date = ${publicationDate || null},
+               status = ${input.status}, updated_at = ${now()}, updated_by_user_id = ${user.id}
+         WHERE id = ${publicationId}
+      `;
+    } else {
+      const maxRows = await tx`SELECT COALESCE(MAX(ordinal), -1) AS n FROM site_publications`;
+      await tx`
+        INSERT INTO site_publications (
+          id, name, logo_url, article_title, article_url, publication_date,
+          status, ordinal, created_at, updated_at, updated_by_user_id
+        ) VALUES (
+          ${publicationId}, ${name}, ${logoUrl || null}, ${articleTitle}, ${articleUrl}, ${publicationDate || null},
+          ${input.status}, ${(Number(maxRows[0]?.n) || 0) + 1}, ${now()}, ${now()}, ${user.id}
+        )
+      `;
+    }
+  });
+  return publicationId;
+}
+
+export async function movePublication(publicationId: string, direction: "up" | "down"): Promise<void> {
+  await requireWebsiteEditor();
+  await withTransaction(async (tx) => {
+    const rows = await tx`SELECT id FROM site_publications ORDER BY ordinal ASC, created_at ASC FOR UPDATE`;
+    const list = [...rows].map((row) => String(row.id));
+    const from = list.indexOf(publicationId);
+    if (from === -1) return;
+    const to = direction === "up" ? from - 1 : from + 1;
+    if (to < 0 || to >= list.length) return;
+    [list[from], list[to]] = [list[to], list[from]];
+    for (let index = 0; index < list.length; index += 1) {
+      await tx`UPDATE site_publications SET ordinal = ${index}, updated_at = ${now()} WHERE id = ${list[index]}`;
+    }
+  });
+}
+
+export async function archivePublication(publicationId: string): Promise<void> {
+  const user = await requireWebsiteEditor();
+  await sqlLearn`
+    UPDATE site_publications
+       SET status = 'archived', updated_at = ${now()}, updated_by_user_id = ${user.id}
+     WHERE id = ${publicationId}
+  `;
 }
 
 /* ------------------------------------------------------------

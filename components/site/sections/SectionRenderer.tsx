@@ -22,7 +22,7 @@ import FaqList from "@/components/site/FaqList";
 import OfferingCard from "@/components/site/OfferingCard";
 import { SectionSurface, SectionIntro, Paragraphs, mutedColor, accentColor } from "@/components/site/sections/shell";
 import type { PageSection } from "@/lib/cms/read";
-import { getFaqsForScope, getLiveAnnouncements, getPublicTestimonials } from "@/lib/cms/read";
+import { getFaqsForScope, getLiveAnnouncements, getPublicPublications, getPublicTestimonials } from "@/lib/cms/read";
 import { listOpenPrograms, listPublicTracks } from "@/lib/cms/offerings";
 import type {
   AnnouncementSectionData,
@@ -36,6 +36,7 @@ import type {
   ListData,
   MediaListData,
   ProgramCollectionData,
+  PressData,
   StatsData,
   StepsData,
   TestimonialsData,
@@ -83,6 +84,8 @@ async function Section({ section, context }: { section: PageSection; context: Se
       return <TrackCollectionSection data={section.data as unknown as TrackCollectionData} />;
     case "testimonials":
       return <TestimonialsSection data={section.data as unknown as TestimonialsData} />;
+    case "press":
+      return <PressSection data={section.data as unknown as PressData} />;
     case "faq":
       return <FaqSection data={section.data as unknown as FaqSectionData} context={context} />;
     case "cta":
@@ -739,6 +742,66 @@ async function TestimonialsSection({ data }: { data: TestimonialsData }) {
           </figure>
         ))}
       </div>
+    </SectionSurface>
+  );
+}
+
+async function PressSection({ data }: { data: PressData }) {
+  // Press is supporting credibility content, so a temporary query problem
+  // degrades to the editor-authored empty state rather than taking down Home.
+  const publications = await getPublicPublications().catch(() => []);
+  return (
+    <SectionSurface tone={data.tone} id="press">
+      <SectionIntro eyebrow={data.eyebrow} headline={data.headline} body={data.body} tone={data.tone} />
+      {publications.length === 0 ? (
+        <p style={{ fontFamily: "var(--font-interface)", fontSize: 16, color: mutedColor(data.tone) }}>
+          {data.emptyBody || "Verified coverage will appear here once it is published."}
+        </p>
+      ) : (
+        <div className={`bow-grid bow-grid-${Math.min(3, publications.length)}`}>
+          {publications.map((publication) => (
+            <a
+              key={publication.id}
+              href={publication.articleUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="bow-card"
+              style={{
+                display: "flex",
+                minHeight: 210,
+                flexDirection: "column",
+                gap: "var(--space-4)",
+                padding: "24px 22px",
+                border: "1px solid var(--border-rule)",
+                borderTop: "3px solid var(--bow-blue)",
+                background: data.tone === "ink" ? "var(--bow-dark-surface)" : "var(--bow-white)",
+                color: data.tone === "ink" ? "var(--bow-on-ink)" : "var(--text-primary)",
+              }}
+            >
+              {publication.logoUrl ? (
+                // Logos are owner-supplied and may live on a publication's CDN.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={publication.logoUrl}
+                  alt={`${publication.name} logo`}
+                  style={{ display: "block", width: "auto", maxWidth: 180, height: 34, objectFit: "contain", objectPosition: "left center" }}
+                />
+              ) : (
+                <span className="bow-display" style={{ fontSize: "var(--type-card)" }}>{publication.name}</span>
+              )}
+              <span style={{ fontFamily: "var(--font-editorial)", fontSize: 18, lineHeight: 1.35, flex: 1 }}>
+                {publication.articleTitle}
+              </span>
+              <span className="bow-data" style={{ fontSize: "var(--type-meta)", color: mutedColor(data.tone) }}>
+                {publication.publicationDate
+                  ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
+                      .format(new Date(`${publication.publicationDate}T00:00:00Z`))
+                  : "Read coverage"}
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
     </SectionSurface>
   );
 }

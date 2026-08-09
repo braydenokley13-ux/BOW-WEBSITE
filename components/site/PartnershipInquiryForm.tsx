@@ -59,7 +59,7 @@ export default function PartnershipInquiryForm() {
     return (
       <div style={{ background: "var(--bow-white)", border: "1px solid var(--bow-positive)", borderRadius: 8, padding: "clamp(24px,4vw,40px)" }}>
         <h2 style={{ margin: "0 0 8px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(20px,3vw,26px)", textTransform: "uppercase" }}>
-          Thanks — we&rsquo;ve got it.
+          Thanks, we&rsquo;ve got it.
         </h2>
         <p style={{ margin: 0, fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "var(--bow-slate)" }}>
           Your partnership inquiry is in front of the BOW team.
@@ -72,7 +72,7 @@ export default function PartnershipInquiryForm() {
     <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 620 }}>
       <div>
         <label style={labelStyle} htmlFor="pi-org">Organization name</label>
-        <input className="bow-field" id="pi-org" style={inputStyle} value={data.organizationName} onChange={set("organizationName")} placeholder="League, school, or organization" required autoComplete="organization" />
+        <input className="bow-field" id="pi-org" style={inputStyle} value={data.organizationName} onChange={set("organizationName")} placeholder="School, camp, nonprofit, or youth organization" required autoComplete="organization" />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 16 }}>
         <div>
@@ -85,7 +85,7 @@ export default function PartnershipInquiryForm() {
         </div>
       </div>
       <div>
-        <label style={labelStyle} htmlFor="pi-msg">Tell us about the partnership</label>
+        <label style={labelStyle} htmlFor="pi-msg">Tell us about your students and goals</label>
         <textarea className="bow-field" id="pi-msg" rows={5} style={{ ...inputStyle, resize: "vertical" }} value={data.message} onChange={set("message")} />
       </div>
       {status === "error" && (
@@ -93,7 +93,7 @@ export default function PartnershipInquiryForm() {
       )}
       <div>
         <Button type="submit" variant="primary" size="md" disabled={status === "busy"}>
-          {status === "busy" ? "Sending…" : "Request a Partnership"}
+          {status === "busy" ? "Sending…" : "Bring BOW to Your Organization"}
         </Button>
       </div>
     </form>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Badge, PageHeader } from "@/components/ds";
-import { listAdminAnnouncements, listAdminFaqs, listAdminPages, listAdminPrograms, listAdminTracks } from "@/lib/cms/admin";
+import { listAdminAnnouncements, listAdminFaqs, listAdminPages, listAdminPrograms, listAdminPublications } from "@/lib/cms/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -13,20 +13,20 @@ export const metadata = { title: "Website" };
  * live right now, and what have I started editing but not published.
  */
 export default async function WebsiteOverviewPage() {
-  const [pages, tracks, programs, faqs, announcements] = await Promise.all([
+  const [pages, programs, publications, faqs, announcements] = await Promise.all([
     listAdminPages(),
-    listAdminTracks(),
     listAdminPrograms(),
+    listAdminPublications(),
     listAdminFaqs(),
     listAdminAnnouncements(),
   ]);
 
-  const contentPages = pages.filter((page) => page.kind === "page");
+  const contentPages = pages.filter((page) => page.kind === "page" && page.cmsVisible);
   const unpublished = pages.filter((page) => page.hasDraft);
   const stats = [
-    { label: "Public pages", value: `${contentPages.filter((p) => p.isPublished).length}/${contentPages.length}`, note: "published" },
-    { label: "Tracks", value: `${tracks.filter((t) => t.publicationStatus === "published").length}/${tracks.length}`, note: "published" },
+    { label: "Primary pages", value: `${contentPages.filter((p) => p.isPublished).length}/${contentPages.length}`, note: "published" },
     { label: "Programs", value: `${programs.filter((p) => p.publicationStatus === "published").length}/${programs.length}`, note: "published" },
+    { label: "Press records", value: `${publications.filter((p) => p.status === "published").length}/${publications.length}`, note: "published" },
     { label: "FAQs", value: `${faqs.filter((f) => f.status === "published").length}/${faqs.length}`, note: "published" },
     { label: "Announcements", value: `${announcements.filter((a) => a.isLive).length}`, note: "showing now" },
   ];

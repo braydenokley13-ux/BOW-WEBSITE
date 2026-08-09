@@ -23,6 +23,7 @@ export type FieldType =
   | "boolean"
   | "number"
   | "image"
+  | "url"
   | "strings"
   | "repeater";
 
@@ -37,6 +38,8 @@ export interface FieldSpec {
   itemFields?: FieldSpec[];
   /** For `repeater`: what one row is called, e.g. "card". */
   itemNoun?: string;
+  /** Presentation is owned by code and is intentionally hidden from the owner editor. */
+  presentation?: boolean;
 }
 
 const toneField: FieldSpec = {
@@ -44,6 +47,7 @@ const toneField: FieldSpec = {
   label: "Background",
   type: "select",
   help: "Which surface this section sits on.",
+  presentation: true,
   options: [
     { value: "paper", label: "Paper (light grey)" },
     { value: "white", label: "White" },
@@ -76,11 +80,12 @@ const actionsField: FieldSpec = {
   itemNoun: "button",
   itemFields: [
     { name: "label", label: "Button text", type: "text" },
-    { name: "href", label: "Goes to", type: "text", placeholder: "/programs", help: "A page on this site (starts with /) or a full web address." },
+    { name: "href", label: "Goes to", type: "url", placeholder: "/programs", help: "A page on this site (starts with /) or a full web address." },
     {
       name: "variant",
       label: "Style",
       type: "select",
+      presentation: true,
       options: [
         { value: "primary", label: "Primary" },
         { value: "secondary", label: "Secondary" },
@@ -97,7 +102,7 @@ const linkRepeater = (name: string, label: string, noun: string): FieldSpec => (
   itemNoun: noun,
   itemFields: [
     { name: "label", label: "Text", type: "text" },
-    { name: "href", label: "Goes to", type: "text", placeholder: "/about" },
+    { name: "href", label: "Goes to", type: "url", placeholder: "/about" },
   ],
 });
 
@@ -117,7 +122,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
     headline(),
     body,
     toneField,
-    { name: "columns", label: "Cards per row", type: "number", help: "2, 3, or 4." },
+    { name: "columns", label: "Cards per row", type: "number", help: "2, 3, or 4.", presentation: true },
     {
       name: "groups",
       label: "Card groups",
@@ -134,7 +139,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
             { name: "title", label: "Card title", type: "text" },
             { name: "body", label: "Card text", type: "textarea" },
             { name: "ctaLabel", label: "Link text", type: "text" },
-            { name: "href", label: "Goes to", type: "text", placeholder: "/programs" },
+            { name: "href", label: "Goes to", type: "url", placeholder: "/programs" },
           ],
         },
       ],
@@ -165,12 +170,12 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
     { name: "featuredOnly", label: "Featured programs only", type: "boolean" },
     { name: "programSlugs", label: "Or pick specific programs", type: "strings", help: "Program web addresses, one per line. Leave empty to show them automatically." },
     { name: "showAllLabel", label: "“See all” button text", type: "text" },
-    { name: "showAllHref", label: "“See all” goes to", type: "text", placeholder: "/programs" },
+    { name: "showAllHref", label: "“See all” goes to", type: "url", placeholder: "/programs" },
     { name: "hideWhenEmpty", label: "Hide this section when no programs are open", type: "boolean" },
     { name: "emptyHeadline", label: "Empty state heading", type: "text", help: "Shown when nothing is open." },
     { name: "emptyBody", label: "Empty state text", type: "textarea" },
     { name: "emptyActionLabel", label: "Empty state button text", type: "text" },
-    { name: "emptyActionHref", label: "Empty state button goes to", type: "text" },
+    { name: "emptyActionHref", label: "Empty state button goes to", type: "url" },
   ],
   track_collection: [
     eyebrow,
@@ -181,6 +186,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
       name: "layout",
       label: "Layout",
       type: "select",
+      presentation: true,
       options: [
         { value: "compare", label: "Side-by-side comparison" },
         { value: "grid", label: "Grid" },
@@ -191,6 +197,18 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
     { name: "emptyBody", label: "Empty state text", type: "textarea" },
   ],
   testimonials: [eyebrow, headline(), body, toneField, { name: "limit", label: "How many quotes", type: "number" }],
+  press: [
+    eyebrow,
+    headline(),
+    body,
+    toneField,
+    {
+      name: "emptyBody",
+      label: "Text shown before coverage is published",
+      type: "textarea",
+      help: "Publication names, article links, logos, and dates are managed under Website → Press.",
+    },
+  ],
   faq: [
     eyebrow,
     headline(),
@@ -218,7 +236,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
     },
     { name: "message", label: "Message", type: "textarea", help: "Only used for a one-off message." },
     { name: "linkLabel", label: "Link text", type: "text" },
-    { name: "linkHref", label: "Link goes to", type: "text" },
+    { name: "linkHref", label: "Link goes to", type: "url" },
     toneField,
   ],
   steps: [
@@ -230,6 +248,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
       name: "style",
       label: "Layout",
       type: "select",
+      presentation: true,
       options: [
         { value: "grid", label: "Grid of steps" },
         { value: "list", label: "Stacked list" },
@@ -261,6 +280,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
       name: "imagePosition",
       label: "Image position",
       type: "select",
+      presentation: true,
       options: [
         { value: "right", label: "Right of the text" },
         { value: "left", label: "Left of the text" },
@@ -289,6 +309,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
       name: "style",
       label: "Layout",
       type: "select",
+      presentation: true,
       options: [
         { value: "chips", label: "Pills" },
         { value: "rows", label: "Bulleted rows" },
@@ -387,7 +408,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
         { name: "kicker", label: "Category", type: "text" },
         { name: "title", label: "Title", type: "text" },
         { name: "meta", label: "Detail line", type: "text" },
-        { name: "href", label: "Goes to", type: "text" },
+        { name: "href", label: "Goes to", type: "url" },
       ],
     },
   ],
@@ -399,7 +420,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
       itemNoun: "menu item",
       itemFields: [
         { name: "label", label: "Text", type: "text" },
-        { name: "href", label: "Goes to", type: "text", placeholder: "/programs" },
+        { name: "href", label: "Goes to", type: "url", placeholder: "/programs" },
         { name: "visible", label: "Show in the menu", type: "boolean" },
         {
           name: "children",
@@ -408,18 +429,18 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
           itemNoun: "dropdown link",
           itemFields: [
             { name: "label", label: "Text", type: "text" },
-            { name: "href", label: "Goes to", type: "text" },
+            { name: "href", label: "Goes to", type: "url" },
             { name: "visible", label: "Show", type: "boolean" },
           ],
         },
       ],
     },
     { name: "signInLabel", label: "Sign-in link text", type: "text" },
-    { name: "signInHref", label: "Sign-in link goes to", type: "text" },
+    { name: "signInHref", label: "Sign-in link goes to", type: "url" },
     { name: "primaryCtaLabel", label: "Main button text", type: "text" },
-    { name: "primaryCtaHref", label: "Main button goes to", type: "text" },
+    { name: "primaryCtaHref", label: "Main button goes to", type: "url" },
     { name: "secondaryCtaLabel", label: "Second button text (mobile menu)", type: "text" },
-    { name: "secondaryCtaHref", label: "Second button goes to", type: "text" },
+    { name: "secondaryCtaHref", label: "Second button goes to", type: "url" },
   ],
   footer_columns: [
     { name: "tagline", label: "Wordmark subtitle", type: "text" },
@@ -443,7 +464,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
     { name: "organizationName", label: "Organisation name", type: "text" },
     { name: "organizationDescription", label: "Short description", type: "textarea", help: "Used as the default description for search and social sharing." },
     { name: "primaryAnnouncement", label: "Primary announcement", type: "text", help: "Optional one-liner. For scheduled announcements use Website → Announcements." },
-    { name: "primaryAnnouncementHref", label: "Announcement links to", type: "text" },
+    { name: "primaryAnnouncementHref", label: "Announcement links to", type: "url" },
     { name: "defaultSocialImage", label: "Default sharing image", type: "image" },
     { name: "supportEmail", label: "Support email shown publicly", type: "text" },
     { name: "defaultRegistrationExplanation", label: "Default registration explanation", type: "textarea", help: "Shown on a program that has no explanation of its own." },
@@ -453,7 +474,7 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
     { name: "defaultSeoTitle", label: "Default page title", type: "text" },
     { name: "defaultSeoDescription", label: "Default page description", type: "textarea" },
     { name: "primaryCtaLabel", label: "Site-wide button text", type: "text" },
-    { name: "primaryCtaHref", label: "Site-wide button goes to", type: "text" },
+    { name: "primaryCtaHref", label: "Site-wide button goes to", type: "url" },
     { name: "contactEmail", label: "Public contact email", type: "text" },
     { name: "contactPhone", label: "Public contact phone", type: "text" },
     { name: "contactLocation", label: "Public location", type: "text" },
@@ -462,4 +483,21 @@ const FIELDS: Record<SectionKind, FieldSpec[]> = {
 
 export function sectionFields(kind: SectionKind): FieldSpec[] {
   return FIELDS[kind] ?? [];
+}
+
+/**
+ * The owner edits words, destinations, images, and repeated editorial items.
+ * Layout choices remain in the stored document but are omitted from the form,
+ * so saving copy cannot accidentally change the page design.
+ */
+export function editorialSectionFields(kind: SectionKind): FieldSpec[] {
+  const contentFields = (fields: FieldSpec[]): FieldSpec[] =>
+    fields
+      .filter((field) => !field.presentation)
+      .map((field) => ({
+        ...field,
+        itemFields: field.itemFields ? contentFields(field.itemFields) : undefined,
+      }));
+
+  return contentFields(sectionFields(kind));
 }

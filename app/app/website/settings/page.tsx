@@ -22,5 +22,12 @@ export default async function GlobalSettingsScreen() {
   }
 
   const versions = await listVersions(settings.page.id);
-  return <PageEditor page={settings} versions={versions} faqPageSlug={settings.page.slug} />;
+  return (
+    <PageEditor
+      key={`${settings.versionId}:${settings.page.hasDraft}:${settings.page.updatedAt}`}
+      page={settings}
+      versions={versions}
+      faqPageSlug={settings.page.slug}
+    />
+  );
 }

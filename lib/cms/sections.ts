@@ -139,6 +139,14 @@ const testimonialsData = z.object({
   limit: count(3),
 });
 
+const pressData = z.object({
+  eyebrow: optionalText,
+  headline: optionalText,
+  body: optionalText,
+  tone: tone,
+  emptyBody: optionalText,
+});
+
 const faqData = z.object({
   eyebrow: optionalText,
   headline: optionalText,
@@ -378,6 +386,18 @@ const SPECS = {
     schema: testimonialsData,
     empty: () => ({ eyebrow: "", headline: "", body: "", tone: "ink", limit: 3 }),
   },
+  press: {
+    label: "Press coverage",
+    summary: "Published coverage from the shared Press list.",
+    schema: pressData,
+    empty: () => ({
+      eyebrow: "Featured in",
+      headline: "BOW in the press",
+      body: "",
+      tone: "white",
+      emptyBody: "Verified coverage will appear here once it is published.",
+    }),
+  },
   faq: {
     label: "FAQ",
     summary: "The questions assigned to this page in the FAQs screen.",
@@ -506,6 +526,7 @@ export type StatsData = z.infer<typeof statsData>;
 export type ProgramCollectionData = z.infer<typeof programCollectionData>;
 export type TrackCollectionData = z.infer<typeof trackCollectionData>;
 export type TestimonialsData = z.infer<typeof testimonialsData>;
+export type PressData = z.infer<typeof pressData>;
 export type FaqSectionData = z.infer<typeof faqData>;
 export type CtaData = z.infer<typeof ctaData>;
 export type AnnouncementSectionData = z.infer<typeof announcementData>;
