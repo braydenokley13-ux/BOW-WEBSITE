@@ -20,6 +20,7 @@
     "db:seed": "tsx scripts/seed-dev.ts",
     "content:bootstrap": "tsx scripts/seed-site-content.ts",
     "db:deploy": "npm run migrate && npm run content:bootstrap",
+    "cleanup:seed": "tsx scripts/cleanup-seed-data.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
