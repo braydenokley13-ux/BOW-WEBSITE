@@ -73,7 +73,10 @@ const DEMO_USER_IDS = [
 
 const DEMO_ORG_IDS = ["org-school", "org-youth"] as const;
 
-type Db = postgres.Sql;
+// Query helpers are used both on the root client and inside `sql.begin`.
+// Both expose the same tagged-query surface; transactions intentionally omit
+// connection-lifecycle methods such as `end` and `reserve`.
+type Db = postgres.Sql | postgres.TransactionSql;
 
 type ForeignKey = {
   childSchema: string;
@@ -388,7 +391,7 @@ async function report(sql: Db): Promise<void> {
   );
 }
 
-async function execute(sql: Db): Promise<void> {
+async function execute(sql: postgres.Sql): Promise<void> {
   if (process.env.CONFIRM_CLEANUP !== CONFIRMATION) {
     throw new Error(
       `[cleanup] --execute requires CONFIRM_CLEANUP=${CONFIRMATION}.`,

@@ -1,23 +1,20 @@
 /* ============================================================
- * scripts/seed-site-content.ts — move the existing public website into the
- * content system, once.
+ * scripts/seed-site-content.ts — bootstrap and upgrade public CMS content.
  *
- * Every page, section, FAQ, navigation entry, and footer link below is the
- * copy the site was already serving, lifted out of the page files and the
- * `lib/home.ts` / `lib/about.ts` / `lib/programs.ts` / `lib/get-involved.ts`
- * constants that used to hold it. Running this against a database that has
- * migration 023 applied leaves the public site looking exactly as it did,
- * except that the founder can now edit all of it.
+ * Phase one inserts the original CMS baseline only when a document, track, or
+ * FAQ is missing. Phase two calls `upgradeMarketingArchitecture`, which makes
+ * the current organization-focused architecture the published version while
+ * preserving prior versions and incompatible owner drafts in history.
  *
  * Safety properties, in order of importance:
  *
- *   1. **Never overwrites.** A document is created only when no row with that
- *      slug exists. A track only when no curriculum owns that public slug. A
- *      FAQ only when no FAQ with that question exists. Re-running after the
- *      founder has edited the homepage changes nothing.
- *   2. **Idempotent.** Safe to run once in production, and safe to run again
- *      if a deploy retries it.
- *   3. **Non-destructive.** No DELETE, no TRUNCATE, no reset. It only inserts.
+ *   1. **Preserves history.** The upgrade publishes a new version; it does not
+ *      rewrite or delete old page versions or owner-authored section rows.
+ *   2. **Idempotent.** Safe to run again when a deploy retries. Current pages
+ *      and verified publication records are recognized and left unchanged.
+ *   3. **Non-destructive.** No DELETE or TRUNCATE. Obsolete public documents
+ *      are archived, and incompatible active drafts are retained as
+ *      superseded versions instead of being discarded.
  *
  * Usage:  npm run content:bootstrap
  *         npm run content:bootstrap -- --dry-run

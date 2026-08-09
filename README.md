@@ -1,10 +1,8 @@
 # BOW Sports Capital
 
-**The front office for the next generation.** Read the game. Run the business. Make the decision.
-
-BOW Sports Capital is a sports-business education platform: middle and high school
-students learn economics, finance, leadership, and strategy by making the same
-decisions that shape teams, leagues, and the business of sports.
+BOW Sports Capital is an online program that teaches financial literacy and
+economics to students in Grades 5–8 through sports concepts and interactive
+simulations.
 
 This repository contains both the public education experience and the BOW
 Operating System used to plan Programs, staff Classes, run sessions, and manage
@@ -24,12 +22,14 @@ npm test           # node:test suite
 ### Database
 
 ```bash
-npm run migrate            # apply pending SQL migrations (forward-only, idempotent)
-npm run content:bootstrap  # load the existing public website into the editor (insert-only)
-npm run db:deploy          # both of the above, in order
+npm run migrate            # apply SQL migrations, then safely install/upgrade CMS content
+npm run content:bootstrap  # rerun only the idempotent CMS content step
+npm run db:deploy          # alias for the complete migrate + content path
 ```
 
-Both are safe to re-run and never overwrite founder edits. See
+All three commands are safe to re-run. The architecture upgrade preserves page
+history and current compatible owner drafts; incompatible pre-architecture
+drafts remain recoverable as superseded versions. See
 [docs/website-content-system.md](docs/website-content-system.md) for the
 deployment sequence, the publishing model, and what to do when a page reports a
 fault.

@@ -2,9 +2,11 @@
  * One-time upgrade from the original curriculum-heavy marketing site to the
  * partner-focused public information architecture.
  *
- * The architecture_version marker makes this safe to run on every deploy.
- * Version 1 pages receive a new published version. Version 2 pages, including
- * anything the owner edits afterward, are never overwritten.
+ * The architecture_version marker and the published section signature make
+ * this safe to run on every deploy. A marker alone is not trusted because a
+ * partially completed upgrade can leave version-1 content live. Pages whose
+ * published structure is already current, including owner-edited pages, are
+ * never overwritten.
  * ============================================================ */
 
 import postgres from "postgres";
@@ -34,6 +36,8 @@ interface UpgradePage {
 
 const id = (prefix: string) => `${prefix}-${randomUUID().slice(0, 12)}`;
 const now = () => Date.now();
+
+export const MARKETING_ARCHITECTURE_VERSION = 2;
 
 const ORGANIZATION_DESCRIPTION =
   "BOW Sports Capital is an online program that teaches financial literacy and economics to students in Grades 5–8 through sports concepts and interactive simulations.";
@@ -192,7 +196,7 @@ const PROGRAMS: UpgradePage = {
       data: {
         eyebrow: "Program format",
         headline: "Short instruction, open discussion, and interactive practice.",
-        body: "BOW has run two six-week courses on Zoom for about 30 middle school students. Each 45-minute class combined a focused explanation, group discussion, and an interactive simulation. New organizational programs are discussed directly so the audience and timing are clear before anything is promised.",
+        body: "BOW's established live online format uses six weekly, 45-minute sessions. Each class combines a focused explanation, group discussion, and an interactive simulation. New organizational programs are discussed directly so the audience and timing are clear before anything is promised.",
         tone: "white",
       },
     },
@@ -653,7 +657,49 @@ const FOOTER: UpgradePage = {
   ],
 };
 
-const UPGRADE_PAGES: UpgradePage[] = [SETTINGS, NAVIGATION, FOOTER, HOME, PROGRAMS, PARTNER, ABOUT, TEACH, CONTACT, PODCAST];
+export const UPGRADE_PAGES: UpgradePage[] = [SETTINGS, NAVIGATION, FOOTER, HOME, PROGRAMS, PARTNER, ABOUT, TEACH, CONTACT, PODCAST];
+
+export interface PublishedArchitectureState {
+  status: string | null;
+  publishedVersionId: string | null;
+  publishedState: string | null;
+  publishedSectionKinds: string[];
+}
+
+/**
+ * A marker alone is not proof that the data migration finished. The previous
+ * corrective audit found an environment where the code existed but the live
+ * rows were still version 1. Verify the published pointer and fixed section
+ * structure before treating a page as current.
+ */
+export function publishedArchitectureMatches(
+  state: PublishedArchitectureState,
+  expectedSectionKinds: readonly string[],
+): boolean {
+  return state.status === "published"
+    && Boolean(state.publishedVersionId)
+    && state.publishedState === "published"
+    && state.publishedSectionKinds.length === expectedSectionKinds.length
+    && state.publishedSectionKinds.every((kind, index) => kind === expectedSectionKinds[index]);
+}
+
+/** Known version-1 content that shares the same section kind as its replacement. */
+export function containsRetiredMarketingContent(slug: string, sectionData: unknown): boolean {
+  const serialized = JSON.stringify(sectionData ?? []);
+  if (slug === "system-navigation") {
+    return /Get Involved|Track 10|\/get-involved|\/programs\/track-|Find a Program/.test(serialized);
+  }
+  if (slug === "system-footer") {
+    return /Get Involved|Track 10|\/get-involved|\/programs\/track-|FRONT OFFICE ON THE INSIDE/.test(serialized);
+  }
+  if (slug === "system-settings") {
+    return /middle and high school|Brooklyn, New York|front office for the next generation|Find a Program/i.test(serialized);
+  }
+  if (slug === "podcast") {
+    return /conversations behind the decisions|front-office strategy|throughout the curriculum/i.test(serialized);
+  }
+  return false;
+}
 
 const ARCHIVE_SLUGS = [
   "programs-find",
@@ -676,7 +722,7 @@ const HIDE_FROM_PRIMARY_CMS = [
   "highway-world",
 ];
 
-const VERIFIED_PUBLICATIONS = [
+export const VERIFIED_PUBLICATIONS = [
   {
     id: "pub-jewish-link",
     name: "The Jewish Link",
@@ -720,18 +766,51 @@ export async function upgradeMarketingArchitecture(): Promise<void> {
   try {
     for (const page of UPGRADE_PAGES) {
       const rows = await sql`
-        SELECT id, architecture_version, published_version_id, draft_version_id
-          FROM site_pages WHERE slug = ${page.slug} LIMIT 1
+        SELECT p.id, p.architecture_version, p.cms_visible, p.status,
+               p.published_version_id, p.draft_version_id,
+               pv.state AS published_state,
+               COALESCE(
+                 array_agg(s.kind ORDER BY s.ordinal) FILTER (WHERE s.id IS NOT NULL),
+                 ARRAY[]::text[]
+               ) AS published_section_kinds,
+               COALESCE(
+                 jsonb_agg(s.data ORDER BY s.ordinal) FILTER (WHERE s.id IS NOT NULL),
+                 '[]'::jsonb
+               ) AS published_section_data
+          FROM site_pages p
+          LEFT JOIN site_page_versions pv ON pv.id = p.published_version_id
+          LEFT JOIN site_page_sections s ON s.version_id = p.published_version_id
+         WHERE p.slug = ${page.slug}
+         GROUP BY p.id, p.architecture_version, p.cms_visible, p.status,
+                  p.published_version_id, p.draft_version_id, pv.state
+         LIMIT 1
       `;
       const existing = rows[0];
 
-      if (existing && Number(existing.architecture_version) >= 2) {
+      const expectedSectionKinds = page.sections.map((section) => section.kind);
+      const publishedIsCurrent = existing
+        && Number(existing.architecture_version) >= MARKETING_ARCHITECTURE_VERSION
+        && !containsRetiredMarketingContent(page.slug, existing.published_section_data)
+        && publishedArchitectureMatches({
+          status: String(existing.status ?? ""),
+          publishedVersionId: existing.published_version_id ? String(existing.published_version_id) : null,
+          publishedState: existing.published_state ? String(existing.published_state) : null,
+          publishedSectionKinds: Array.isArray(existing.published_section_kinds)
+            ? existing.published_section_kinds.map(String)
+            : [],
+        }, expectedSectionKinds);
+
+      if (existing && publishedIsCurrent) {
+        if (!dryRun) {
+          await sql`
+            UPDATE site_pages
+               SET kind = ${page.kind}, path = ${page.path}, is_system = ${page.isSystem ?? false},
+                   ordinal = ${page.ordinal}, architecture_version = ${MARKETING_ARCHITECTURE_VERSION},
+                   cms_visible = ${page.cmsVisible}, updated_at = ${now()}
+             WHERE id = ${existing.id}
+          `;
+        }
         skipped += 1;
-        continue;
-      }
-      if (existing?.draft_version_id) {
-        skipped += 1;
-        console.log(`[content] ${page.slug} has an owner draft; architecture upgrade left it untouched`);
         continue;
       }
 
@@ -743,12 +822,28 @@ export async function upgradeMarketingArchitecture(): Promise<void> {
 
       await sql.begin(async (tx) => {
         const pageId = existing ? String(existing.id) : id("spg");
+        const legacyDraftId = existing?.draft_version_id ? String(existing.draft_version_id) : null;
         let versionNo = 1;
         if (existing) {
           const maxRows = await tx`SELECT COALESCE(MAX(version_no), 0) AS n FROM site_page_versions WHERE page_id = ${pageId}`;
           versionNo = (Number(maxRows[0]?.n) || 0) + 1;
           if (existing.published_version_id) {
             await tx`UPDATE site_page_versions SET state = 'superseded' WHERE id = ${existing.published_version_id}`;
+          }
+          if (legacyDraftId) {
+            // The old draft cannot safely remain the active editor document
+            // because its section structure belongs to the retired site. Keep
+            // every field and section in version history so it can be reviewed
+            // or restored, but let the editor start from the new architecture.
+            await tx`
+              UPDATE site_page_versions
+                 SET state = 'superseded',
+                     note = CASE
+                       WHEN COALESCE(note, '') = '' THEN 'Preserved pre-architecture owner draft'
+                       ELSE note || ' · Preserved pre-architecture owner draft'
+                     END
+               WHERE id = ${legacyDraftId}
+            `;
           }
         } else {
           await tx`
@@ -757,7 +852,7 @@ export async function upgradeMarketingArchitecture(): Promise<void> {
               architecture_version, cms_visible, created_at, updated_at
             ) VALUES (
               ${pageId}, ${page.kind}, ${page.slug}, ${page.path}, ${page.name}, ${page.description},
-              'published', ${page.isSystem ?? false}, ${page.ordinal}, 2, ${page.cmsVisible}, ${now()}, ${now()}
+              'published', ${page.isSystem ?? false}, ${page.ordinal}, ${MARKETING_ARCHITECTURE_VERSION}, ${page.cmsVisible}, ${now()}, ${now()}
             )
           `;
         }
@@ -787,7 +882,7 @@ export async function upgradeMarketingArchitecture(): Promise<void> {
              SET kind = ${page.kind}, path = ${page.path}, name = ${page.name}, description = ${page.description},
                  status = 'published', published_version_id = ${versionId}, draft_version_id = NULL,
                  is_system = ${page.isSystem ?? false}, ordinal = ${page.ordinal},
-                 architecture_version = 2, cms_visible = ${page.cmsVisible}, updated_at = ${now()}
+                 architecture_version = ${MARKETING_ARCHITECTURE_VERSION}, cms_visible = ${page.cmsVisible}, updated_at = ${now()}
            WHERE id = ${pageId}
         `;
       });
@@ -796,9 +891,9 @@ export async function upgradeMarketingArchitecture(): Promise<void> {
 
     if (!dryRun) {
       await sql.begin(async (tx) => {
-        await tx`UPDATE site_pages SET status = 'archived', cms_visible = false, architecture_version = 2, updated_at = ${now()} WHERE slug IN ${tx(ARCHIVE_SLUGS)}`;
-        await tx`UPDATE site_pages SET cms_visible = false, architecture_version = 2, updated_at = ${now()} WHERE slug IN ${tx(HIDE_FROM_PRIMARY_CMS)}`;
-        await tx`UPDATE site_pages SET status = 'archived', cms_visible = false, architecture_version = 2, updated_at = ${now()} WHERE kind = 'track'`;
+        await tx`UPDATE site_pages SET status = 'archived', cms_visible = false, architecture_version = ${MARKETING_ARCHITECTURE_VERSION}, updated_at = ${now()} WHERE slug IN ${tx(ARCHIVE_SLUGS)}`;
+        await tx`UPDATE site_pages SET cms_visible = false, architecture_version = ${MARKETING_ARCHITECTURE_VERSION}, updated_at = ${now()} WHERE slug IN ${tx(HIDE_FROM_PRIMARY_CMS)}`;
+        await tx`UPDATE site_pages SET status = 'archived', cms_visible = false, architecture_version = ${MARKETING_ARCHITECTURE_VERSION}, updated_at = ${now()} WHERE kind = 'track'`;
         await tx`UPDATE curricula SET publication_status = 'archived', updated_at = ${now()} WHERE public_slug IS NOT NULL`;
       });
 
@@ -818,7 +913,7 @@ export async function upgradeMarketingArchitecture(): Promise<void> {
       }
     }
 
-    console.log(`[content] partner architecture complete: ${upgraded} upgraded, ${skipped} already current or protected`);
+    console.log(`[content] partner architecture complete: ${upgraded} upgraded, ${skipped} already current`);
   } finally {
     await sql.end({ timeout: 5 });
   }

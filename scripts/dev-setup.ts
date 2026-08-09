@@ -1,12 +1,13 @@
 /* ============================================================
  * scripts/dev-setup.ts — build a working database from empty.
  *
- * Runs the four schema steps in the only order that works:
+ * Runs the five setup steps in the only order that works:
  *
  *   1. dev-bootstrap.sql        legacy tables (users, organizations, ...)
  *   2. migrations --through 000 operations/classes/growth core
  *   3. migrate-people-work-os   role_assignments, openings, applications, ...
- *   4. migrations (all)         001-014
+ *   4. migrations (all)         every remaining SQL migration
+ *   5. public website content   current published CMS architecture
  *
  * Steps 2 and 3 are interleaved because 008_people_weekly_operations.sql
  * extends `role_assignments`, which step 3 creates, and step 3 needs
@@ -69,7 +70,7 @@ function run(label: string, args: string[]): void {
 }
 
 async function applyBootstrap(url: string): Promise<void> {
-  console.log("\n[setup] 1/4 applying scripts/dev-bootstrap.sql");
+  console.log("\n[setup] 1/5 applying scripts/dev-bootstrap.sql");
   const sql = postgres(url, { prepare: false, max: 1 });
   try {
     const file = path.join(process.cwd(), "scripts", "dev-bootstrap.sql");
@@ -84,9 +85,10 @@ async function main(): Promise<void> {
   assertLocal(url);
 
   await applyBootstrap(url);
-  run("2/4 migrations through 000", ["scripts/run-migrations.ts", "--through", "000"]);
-  run("3/4 people & work engine", ["scripts/migrate-people-work-os.ts"]);
-  run("4/4 remaining migrations", ["scripts/run-migrations.ts"]);
+  run("2/5 migrations through 000", ["scripts/run-migrations.ts", "--through", "000"]);
+  run("3/5 people & work engine", ["scripts/migrate-people-work-os.ts"]);
+  run("4/5 remaining migrations", ["scripts/run-migrations.ts"]);
+  run("5/5 public website content", ["scripts/seed-site-content.ts"]);
 
   if (process.argv.includes("--seed")) {
     run("seed: development data", ["scripts/seed-dev.ts"]);

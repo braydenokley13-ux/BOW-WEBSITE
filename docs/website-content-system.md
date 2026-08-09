@@ -6,20 +6,23 @@ how publishing works, and what to do when a page misbehaves.
 
 ## Deploying
 
-Two commands, in this order, both safe to re-run:
+One command performs the complete upgrade and is safe to re-run:
 
 ```bash
-# 1. Schema. Forward-only, transactional, tracked in `schema_migrations`.
-#    Uses POSTGRES_URL_NON_POOLING (Supabase's direct/session URL, port 5432)
-#    because DDL through the transaction pooler is unreliable.
+# Applies forward-only SQL migrations, then seeds missing records and performs
+# any required idempotent public architecture upgrade.
 npm run migrate
-
-# 2. Content. Seeds missing records, then performs the one-time partner-site
-#    architecture upgrade. Re-running does not replace founder edits.
-npm run content:bootstrap
 ```
 
-`npm run db:deploy` runs both.
+`npm run db:deploy` is an alias for the same complete path. The separate
+`npm run content:bootstrap` command remains available for diagnosing or
+rerunning only the content phase.
+
+Verify the configured database without changing it:
+
+```bash
+npm run content:verify
+```
 
 Against production, pull the real credentials first and run from a machine that
 can reach the database directly:
@@ -27,7 +30,6 @@ can reach the database directly:
 ```bash
 vercel env pull .env.local          # provides POSTGRES_URL_NON_POOLING
 npm run migrate
-npm run content:bootstrap
 ```
 
 Neither command drops, truncates, or resets anything. There is no destructive
@@ -40,6 +42,11 @@ To see what the content step would do without writing:
 ```bash
 npm run content:bootstrap -- --dry-run
 ```
+
+During an architecture upgrade, an incompatible draft from the retired public
+site is not deleted. It is retained in version history as a superseded version,
+while the new published structure becomes the active editor baseline. A draft
+that already uses the current structure remains the active draft.
 
 ## How publishing works
 

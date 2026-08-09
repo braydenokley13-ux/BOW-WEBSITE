@@ -12,9 +12,15 @@
 
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { loadEnvConfig } from "@next/env";
 import postgres from "postgres";
 
 const MIGRATIONS_DIR = path.join(process.cwd(), "scripts", "migrations");
+
+// `vercel env pull` writes `.env.local`; npm does not load that file for an
+// arbitrary TypeScript script. Loading it here makes the documented migration
+// command work without asking an operator to source the file by hand.
+loadEnvConfig(process.cwd());
 
 function connectionUrl(): string {
   const value = (
