@@ -15,38 +15,49 @@ function page(slug: string) {
   return result;
 }
 
-test("the corrective homepage has the approved short section architecture", () => {
+test("Home maps the approved copy into a concise CMS section architecture", () => {
   assert.deepEqual(page("home").sections.map((section) => section.kind), [
     "hero",
     "press",
     "text",
     "steps",
-    "feature_cards",
+    "image_text",
     "list",
-    "feature_cards",
+    "cta",
+    "cta",
     "cta",
   ]);
   const serialized = JSON.stringify(page("home"));
   assert.doesNotMatch(serialized, /track_collection|testimonials|media_list|The Brief|STEP INTO THE FRONT OFFICE/i);
-  assert.match(serialized, /Grades 5–8/);
-  assert.match(serialized, /Sports concept/);
-  assert.match(serialized, /Simulation/);
-  assert.match(serialized, /Economics behind it/);
+  assert.match(serialized, /Economics, taught through sports\./);
+  assert.match(serialized, /Featured in/);
+  assert.match(serialized, /A more concrete way to learn economics/);
+  assert.match(serialized, /How a BOW lesson works/);
+  assert.match(serialized, /Built around active participation/);
+  assert.match(serialized, /Economics students can see/);
+  assert.match(serialized, /Bring BOW to your students/);
+  assert.match(serialized, /Looking for a class\?/);
+  assert.match(serialized, /Bring BOW to your organization/);
 });
 
-test("Programs is flexible and contains no public Track catalog", () => {
+test("Programs keeps available classes dynamic and contains no public Track catalog", () => {
   const serialized = JSON.stringify(page("programs"));
   assert.doesNotMatch(serialized, /track_collection|Track 101|Track 201|Track 301|about 30/i);
-  assert.match(serialized, /Grades 5–8/);
-  assert.match(serialized, /live online format/i);
+  assert.match(serialized, /Programs for Grades 5 to 8/);
+  assert.match(serialized, /Classes open for registration/);
+  assert.match(serialized, /No public classes are open right now/);
+  assert.match(serialized, /Join the Interest List/);
+  assert.match(serialized, /What happens in class/);
 });
 
 test("Partner With BOW is a required published architecture document", () => {
   assert.deepEqual(page("partner-with-bow").sections.map((section) => section.kind), [
     "hero",
+    "list",
     "feature_cards",
-    "feature_cards",
+    "list",
     "steps",
+    "cta",
   ]);
 });
 
@@ -70,7 +81,7 @@ test("navigation, footer, and new public copy do not carry the old marketing IA"
     tagline?: string;
     columns?: { heading: string; links: { label: string; href: string }[] }[];
   };
-  assert.equal(footer.tagline, "Sports-based financial literacy");
+  assert.equal(footer.tagline, "Economics and financial literacy through sports");
   assert.deepEqual(footer.columns?.flatMap((column) =>
     column.links.map((link) => [column.heading, link.label, link.href])
   ), [
@@ -85,6 +96,14 @@ test("navigation, footer, and new public copy do not carry the old marketing IA"
   const serialized = JSON.stringify(UPGRADE_PAGES);
   assert.doesNotMatch(serialized, /—/);
   assert.doesNotMatch(serialized, /4 Press Mentions|AP Micro|AP Macro|grades 5 to 10|middle and high school/i);
+});
+
+test("approved page titles are stored on the CMS documents", () => {
+  assert.equal(page("home").seoTitle, "BOW Sports Capital | Economics and Financial Literacy Through Sports");
+  assert.equal(page("programs").seoTitle, "BOW Programs | Online Economics Programs for Grades 5 to 8");
+  assert.equal(page("partner-with-bow").seoTitle, "Partner With BOW | Programs for Schools, Camps and Youth Organizations");
+  assert.equal(page("about").seoTitle, "About BOW Sports Capital");
+  assert.equal(page("teach").seoTitle, "Teach With BOW Sports Capital");
 });
 
 test("three verified publications seed the structure without hardcoding a visual count", () => {

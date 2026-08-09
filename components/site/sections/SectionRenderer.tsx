@@ -412,16 +412,11 @@ function ImageTextSection({ data }: { data: ImageTextData }) {
       alt={data.imageAlt}
       style={{ width: "100%", height: "auto", display: "block", border: "1px solid var(--border-rule)" }}
     />
-  ) : (
-    <div
-      aria-hidden
-      style={{ width: "100%", aspectRatio: "4 / 3", background: "var(--bow-paper)", border: "1px dashed var(--border-rule)" }}
-    />
-  );
+  ) : null;
 
   return (
     <SectionSurface tone={data.tone}>
-      <div className="bow-split bow-split-center">
+      <div className={media ? "bow-split bow-split-center" : "bow-section-intro-wide"}>
         {data.imagePosition === "left" ? (
           <>
             {media}
@@ -446,9 +441,11 @@ function CtaSection({ data }: { data: CtaData }) {
           {data.eyebrow}
         </span>
       ) : null}
-      <h2 className="bow-display" style={{ fontSize: "var(--type-campaign)", lineHeight: "var(--lh-campaign)" }}>
-        {data.headline}
-      </h2>
+      {data.headline ? (
+        <h2 className="bow-display" style={{ fontSize: "var(--type-campaign)", lineHeight: "var(--lh-campaign)" }}>
+          {data.headline}
+        </h2>
+      ) : null}
       {data.body ? (
         <Paragraphs
           text={data.body}
@@ -628,9 +625,9 @@ async function ProgramCollectionSection({ data, context }: { data: ProgramCollec
       {programs.length === 0 ? (
         <EmptyState
           tone={data.tone}
-          headline={data.emptyHeadline || "No programs are open right now."}
-          body={data.emptyBody || context.defaultEmptyStateText || "New sessions are added regularly — join the interest list and we’ll tell you when one opens."}
-          action={data.emptyActionLabel && data.emptyActionHref ? { label: data.emptyActionLabel, href: data.emptyActionHref } : { label: "Join the interest list", href: "/sign-up" }}
+          headline={data.emptyHeadline || "No public classes are open right now"}
+          body={data.emptyBody || context.defaultEmptyStateText || "Join the interest list and we'll contact you when a relevant BOW program becomes available."}
+          action={data.emptyActionLabel && data.emptyActionHref ? { label: data.emptyActionLabel, href: data.emptyActionHref } : { label: "Join the Interest List", href: "/sign-up" }}
         />
       ) : (
         <>

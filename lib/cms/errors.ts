@@ -54,9 +54,9 @@ const BASE: Record<ContentReason, Omit<ContentNotice, "reason" | "diagnostic">> 
     isFault: false,
   },
   no_programs_available: {
-    title: "No programs are open right now.",
-    body: "New sessions are added regularly. Join the interest list and we’ll tell you the moment one opens.",
-    action: { label: "Join the interest list", href: "/sign-up" },
+    title: "No public classes are open right now",
+    body: "Join the interest list and we'll contact you when a relevant BOW program becomes available.",
+    action: { label: "Join the Interest List", href: "/sign-up" },
     isFault: false,
   },
   program_not_found: {

@@ -88,21 +88,24 @@ async function loadProgram(idOrSlug: string): Promise<Loaded> {
 function programFacts(program: PublicProgram): { label: string; value: string }[] {
   const facts: { label: string; value: string }[] = [];
   if (program.gradeRange) facts.push({ label: "Grades", value: program.gradeRange });
-  if (program.audience) facts.push({ label: "Who it\u2019s for", value: program.audience });
   if (program.deliveryFormat) facts.push({ label: "Format", value: formatDeliveryFormat(program.deliveryFormat) });
   if (program.locationLabel) facts.push({ label: "Where", value: program.locationLabel });
 
   const start = formatDate(program.startDate);
   const end = formatDate(program.endDate);
-  if (start) facts.push({ label: "Dates", value: end && end !== start ? `${start} \u2013 ${end}` : start });
-  if (program.scheduleLabel) facts.push({ label: "Schedule", value: program.scheduleLabel });
-
   const startTime = formatTime(program.startTime);
   const endTime = formatTime(program.endTime);
-  if (startTime) {
+  const schedule = [
+    start ? (end && end !== start ? `${start} \u2013 ${end}` : start) : "",
+    program.scheduleLabel,
+    startTime
+      ? [endTime ? `${startTime} \u2013 ${endTime}` : startTime, program.timezone].filter(Boolean).join(" ")
+      : "",
+  ].filter(Boolean).join(" \u00b7 ");
+  if (schedule) {
     facts.push({
-      label: "Time",
-      value: [endTime ? `${startTime} \u2013 ${endTime}` : startTime, program.timezone].filter(Boolean).join(" "),
+      label: "Schedule",
+      value: schedule,
     });
   }
   if (program.sessionCount) {
@@ -154,11 +157,6 @@ export default async function PublicProgramPage({ params }: { params: Promise<{ 
             >
               {REGISTRATION_STATUS_LABELS[program.registrationStatus]}
             </Badge>
-            {program.trackSlug ? (
-              <Link href={`/programs/${program.trackSlug}`} className="bow-cta-link">
-                See the curriculum
-              </Link>
-            ) : null}
           </div>
           <h1
             style={{
@@ -174,9 +172,9 @@ export default async function PublicProgramPage({ params }: { params: Promise<{ 
           >
             {program.title}
           </h1>
-          {program.shortDescription ? (
-            <Paragraphs text={program.shortDescription} className="bow-lead" style={{ marginTop: "var(--space-6)", maxWidth: "56ch" }} />
-          ) : null}
+          <p className="bow-lead" style={{ margin: "var(--space-6) 0 0", maxWidth: "56ch" }}>
+            A live online BOW program for students in Grades {program.gradeRange || "the listed grade range"}.
+          </p>
 
           <div className="bow-actions" style={{ marginTop: "var(--space-8)" }}>
             {cta.behavior === "disabled" ? (
@@ -214,8 +212,8 @@ export default async function PublicProgramPage({ params }: { params: Promise<{ 
       ) : null}
 
       {[
-        { heading: "About this program", body: program.longDescription },
-        { heading: "What you’ll cover", body: program.curriculumSummary },
+        { heading: "What students will do", body: program.longDescription || program.shortDescription },
+        { heading: "What students will study", body: program.curriculumSummary },
         { heading: "What students take away", body: program.learningGoals },
         { heading: "What a session looks like", body: program.studentExperience },
       ]
