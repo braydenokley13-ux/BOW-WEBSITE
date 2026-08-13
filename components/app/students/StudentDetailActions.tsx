@@ -81,7 +81,7 @@ export default function StudentDetailActions({
 
       <div className="ops-field" style={{ marginTop: 18 }}>
         <label>Form status</label>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {FORM_STATUSES.map((s) => (
             <Button key={s} size="sm" variant={s === formStatus ? "primary" : "secondary"} disabled={busy || s === formStatus} onClick={() => run(() => updateFormStatus(studentId, s))}>
               {s}

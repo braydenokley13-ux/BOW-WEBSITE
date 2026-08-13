@@ -20,7 +20,7 @@ import { missionAreaMeta, missionIsOverdue, MISSION_UPDATE_KIND_LABEL } from "@/
 import { getInstructorImpact, listActiveInstructorOptions } from "@/lib/instructor-growth";
 import { deriveNextOpportunities, impactStats, impactHeadline, type OpportunityKind } from "@/lib/instructor-growth-shared";
 import ReferrerAttributionControl from "@/components/app/hiring/ReferrerAttributionControl";
-import { canonicalDateInZone } from "@/lib/timezone";
+import { canonicalDateInZone, coerceEpochMs } from "@/lib/timezone";
 import { listIntroductions } from "@/lib/flywheel";
 
 type TabKey = "overview" | "operations" | "instructor" | "student" | "applicant";
@@ -28,9 +28,19 @@ type TabKey = "overview" | "operations" | "instructor" | "student" | "applicant"
 function label(value: unknown): string {
   return String(value ?? "—").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+/**
+ * Postgres hands bigint columns back as strings, so `new Date(value)` parses
+ * an epoch as a date STRING and yields Invalid Date — which this used to fall
+ * back to by printing the raw milliseconds. Attendance history read
+ * "1786032000000 — Lincoln Fall". coerceEpochMs is the same fix the Programs
+ * page needed for waitlist deadlines.
+ */
 function when(value: number | string | null | undefined): string {
   if (value == null) return "—";
-  const date = new Date(typeof value === "string" ? value : Number(value));
+  const epoch = coerceEpochMs(value);
+  if (epoch != null) return new Date(epoch).toLocaleDateString();
+  // Not numeric: a canonical YYYY-MM-DD or similar, which Date parses fine.
+  const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
 }
 
@@ -79,6 +89,11 @@ export default async function PersonRecordPage({
   const roleBadges: { kind: PersonRoleKind; label: string }[] = [];
   if (roleIds.instructorId) roleBadges.push({ kind: "instructor", label: "Instructor" });
   if (roleIds.studentId) roleBadges.push({ kind: "student", label: "Student" });
+  // Parent and Contact are relationships rather than role records, and they
+  // belong here for the same reason they are chips in the directory: leaving
+  // them out made a guardian who also runs a partner read as "no active role".
+  if (roleIds.guardianOf.length > 0) roleBadges.push({ kind: "parent", label: "Parent" });
+  if (roleIds.contactFor.length > 0) roleBadges.push({ kind: "contact", label: "Contact" });
   if (roleIds.applicationId) roleBadges.push({ kind: "applicant", label: "Applicant" });
   if (opsPerson?.roleAssignmentId) roleBadges.push({ kind: "staff", label: opsPerson.roleTitle });
 
@@ -152,7 +167,13 @@ function OverviewTab({
   personRow: { name: string; email: string | null; phone: string | null; identity_status: string };
   roleBadges: { kind: PersonRoleKind; label: string }[];
   opsPerson: PersonAttentionView | undefined;
-  roleIds: { instructorId: string | null; studentId: string | null; applicationId: string | null };
+  roleIds: {
+    instructorId: string | null;
+    studentId: string | null;
+    applicationId: string | null;
+    guardianOf: { studentId: string; name: string }[];
+    contactFor: { organizationId: string; name: string }[];
+  };
 }) {
   const attentionItems: string[] = [];
   if (opsPerson) {
@@ -186,6 +207,26 @@ function OverviewTab({
           <p className="ops-body" style={{ margin: 0 }}>Nothing needs attention right now.</p>
         ) : null}
       </PageSection>
+
+      {roleIds.guardianOf.length > 0 || roleIds.contactFor.length > 0 ? (
+        <PageSection title="Connected to">
+          {/* The relationships that make this human a Parent or a Contact, each
+              linking to the record on the other end. One identity, several
+              places it shows up. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {roleIds.guardianOf.map((child) => (
+              <Link key={child.studentId} href={`/app/students/${child.studentId}`} className="ops-inline-link">
+                Parent of {child.name} &rarr;
+              </Link>
+            ))}
+            {roleIds.contactFor.map((org) => (
+              <Link key={org.organizationId} href={`/app/partners/${org.organizationId}`} className="ops-inline-link">
+                Contact at {org.name} &rarr;
+              </Link>
+            ))}
+          </div>
+        </PageSection>
+      ) : null}
 
       {actions.length > 0 && (
         <PageSection title="What to do next">

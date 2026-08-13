@@ -365,6 +365,25 @@ async function seedDomain(sql: postgres.Sql): Promise<void> {
     ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status
   `;
 
+  // --- one human wearing two hats ------------------------------------------
+  // Ray Ellis runs athletics at Lincoln and has a child in the Tuesday squad.
+  // He is one `people` row with a Contact facet and a Parent facet — which is
+  // the claim the People directory has to be able to make.
+  await sql`
+    INSERT INTO organization_people (id, organization_id, person_id, relationship_type, is_primary, active, created_at, updated_at)
+    VALUES ('dev-orp-lincoln', 'org-school', 'person-partner-contact', 'contact', 1, 1, ${day(-120)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET active = 1, updated_at = ${NOW}
+  `;
+  await sql`
+    INSERT INTO student_guardians (id, student_id, person_id, relationship, is_primary, can_register, can_view_sensitive, status, created_at, updated_at)
+    VALUES ('dev-sg-jalen', 'dev-stu-jalen', 'person-partner-contact', 'parent', true, true, true, 'active', ${day(-45)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET status = 'active', updated_at = ${NOW}
+  `;
+  await sql`
+    UPDATE students SET guardian_person_id = 'person-partner-contact', updated_at = ${NOW}
+     WHERE id = 'dev-stu-jalen' AND guardian_person_id IS NULL
+  `;
+
   // --- a partner still being scoped ----------------------------------------
   // Ramaz: a genuine conversation with a named contact, real history, and an
   // overdue promise — and nothing scheduled, because nothing has been decided.

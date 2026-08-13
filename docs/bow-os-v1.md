@@ -212,6 +212,33 @@ rather than deleted or spread across five tabs.
 because the schema needs one. `/app/programs/[id]` resolves `source_type = 'direct'` and
 redirects to `/app/classes/[id]`, so the split V1 exists to hide cannot be reached by URL.
 
+## People
+
+One directory, **search first**, over one identity model. `people` is the spine; Student,
+Parent, Instructor, Contact, Applicant and Staff are facets read from the tables that already own
+each relationship — `students.person_id`, `student_guardians`, `instructors.person_id`,
+`organization_people`, `applications.person_id`, `role_assignments`. A guardian who also runs a
+partner's athletics department is one row with two chips, never two records, and the facet chips
+filter that single list rather than opening six of them.
+
+Search leads because that is how a person is actually found: by typing a name, not by first
+deciding which kind of person they are. The facets narrow the result; they do not replace it.
+
+**A possible duplicate is surfaced and never resolved.** The directory says "needs review, never
+merged automatically" and the decision stays where it already lived — HQ Home's duplicate review.
+
+`resolvePersonRoleIds` returns the Parent and Contact relationships too, so the person record and
+the directory cannot disagree about who somebody is. Before that, a guardian with a partner
+relationship read as "No active role" on their own record while carrying two chips in the list.
+
+Applications and instructors remain parallel pipelines (a V2 consolidation). V1 surfaces both
+as facets of the same Person and introduces no third pipeline.
+
+Two defects fixed while here: the student facet printed raw epoch milliseconds in its attendance
+history (`new Date()` on a Postgres bigint-as-string — the same class of bug as the Programs
+waitlist deadline, now routed through `coerceEpochMs`), and its form-status buttons overflowed
+390px.
+
 ## Known seams (deliberately left for V2)
 
 - **`organizations` ↔ `partner_orgs` are joined by name string.** `organizations` is the

@@ -11,7 +11,15 @@
  */
 import { getDb } from "@/lib/db";
 
-export type PersonRoleKind = "instructor" | "student" | "applicant" | "staff";
+/**
+ * The hats one human can wear.
+ *
+ * These are facets, not types: they accumulate on a single `people` row and
+ * filter one directory. A parent who also runs the athletic department is one
+ * Person with two facets, never two records — which is the whole reason this
+ * module reads across the role tables instead of letting each own an index.
+ */
+export type PersonRoleKind = "instructor" | "student" | "parent" | "contact" | "applicant" | "staff";
 
 export interface PersonRoleBadge {
   kind: PersonRoleKind;
@@ -41,7 +49,7 @@ function label(value: string | null | undefined): string {
 }
 
 export interface PeopleDirectoryFilter {
-  type?: "all" | "instructor" | "student" | "applicant" | "staff";
+  type?: "all" | PersonRoleKind;
   query?: string;
 }
 
@@ -59,7 +67,10 @@ export async function listPeopleDirectory(filter: PeopleDirectoryFilter = {}): P
             i.id AS instructor_id, i.stage AS instructor_stage,
             s.id AS student_id, s.enrollment_status AS student_enrollment_status, s.form_status AS student_form_status,
             a.id AS application_id, a.lifecycle_status AS application_status,
-            ra.id AS role_assignment_id, ra.status AS role_assignment_status, r.title AS role_title
+            ra.id AS role_assignment_id, ra.status AS role_assignment_status, r.title AS role_title,
+            g.id AS guardian_link_id, g.children AS guardian_children,
+            op.id AS contact_link_id, op.org_name AS contact_org_name,
+            s.duplicate_review_status AS student_duplicate_status
        FROM people p
        LEFT JOIN instructors i ON i.person_id = p.id
        LEFT JOIN students s ON s.person_id = p.id
@@ -74,6 +85,19 @@ export async function listPeopleDirectory(filter: PeopleDirectoryFilter = {}): P
           ORDER BY candidate.is_primary DESC, candidate.created_at DESC LIMIT 1
        ) ra ON true
        LEFT JOIN org_roles r ON r.id = ra.role_id
+       -- Parent: student_guardians is the canonical guardian relationship.
+       LEFT JOIN LATERAL (
+         SELECT min(sg.id) AS id, count(*) AS children
+           FROM student_guardians sg
+          WHERE sg.person_id = p.id AND sg.status = 'active'
+       ) g ON g.id IS NOT NULL
+       -- Contact: organization_people is the canonical partner relationship.
+       LEFT JOIN LATERAL (
+         SELECT min(op2.id) AS id, min(o.name) AS org_name
+           FROM organization_people op2
+           JOIN organizations o ON o.id = op2.organization_id
+          WHERE op2.person_id = p.id AND op2.active = 1
+       ) op ON op.id IS NOT NULL
       WHERE p.identity_status <> 'removed'
         AND (? = '' OR lower(p.name) LIKE '%' || ? || '%' OR lower(coalesce(p.email,'')) LIKE '%' || ? || '%')
       ORDER BY p.name`,
@@ -101,9 +125,31 @@ export async function listPeopleDirectory(filter: PeopleDirectoryFilter = {}): P
         attentionReasons.push(`Application: ${label(String(row.application_status))}`);
       }
     }
+    if (row.guardian_link_id) {
+      const children = Number(row.guardian_children ?? 0);
+      roles.push({
+        kind: "parent",
+        label: "Parent",
+        status: children === 1 ? "1 child" : `${children} children`,
+        recordId: String(row.guardian_link_id),
+      });
+    }
+    if (row.contact_link_id) {
+      roles.push({
+        kind: "contact",
+        label: "Contact",
+        status: String(row.contact_org_name ?? "Partner"),
+        recordId: String(row.contact_link_id),
+      });
+    }
     if (row.role_assignment_id) {
       roles.push({ kind: "staff", label: String(row.role_title ?? "Staff role"), status: label(String(row.role_assignment_status)), recordId: String(row.role_assignment_id) });
       if (row.role_assignment_status === "activating") attentionReasons.push("Role activation pending");
+    }
+    // A possible duplicate is surfaced, never resolved. Merging two children
+    // because their names normalize the same is a decision for a person.
+    if (row.student_duplicate_status === "open") {
+      attentionReasons.push("Possible duplicate — needs review, never merged automatically");
     }
 
     return {
@@ -122,15 +168,24 @@ export async function listPeopleDirectory(filter: PeopleDirectoryFilter = {}): P
   // from the hub, but mark them unlinked and route to the legacy detail page
   // instead of a person record that doesn't exist for them yet.
   const unlinkedStudents = (await db.prepare(
-    `SELECT id, name, enrollment_status, form_status FROM students
+    `SELECT id, name, enrollment_status, form_status, duplicate_review_status FROM students
       WHERE person_id IS NULL
         AND (? = '' OR lower(name) LIKE '%' || ? || '%')
       ORDER BY name`,
-  ).all(q, q)) as Array<{ id: string; name: string; enrollment_status: string; form_status: string }>;
+  ).all(q, q)) as Array<{
+    id: string;
+    name: string;
+    enrollment_status: string;
+    form_status: string;
+    duplicate_review_status: string | null;
+  }>;
 
   for (const s of unlinkedStudents) {
     const attentionReasons: string[] = [];
     if (s.form_status !== "complete") attentionReasons.push(`Student forms: ${label(s.form_status)}`);
+    if (s.duplicate_review_status === "open") {
+      attentionReasons.push("Possible duplicate — needs review, never merged automatically");
+    }
     rows.push({
       personId: null,
       name: s.name,
@@ -152,22 +207,51 @@ export async function listPeopleDirectory(filter: PeopleDirectoryFilter = {}): P
   return rows;
 }
 
-/** Given people.id, resolve the id of each role-table row that belongs to this human (single-column lookups). */
+/**
+ * Every hat one human wears, resolved from the table that owns each.
+ *
+ * The Parent and Contact facets are relationships rather than role records, so
+ * they come back as lists: a guardian has children, a contact has partners.
+ * They are read here so the person record and the directory can never disagree
+ * about who somebody is.
+ */
 export async function resolvePersonRoleIds(personId: string): Promise<{
   instructorId: string | null;
   studentId: string | null;
   applicationId: string | null;
+  guardianOf: { studentId: string; name: string }[];
+  contactFor: { organizationId: string; name: string }[];
 }> {
   const db = getDb();
-  const [instructor, student, application] = await Promise.all([
+  const [instructor, student, application, guardianOf, contactFor] = await Promise.all([
     db.prepare("SELECT id FROM instructors WHERE person_id = ? LIMIT 1").get(personId) as Promise<{ id: string } | undefined>,
     db.prepare("SELECT id FROM students WHERE person_id = ? LIMIT 1").get(personId) as Promise<{ id: string } | undefined>,
     db.prepare("SELECT id FROM applications WHERE person_id = ? ORDER BY created_at DESC LIMIT 1").get(personId) as Promise<{ id: string } | undefined>,
+    db
+      .prepare(
+        `SELECT sg.student_id, s.name
+           FROM student_guardians sg
+           JOIN students s ON s.id = sg.student_id
+          WHERE sg.person_id = ? AND sg.status = 'active'
+          ORDER BY s.name`,
+      )
+      .all(personId) as Promise<{ student_id: string; name: string }[]>,
+    db
+      .prepare(
+        `SELECT op.organization_id, o.name
+           FROM organization_people op
+           JOIN organizations o ON o.id = op.organization_id
+          WHERE op.person_id = ? AND op.active = 1
+          ORDER BY o.name`,
+      )
+      .all(personId) as Promise<{ organization_id: string; name: string }[]>,
   ]);
   return {
     instructorId: instructor?.id ?? null,
     studentId: student?.id ?? null,
     applicationId: application?.id ?? null,
+    guardianOf: guardianOf.map((row) => ({ studentId: row.student_id, name: row.name })),
+    contactFor: contactFor.map((row) => ({ organizationId: row.organization_id, name: row.name })),
   };
 }
 
