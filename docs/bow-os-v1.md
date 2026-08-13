@@ -275,6 +275,51 @@ settings** on the course record (`linkCourseToTrack`), where a track already cla
 course is not offered: two courses claiming the same lessons would make "lesson 3" ambiguous the
 moment either is scheduled.
 
+## Two curriculum modes
+
+A BOW course is taught one of two ways, and the data model says so rather than pretending
+otherwise:
+
+| mode | lessons live in | needs a Learn track |
+|---|---|---|
+| **Taught live** | `curriculum_lessons` — a numbered title, an optional teaching note, links | no |
+| **Self-paced** | `learn_tracks → learn_modules → learn_lessons` | yes |
+| **Live + self-paced** | both | yes |
+
+`curricula.learn_track_id` stays **optional**, and a course without one is a complete course, not
+an unfinished digital one. `resolveCourseMode` derives the mode from what a course actually has;
+nothing declares it.
+
+`listCourseLessons` returns one ordered list either way, so the composer, the class record and the
+Session Sheet never learn which mode a course is in.
+
+### Materials are links, not copies
+
+`curriculum_resources` holds a label, a URL, a kind (Slides · Document · PDF · Worksheet · Video ·
+Simulation · Website · Other) and an optional note. It attaches to one instructor-led lesson, to
+one Learn lesson (the hybrid case), or to the course as a whole.
+
+**This is not a second authoring system.** The Slides already exist in Google Drive, the worksheet
+in Canva, the simulation in BOW. Copying any of it into BOW would create a second copy to keep in
+sync and a storage system to run, so a resource points at the real thing. There is no rich-text
+editor, no block editor and no file upload — `tests/curriculum-resources.test.ts` asserts the
+planner never grows one.
+
+A **simulation resource is a link to the experience Track 101 already runs** (`/simulation`), never
+a duplicate of it. That is what keeps a future Simulation Library reachable: the same URL can be
+listed there without anything here having to move.
+
+The kind is inferred from the URL only where that is unambiguous — Google Slides/Docs/Sheets/Forms,
+Canva, YouTube, Vimeo, Drive, `.pdf`, and BOW simulation paths. Anything else comes back as
+`website` and stays editable, because nobody re-checks a field that already looks filled in.
+
+### Where the leverage is
+
+The instructor opens the Session Sheet and the material is **one tap away** — Slides, the
+simulation, the worksheet — because it was attached to the course once. Hunting for the deck five
+minutes before class is exactly the repetitive work the operating layer exists to remove, and it is
+removed for every class that ever runs that lesson.
+
 ## The cross-system sweep
 
 V1 read as one product rather than nine checkpoints. Every portal route was crawled as staff and

@@ -365,6 +365,48 @@ async function seedDomain(sql: postgres.Sql): Promise<void> {
     ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status
   `;
 
+  // --- an instructor-led course ---------------------------------------------
+  // Front Office 101 is taught live: a numbered lesson list with links to the
+  // Slides, the worksheet and a BOW simulation. No Learn track, and that is a
+  // complete course rather than an unfinished one.
+  await sql`
+    INSERT INTO curriculum_lessons (id, curriculum_id, position, title, teaching_note, created_at, updated_at)
+    VALUES
+      ('dev-cl-1', 'dev-curr-101', 1, 'What a front office actually does',
+       'Open on the roster, not the org chart. Ask who decides, then show how many of those decisions are money.',
+       ${day(-30)}, ${NOW}),
+      ('dev-cl-2', 'dev-curr-101', 2, 'Scarcity and the cap',
+       'The simulation does the work here — budget fifteen minutes for it and leave time to argue about the result.',
+       ${day(-30)}, ${NOW}),
+      ('dev-cl-3', 'dev-curr-101', 3, 'Building a roster on a budget', NULL, ${day(-30)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, teaching_note = EXCLUDED.teaching_note, updated_at = ${NOW}
+  `;
+  await sql`
+    INSERT INTO curriculum_resources (id, curriculum_id, lesson_id, label, url, kind, sort, created_at, updated_at)
+    VALUES
+      ('dev-cr-1', 'dev-curr-101', 'dev-cl-1', 'Front office slides',
+       'https://docs.google.com/presentation/d/example-front-office/edit', 'slides', 1, ${day(-30)}, ${NOW}),
+      ('dev-cr-2', 'dev-curr-101', 'dev-cl-2', 'Salary cap slides',
+       'https://docs.google.com/presentation/d/example-salary-cap/edit', 'slides', 2, ${day(-30)}, ${NOW}),
+      -- The same experience Track 101 runs, pointed at rather than copied.
+      ('dev-cr-3', 'dev-curr-101', 'dev-cl-2', 'Salary cap simulation', '/simulation', 'simulation', 3, ${day(-30)}, ${NOW}),
+      ('dev-cr-4', 'dev-curr-101', 'dev-cl-2', 'Student worksheet',
+       'https://docs.google.com/document/d/example-cap-worksheet/edit', 'document', 4, ${day(-30)}, ${NOW}),
+      ('dev-cr-5', 'dev-curr-101', NULL, 'Instructor guide',
+       'https://drive.google.com/drive/folders/example-guide', 'document', 5, ${day(-30)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET label = EXCLUDED.label, url = EXCLUDED.url, kind = EXCLUDED.kind, updated_at = ${NOW}
+  `;
+  // The Lincoln class runs that course, so its sessions teach those lessons.
+  await sql`
+    UPDATE class_sessions SET lesson_id = 'dev-cl-1', updated_at = ${NOW} WHERE id = 'dev-sess-reported' AND lesson_id IS NULL
+  `;
+  await sql`
+    UPDATE class_sessions SET lesson_id = 'dev-cl-2', updated_at = ${NOW} WHERE id IN ('dev-sess-past', 'dev-sess-today') AND lesson_id IS NULL
+  `;
+  await sql`
+    UPDATE class_sessions SET lesson_id = 'dev-cl-3', updated_at = ${NOW} WHERE id = 'dev-sess-next' AND lesson_id IS NULL
+  `;
+
   // --- one human wearing two hats ------------------------------------------
   // Ray Ellis runs athletics at Lincoln and has a child in the Tuesday squad.
   // He is one `people` row with a Contact facet and a Parent facet — which is

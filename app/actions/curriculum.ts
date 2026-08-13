@@ -8,7 +8,12 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/dal";
+import { requireAdmin, requireStaff } from "@/lib/dal";
+import {
+  inferResourceKind,
+  isResourceKind,
+  safeResourceUrl,
+} from "@/lib/curriculum-resources-shared";
 
 export interface ActionResult {
   ok: boolean;
@@ -133,4 +138,237 @@ export async function linkCourseToTrack(
   revalidatePath(`/app/curriculum/${curriculumId}`);
   revalidatePath("/app/post-class");
   return { ok: true };
+}
+
+/* ===================================================================== */
+/* Instructor-led curriculum: a lesson list and the materials for it.    */
+/*                                                                       */
+/* This is deliberately NOT an authoring tool. It organises and launches  */
+/* material that already exists in Google Slides, Canva, Drive or a BOW   */
+/* simulation. There is no editor here and no file storage — copying the  */
+/* material into BOW would create a second copy to keep in sync.          */
+/* ===================================================================== */
+
+export interface CourseLessonInput {
+  title: string;
+  teachingNote?: string;
+}
+
+/** Append a lesson to an instructor-led course. Position is 1-based and dense. */
+export async function addCourseLesson(
+  curriculumIdValue: string,
+  input: CourseLessonInput,
+): Promise<ActionResult & { lessonId?: string }> {
+  await requireStaff();
+  const curriculumId = clean(curriculumIdValue, 100);
+  const title = clean(input?.title, 200);
+  const teachingNote = clean(input?.teachingNote, 4000);
+  if (!curriculumId) return { ok: false, error: "Choose a course." };
+  if (title.length < 2) return { ok: false, error: "Give the lesson a title." };
+
+  const db = getDb();
+  if (!(await db.prepare("SELECT 1 FROM curricula WHERE id = ?").get(curriculumId))) {
+    return { ok: false, error: "That course no longer exists." };
+  }
+
+  const next = (await db
+    .prepare("SELECT COALESCE(MAX(position), 0) + 1 AS n FROM curriculum_lessons WHERE curriculum_id = ?")
+    .get(curriculumId)) as { n: number };
+  const id = `clsn-${randomUUID().slice(0, 12)}`;
+  const now = Date.now();
+  await db
+    .prepare(
+      `INSERT INTO curriculum_lessons (id, curriculum_id, position, title, teaching_note, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(id, curriculumId, Number(next.n), title, teachingNote || null, now, now);
+
+  revalidateCourse(curriculumId);
+  return { ok: true, lessonId: id };
+}
+
+export async function updateCourseLesson(lessonIdValue: string, input: CourseLessonInput): Promise<ActionResult> {
+  await requireStaff();
+  const lessonId = clean(lessonIdValue, 100);
+  const title = clean(input?.title, 200);
+  const teachingNote = clean(input?.teachingNote, 4000);
+  if (title.length < 2) return { ok: false, error: "Give the lesson a title." };
+
+  const db = getDb();
+  const lesson = (await db.prepare("SELECT curriculum_id FROM curriculum_lessons WHERE id = ?").get(lessonId)) as
+    | { curriculum_id: string }
+    | undefined;
+  if (!lesson) return { ok: false, error: "That lesson no longer exists." };
+
+  await db
+    .prepare("UPDATE curriculum_lessons SET title = ?, teaching_note = ?, updated_at = ? WHERE id = ?")
+    .run(title, teachingNote || null, Date.now(), lessonId);
+  revalidateCourse(lesson.curriculum_id);
+  return { ok: true };
+}
+
+/**
+ * Remove a lesson and close the gap it leaves.
+ *
+ * Positions stay dense because the composer maps session N onto lesson N — a
+ * hole in the sequence would silently shift what every later session teaches.
+ * Its resources go with it (ON DELETE CASCADE); a class session already run
+ * against it keeps its own evidence, which lives in class_session_reports.
+ */
+export async function removeCourseLesson(lessonIdValue: string): Promise<ActionResult> {
+  await requireStaff();
+  const lessonId = clean(lessonIdValue, 100);
+  const db = getDb();
+  const lesson = (await db
+    .prepare("SELECT curriculum_id, position FROM curriculum_lessons WHERE id = ?")
+    .get(lessonId)) as { curriculum_id: string; position: number } | undefined;
+  if (!lesson) return { ok: true };
+
+  await db.exec("BEGIN IMMEDIATE");
+  try {
+    await db.prepare("DELETE FROM curriculum_lessons WHERE id = ?").run(lessonId);
+    await db
+      .prepare(
+        `UPDATE curriculum_lessons SET position = position - 1, updated_at = ?
+          WHERE curriculum_id = ? AND position > ?`,
+      )
+      .run(Date.now(), lesson.curriculum_id, lesson.position);
+    await db.exec("COMMIT");
+  } catch (error) {
+    if (db.isTransaction) await db.exec("ROLLBACK");
+    throw error;
+  }
+  revalidateCourse(lesson.curriculum_id);
+  return { ok: true };
+}
+
+/** Swap a lesson with its neighbour, keeping positions dense. */
+export async function moveCourseLesson(lessonIdValue: string, direction: "up" | "down"): Promise<ActionResult> {
+  await requireStaff();
+  const lessonId = clean(lessonIdValue, 100);
+  if (direction !== "up" && direction !== "down") return { ok: false, error: "Choose a direction." };
+
+  const db = getDb();
+  const lesson = (await db
+    .prepare("SELECT curriculum_id, position FROM curriculum_lessons WHERE id = ?")
+    .get(lessonId)) as { curriculum_id: string; position: number } | undefined;
+  if (!lesson) return { ok: false, error: "That lesson no longer exists." };
+  const target = lesson.position + (direction === "up" ? -1 : 1);
+  if (target < 1) return { ok: true };
+
+  await db.exec("BEGIN IMMEDIATE");
+  try {
+    const neighbour = (await db
+      .prepare("SELECT id FROM curriculum_lessons WHERE curriculum_id = ? AND position = ?")
+      .get(lesson.curriculum_id, target)) as { id: string } | undefined;
+    if (neighbour) {
+      const now = Date.now();
+      // Park on a position no row can hold: the (curriculum_id, position)
+      // index is unique, so a direct swap would collide mid-statement.
+      await db.prepare("UPDATE curriculum_lessons SET position = -1, updated_at = ? WHERE id = ?").run(now, lessonId);
+      await db
+        .prepare("UPDATE curriculum_lessons SET position = ?, updated_at = ? WHERE id = ?")
+        .run(lesson.position, now, neighbour.id);
+      await db.prepare("UPDATE curriculum_lessons SET position = ?, updated_at = ? WHERE id = ?").run(target, now, lessonId);
+    }
+    await db.exec("COMMIT");
+  } catch (error) {
+    if (db.isTransaction) await db.exec("ROLLBACK");
+    throw error;
+  }
+  revalidateCourse(lesson.curriculum_id);
+  return { ok: true };
+}
+
+export interface CourseResourceInput {
+  label: string;
+  url: string;
+  /** Omitted means "work it out from the URL". */
+  kind?: string;
+  note?: string;
+  /** A course-level resource when both are omitted. */
+  lessonId?: string | null;
+  learnLessonId?: string | null;
+}
+
+/**
+ * Attach a link to a course, or to one lesson of it.
+ *
+ * The URL must be one we would actually render as an href — the same rule the
+ * session meeting link follows, applied at the point of entry so a bad value
+ * never reaches a page.
+ */
+export async function addCourseResource(
+  curriculumIdValue: string,
+  input: CourseResourceInput,
+): Promise<ActionResult & { resourceId?: string }> {
+  await requireStaff();
+  const curriculumId = clean(curriculumIdValue, 100);
+  const label = clean(input?.label, 160);
+  const url = safeResourceUrl(clean(input?.url, 2000));
+  const note = clean(input?.note, 500);
+  const lessonId = clean(input?.lessonId, 100) || null;
+  const learnLessonId = clean(input?.learnLessonId, 100) || null;
+
+  if (!curriculumId) return { ok: false, error: "Choose a course." };
+  if (label.length < 2) return { ok: false, error: "Name the material so an instructor knows what it is." };
+  if (!url) return { ok: false, error: "The link must start with http:// or https://, or be a BOW path." };
+  if (lessonId && learnLessonId) return { ok: false, error: "A resource belongs to one lesson." };
+
+  const kind = isResourceKind(input?.kind) ? input.kind : inferResourceKind(url);
+
+  const db = getDb();
+  if (!(await db.prepare("SELECT 1 FROM curricula WHERE id = ?").get(curriculumId))) {
+    return { ok: false, error: "That course no longer exists." };
+  }
+  if (lessonId) {
+    const owns = await db
+      .prepare("SELECT 1 FROM curriculum_lessons WHERE id = ? AND curriculum_id = ?")
+      .get(lessonId, curriculumId);
+    if (!owns) return { ok: false, error: "That lesson is not part of this course." };
+  }
+
+  const next = (await db
+    .prepare("SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM curriculum_resources WHERE curriculum_id = ?")
+    .get(curriculumId)) as { n: number };
+  const id = `crsc-${randomUUID().slice(0, 12)}`;
+  const now = Date.now();
+  await db
+    .prepare(
+      `INSERT INTO curriculum_resources
+         (id, curriculum_id, lesson_id, learn_lesson_id, label, url, kind, note, sort, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(id, curriculumId, lessonId, learnLessonId, label, url, kind, note || null, Number(next.n), now, now);
+
+  revalidateCourse(curriculumId);
+  return { ok: true, resourceId: id };
+}
+
+export async function removeCourseResource(resourceIdValue: string): Promise<ActionResult> {
+  await requireStaff();
+  const resourceId = clean(resourceIdValue, 100);
+  const db = getDb();
+  const resource = (await db
+    .prepare("SELECT curriculum_id FROM curriculum_resources WHERE id = ?")
+    .get(resourceId)) as { curriculum_id: string } | undefined;
+  if (!resource) return { ok: true };
+  await db.prepare("DELETE FROM curriculum_resources WHERE id = ?").run(resourceId);
+  revalidateCourse(resource.curriculum_id);
+  return { ok: true };
+}
+
+function clean(value: unknown, max: number): string {
+  return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+/**
+ * A course's materials are read by the Session Sheet, so a change has to reach
+ * the sheet — not just the page it was made on.
+ */
+function revalidateCourse(curriculumId: string): void {
+  revalidatePath("/app/curriculum");
+  revalidatePath(`/app/curriculum/${curriculumId}`);
+  revalidatePath("/app/session", "layout");
+  revalidatePath("/app/post-class");
 }

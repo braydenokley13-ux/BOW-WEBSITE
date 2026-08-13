@@ -17,6 +17,8 @@
 
 import { getDb } from "@/lib/db";
 import { sqlLearn } from "@/lib/db-sql";
+import { listCourseLessons } from "@/lib/curriculum-courses";
+import type { CourseResource } from "@/lib/curriculum-resources-shared";
 import { getLessonById } from "@/lib/lessons";
 import { parseLessonSnapshot, resolveAttendanceStatus } from "@/lib/session-evidence";
 import { DEFAULT_TIME_ZONE } from "@/lib/timezone";
@@ -103,6 +105,10 @@ async function resolveLesson(
         href: null,
         published: true,
         historical: true,
+        // A finalized session is evidence of what was delivered. Today's
+        // materials are not part of that record.
+        resources: [],
+        teachingNote: null,
       };
     }
   }
@@ -127,11 +133,19 @@ async function resolveLesson(
   }[];
   const authored = rows[0];
 
-  if (!authored && !legacy) return null;
+  /* ---- The course's own sequence ----
+     One call, whichever way the course is taught: it returns Learn lessons
+     for a digital course and the instructor-led list for a live one, each
+     carrying the materials attached to it. This is also what lets an
+     instructor-led lesson resolve at all — it has no learn_lessons row. */
+  const courseLessons = courseId ? await listCourseLessons(courseId).catch(() => []) : [];
+  const fromCourse = courseLessons.find((lesson) => lesson.id === lessonId) ?? null;
 
-  let position: number | null = null;
-  let total: number | null = null;
-  if (authored) {
+  if (!authored && !legacy && !fromCourse) return null;
+
+  let position: number | null = fromCourse ? fromCourse.position : null;
+  let total: number | null = fromCourse ? courseLessons.length : null;
+  if (authored && position === null) {
     const sequence = (await sqlLearn`
       SELECT l.id
         FROM learn_modules m
@@ -150,16 +164,20 @@ async function resolveLesson(
 
   return {
     id: lessonId,
-    title: authored?.title ?? legacy?.title ?? "Lesson",
+    title: fromCourse?.title ?? authored?.title ?? legacy?.title ?? "Lesson",
     position,
     total,
-    estMinutes: authored?.est_minutes ?? null,
+    estMinutes: fromCourse?.estMinutes ?? authored?.est_minutes ?? null,
     // The course record is where a lesson's sequence and material live. There
     // is no per-lesson teaching view to link at yet, and inventing one would
     // be a link that does not resolve.
     href: courseId ? `/app/curriculum/${courseId}` : null,
-    published: Boolean(authored?.published_version_id),
+    // An instructor-led lesson has nothing to publish; only a Learn lesson can
+    // be a draft.
+    published: fromCourse?.source === "instructor_led" ? true : Boolean(authored?.published_version_id),
     historical: false,
+    resources: (fromCourse?.resources ?? []) as CourseResource[],
+    teachingNote: fromCourse?.teachingNote ?? null,
   };
 }
 

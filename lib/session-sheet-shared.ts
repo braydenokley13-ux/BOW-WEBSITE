@@ -7,6 +7,7 @@
  * ============================================================ */
 
 import type { AttendanceStatus } from "@/lib/session-evidence";
+import type { CourseResource } from "@/lib/curriculum-resources-shared";
 
 export interface SheetStudent {
   studentId: string;
@@ -36,6 +37,16 @@ export interface SheetLesson {
   published: boolean;
   /** True when this came from a finalized report's immutable snapshot. */
   historical: boolean;
+  /**
+   * What to open to teach it — Slides, the worksheet, the simulation.
+   *
+   * These are the course's materials, attached once and reached from every
+   * session that runs the lesson. Finding them five minutes before class is
+   * exactly the routine work the operating layer exists to remove.
+   */
+  resources: CourseResource[];
+  /** The course's own note about teaching this lesson, if there is one. */
+  teachingNote: string | null;
 }
 
 /** Why attendance is not editable right now, in the words the sheet shows. */

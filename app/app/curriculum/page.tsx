@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Badge, Button } from "@/components/ds";
 import { requireStaff } from "@/lib/dal";
 import { listCourses } from "@/lib/curriculum-courses";
+import { COURSE_MODE_LABEL } from "@/lib/curriculum-resources-shared";
 import { getDb } from "@/lib/db";
 
 export const metadata = { title: "Curriculum" };
@@ -116,7 +117,10 @@ export default async function CurriculumPage() {
                         course.gradeRange,
                         course.lessonCount > 0
                           ? `${course.lessonCount} lesson${course.lessonCount === 1 ? "" : "s"}`
-                          : "No lessons written yet",
+                          : "No lessons yet",
+                        course.resourceCount > 0
+                          ? `${course.resourceCount} material${course.resourceCount === 1 ? "" : "s"}`
+                          : null,
                         course.lessonCount > 0 && course.publishedLessonCount < course.lessonCount
                           ? `${course.lessonCount - course.publishedLessonCount} still draft`
                           : null,
@@ -125,10 +129,11 @@ export default async function CurriculumPage() {
                         .join(" · ")}
                     </span>
                   </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flex: "none" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flex: "0 1 auto", minWidth: 0 }}>
                     <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>
                       {running > 0 ? `RUNNING IN ${running}` : "NOT RUNNING"}
                     </span>
+                    {course.mode !== "unplanned" ? <Badge status="info">{COURSE_MODE_LABEL[course.mode]}</Badge> : null}
                     <Badge status={course.published ? "positive" : "neutral"}>
                       {course.published ? "Published" : "Draft"}
                     </Badge>
@@ -142,15 +147,16 @@ export default async function CurriculumPage() {
 
       {withoutLessons.length > 0 ? (
         <section style={{ marginTop: 26 }}>
-          <h2 style={sectionHeading}>Courses with no lessons yet</h2>
+          <h2 style={sectionHeading}>Not planned yet</h2>
           <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: "var(--bow-slate)" }}>
             {withoutLessons.map((course) => course.title).join(", ")} {withoutLessons.length === 1 ? "has" : "have"} no
-            authored lessons behind {withoutLessons.length === 1 ? "it" : "them"}. A class built on{" "}
-            {withoutLessons.length === 1 ? "it" : "one"} still runs — its sessions are just numbered rather than named.
-            Point a course at its lessons from the course record, or write them in Studio.
+            lessons. A class built on {withoutLessons.length === 1 ? "it" : "one"} still runs — its sessions are numbered
+            rather than named. Open the course to add lessons and the Slides that go with them; a live course does not
+            need anything authored in Studio.
           </p>
         </section>
       ) : null}
+
     </div>
   );
 }

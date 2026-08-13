@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { Badge, Button } from "@/components/ds";
 import { getCurrentUser, requireStaff } from "@/lib/dal";
 import { getDb, rowToCurriculum } from "@/lib/db";
-import { getCourse, getCourseUsage, listAuthoredTracks, listCourseLessons } from "@/lib/curriculum-courses";
+import { getCourse, getCourseUsage, listAuthoredTracks, listCourseLessons, listCourseResources } from "@/lib/curriculum-courses";
+import { COURSE_MODE_LABEL } from "@/lib/curriculum-resources-shared";
 import CurriculumForm from "@/components/app/curriculum/CurriculumForm";
 import TrackLinkControl from "@/components/app/curriculum/TrackLinkControl";
+import LessonPlanner from "@/components/app/curriculum/LessonPlanner";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -49,11 +51,12 @@ export default async function CourseRecordPage({ params }: { params: Promise<{ i
   if (!row) notFound();
   const curriculum = rowToCurriculum(row);
 
-  const [course, lessons, usage, tracks] = await Promise.all([
+  const [course, lessons, usage, tracks, courseResources] = await Promise.all([
     getCourse(id),
     listCourseLessons(id),
     getCourseUsage(id),
     listAuthoredTracks(),
+    listCourseResources(id),
   ]);
 
   const running = usage.filter((entry) => entry.status === "active" || entry.status === "paused");
@@ -98,6 +101,7 @@ export default async function CourseRecordPage({ params }: { params: Promise<{ i
           ) : null}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flex: "0 1 auto" }}>
+          {course ? <Badge status="info">{COURSE_MODE_LABEL[course.mode]}</Badge> : null}
           <Badge status={curriculum.published ? "positive" : "neutral"}>
             {curriculum.published ? "Published" : "Draft"}
           </Badge>
@@ -109,67 +113,26 @@ export default async function CourseRecordPage({ params }: { params: Promise<{ i
 
       <p style={{ margin: "14px 0 0", fontSize: 15, lineHeight: 1.55, color: "var(--bow-ink)" }}>
         {lessons.length === 0
-          ? "No lessons are attached yet. A class built on this course still runs — its sessions are numbered rather than named."
-          : `${lessons.length} lesson${lessons.length === 1 ? "" : "s"}${drafts > 0 ? `, ${drafts} still draft` : ", all published"}. Running in ${running.length} class${running.length === 1 ? "" : "es"}.`}
+          ? "No lessons yet. Add them below with the Slides and worksheets an instructor opens, or point this course at an authored set of self-paced lessons."
+          : `${lessons.length} lesson${lessons.length === 1 ? "" : "s"}${drafts > 0 ? `, ${drafts} still draft` : ""}. Running in ${running.length} class${running.length === 1 ? "" : "es"}.`}
       </p>
       {curriculum.ageRange ? (
         <p style={{ margin: "5px 0 0", fontSize: 13, color: "var(--bow-slate)" }}>{curriculum.ageRange}</p>
       ) : null}
 
-      {/* The sequence. One order, shared by Studio, the composer and delivery. */}
+      {/* The sequence. One order, shared by Studio, the composer and delivery —
+          and, for a live course, the materials an instructor opens from it. */}
       <section style={{ marginTop: 30 }}>
-        <h2 style={sectionHeading}>Lessons</h2>
-        {lessons.length === 0 ? (
-          <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: "var(--bow-slate)" }}>
-            Nothing authored against this course yet. Point it at an existing set of lessons below, or write them in
-            Studio.
-          </p>
-        ) : (
-          <div style={{ border: "1px solid var(--border-rule)", borderRadius: "var(--radius-card)", background: "var(--bow-white)" }}>
-            {lessons.map((lesson, index) => (
-              <div
-                key={lesson.id}
-                style={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  gap: 14,
-                  padding: "11px 16px",
-                  borderTop: index === 0 ? "none" : "1px solid var(--border-rule)",
-                  flexWrap: "wrap",
-                }}
-              >
-                <span style={{ flex: "none", width: 26, fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>
-                  {String(lesson.position).padStart(2, "0")}
-                </span>
-                <span style={{ flex: "1 1 200px", minWidth: 0, fontSize: 14, color: "var(--bow-ink)" }}>
-                  {lesson.title}
-                </span>
-                {lesson.estMinutes ? (
-                  <span style={{ fontFamily: "var(--font-data)", fontSize: 11, color: "var(--bow-slate)" }}>
-                    {lesson.estMinutes} MIN
-                  </span>
-                ) : null}
-                {lesson.published ? (
-                  <Badge status="positive">Published</Badge>
-                ) : (
-                  <Badge status="neutral">Draft</Badge>
-                )}
-                {me?.role === "admin" ? (
-                  <Link
-                    href={`/app/admin/learn/lesson/${lesson.id}`}
-                    style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.06em", color: "var(--bow-blue)" }}
-                  >
-                    EDIT
-                  </Link>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        )}
+        <h2 style={sectionHeading}>Lessons and materials</h2>
+        <p style={{ margin: "0 0 12px", fontSize: 12.5, lineHeight: 1.55, color: "var(--bow-slate)" }}>
+          Materials are links to what already exists — Google Slides, Canva, a worksheet, a BOW simulation. Attach them
+          once here and every class that runs the lesson reaches them from its Session Sheet.
+        </p>
+        <LessonPlanner curriculumId={curriculum.id} lessons={lessons} courseResources={courseResources} />
         {drafts > 0 ? (
-          <p style={{ margin: "10px 0 0", fontSize: 12.5, lineHeight: 1.55, color: "var(--bow-slate)" }}>
-            A draft lesson can still be scheduled — it just has not been released to students yet. Publishing happens in
-            Studio.
+          <p style={{ margin: "12px 0 0", fontSize: 12.5, lineHeight: 1.55, color: "var(--bow-slate)" }}>
+            A self-paced lesson still marked draft can be scheduled — it just has not been released to students. That
+            happens in Studio.
           </p>
         ) : null}
       </section>

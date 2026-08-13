@@ -15,6 +15,16 @@
  * ============================================================ */
 
 import { sqlLearn } from "@/lib/db-sql";
+import {
+  resolveCourseMode,
+  safeResourceUrl,
+  type CourseMode,
+  type CourseResource,
+  type ResourceKind,
+} from "@/lib/curriculum-resources-shared";
+
+/** Which system a lesson's content lives in. */
+export type LessonSource = "learn" | "instructor_led";
 
 export interface CourseLesson {
   id: string;
@@ -22,8 +32,17 @@ export interface CourseLesson {
   /** Position across the whole course, 1-based, as an operator counts them. */
   position: number;
   estMinutes: number | null;
-  /** False when the lesson has never been published from Studio. */
+  /**
+   * Only meaningful for a Learn lesson: false when it has never been published
+   * from Studio. An instructor-led lesson has nothing to publish — it is a
+   * title, a note and some links — so it is always true.
+   */
   published: boolean;
+  source: LessonSource;
+  /** What the instructor needs to know to teach it. Instructor-led only. */
+  teachingNote: string | null;
+  /** The Slides, worksheet, simulation. Empty when nothing is attached. */
+  resources: CourseResource[];
 }
 
 export interface CourseSummary {
@@ -36,6 +55,13 @@ export interface CourseSummary {
   lessonCount: number;
   /** Lessons that have a published version — what a class would actually run. */
   publishedLessonCount: number;
+  /**
+   * Taught live, self-paced, or both. Derived from what the course actually
+   * has, never stored — a course does not declare a mode, it has lessons.
+   */
+  mode: CourseMode;
+  /** Teaching materials attached anywhere on this course. */
+  resourceCount: number;
 }
 
 export interface CourseUsage {
@@ -51,41 +77,131 @@ export interface CourseUsage {
   sessionCount: number;
 }
 
+/** Every resource on a course, grouped by the lesson it hangs off. */
+async function resourcesByLesson(curriculumId: string): Promise<{
+  byLesson: Map<string, CourseResource[]>;
+  courseLevel: CourseResource[];
+  total: number;
+}> {
+  const rows = (await sqlLearn`
+    SELECT id, lesson_id, learn_lesson_id, label, url, kind, note, sort
+      FROM curriculum_resources
+     WHERE curriculum_id = ${curriculumId}
+     ORDER BY sort ASC, created_at ASC
+  `.catch(() => [])) as unknown as {
+    id: string;
+    lesson_id: string | null;
+    learn_lesson_id: string | null;
+    label: string;
+    url: string;
+    kind: string;
+    note: string | null;
+    sort: number;
+  }[];
+
+  const byLesson = new Map<string, CourseResource[]>();
+  const courseLevel: CourseResource[] = [];
+  for (const row of rows) {
+    // A resource whose URL is not something we would render as a link is not
+    // returned at all — the render path must never be the first place that is
+    // noticed.
+    const url = safeResourceUrl(row.url);
+    if (!url) continue;
+    const resource: CourseResource = {
+      id: row.id,
+      label: row.label,
+      url,
+      kind: row.kind as ResourceKind,
+      note: row.note ?? null,
+      sort: Number(row.sort ?? 0),
+    };
+    const anchor = row.lesson_id ?? row.learn_lesson_id;
+    if (!anchor) {
+      courseLevel.push(resource);
+      continue;
+    }
+    const list = byLesson.get(anchor);
+    if (list) list.push(resource);
+    else byLesson.set(anchor, [resource]);
+  }
+  return { byLesson, courseLevel, total: rows.length };
+}
+
 /**
- * The ordered lesson sequence for a course.
+ * The ordered lesson sequence for a course, whichever way it is taught.
  *
- * Order is module order then lesson order — the same order Studio shows and
- * the same order the composer maps onto sessions, so lesson N is the Nth
- * session for everyone.
+ * A digital course's lessons come from Learn, in module order then lesson
+ * order — the order Studio shows and the order the composer maps onto
+ * sessions. An instructor-led course's lessons are its own numbered list.
+ * A hybrid course has both, and the Learn lessons come first because that is
+ * the sequence students move through.
+ *
+ * One list either way: nothing downstream — the composer, the class record,
+ * the Session Sheet — should have to know which mode a course is in.
  */
 export async function listCourseLessons(curriculumId: string): Promise<CourseLesson[]> {
-  const rows = (await sqlLearn`
-    SELECT l.id, l.title, l.est_minutes, l.published_version_id
-      FROM curricula c
-      JOIN learn_modules m ON m.track_id = c.learn_track_id
-      JOIN learn_lessons l ON l.module_id = m.id
-     WHERE c.id = ${curriculumId}
-       AND c.learn_track_id IS NOT NULL
-       AND l.lifecycle = 'active'
-       AND m.lifecycle = 'active'
-     ORDER BY m.sort ASC, l.sort ASC, l.id ASC
-  `) as unknown as { id: string; title: string; est_minutes: number | null; published_version_id: string | null }[];
+  const [learnRows, ownRows, resources] = await Promise.all([
+    sqlLearn`
+      SELECT l.id, l.title, l.est_minutes, l.published_version_id
+        FROM curricula c
+        JOIN learn_modules m ON m.track_id = c.learn_track_id
+        JOIN learn_lessons l ON l.module_id = m.id
+       WHERE c.id = ${curriculumId}
+         AND c.learn_track_id IS NOT NULL
+         AND l.lifecycle = 'active'
+         AND m.lifecycle = 'active'
+       ORDER BY m.sort ASC, l.sort ASC, l.id ASC
+    ` as unknown as Promise<{ id: string; title: string; est_minutes: number | null; published_version_id: string | null }[]>,
+    sqlLearn`
+      SELECT id, title, teaching_note, position
+        FROM curriculum_lessons
+       WHERE curriculum_id = ${curriculumId}
+       ORDER BY position ASC
+    `.catch(() => []) as unknown as Promise<{ id: string; title: string; teaching_note: string | null; position: number }[]>,
+    resourcesByLesson(curriculumId),
+  ]);
 
-  return rows.map((row, index) => ({
-    id: row.id,
-    title: row.title,
-    position: index + 1,
-    estMinutes: row.est_minutes ?? null,
-    published: Boolean(row.published_version_id),
-  }));
+  const lessons: CourseLesson[] = [
+    ...learnRows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      position: 0,
+      estMinutes: row.est_minutes ?? null,
+      published: Boolean(row.published_version_id),
+      source: "learn" as const,
+      teachingNote: null,
+      resources: resources.byLesson.get(row.id) ?? [],
+    })),
+    ...ownRows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      position: 0,
+      estMinutes: null,
+      // An instructor-led lesson has nothing to publish. Marking it
+      // "draft" would invent a workflow that does not exist.
+      published: true,
+      source: "instructor_led" as const,
+      teachingNote: row.teaching_note ?? null,
+      resources: resources.byLesson.get(row.id) ?? [],
+    })),
+  ];
+
+  return lessons.map((lesson, index) => ({ ...lesson, position: index + 1 }));
+}
+
+/** Resources that belong to the course rather than to any one lesson. */
+export async function listCourseResources(curriculumId: string): Promise<CourseResource[]> {
+  return (await resourcesByLesson(curriculumId)).courseLevel;
 }
 
 /** The course library — what the composer picks from and Curriculum lists. */
 export async function listCourses(): Promise<CourseSummary[]> {
   const rows = (await sqlLearn`
     SELECT c.id, c.title, c.description, c.grade_range, c.age_range, c.published, c.learn_track_id,
-           COALESCE(counts.total, 0)     AS lesson_count,
-           COALESCE(counts.published, 0) AS published_lesson_count
+           COALESCE(counts.total, 0)     AS learn_lesson_count,
+           COALESCE(counts.published, 0) AS published_lesson_count,
+           COALESCE(own.total, 0)        AS own_lesson_count,
+           COALESCE(res.total, 0)        AS resource_count
       FROM curricula c
       LEFT JOIN LATERAL (
         SELECT COUNT(*) AS total,
@@ -96,6 +212,12 @@ export async function listCourses(): Promise<CourseSummary[]> {
            AND l.lifecycle = 'active'
            AND m.lifecycle = 'active'
       ) counts ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS total FROM curriculum_lessons cl WHERE cl.curriculum_id = c.id
+      ) own ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS total FROM curriculum_resources cr WHERE cr.curriculum_id = c.id
+      ) res ON true
      ORDER BY c.published DESC, c.title ASC
   `) as unknown as {
     id: string;
@@ -105,20 +227,28 @@ export async function listCourses(): Promise<CourseSummary[]> {
     age_range: string | null;
     published: number | boolean;
     learn_track_id: string | null;
-    lesson_count: string | number;
+    learn_lesson_count: string | number;
     published_lesson_count: string | number;
+    own_lesson_count: string | number;
+    resource_count: string | number;
   }[];
 
-  return rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    description: row.description ?? null,
-    gradeRange: row.grade_range ?? row.age_range ?? null,
-    published: row.published === true || Number(row.published) === 1,
-    learnTrackId: row.learn_track_id ?? null,
-    lessonCount: Number(row.lesson_count ?? 0),
-    publishedLessonCount: Number(row.published_lesson_count ?? 0),
-  }));
+  return rows.map((row) => {
+    const learnLessonCount = Number(row.learn_lesson_count ?? 0);
+    const ownLessonCount = Number(row.own_lesson_count ?? 0);
+    return {
+      id: row.id,
+      title: row.title,
+      description: row.description ?? null,
+      gradeRange: row.grade_range ?? row.age_range ?? null,
+      published: row.published === true || Number(row.published) === 1,
+      learnTrackId: row.learn_track_id ?? null,
+      lessonCount: learnLessonCount + ownLessonCount,
+      publishedLessonCount: Number(row.published_lesson_count ?? 0) + ownLessonCount,
+      mode: resolveCourseMode({ learnLessonCount, ownLessonCount }),
+      resourceCount: Number(row.resource_count ?? 0),
+    };
+  });
 }
 
 export async function getCourse(curriculumId: string): Promise<CourseSummary | null> {

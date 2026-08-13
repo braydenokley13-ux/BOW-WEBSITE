@@ -564,6 +564,52 @@ h1, h2, h3, h4, h5, h6, p, figure, blockquote { margin: 0; }
 .bow-portal-content .ops-panel > div,
 .bow-portal-content fieldset { max-width: 100%; }
 
+/* A small inline control for list housekeeping — reorder, remove, add. Kept
+   distinct from Button so a row of them does not read as a row of decisions. */
+.bow-tiny {
+  min-height: 32px;
+  min-width: 32px;
+  padding: 4px 9px;
+  border: 1px solid var(--border-rule);
+  border-radius: var(--radius-control);
+  background: transparent;
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--bow-slate);
+  cursor: pointer;
+}
+.bow-tiny:hover:not(:disabled) { border-color: var(--bow-ink); color: var(--bow-ink); }
+.bow-tiny:disabled { opacity: 0.5; cursor: not-allowed; }
+.bow-tiny:focus-visible { outline: 3px solid var(--bow-blue); outline-offset: 2px; }
+
+/* ===== Teaching materials =====
+   One tap to the Slides, the worksheet, the simulation. Sized as real touch
+   targets because this is read on a phone in a gym two minutes before class. */
+.bow-materials { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.bow-materials__item {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 44px;
+  justify-content: center;
+  padding: 7px 13px;
+  background: var(--bow-white);
+  border: 1px solid var(--border-rule);
+  border-radius: var(--radius-control);
+  text-decoration: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.bow-materials__item:hover { border-color: var(--bow-blue); background: var(--bow-blue-tint); }
+.bow-materials__kind {
+  font-family: var(--font-data);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bow-slate);
+}
+.bow-materials__label { font-size: 14px; line-height: 1.25; color: var(--bow-ink); }
+
 /* ===== Session Sheet =====
    Built for a phone held in one hand a few minutes before class. Every tap
    target clears 44px, the attendance row keeps the name and its four marks on

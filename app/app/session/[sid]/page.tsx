@@ -6,6 +6,7 @@ import { getInstructorByUserId } from "@/lib/hiring";
 import { isAcceptedClassMember } from "@/lib/delivery";
 import { getSessionSheet, type SheetViewer } from "@/lib/session-sheet";
 import { resolveSheetPhase } from "@/lib/session-sheet-shared";
+import { RESOURCE_KIND_LABEL } from "@/lib/curriculum-resources-shared";
 import { formatDateTimeInZone } from "@/lib/timezone";
 import AttendanceSheet from "@/components/app/session/AttendanceSheet";
 import SessionPlanForm from "@/components/app/classes/SessionPlanForm";
@@ -197,6 +198,33 @@ export default async function SessionSheetPage({ params }: { params: Promise<{ s
             {sheet.objective ? "" : " Whoever runs it plans it."}
           </p>
         )}
+        {/* Materials. The single most repetitive thing an instructor does
+            before a class is hunt for the Slides; this is the whole point of
+            attaching them to the course once. Every link opens in a new tab so
+            the sheet — and the attendance about to be taken on it — survives. */}
+        {sheet.lesson?.resources.length ? (
+          <div className="bow-materials">
+            {sheet.lesson.resources.map((resource) => (
+              <a
+                key={resource.id}
+                className="bow-materials__item"
+                href={resource.url}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <span className="bow-materials__kind">{RESOURCE_KIND_LABEL[resource.kind]}</span>
+                <span className="bow-materials__label">{resource.label}</span>
+              </a>
+            ))}
+          </div>
+        ) : null}
+
+        {sheet.lesson?.teachingNote ? (
+          <p style={{ margin: "12px 0 0", fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "var(--bow-ink)" }}>
+            {sheet.lesson.teachingNote}
+          </p>
+        ) : null}
+
         {sheet.objective ? (
           <p style={{ margin: "10px 0 0", fontSize: 14, lineHeight: 1.55, color: "var(--bow-ink)" }}>
             {sheet.objective}

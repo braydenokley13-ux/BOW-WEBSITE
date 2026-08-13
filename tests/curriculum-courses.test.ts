@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { getSqlLearn } from "../lib/db-sql";
-import { listAuthoredTracks, listCourseLessons, listCourses } from "../lib/curriculum-courses";
+import { listAuthoredTracks, listCourseLessons, listCourseResources, listCourses } from "../lib/curriculum-courses";
 
 /* ============================================================
  * Build once, run everywhere — and the link that makes it possible.
@@ -112,4 +112,80 @@ test("the legacy importer makes the same link, so ordering cannot lose it", () =
   assert.match(source, /public_slug = \$\{`track-\$\{track\}`\}/);
   // And it must fill nulls only — an operator's explicit link outranks it.
   assert.match(source, /AND learn_track_id IS NULL/);
+});
+
+/* ============================================================
+ * Instructor-led curriculum: a lesson list and links to material that already
+ * exists. The claim is that a live course is a COMPLETE course — not a
+ * digital one missing its Learn track.
+ * ============================================================ */
+
+const LIVE_COURSE = `cc-live-${suffix}`;
+
+async function seedLive(): Promise<void> {
+  const sql = getSqlLearn();
+  const now = Date.now();
+  await sql`INSERT INTO curricula (id, title, published, created_at, updated_at) VALUES (${LIVE_COURSE}, ${`Live Course ${suffix}`}, 1, ${now}, ${now})`;
+  await sql`
+    INSERT INTO curriculum_lessons (id, curriculum_id, position, title, teaching_note, created_at, updated_at)
+    VALUES (${`cl-2-${suffix}`}, ${LIVE_COURSE}, 2, 'Second lesson', NULL, ${now}, ${now}),
+           (${`cl-1-${suffix}`}, ${LIVE_COURSE}, 1, 'First lesson', 'Open on the roster.', ${now}, ${now})
+  `;
+  await sql`
+    INSERT INTO curriculum_resources (id, curriculum_id, lesson_id, label, url, kind, sort, created_at, updated_at)
+    VALUES (${`cr-a-${suffix}`}, ${LIVE_COURSE}, ${`cl-1-${suffix}`}, 'Deck', 'https://docs.google.com/presentation/d/x/edit', 'slides', 1, ${now}, ${now}),
+           (${`cr-sim-${suffix}`}, ${LIVE_COURSE}, ${`cl-1-${suffix}`}, 'Cap simulation', '/simulation', 'simulation', 2, ${now}, ${now}),
+           (${`cr-course-${suffix}`}, ${LIVE_COURSE}, NULL, 'Instructor guide', 'https://drive.google.com/drive/folders/x', 'document', 3, ${now}, ${now}),
+           (${`cr-bad-${suffix}`}, ${LIVE_COURSE}, ${`cl-1-${suffix}`}, 'Not a link', 'javascript:alert(1)', 'website', 4, ${now}, ${now})
+  `;
+}
+
+async function cleanupLive(): Promise<void> {
+  const sql = getSqlLearn();
+  await sql`DELETE FROM curricula WHERE id = ${LIVE_COURSE}`;
+}
+
+test("a course with no Learn track still has lessons, in its own order", async (t) => {
+  await seedLive();
+  t.after(cleanupLive);
+
+  const lessons = await listCourseLessons(LIVE_COURSE);
+  assert.deepEqual(lessons.map((lesson) => lesson.title), ["First lesson", "Second lesson"]);
+  assert.deepEqual(lessons.map((lesson) => lesson.position), [1, 2]);
+  assert.equal(lessons.every((lesson) => lesson.source === "instructor_led"), true);
+  // Nothing to publish, so nothing may be reported as an unpublished draft.
+  assert.equal(lessons.every((lesson) => lesson.published), true);
+  assert.equal(lessons[0].teachingNote, "Open on the roster.");
+});
+
+test("a live course is Taught live, not an incomplete digital one", async (t) => {
+  await seedLive();
+  t.after(cleanupLive);
+
+  const course = (await listCourses()).find((c) => c.id === LIVE_COURSE);
+  assert.equal(course?.mode, "instructor_led");
+  assert.equal(course?.learnTrackId, null, "and it needs no Learn track to be complete");
+  assert.equal(course?.lessonCount, 2);
+});
+
+test("materials reach the lesson an instructor opens, and a simulation is pointed at", async (t) => {
+  await seedLive();
+  t.after(cleanupLive);
+
+  const [first] = await listCourseLessons(LIVE_COURSE);
+  assert.deepEqual(first.resources.map((r) => r.label), ["Deck", "Cap simulation"]);
+  const simulation = first.resources.find((r) => r.kind === "simulation");
+  assert.equal(simulation?.url, "/simulation", "the same experience Track 101 runs, not a copy of it");
+
+  // Course-level material is separate from any one lesson.
+  const courseLevel = await listCourseResources(LIVE_COURSE);
+  assert.deepEqual(courseLevel.map((r) => r.label), ["Instructor guide"]);
+});
+
+test("a resource whose URL could not be rendered as a link is never returned", async (t) => {
+  await seedLive();
+  t.after(cleanupLive);
+
+  const [first] = await listCourseLessons(LIVE_COURSE);
+  assert.equal(first.resources.some((r) => r.label === "Not a link"), false);
 });
