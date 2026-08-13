@@ -827,3 +827,51 @@
   .ops-rank > :nth-child(n + 3) { grid-column: 2; }
   .ops-form-footer { align-items: stretch; flex-direction: column-reverse; }
 }
+
+/* ===== BOW OS V1 — Post a Class =====
+   The live public card sits beside the form on a desktop, where there is room
+   to watch it change while typing. Below the two-column threshold it becomes a
+   Preview step instead: a shrunken card wedged under the fields is worse than
+   no card, because the whole point is seeing it the way a family will. */
+.bow-post-class-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  gap: 40px;
+  align-items: start;
+}
+.bow-post-class-preview {
+  position: sticky;
+  top: 24px;
+  background: var(--bow-paper);
+  border: 1px solid var(--border-rule);
+  border-radius: var(--radius-card);
+  padding: 16px 18px;
+}
+.bow-post-class-preview-close,
+.bow-post-class-mobile-preview { display: none; }
+
+@media (max-width: 1000px) {
+  .bow-post-class-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .bow-post-class-mobile-preview { display: inline-flex; }
+  .bow-post-class-preview {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    border: none;
+    border-radius: 0;
+    padding: 20px 18px;
+    overflow-y: auto;
+    display: none;
+  }
+  .bow-post-class-preview.is-open { display: block; }
+  .bow-post-class-preview-close { display: inline-flex; min-height: 44px; align-items: center; }
+}
+
+/* Seven day chips have to share whatever width the column has. Below the
+   two-column threshold that is ~250px, so a fixed 38px each overflows; they
+   flex instead, and grow taller so the touch target survives the squeeze. */
+.bow-day-chips { display: flex; gap: 5px; width: 100%; }
+.bow-day-chips > button { flex: 1 1 0; min-width: 0; }
+@media (max-width: 1000px) {
+  .bow-day-chips > button { height: 44px; }
+}

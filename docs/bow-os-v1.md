@@ -59,6 +59,53 @@ safely with the current model.
 
 ---
 
+## Navigation and canonical routes
+
+Five staff destinations. `lib/navigation/catalog.ts` is the single source of truth, and
+`tests/navigation/catalog.test.ts` pins every path to exactly one of them.
+
+| Destination | Route | Also resolves |
+|---|---|---|
+| Home | `/app` | — |
+| Programs | `/app/programs` | `/app/classes`, `/app/post-class`, `/app/session`, `/app/regions`, `/app/locations` |
+| Partners | `/app/partners` | `/app/inquiries`, `/app/admin/inquiries` |
+| People | `/app/people` | `/app/instructors`, `/app/students`, `/app/hiring`, `/app/training`, `/app/instructor-ops` |
+| Curriculum | `/app/curriculum` | `/app/admin/learn` (Playbook Studio) |
+
+Growth, Work, Website and the platform-admin pages moved into a secondary **More** group.
+Their routes are unchanged and nothing is stranded — they simply stopped competing with the
+five surfaces used daily.
+
+## Publishing a direct class
+
+`/app/post-class` → `publishClass()` in `lib/post-class.ts` → `/app/post-class/published/[classId]`.
+
+One `BEGIN IMMEDIATE` creates the Program, the delivery Class (`status = 'active'`, so
+attendance can be recorded), every session (with `lesson_id` mapped from the course when the
+course has an authored track), and the public listing. Three decisions are real — course,
+title, schedule — and the rest are stated defaults: 12 seats, automatic waitlist, free, the
+operator teaches it, listed publicly.
+
+Idempotency: the composer mints a request key on the first Publish press and reuses it for
+every retry. `programs.request_key` is `post-class:<key>` and carries a unique index, so a
+retry either finds the existing class or loses the INSERT race and then finds it.
+
+**A posted class is always public.** The mockup offered a Link-only toggle, but both
+`listPublicProgramsForSite` and `getPublicProgramBySlug` require `publication_status =
+'published'`, so a link-only class would have had a link that did not resolve. Shipping the
+control would have been fake capability; V2 can add a genuine unlisted state.
+
+## Family registration path
+
+Public program cards now send families to `/programs/register?program=<id>` — the canonical
+wizard, which takes `SELECT … FOR UPDATE` on the class row before counting seats, enrols
+siblings in one flow, and hands a full class to the waitlist engine. The previous target,
+`/programs/register/<id>`, did none of those; it is now a redirect, so links already shared
+with families keep working.
+
+The CTA is decided by `deriveCta`, which only uses a register href for `registration_open` —
+so Coming Soon, Full, Closed and interest-list behaviour are untouched.
+
 ## Known seams (deliberately left for V2)
 
 - **`organizations` ↔ `partner_orgs` are joined by name string.** `organizations` is the
@@ -68,4 +115,6 @@ safely with the current model.
 - **`applications` and `instructors` are parallel pipelines**, with the invariant
   `applications.id === instructors.id` established by backfill and unenforced by schema. V1's
   People surface reuses both as-is and introduces no third applicant pipeline.
-- `lib/growth-search.ts` uses SQLite `instr()` against Postgres and will throw at runtime.
+- Courses seeded before migration 026 have no `learn_track_id`, so the composer shows
+  "No lessons yet" for them and generates plain "Session N" titles. Linking a course to its
+  authored track is a Curriculum-surface job (Checkpoint 8); nothing breaks until then.

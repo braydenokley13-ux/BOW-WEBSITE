@@ -1421,6 +1421,83 @@ export async function extendReservation(
 }
 
 /**
+ * Give a family more time to answer a waitlist offer.
+ *
+ * Distinct from extendReservation, which moves the deadline on a seat the
+ * family already holds: this moves the deadline on an OFFER of a seat. The
+ * seat is already held by the offer (the registration sits at `offer_sent`
+ * with holds_seat true), so nothing about capacity changes here — only the
+ * clock that sweepExpirations reads. No lock is needed for the same reason.
+ *
+ * Extending from `max(now, current expiry)` means extending an offer that has
+ * technically just lapsed still gives the family the full window, rather than
+ * a deadline in the past.
+ */
+export async function extendWaitlistOffer(
+  offerId: string,
+  additionalHours: number,
+  actor: { userId?: string | null; label: string },
+  reason?: string | null,
+): Promise<number> {
+  const db = getDb();
+  if (!Number.isFinite(additionalHours) || additionalHours <= 0 || additionalHours > 24 * 60) {
+    throw new EnrollmentError("Choose an extension between 1 and 1440 hours.", "invalid");
+  }
+  const offer = (await db
+    .prepare("SELECT id, registration_id, program_id, status, expires_at FROM waitlist_offers WHERE id = ?")
+    .get(offerId)) as
+    | { id: string; registration_id: string; program_id: string; status: string; expires_at: number }
+    | undefined;
+  if (!offer) throw new EnrollmentError("That offer could not be found.", "not_found");
+  if (offer.status !== "sent") {
+    throw new EnrollmentError("This offer has already been answered.", "conflict");
+  }
+
+  const registration = await loadRegistration(offer.registration_id);
+  if (!registration) throw new EnrollmentError("Registration not found.", "not_found");
+
+  const now = Date.now();
+  const expiresAt = Math.max(Number(offer.expires_at), now) + additionalHours * 60 * 60 * 1000;
+
+  // Guarded on status so a concurrent accept/decline/sweep wins rather than
+  // being silently reopened by an extension.
+  const updated = await db
+    .prepare("UPDATE waitlist_offers SET expires_at = ?, updated_at = ? WHERE id = ? AND status = 'sent'")
+    .run(expiresAt, now, offerId);
+  if (updated.changes !== 1) {
+    throw new EnrollmentError("This offer was answered while it was being extended.", "conflict");
+  }
+
+  await recordAudit({
+    registrationId: offer.registration_id,
+    studentId: registration.student_id,
+    programId: offer.program_id,
+    actorUserId: actor.userId ?? null,
+    actorLabel: actor.label,
+    action: "waitlist_offer_extended",
+    previousState: String(offer.expires_at),
+    newState: String(expiresAt),
+    reason: reason ?? null,
+  });
+
+  await recordNotification({
+    personId: registration.guardian_person_id,
+    studentId: registration.student_id,
+    programId: offer.program_id,
+    registrationId: offer.registration_id,
+    kind: "waitlist_offer",
+    title: "You have more time to answer",
+    body: "We extended the deadline on the seat being held for you.",
+    urgency: "normal",
+    actionLabel: "Respond to offer",
+    actionHref: `/family/offers/${offerId}`,
+    requiresAcknowledgment: true,
+  });
+
+  return expiresAt;
+}
+
+/**
  * Place or move a student between classes without ever leaving them enrolled
  * in neither. The new seat is taken under lock before the old one is released.
  */

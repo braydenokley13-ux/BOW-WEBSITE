@@ -1,7 +1,5 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 import ContentNotice from "@/components/site/ContentNotice";
-import ProgramRegistrationForm from "@/components/site/ProgramRegistrationForm";
-import { Paragraphs } from "@/components/site/sections/shell";
 import { getPublicProgramBySlug, type PublicProgram } from "@/lib/cms/offerings";
 import { getGlobalSettings } from "@/lib/cms/read";
 import { contentMetadata } from "@/lib/cms/metadata";
@@ -11,13 +9,18 @@ import { interestListIsOpen, registrationIsOpen } from "@/lib/cms/status";
 import { DEFAULT_GLOBAL_SETTINGS } from "@/lib/cms/sections";
 
 /**
- * Registration for one program.
+ * Registration for one program — now a compatibility redirect.
  *
- * The gate here is the program's registration status, checked before the form
- * is rendered — and checked again by the submit action, which reads the same
- * fields. A visitor who arrives on a closed program gets the reason and a way
- * onward rather than a form that will reject them after they have typed
- * everything in.
+ * This route used to render its own form against a registration path that
+ * counted seats without locking the class row, so two families racing for the
+ * last seat could both be confirmed, and a full program had no waitlist. The
+ * canonical family wizard does take the lock, enrols siblings in one flow, and
+ * hands a full class to the waitlist engine.
+ *
+ * The route survives because families have this URL in their inbox. The
+ * closed/full gate stays here so someone arriving on a program that has ended
+ * still gets the reason and a way onward, rather than being bounced into a
+ * wizard that cannot help them.
  */
 
 export const dynamic = "force-dynamic";
@@ -88,37 +91,9 @@ export default async function ProgramRegisterPage({ params }: { params: Promise<
   const result = await loadRegistration(id);
 
   if (!result.ok) return <ContentNotice notice={result.notice} />;
-  const { program, waitlistable, explanation } = result;
 
-  return (
-    <div id="main" data-screen-label="Program Registration">
-      <section style={{ background: "var(--bow-paper)", padding: "clamp(40px,6vw,72px) clamp(18px,4vw,40px)" }}>
-        <div className="bow-container" style={{ maxWidth: 640 }}>
-          <Link href={`/programs/p/${program.slug}`} style={{ fontFamily: "var(--font-data)", fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
-            \u2190 {program.title}
-          </Link>
-          <h1 style={{ margin: "14px 0 6px", fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(28px,4vw,44px)", lineHeight: 1.02, letterSpacing: "-0.01em", textTransform: "uppercase" }}>
-            Register for {program.title}
-          </h1>
-          {program.shortDescription ? (
-            <p style={{ margin: "0 0 20px", fontFamily: "var(--font-interface)", fontSize: 16, lineHeight: 1.6, color: "var(--bow-slate)" }}>
-              {program.shortDescription}
-            </p>
-          ) : null}
-          {waitlistable ? (
-            <p style={{ margin: "0 0 20px", fontFamily: "var(--font-interface)", fontSize: 14, color: "var(--bow-orange)" }}>
-              This program is currently full \u2014 registering here adds your student to the waitlist.
-            </p>
-          ) : null}
-          {explanation ? (
-            <Paragraphs
-              text={explanation}
-              style={{ margin: "0 0 24px", fontFamily: "var(--font-interface)", fontSize: 15, lineHeight: 1.6, color: "var(--bow-slate)" }}
-            />
-          ) : null}
-          <ProgramRegistrationForm programId={program.id} programName={program.title} />
-        </div>
-      </section>
-    </div>
-  );
+  // Registration is open (or waitlistable) — hand the family to the canonical
+  // wizard, preselected on this program. redirect() throws, so it stays out of
+  // loadRegistration's try/catch.
+  redirect(`/programs/register?program=${encodeURIComponent(result.program.id)}`);
 }

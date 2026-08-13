@@ -94,14 +94,39 @@ export function IconPlaybook(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function IconPartners(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M2.2 13.4V5.8l4.1-2.4v10" />
+      <path d="M6.3 7.2l7.5 1.9v4.3H2.2" />
+      <path d="M9 11.2v2.2" />
+      <path d="M11.6 11.2v2.2" />
+    </svg>
+  );
+}
+
+export function IconCurriculum(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3.2 2.6h7.2l2.4 2.4v8.4H3.2z" />
+      <path d="M10.2 2.6V5h2.6" />
+      <path d="M5.6 8.2h5" />
+      <path d="M5.6 10.7h3.2" />
+    </svg>
+  );
+}
+
 export const NAV_ICON_BY_ID: Record<string, (props: SVGProps<SVGSVGElement>) => React.ReactElement> = {
   "staff-home": IconHome,
   "student-home": IconHome,
   "instructor-home": IconHome,
   growth: IconGrowth,
   programs: IconPrograms,
+  partners: IconPartners,
   people: IconPeople,
+  curriculum: IconCurriculum,
   work: IconWork,
+  more: IconAdmin,
   "platform-admin": IconAdmin,
   "instructor-classes": IconClasses,
   "instructor-playbook": IconPlaybook,

@@ -20,3 +20,14 @@ export { default as PageHeader } from "./PageHeader";
 export type { PageHeaderMetaItem } from "./PageHeader";
 export { default as PageSection } from "./PageSection";
 export { default as RecordShell } from "./RecordShell";
+
+/* BOW OS V1 operating primitives. Each replaces markup that had been
+   hand-copied across many files; see docs/bow-os-v1.md. */
+export { default as QueueRow } from "./QueueRow";
+export type { QueueTone } from "./QueueRow";
+export { default as FactRow } from "./FactRow";
+export { default as ReadinessRow } from "./ReadinessRow";
+export type { ReadinessState } from "./ReadinessRow";
+export { default as StateDots } from "./StateDots";
+export type { StateDotStep } from "./StateDots";
+export { default as FacetChip } from "./FacetChip";
