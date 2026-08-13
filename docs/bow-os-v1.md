@@ -142,6 +142,45 @@ Two defects this turned up, both pre-existing and both fixed here rather than wo
 imply. Without it the seeded "instructor with a session today" could not take attendance at
 all, because `recordAttendance` refuses an empty roster.
 
+## Partners
+
+One question — **who do I need to follow up with** — asked once, at the top of `/app/partners`.
+`lib/partner-desk.ts` reads only systems that already exist: `organizations` and its lifecycle
+status, `organization_people`, `crm_activity`, `tasks` with `kind='follow_up'`, `inquiries`, and
+`demo_requests`. No partner-notes table, no second follow-up store, no pipeline. BOW does not
+have a pipeline; it has a handful of schools and a founder who has to remember to call them.
+
+The **inbox** is one list because the job is one job: reply to a human. A school that used the
+public form, a demo request, and a follow-up somebody already promised all appear together,
+ordered by who has been waiting longest — sorting by kind is how the oldest thing gets
+forgotten. A follow-up dated in the future is a plan, not an inbox item, so it shows on the
+partner's row instead.
+
+**Still deciding** is the Ramaz case and the reason `resolveStanding` exists. A partnership can
+be entirely real while the format, the number of sections, the dates and the staffing are all
+open. That is a state with a name, not an incomplete record — nothing on the partner page
+demands a field be filled to look finished, and there is no readiness meter counting unmade
+decisions as failures. "Between programs" is kept distinct from "Still deciding" because the
+follow-up each deserves is different.
+
+**An inquiry becomes a partner without retyping.** `convertInquiryToPartner` writes the
+organization, the `people` row, the `organization_people` relationship, the first note and a
+dated follow-up in one transaction. The operator picks the target explicitly — this is a new
+school, or it is one already on the list. Matching `organizations` by the name typed into a
+public form is exactly the ambiguous-identity behaviour this codebase is containing, so it is
+not offered.
+
+Two fixes this turned up:
+
+- `createFollowUpFromDemoRequest` created its task with no `kind`, no date and no `source_key`,
+  so dispositioning a demo request quietly buried it — neither HQ Home's queue nor the Partners
+  inbox could see it. It now writes the canonical follow-up shape.
+- `scripts/seed-dev.ts` wrote **`partner_orgs`** ids into `programs.partner_org_id` and
+  `classes.partner_org_id`. Those columns hold an **`organizations`** id — that is what
+  `/app/programs/new` writes and what `lib/operations.ts` resolves the partner name from — so
+  every seeded partner rendered with no programs and no classes. Fixed in the seed; the
+  `organizations` ↔ `partner_orgs` seam itself is untouched and no new query crosses it.
+
 ## Known seams (deliberately left for V2)
 
 - **`organizations` ↔ `partner_orgs` are joined by name string.** `organizations` is the

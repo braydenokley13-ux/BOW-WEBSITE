@@ -606,15 +606,24 @@ export async function createFollowUpFromDemoRequest(demoRequestId: string): Prom
       entityId = org?.id ?? null;
     }
 
+    // kind='follow_up' with a date is what makes this a follow-up rather than
+    // an untyped row nobody ever sees again: HQ Home's queue and the Partners
+    // inbox both read exactly that shape. It was previously created without
+    // either, so dispositioning a demo request quietly buried it.
+    const dueOn = new Date(now + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     (await db.prepare(
-            "INSERT INTO tasks (id, title, owner_user_id, due_at, status, entity_type, entity_id, handoff_to_founder, created_at, updated_at) VALUES (?, ?, ?, ?, 'open', ?, ?, 0, ?, ?)",
+            `INSERT INTO tasks (id, title, owner_user_id, doer_user_id, due_on, status, workflow_state,
+                                kind, priority, entity_type, entity_id, handoff_to_founder, source_key, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 'open', 'assigned', 'follow_up', 'normal', ?, ?, 0, ?, ?, ?)`,
           ).run(
             taskId,
             `Follow up: demo request from ${request.requester_name} (${request.requester_email})`,
             me.id,
-            null,
+            me.id,
+            dueOn,
             entityId ? "organization" : null,
             entityId,
+            `demo-request:${id}`,
             now,
             now,
           ));

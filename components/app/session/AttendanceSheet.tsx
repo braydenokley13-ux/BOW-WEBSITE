@@ -230,7 +230,7 @@ export default function AttendanceSheet({
         </h2>
         <textarea
           id={`sheet-notes-${sessionId}`}
-          className="bow-sheet__notes"
+          className="bow-input bow-sheet__notes"
           rows={3}
           maxLength={4000}
           placeholder="How it went, who to follow up with. Optional."
@@ -260,7 +260,7 @@ export default function AttendanceSheet({
             </label>
             <input
               id={`sheet-flag-${sessionId}`}
-              className="bow-sheet__flag-reason"
+              className="bow-input bow-sheet__flag-reason"
               maxLength={500}
               placeholder="What needs attention"
               value={flagReason}
