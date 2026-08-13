@@ -181,6 +181,37 @@ Two fixes this turned up:
   every seeded partner rendered with no programs and no classes. Fixed in the seed; the
   `organizations` ↔ `partner_orgs` seam itself is untouched and no new query crosses it.
 
+## The partner Program record
+
+A partner Program is the one place in V1 where extra structure is honest: a school runs several
+sections, on a schedule somebody negotiated, with staffing that may not be settled. So
+`/app/programs/[id]` shows sections, schedule and staffing — in partner language, not the stage
+machine's. Twelve internal stages become five words (`programStatusLabel`), and the record leads
+with one sentence saying where the Program actually is.
+
+**Readiness is reused, not rebuilt.** `getProgramReadiness` already knows every fact that must be
+true before a Program can run; what changed is the editorial judgment about it. There is no
+percentage, no progress ring, and no wall of amber. Two rules do the work:
+
+- `blockersApply` — nothing is a blocker while a Program is merely *being planned*. "No
+  instructor yet" is the normal state of the world in week one, and amber that appears the day a
+  record is created teaches its reader to ignore amber.
+- `blockerAppliesAtStage` — once a Program is **running**, only the handful of readiness keys
+  that still affect the room survive (`forms`, `capacity`, `eligible_instructor`,
+  `assignment_response`, `first_session`). A Program with children in it does not need to be told
+  a launch-date field is empty.
+
+Everything else that is unsettled appears under **Still deciding** as a plain statement, never a
+failure — the same treatment the Ramaz partner gets, for the same reason.
+
+The machinery that genuinely has to exist — stage transitions, staffing offers, the public
+listing, duplicate, first-session prep — is real capability and is kept, one disclosure down,
+rather than deleted or spread across five tabs.
+
+**A direct class never shows its Program.** A class posted from the composer gets a Program
+because the schema needs one. `/app/programs/[id]` resolves `source_type = 'direct'` and
+redirects to `/app/classes/[id]`, so the split V1 exists to hide cannot be reached by URL.
+
 ## Known seams (deliberately left for V2)
 
 - **`organizations` ↔ `partner_orgs` are joined by name string.** `organizations` is the
