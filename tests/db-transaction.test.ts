@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Sql } from "postgres";
-import { PostgresDatabase } from "@/lib/db";
+import { PostgresDatabase, toPostgresSql } from "@/lib/db";
 
 function createDatabaseHarness() {
   const poolQueries: string[] = [];
@@ -85,4 +85,36 @@ test("ROLLBACK releases the reserved client and restores ordinary pool queries",
   assert.deepEqual(harness.transactionQueries, ["BEGIN", "SELECT 1 AS ok", "ROLLBACK"]);
   assert.deepEqual(harness.poolQueries, ["SELECT 2 AS ok"]);
   assert.equal(harness.releases(), 1);
+});
+
+/* ---------------- SQLite-flavoured SQL that still has to run on Postgres ---------------- */
+
+test("SQLite's null-safe IS is translated whether the right side is a parameter or a column", () => {
+  // `IS ?` / `IS NOT ?` were already handled. Comparing two columns was not,
+  // and Postgres rejects it outright — which took down submitSessionReport's
+  // lesson-snapshot lookup and the instructor session page that shares it.
+  assert.equal(
+    toPostgresSql("SELECT 1 WHERE cohort.org_id IS c.partner_org_id"),
+    "SELECT 1 WHERE cohort.org_id IS NOT DISTINCT FROM c.partner_org_id",
+  );
+  assert.equal(
+    toPostgresSql("SELECT 1 WHERE cohort.org_id IS NOT c.partner_org_id"),
+    "SELECT 1 WHERE cohort.org_id IS DISTINCT FROM c.partner_org_id",
+  );
+  assert.equal(
+    toPostgresSql("SELECT 1 WHERE a.b IS ?"),
+    "SELECT 1 WHERE a.b IS NOT DISTINCT FROM $1",
+  );
+});
+
+test("translation leaves real Postgres IS predicates alone", () => {
+  for (const source of [
+    "SELECT 1 WHERE x.y IS NULL",
+    "SELECT 1 WHERE x.y IS NOT NULL",
+    "SELECT 1 WHERE x.y IS TRUE",
+    "SELECT 1 WHERE x.y IS NOT DISTINCT FROM z.w",
+    "SELECT 1 WHERE x.y IS DISTINCT FROM z.w",
+  ]) {
+    assert.equal(toPostgresSql(source), source, source);
+  }
 });

@@ -106,6 +106,42 @@ with families keep working.
 The CTA is decided by `deriveCta`, which only uses a register href for `registration_open` —
 so Coming Soon, Full, Closed and interest-list behaviour are untouched.
 
+## The Session Sheet
+
+`/app/session/[sid]` is the one address for a session, for staff and for the instructor
+teaching it. `lib/session-sheet.ts` assembles it from the canonical delivery systems only —
+`class_sessions`, the locked `class_session_roster`, `attendance_records`,
+`class_session_reports`, and the same lesson-snapshot model the report finalizes with. No new
+table, no second attendance path: the sheet calls `recordAttendance` and `submitSessionReport`.
+
+Written for a phone opened five minutes before class. **Mark everyone here** fills only the
+rows nobody has touched, so the common case is one tap and the exceptions are corrections
+rather than re-entry. One button shows at a time — save attendance, then complete the session —
+because that is the order the server accepts them in, and `resolveSheetAction` is a pure
+function tested against exactly the guards `recordAttendance` enforces. Every "you cannot do
+this yet" message names the real reason.
+
+What an instructor does *not* see is not hidden behind a role check, it is not on the page:
+no CRM, no partner history, no guardian contacts, no admin controls. Authorization is
+enforced server-side — staff read any session; an instructor only a class they have
+**accepted** (`isAcceptedClassMember`); everyone else gets a 404 rather than a "forbidden"
+that would confirm the session exists.
+
+Two defects this turned up, both pre-existing and both fixed here rather than worked around:
+
+- `submitSessionReport` crashed with a Postgres syntax error whenever a session was
+  finalized — `verifiedLegacyLessonSnapshot` compares two columns with SQLite's null-safe
+  `IS`, which `toPostgresSql` translated only in its `IS ?` parameter form. Completing a
+  session had therefore never worked, and the instructor session page sharing that query
+  500'd too. The shim now translates the column form as well.
+- The composer wrote `class_sessions.meeting_link` without the scheme check
+  `updateSessionPlan` enforces, and that value is rendered as an `href`. `safeMeetingLink`
+  now guards both the write and the render.
+
+`scripts/seed-dev.ts` also now writes the `class_session_roster` snapshot its enrollments
+imply. Without it the seeded "instructor with a session today" could not take attendance at
+all, because `recordAttendance` refuses an empty roster.
+
 ## Known seams (deliberately left for V2)
 
 - **`organizations` ↔ `partner_orgs` are joined by name string.** `organizations` is the

@@ -67,8 +67,11 @@ export function buildNavCatalog(): NavEntry[] {
       match: "exact",
       aliases: ["/app/instructor", "/app/teach/proposals"],
     }),
+    // The session sheet is one address for both audiences, so it resolves to
+    // Classes here and to Programs below — the same route, owned by whichever
+    // destination the viewer actually navigates from.
     link("instructor-classes", "Classes", "/app/teach/classes", ["instructor"], {
-      aliases: ["/app/instructor/session", "/app/instructor/cohort"],
+      aliases: ["/app/instructor/session", "/app/instructor/cohort", "/app/session"],
     }),
     link("instructor-playbook", "Playbook", "/app/instructor/learn", ["instructor"]),
 

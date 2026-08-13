@@ -277,6 +277,18 @@ async function seedDomain(sql: postgres.Sql): Promise<void> {
       ('dev-enr-diego', 'dev-class-lincoln-a', 'dev-stu-diego', 'enrolled', ${day(-18)}, NULL)
     ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status
   `;
+  // Every session carries a locked roster snapshot, exactly as createClassSession
+  // and the registration engine write one. Without it a seeded session cannot
+  // take attendance at all (recordAttendance refuses an empty roster), so the
+  // "instructor with a session today" case was unreachable in a browser.
+  await sql`
+    INSERT INTO class_session_roster (id, session_id, student_id, enrollment_id, rostered_at)
+    SELECT 'dev-csr-' || cs.id || '-' || ce.student_id, cs.id, ce.student_id, ce.id, ${day(-45)}
+      FROM class_sessions cs
+      JOIN class_enrollments ce ON ce.class_id = cs.class_id AND ce.status = 'enrolled'
+     WHERE cs.class_id = 'dev-class-lincoln-a'
+    ON CONFLICT (id) DO NOTHING
+  `;
   await sql`
     INSERT INTO attendance_records (id, session_id, student_id, present, status, recorded_by, recorded_at)
     VALUES

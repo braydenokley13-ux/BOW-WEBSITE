@@ -30,6 +30,7 @@ import { DEFAULT_TIME_ZONE, isValidTimeZone, localDateTimeToEpoch, canonicalDate
 import { buildRun, gradeRangeLabel, gradeRangeValue, isValidCalendarDate, keptDates, runSummary } from "@/lib/class-schedule";
 import { discardClassDraft, type ClassDraftPayload } from "@/lib/class-draft";
 import { listCourseLessons } from "@/lib/curriculum-courses";
+import { safeMeetingLink } from "@/lib/session-sheet-shared";
 
 export interface PublishClassInput extends ClassDraftPayload {
   /**
@@ -182,7 +183,13 @@ export async function publishClass(actor: PublishActor, input: PublishClassInput
   const slug = await uniqueSlug(title);
   const gradeLabel = gradeRangeLabel(grades);
   const gradeValue = gradeRangeValue(grades);
-  const meetingLink = (input.meetingLink ?? "").trim() || null;
+  // Same rule updateSessionPlan enforces. Without it the composer is a second
+  // way into class_sessions.meeting_link that skips the scheme check, and the
+  // value is rendered as an href on every session sheet.
+  const meetingLink = safeMeetingLink(input.meetingLink);
+  if ((input.meetingLink ?? "").trim() && !meetingLink) {
+    return { ok: false, error: "The meeting link must start with http:// or https://." };
+  }
   const scheduleLabel = runSummary(run, startTime, endTime);
   const description =
     (input.description ?? "").trim() || `${scheduleLabel}. Taught live by BOW Sports Capital.`;
