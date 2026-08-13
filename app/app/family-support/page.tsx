@@ -222,7 +222,7 @@ export default async function FamilySupportPage({
       />
 
       <PageSection noRule>
-        <form style={{ display: "flex", gap: 8 }}>
+        <form style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             name="q"
             defaultValue={q ?? ""}

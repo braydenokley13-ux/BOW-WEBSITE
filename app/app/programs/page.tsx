@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Badge, Button, PageHeader, PageSection, SectionHeader } from "@/components/ds";
 import { requireStaff } from "@/lib/dal";
 import { listPrograms, programStageLabel, type ProgramSummary } from "@/lib/operations";
+import { directClassIdsByProgram } from "@/lib/partner-program";
 import { getFounderProgramsData } from "@/lib/delivery";
 import { prepStatusLabel, PIPELINE_GROUPS, type AttentionSeverity } from "@/lib/delivery-shared";
 import { formatDateTimeInZone } from "@/lib/timezone";
@@ -213,8 +214,16 @@ export default async function ProgramsPage({
   );
 }
 
+/**
+ * Every Program, including the ones that are really a posted class.
+ *
+ * A class published from the composer gets a Program because the schema needs
+ * one. Listing it here as a "Program" with an "Open Program" button is the
+ * split V1 exists to hide, so those rows render as what the operator made — a
+ * class, named by its class title, linking to the class record.
+ */
 async function AllPrograms() {
-  const programs = await listPrograms();
+  const [programs, directClasses] = await Promise.all([listPrograms(), directClassIdsByProgram()]);
   return (
     <PageSection title="All programs">
       {programs.length === 0 ? (
@@ -227,11 +236,14 @@ async function AllPrograms() {
         </section>
       ) : (
         <section className="ops-list" aria-label="All Programs">
-          {programs.map((summary: ProgramSummary) => (
+          {programs.map((summary: ProgramSummary) => {
+            const direct = directClasses.get(summary.program.id) ?? null;
+            const href = direct ? `/app/classes/${direct.classId}` : `/app/programs/${summary.program.id}`;
+            return (
             <article className="ops-list-row" key={summary.program.id}>
               <div>
-                <Link className="ops-record-name" href={`/app/programs/${summary.program.id}`}>{summary.program.name}</Link>
-                <span className="ops-record-meta">{summary.partnerName ?? "Partner not linked"} · {summary.locationName ?? (summary.program.deliveryFormat === "online" ? "Online" : "Location missing")}</span>
+                <Link className="ops-record-name" href={href}>{direct ? direct.title : summary.program.name}</Link>
+                <span className="ops-record-meta">{direct ? "Posted class" : `${summary.partnerName ?? "Partner not linked"} · ${summary.locationName ?? (summary.program.deliveryFormat === "online" ? "Online" : "Location missing")}`}</span>
               </div>
               <div>
                 <Badge status={stageTone(summary.program.stage)}>{programStageLabel(summary.program.stage)}</Badge>{" "}
@@ -243,9 +255,10 @@ async function AllPrograms() {
                 <span className="ops-value">{summary.ownerName ?? "Unassigned"}</span>
                 <span className="ops-record-meta">{summary.instructorCount} instructor{summary.instructorCount === 1 ? "" : "s"} · {summary.enrollmentCount} enrolled</span>
               </div>
-              <Button href={`/app/programs/${summary.program.id}`} variant="secondary" size="sm">Open Program</Button>
+              <Button href={href} variant="secondary" size="sm">{direct ? "Open class" : "Open Program"}</Button>
             </article>
-          ))}
+            );
+          })}
         </section>
       )}
     </PageSection>

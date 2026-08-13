@@ -11,7 +11,7 @@ import WorkGovernanceControls from "@/components/app/tasks/WorkGovernanceControl
 import WeeklyCommitmentEditor from "@/components/app/people/WeeklyCommitmentEditor";
 import { requireStaff } from "@/lib/dal";
 import { currentWeekStart, getWeeklyCycleForPerson } from "@/lib/people-operations";
-import { addCanonicalDays, canonicalDateInZone, formatCanonicalDate } from "@/lib/timezone";
+import { addCanonicalDays, canonicalDateInZone, coerceEpochMs, formatCanonicalDate } from "@/lib/timezone";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -102,8 +102,22 @@ function toRelatedRecordOptions(rows: RelatedRecordOption[]): RelatedRecordOptio
   return rows.map((row) => ({ id: row.id, label: row.label }));
 }
 
-function shortDate(timestamp: number): string {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(timestamp);
+/**
+ * Postgres returns bigint columns as strings, so a raw `tasks.due_at` reaches
+ * here as "1786032000000". Intl formats that as Invalid Date and
+ * `new Date(value).toISOString()` throws outright — which took the whole Work
+ * page down. Everything time-shaped on this page goes through coerceEpochMs.
+ */
+function shortDate(timestamp: number | string): string {
+  const epoch = coerceEpochMs(timestamp);
+  if (epoch == null) return "—";
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(epoch);
+}
+
+/** A machine-readable datetime, or nothing — never a throw. */
+function isoAttr(value: number | string | null | undefined): string | undefined {
+  const epoch = coerceEpochMs(value);
+  return epoch == null ? undefined : new Date(epoch).toISOString();
 }
 
 function displayLabel(value: string): string {
@@ -280,12 +294,12 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
               <div style={{ display: "flex", gap: "7px 18px", flexWrap: "wrap", marginTop: 11 }}>
                 <span className="ops-label">Owner · {ownerLabel(item)}</span>
                 {(item.dueOn || item.dueAt) && !completed && (
-                  <time dateTime={item.dueOn ?? new Date(item.dueAt!).toISOString()} className="ops-label">
+                  <time dateTime={item.dueOn ?? isoAttr(item.dueAt)} className="ops-label">
                     Due · {item.dueOn ? formatCanonicalDate(item.dueOn) : shortDate(item.dueAt!)}
                   </time>
                 )}
                 {completed && item.completedAt && (
-                  <time dateTime={new Date(item.completedAt).toISOString()} className="ops-label">Closed · {shortDate(item.completedAt)}</time>
+                  <time dateTime={isoAttr(item.completedAt)} className="ops-label">Closed · {shortDate(item.completedAt)}</time>
                 )}
                 {href && (
                   <Link href={href} className="ops-label" style={{ color: "var(--bow-blue)", textDecoration: "none" }}>

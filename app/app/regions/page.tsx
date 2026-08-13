@@ -62,7 +62,11 @@ export default async function RegionsPage({
        LEFT JOIN users leader ON leader.id = r.leader_user_id
        LEFT JOIN locations l ON l.region_id = r.id
        LEFT JOIN programs p ON p.location_id = l.id
-      GROUP BY r.id
+      -- GROUP BY r.id covers r.* through the primary key, but leader.name
+      -- belongs to another table and is not functionally dependent on it, so
+      -- Postgres rejects the query outright. SQLite accepted it; this page had
+      -- been throwing a 500 ever since the port.
+      GROUP BY r.id, leader.name
       ORDER BY CASE r.stage WHEN 'active' THEN 0 WHEN 'paused' THEN 1 WHEN 'closed' THEN 2 ELSE 3 END,
                r.name`,
     ).all()) as unknown as RegionSummaryRow[];

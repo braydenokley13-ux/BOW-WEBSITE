@@ -278,3 +278,23 @@ export async function directClassForProgram(programId: string): Promise<string |
     .get(programId)) as { id: string } | undefined;
   return row?.id ?? null;
 }
+
+/**
+ * The class each direct-posted Program is really about, keyed by program id.
+ *
+ * A Programs index that lists a posted class as a "Program" is the split V1
+ * hides leaking into the surface that names it. One query so the list can
+ * render those rows as what they are — a class, linking to the class record.
+ */
+export async function directClassIdsByProgram(): Promise<Map<string, { classId: string; title: string }>> {
+  const rows = (await getDb()
+    .prepare(
+      `SELECT DISTINCT ON (p.id) p.id AS program_id, c.id AS class_id, c.title
+         FROM programs p
+         JOIN classes c ON c.program_id = p.id
+        WHERE p.source_type = 'direct'
+        ORDER BY p.id, c.created_at, c.id`,
+    )
+    .all()) as { program_id: string; class_id: string; title: string }[];
+  return new Map(rows.map((row) => [row.program_id, { classId: row.class_id, title: row.title }]));
+}

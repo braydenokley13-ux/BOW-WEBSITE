@@ -536,6 +536,34 @@ h1, h2, h3, h4, h5, h6, p, figure, blockquote { margin: 0; }
   .website-version-row { align-items: flex-start; flex-direction: column; }
 }
 
+/* ===== Website repeater fields =====
+   Repeaters nest (nav columns hold links), and each level was paying 14px of
+   padding on both sides plus an inner card. Three levels deep that runs off a
+   390px screen, so the nested levels get thinner on small viewports. */
+.bow-repeater { padding: 14px 14px 6px; min-width: 0; }
+.bow-repeater__row { padding: 12px 12px 2px; min-width: 0; }
+@media (max-width: 640px) {
+  .bow-repeater { padding: 10px 8px 4px; }
+  .bow-repeater__row { padding: 10px 8px 2px; }
+  .bow-repeater .bow-repeater { padding: 8px 6px 2px; }
+  .bow-repeater .bow-repeater__row { padding: 8px 6px 2px; }
+}
+
+/* ===== Row that becomes a stack =====
+   A fixed grid of auto columns cannot shrink below its content, so a list row
+   built that way runs off the side of a phone. This keeps the grid where there
+   is room and falls back to a wrapping flex row where there is not. */
+.bow-row-wrap { display: grid; }
+@media (max-width: 640px) {
+  .bow-row-wrap { display: flex; flex-wrap: wrap; }
+}
+
+/* Admin surfaces assembled before the mobile pass put button groups in
+   non-wrapping flex rows. They are secondary surfaces, but a control that is
+   off-screen is a control that does not exist. */
+.bow-portal-content .ops-panel > div,
+.bow-portal-content fieldset { max-width: 100%; }
+
 /* ===== Session Sheet =====
    Built for a phone held in one hand a few minutes before class. Every tap
    target clears 44px, the attendance row keeps the name and its four marks on

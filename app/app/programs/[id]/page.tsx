@@ -121,16 +121,16 @@ export default async function ProgramRecordPage({ params }: { params: Promise<{ 
         </h1>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", flex: "0 1 auto", minWidth: 0 }}>
           <Badge status={statusTone[record.statusLabel] ?? "neutral"}>{record.statusLabel}</Badge>
-          {record.next ? (
-            record.next.href ? (
-              <Button href={record.next.href} variant="primary">
-                {record.next.label}
-              </Button>
-            ) : (
-              <Button variant="primary" disabled>
-                {record.next.label}
-              </Button>
-            )
+          {/* Only rendered when it can be pressed. A disabled primary is a
+              control that does not exist. */}
+          {record.next?.href ? (
+            <Button href={record.next.href} variant="primary">
+              {record.next.label}
+            </Button>
+          ) : record.next ? (
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
+              {record.next.label}
+            </span>
           ) : null}
         </div>
       </div>

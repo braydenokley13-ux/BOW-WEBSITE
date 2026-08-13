@@ -9,6 +9,8 @@ import { resolveSheetPhase } from "@/lib/session-sheet-shared";
 import { formatDateTimeInZone } from "@/lib/timezone";
 import AttendanceSheet from "@/components/app/session/AttendanceSheet";
 import SessionPlanForm from "@/components/app/classes/SessionPlanForm";
+import SessionPrepForm from "@/components/app/teach/SessionPrepForm";
+import { getMySessionPrep } from "@/app/actions/delivery";
 
 export const metadata = { title: "Session" };
 
@@ -47,6 +49,8 @@ export default async function SessionSheetPage({ params }: { params: Promise<{ s
   if (viewer.kind === "instructor" && !(await isAcceptedClassMember(sheet.classId, viewer.instructorId))) {
     notFound();
   }
+
+  const prep = viewer.kind === "instructor" ? await getMySessionPrep(sid) : null;
 
   const phase = resolveSheetPhase({
     startsAt: sheet.startsAt,
@@ -223,6 +227,33 @@ export default async function SessionSheetPage({ params }: { params: Promise<{ s
           reportedAt={sheet.reportedAt}
         />
       </div>
+
+      {/* The instructor's own preparation. Before the session, not during it —
+          which is why it sits under the sheet rather than above the roster. */}
+      {sheet.viewer === "instructor" && !sheet.finalized && sheet.status === "scheduled" ? (
+        <details style={{ marginTop: 4 }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              fontFamily: "var(--font-data)",
+              fontSize: 11,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: "var(--bow-slate)",
+            }}
+          >
+            My preparation
+          </summary>
+          <div style={{ marginTop: 14 }}>
+            <SessionPrepForm
+              sessionId={sheet.sessionId}
+              initialChecklist={prep?.checklist ?? []}
+              initialBlockers={prep?.blockers ?? ""}
+              initialStatus={prep?.status ?? "not_started"}
+            />
+          </div>
+        </details>
+      ) : null}
 
       {/* Staff-only: editing the plan is an office job, not a courtside one. */}
       {sheet.viewer === "staff" && sheet.status === "scheduled" && !sheet.finalized ? (

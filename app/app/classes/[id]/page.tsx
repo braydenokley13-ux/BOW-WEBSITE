@@ -5,6 +5,11 @@ import { Badge, Button, FactRow } from "@/components/ds";
 import { getClassRecord } from "@/lib/class-record";
 import { classFactLine, seatLabel } from "@/lib/class-record-shared";
 import ShareClassLink from "@/components/app/classes/ShareClassLink";
+import ClassDetailActions from "@/components/app/classes/ClassDetailActions";
+import RecurringSessionsForm from "@/components/app/classes/RecurringSessionsForm";
+import CloseoutPanel from "@/components/app/classes/CloseoutPanel";
+import { getDb } from "@/lib/db";
+import { getClassCloseout } from "@/lib/flywheel";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -45,6 +50,7 @@ export default async function ClassRecordPage({ params }: { params: Promise<{ id
   const record = await getClassRecord(id);
   if (!record) notFound();
   const now = record.now;
+  const manage = await readManageContext(record);
 
   const publicUrl = record.publicSlug
     ? `${(process.env.NEXT_PUBLIC_SITE_URL ?? "https://bowsportscapital.com").replace(/\/+$/, "")}/programs/p/${record.publicSlug}`
@@ -84,15 +90,20 @@ export default async function ClassRecordPage({ params }: { params: Promise<{ id
         >
           {record.title}
         </h1>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flex: "none" }}>
+        {/* One button, and only when it can actually be pressed. A permanently
+            disabled primary reading "Open registration" is a control that does
+            not exist — the same fake capability the link-only toggle was cut
+            for. When there is nothing to press, the state says so in words and
+            the real controls are under Manage. */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flex: "0 1 auto", flexWrap: "wrap" }}>
           {record.primary.href ? (
             <Button href={record.primary.href} variant="primary">
               {record.primary.label}
             </Button>
           ) : (
-            <Button variant="primary" disabled>
-              {record.primary.label}
-            </Button>
+            <span style={{ fontFamily: "var(--font-data)", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-slate)" }}>
+              {record.primary.label} — under Manage
+            </span>
           )}
         </div>
       </div>
@@ -336,6 +347,91 @@ export default async function ClassRecordPage({ params }: { params: Promise<{ id
           />
         </section>
       </div>
+
+      {/* Everything that changes the class rather than describes it.
+          Assigning an instructor, adding sessions, withdrawing a student and
+          closing the class out are real capability that this record’s rewrite
+          had left with no surface at all — a founder could post a class and
+          then not staff it. Kept one disclosure down, the same shape the
+          partner Program record uses. */}
+      <details style={{ marginTop: 34 }}>
+        <summary
+          style={{
+            cursor: "pointer",
+            fontFamily: "var(--font-data)",
+            fontSize: 11,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--bow-slate)",
+          }}
+        >
+          Manage this class
+        </summary>
+        <div style={{ marginTop: 16 }}>
+          <ClassDetailActions
+            classId={record.id}
+            programId={null}
+            status={record.status}
+            eligibleInstructors={manage.eligibleInstructors}
+            assignedInstructorIds={manage.assignedInstructorIds}
+            students={manage.students}
+            capacity={record.capacity}
+            enrolledCount={record.confirmed}
+            scheduleTimezone={record.timezone}
+          />
+        </div>
+        <div style={{ marginTop: 22 }}>
+          <RecurringSessionsForm
+            classId={record.id}
+            defaultTimeZone={record.timezone}
+            defaultLocation={manage.location}
+          />
+        </div>
+        {manage.closeout ? (
+          <div style={{ marginTop: 22 }}>
+            <CloseoutPanel closeout={manage.closeout} />
+          </div>
+        ) : null}
+      </details>
     </div>
   );
+}
+
+/**
+ * What the management controls need, read once. Deliberately separate from
+ * getClassRecord: none of this belongs on the page a founder reads at a glance.
+ */
+async function readManageContext(record: { id: string }) {
+  const db = getDb();
+  const [eligible, assigned, students, cls] = await Promise.all([
+    db
+      .prepare(
+        `SELECT i.id, pe.name FROM instructors i
+           JOIN people pe ON pe.id = i.person_id
+          WHERE i.stage IN ('eligible','active') AND i.eligibility_status = 'eligible'
+          ORDER BY pe.name`,
+      )
+      .all() as Promise<{ id: string; name: string | null }[]>,
+    db
+      .prepare("SELECT instructor_id FROM class_instructors WHERE class_id = ? AND removed_at IS NULL")
+      .all(record.id) as Promise<{ instructor_id: string }[]>,
+    db
+      .prepare(
+        `SELECT s.id, s.name, ce.status
+           FROM students s
+           LEFT JOIN class_enrollments ce ON ce.student_id = s.id AND ce.class_id = ?
+          WHERE s.enrollment_status = 'active'
+          ORDER BY s.name`,
+      )
+      .all(record.id) as Promise<{ id: string; name: string; status: string | null }[]>,
+    db.prepare("SELECT location FROM classes WHERE id = ?").get(record.id) as Promise<{ location: string | null } | undefined>,
+  ]);
+
+  return {
+    eligibleInstructors: eligible.map((row) => ({ id: row.id, name: row.name ?? "Unnamed" })),
+    assignedInstructorIds: assigned.map((row) => row.instructor_id),
+    students: students.map((row) => ({ id: row.id, name: row.name, enrolled: row.status === "enrolled" })),
+    location: cls?.location ?? null,
+    closeout: await getClassCloseout(record.id).catch(() => null),
+  };
 }

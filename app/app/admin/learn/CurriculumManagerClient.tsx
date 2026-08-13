@@ -92,7 +92,7 @@ export default function CurriculumManagerClient({ tree }: { tree: CurriculumTree
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input
           placeholder="New track title"
           value={newTrackTitle}
@@ -129,7 +129,7 @@ export default function CurriculumManagerClient({ tree }: { tree: CurriculumTree
                         draftAheadOfPublished: draftAhead,
                       });
                       return (
-                        <div key={lesson.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div key={lesson.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <a href={`/app/admin/learn/lesson/${lesson.id}`} style={{ fontSize: 14 }}>
                             {lesson.title}
                           </a>
@@ -145,7 +145,7 @@ export default function CurriculumManagerClient({ tree }: { tree: CurriculumTree
                       );
                     })}
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <input
                       placeholder="New lesson title"
                       value={newLessonTitle[mod.id] ?? ""}
@@ -177,7 +177,7 @@ export default function CurriculumManagerClient({ tree }: { tree: CurriculumTree
                 </div>
               );
             })}
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
               <input
                 placeholder="New module title"
                 value={newModuleTitle[track.id] ?? ""}

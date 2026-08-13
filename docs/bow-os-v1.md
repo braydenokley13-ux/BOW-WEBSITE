@@ -275,6 +275,58 @@ settings** on the course record (`linkCourseToTrack`), where a track already cla
 course is not offered: two courses claiming the same lessons would make "lesson 3" ambiguous the
 moment either is scheduled.
 
+## The cross-system sweep
+
+V1 read as one product rather than nine checkpoints. Every portal route was crawled as staff and
+as an instructor, at 1280 and 390, plus the public site unauthenticated. What that turned up:
+
+**Two page-level crashes, both the same Postgres/SQLite porting class.**
+
+- `/app/tasks` — `tasks.due_at` is a bigint, which Postgres returns as a string.
+  `new Date("1786032000000").toISOString()` throws `RangeError: Invalid time value`, so the Work
+  surface was a 500. Now routed through `coerceEpochMs`, the third place that fix has been
+  needed (after the Programs waitlist deadline and the student attendance history).
+- `/app/regions` and `/app/regions/[id]` — `GROUP BY r.id` covers `r.*` through the primary key,
+  but `leader.name` belongs to `users` and is not functionally dependent on it. SQLite accepted
+  the query; Postgres rejects it outright. Both pages had been 500ing since the port.
+
+**A session has one page.** `/app/classes/[id]/sessions/[sid]` and
+`/app/teach/classes/[id]/sessions/[sid]` are redirects to `/app/session/[sid]`. Three pages
+calling the same two server actions is three chances to drift; the sheet already carries the
+attendance grid, the report, the staff plan editor and (now) the instructor's preparation form.
+Redirected, not deleted — those URLs are in bookmarks and activity records.
+
+**A posted class is never called a Program.** The Programs index renders a `source_type='direct'`
+row as its class — class title, "Posted class", linking to `/app/classes/[id]` — and
+`/app/programs/[id]` redirects there. The split is now unreachable from either direction.
+
+**Capability the Checkpoint 3 rewrite had orphaned is back.** `ClassDetailActions`,
+`RecurringSessionsForm` and `CloseoutPanel` had no remaining call site, which meant a founder
+could post a class and then not staff it, add a session to it, or close it out. They live under
+**Manage this class**, the same shape the Program record uses.
+
+**No permanently disabled primary buttons.** "Open registration" and "Close class" rendered as
+disabled primaries with nothing behind them — the same fake capability the link-only toggle was
+cut for. When there is nothing to press, the state is stated in words and the real control is
+under Manage.
+
+**Vocabulary.** "Demand Inbox" is now "All inquiries", reached from the Partners inbox — one
+inbox, with the full triage list behind it, rather than two competing ones.
+
+**Mobile.** Eight surfaces overflowed 390px (Studio's track controls, the Website programs and
+tracks grids, the nested navigation repeater, the organizations grid, family support, and the
+program enrollment and setup headers). All fixed at the container, not by hiding controls.
+
+**Accessibility.** Every primary surface has exactly one `h1`, no skipped heading levels, and an
+accessible name on every interactive control.
+
+**Permissions.** An instructor is bounced from Partners, People, Programs, Work and the staff
+class record to their own home; a non-member instructor and a student both get a 404 on a
+session sheet rather than a "forbidden" that would confirm it exists.
+
+`tests/navigation/session-consolidation.test.ts` pins the invariants that are cheap to assert and
+expensive to notice by hand.
+
 ## Known seams (deliberately left for V2)
 
 - **`organizations` ↔ `partner_orgs` are joined by name string.** `organizations` is the

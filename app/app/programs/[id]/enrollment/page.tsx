@@ -74,7 +74,7 @@ export default async function EnrollmentPage({
         title={summary.name}
         context="Registration lifecycle, requirements, and seat decisions for this program."
         action={
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Link href={`/app/programs/${id}/waitlist`} className="bow-button bow-button-secondary bow-button-sm">
               Waitlist board
             </Link>

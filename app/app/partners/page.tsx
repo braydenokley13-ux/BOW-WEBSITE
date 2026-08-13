@@ -100,7 +100,17 @@ export default async function PartnersPage({
       </div>
 
       <section style={{ marginTop: 28 }}>
-        <h2 style={sectionHeading}>Waiting on you</h2>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <h2 style={{ ...sectionHeading, margin: 0, marginBottom: 10 }}>Waiting on you</h2>
+          {/* The deeper triage list — every inquiry ever, including the ones
+              already closed out. It is the same records, not a second inbox. */}
+          <Link
+            href="/app/inquiries"
+            style={{ fontFamily: "var(--font-data)", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--bow-blue)" }}
+          >
+            All inquiries →
+          </Link>
+        </div>
         <PartnerInbox items={inbox} partners={choices} />
       </section>
 

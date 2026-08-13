@@ -90,7 +90,7 @@ export default async function ProgramSetupPage({ params }: { params: Promise<{ i
         title={program.name}
         context="A program starts as a draft — every section below saves independently and incomplete work is fine."
         action={
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <DuplicateSetupButton sourceProgramId={id} programName={program.name} />
             <Link href={`/app/programs/${id}/enrollment`} className="bow-button bow-button-secondary bow-button-sm">
               Enrollment
