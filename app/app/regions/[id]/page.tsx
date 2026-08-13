@@ -80,7 +80,9 @@ export default async function RegionDetailPage({ params }: { params: Promise<{ i
        LEFT JOIN users leader ON leader.id = l.primary_leader_user_id
        LEFT JOIN programs p ON p.location_id = l.id
       WHERE l.region_id = ?
-      GROUP BY l.id
+      -- leader.name comes from users, not locations, so grouping by l.id alone
+      -- is not enough for Postgres. Same defect as the regions index.
+      GROUP BY l.id, leader.name
       ORDER BY CASE l.stage
         WHEN 'active' THEN 0 WHEN 'launching' THEN 1 WHEN 'evaluating' THEN 2
         WHEN 'prospect' THEN 3 WHEN 'paused' THEN 4 WHEN 'closed' THEN 5 ELSE 6 END,

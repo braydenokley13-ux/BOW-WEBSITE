@@ -75,7 +75,7 @@ export default function DemandInboxClient({
       <header className="ops-hero">
         <div className="ops-hero__copy">
           <span className="ops-eyebrow">From the public demand funnel</span>
-          <h1 className="ops-title">Demand Inbox</h1>
+          <h1 className="ops-title">All inquiries</h1>
           <p className="ops-summary">
             Qualify public inquiries, contact the requester, and turn real demand into an owned Program launch plan.
           </p>

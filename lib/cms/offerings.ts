@@ -201,7 +201,17 @@ function toProgram(row: any, defaults: OfferingDefaults): PublicProgram {
     trackSlug: row.track_slug ?? null,
     cta: deriveCta({
       registrationStatus,
-      registerHref: `/programs/register/${row.id}`,
+      // The canonical family wizard, not the per-program legacy form. Only
+      // that path takes the class row lock before counting seats, enrols
+      // siblings in one flow, and hands a full class to the waitlist engine —
+      // the legacy route does none of those, so two families racing for the
+      // last seat could both be confirmed.
+      //
+      // deriveCta only ever uses this href for `registration_open`, so
+      // Coming Soon / Full / Closed / interest-list behaviour is untouched.
+      // /programs/register/<id> still resolves, as a redirect, so links
+      // already shared with families keep working.
+      registerHref: `/programs/register?program=${row.id}`,
       interestHref: defaults.interestHref,
       interestListEnabled,
       ctaLabelOverride: row.cta_label_override,

@@ -155,7 +155,7 @@ function Repeater({ spec, value, onChange }: { spec: FieldSpec; value: Value; on
   };
 
   return (
-    <fieldset style={{ margin: "0 0 22px", padding: "14px 14px 6px", border: "1px solid var(--border-rule)", borderRadius: "var(--radius-control)", background: "var(--bow-paper)" }}>
+    <fieldset className="bow-repeater" style={{ margin: "0 0 22px", border: "1px solid var(--border-rule)", borderRadius: "var(--radius-control)", background: "var(--bow-paper)" }}>
       <legend style={{ ...labelStyle, marginBottom: 0, padding: "0 6px" }}>{spec.label}</legend>
       {spec.help ? <p style={{ ...helpStyle, marginTop: 0, marginBottom: 10 }}>{spec.help}</p> : null}
 
@@ -164,7 +164,7 @@ function Repeater({ spec, value, onChange }: { spec: FieldSpec; value: Value; on
       ) : null}
 
       {rows.map((row, index) => (
-        <div key={index} style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: "var(--radius-control)", padding: "12px 12px 2px", marginBottom: 12 }}>
+        <div key={index} className="bow-repeater__row" style={{ background: "var(--bow-white)", border: "1px solid var(--border-rule)", borderRadius: "var(--radius-control)", marginBottom: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <span style={{ ...labelStyle, marginBottom: 0 }}>{noun} {index + 1}</span>
             <span style={{ display: "flex", gap: 6 }}>

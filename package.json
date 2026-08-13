@@ -15,7 +15,7 @@
     "migrate": "tsx scripts/run-migrations.ts && tsx scripts/seed-site-content.ts",
     "seed:learn-demo": "tsx scripts/seed-learn-demo.ts",
     "import:legacy-lessons": "tsx scripts/import-legacy-lessons.ts",
-    "test": "tsx --conditions=react-server --test tests/db-transaction.test.ts tests/learn/*.test.ts tests/navigation/*.test.ts tests/website/*.test.ts tests/instructor-missions.test.ts tests/instructor-growth.test.ts tests/delivery-permissions.test.ts tests/family-registration.test.ts tests/registration-engine.test.ts tests/family-permissions.test.ts tests/program-operations.test.ts tests/family-communications.test.ts",
+    "test": "tsx --conditions=react-server --test tests/db-transaction.test.ts tests/learn/*.test.ts tests/navigation/*.test.ts tests/website/*.test.ts tests/instructor-missions.test.ts tests/instructor-growth.test.ts tests/delivery-permissions.test.ts tests/family-registration.test.ts tests/registration-engine.test.ts tests/family-permissions.test.ts tests/program-operations.test.ts tests/family-communications.test.ts tests/post-class-publish.test.ts tests/session-sheet.test.ts tests/partner-desk.test.ts tests/partner-program.test.ts tests/people-directory.test.ts tests/curriculum-courses.test.ts tests/curriculum-resources.test.ts",
     "db:setup": "tsx scripts/dev-setup.ts",
     "db:seed": "tsx scripts/seed-dev.ts",
     "content:bootstrap": "tsx scripts/seed-site-content.ts",

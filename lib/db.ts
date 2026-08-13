@@ -85,7 +85,13 @@ export function toPostgresSql(source: string): string {
     .replace(/\browid\b/gi, "created_at")
     .replace(/\s+COLLATE\s+NOCASE\b/gi, "")
     .replace(/\bIS\s+NOT\s+\?/gi, "IS DISTINCT FROM ?")
-    .replace(/\bIS\s+\?/gi, "IS NOT DISTINCT FROM ?");
+    .replace(/\bIS\s+\?/gi, "IS NOT DISTINCT FROM ?")
+    // SQLite's null-safe `IS` also appears comparing two columns, which
+    // Postgres rejects outright ("syntax error at or near ..."). Requiring a
+    // qualified `table.column` on the right is what keeps this away from
+    // `IS NULL`, `IS TRUE`, and an already-translated `IS NOT DISTINCT FROM`.
+    .replace(/\bIS\s+NOT\s+([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*)\b/gi, "IS DISTINCT FROM $1")
+    .replace(/\bIS\s+([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*)\b/gi, "IS NOT DISTINCT FROM $1");
   if (ignoreConflict) {
     const returning = sql.match(/\s+RETURNING\s+/i);
     if (returning?.index !== undefined) {

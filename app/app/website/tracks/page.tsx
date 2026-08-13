@@ -26,7 +26,7 @@ export default async function TracksScreen() {
       ) : (
         <div style={{ border: "1px solid var(--border-rule)", background: "var(--bow-white)", marginTop: 20 }}>
           {tracks.map((track) => (
-            <div key={track.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) auto auto auto", gap: 14, alignItems: "center", padding: "14px 16px", borderBottom: "1px solid var(--border-rule)" }}>
+            <div key={track.id} className="bow-row-wrap" style={{ gridTemplateColumns: "minmax(0,1.4fr) auto auto auto", gap: 14, alignItems: "center", padding: "14px 16px", borderBottom: "1px solid var(--border-rule)" }}>
               <div style={{ minWidth: 0 }}>
                 <Link href={`/app/website/tracks/${track.id}`} className="bow-link" style={{ fontFamily: "var(--font-editorial)", fontSize: 17 }}>
                   {track.title || track.internalTitle}

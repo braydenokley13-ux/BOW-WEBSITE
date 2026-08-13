@@ -8,10 +8,15 @@
  * prevents multiple "current" links (for example Home + Programs, or Admin +
  * a nested admin page).
  *
- * Stage 1 IA (see docs/redesign/route-disposition.md + ux-baseline.md):
- * Staff:      Home / Growth / Programs / People / Work (+ Admin, admin-only)
+ * BOW OS V1 IA (see docs/bow-os-v1.md):
+ * Staff:      Home / Programs / Partners / People / Curriculum (+ More, secondary)
  * Instructor: Home (/app/teach) / Classes / Playbook
  * Student:    Home (/dashboard) — cutover is permanent, no branching
+ *
+ * Five primary staff destinations, deliberately. Growth, Work and the platform
+ * tools still exist and are still routable — they moved into the secondary
+ * "More" group rather than being deleted, so nothing is stranded while the
+ * everyday surface stays small.
  * ============================================================ */
 
 import type { Role } from "@/lib/account";
@@ -62,45 +67,57 @@ export function buildNavCatalog(): NavEntry[] {
       match: "exact",
       aliases: ["/app/instructor", "/app/teach/proposals"],
     }),
+    // The session sheet is one address for both audiences, so it resolves to
+    // Classes here and to Programs below — the same route, owned by whichever
+    // destination the viewer actually navigates from.
     link("instructor-classes", "Classes", "/app/teach/classes", ["instructor"], {
-      aliases: ["/app/instructor/session", "/app/instructor/cohort"],
+      aliases: ["/app/instructor/session", "/app/instructor/cohort", "/app/session"],
     }),
     link("instructor-playbook", "Playbook", "/app/instructor/learn", ["instructor"]),
 
-    // BOW HQ (staff). Five primary destinations; every currently-routable
-    // portal page resolves to exactly one of these via aliases/segment match.
+    // BOW HQ (staff). Five primary destinations; every routable portal page
+    // resolves to exactly one leaf via aliases/segment match.
     link("staff-home", "Home", "/app", STAFF, { match: "exact" }),
-    link("growth", "Growth", "/app/growth", STAFF, {
-      aliases: ["/app/inquiries", "/app/admin/inquiries", "/app/partners"],
-    }),
+    // Home's exact match cannot carry aliases (the match mode applies to every
+    // route on a leaf), and a composed class ends up in Programs anyway — so
+    // /app/post-class and the session sheet resolve here.
     link("programs", "Programs", "/app/programs", STAFF, {
-      aliases: ["/app/classes", "/app/curriculum", "/app/regions", "/app/locations"],
+      aliases: ["/app/classes", "/app/post-class", "/app/session", "/app/regions", "/app/locations"],
+    }),
+    // Partners is the relationship surface, so the inbox of school inquiries
+    // belongs to it. Instructor applications live in People instead.
+    link("partners", "Partners", "/app/partners", STAFF, {
+      aliases: ["/app/inquiries", "/app/admin/inquiries"],
     }),
     link("people", "People", "/app/people", STAFF, {
       aliases: ["/app/instructors", "/app/students", "/app/hiring", "/app/training", "/app/instructor-ops"],
     }),
-    link("work", "Work", "/app/tasks", STAFF),
+    // Curriculum is promoted out of Programs: a course outlives any one class,
+    // which is the whole "build once, use everywhere" claim.
+    link("curriculum", "Curriculum", "/app/curriculum", STAFF, {
+      aliases: ["/app/admin/learn"],
+    }),
 
-    // The public website. Admin-only: publishing changes what every visitor
-    // reads, so it sits with the founder's own controls rather than with the
-    // shared staff workflows above.
-    link("website", "Website", "/app/website", ["admin"]),
-
-    // Platform administration remains available without competing visually
-    // with the canonical BOW HQ workflows. Growth staff never see this group.
+    // Everything the operating system still needs but nobody needs daily.
+    // These routes are unchanged and reachable; they simply stopped competing
+    // with the five destinations above.
     {
       kind: "group",
-      id: "platform-admin",
-      label: "Admin",
-      roles: ["admin"],
+      id: "more",
+      label: "More",
+      roles: STAFF,
       secondary: true,
       items: [
+        link("work", "Work", "/app/tasks", STAFF),
+        link("growth", "Growth", "/app/growth", STAFF),
+        // The public website. Admin-only: publishing changes what every
+        // visitor reads.
+        link("website", "Website", "/app/website", ["admin"]),
         link("admin-overview", "Platform Overview", "/app/admin", ["admin"], { match: "exact" }),
         link("admin-invitations", "Invitations", "/app/admin/invitations", ["admin"]),
         link("admin-organizations", "Organizations", "/app/admin/organizations", ["admin"]),
         link("admin-accounts", "Account Directory", "/app/admin/people", ["admin"]),
         link("admin-cohorts", "LMS Cohorts", "/app/admin/cohorts", ["admin"]),
-        link("admin-learn", "Playbook Studio", "/app/admin/learn", ["admin"]),
       ],
     },
   ];

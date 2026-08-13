@@ -13,6 +13,7 @@
 import "server-only";
 
 import { getDb } from "@/lib/db";
+import { coerceEpochMs } from "@/lib/timezone";
 import { holdsSeat, registrationLabel } from "@/lib/enrollment-shared";
 
 /* ===================================================================== */
@@ -1006,6 +1007,17 @@ export interface RegistrationAttentionItem {
  * produce (e.g. no reservations currently expiring) simply don't appear;
  * this never pads the list with stub content.
  */
+/**
+ * Postgres returns bigint columns as strings, so `new Date(value)` parses them
+ * as a date STRING and yields Invalid Date — which then throws on
+ * toISOString() and takes the whole Programs page down. Everything that turns
+ * an epoch column into a deadline goes through here.
+ */
+function isoDeadline(value: number | string | null | undefined): string | null {
+  const epoch = coerceEpochMs(value ?? null);
+  return epoch === null ? null : new Date(epoch).toISOString();
+}
+
 export async function registrationNeedsAction(limitPerKind = 8): Promise<RegistrationAttentionItem[]> {
   const db = getDb();
   const now = Date.now();
@@ -1039,7 +1051,7 @@ export async function registrationNeedsAction(limitPerKind = 8): Promise<Registr
       studentId: r.student_id,
       studentName: r.student_name,
       problem: overdue ? "Reservation deadline has passed — seat will auto-release." : "Reservation seat expires within 48 hours.",
-      deadline: new Date(r.reservation_expires_at).toISOString(),
+      deadline: isoDeadline(r.reservation_expires_at),
       consequence: "Seat releases back to the waitlist unless extended or the requirements are completed.",
       actionLabel: "Review reservation",
       href: `/app/family-support?studentId=${r.student_id}`,
@@ -1078,7 +1090,7 @@ export async function registrationNeedsAction(limitPerKind = 8): Promise<Registr
       studentId: r.student_id,
       studentName: r.student_name,
       problem: `Blocking requirement overdue: ${r.prompt}`,
-      deadline: new Date(r.due_at).toISOString(),
+      deadline: isoDeadline(r.due_at),
       consequence: "Seat cannot be confirmed until this is approved or waived.",
       actionLabel: "Resolve requirement",
       href: `/app/family-support?studentId=${r.student_id}`,
@@ -1101,7 +1113,7 @@ export async function registrationNeedsAction(limitPerKind = 8): Promise<Registr
     student_name: string;
   }>;
   for (const r of needsReview) {
-    const ageHours = Math.round((now - r.created_at) / 3600000);
+    const ageHours = Math.round((now - (coerceEpochMs(r.created_at) ?? now)) / 3600000);
     items.push({
       key: `review-${r.id}`,
       kind: "registration_review",
@@ -1209,7 +1221,7 @@ export async function registrationNeedsAction(limitPerKind = 8): Promise<Registr
       studentId: o.student_id,
       studentName: o.student_name,
       problem: overdue ? "Waitlist offer has expired — seat will release to the next family." : "Waitlist offer expires within 24 hours.",
-      deadline: new Date(o.expires_at).toISOString(),
+      deadline: isoDeadline(o.expires_at),
       consequence: "Seat releases back to the waitlist and refills automatically once expired.",
       actionLabel: "Review offer",
       href: `/app/family-support?studentId=${o.student_id}`,

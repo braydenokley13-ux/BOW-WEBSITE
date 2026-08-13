@@ -89,7 +89,11 @@ async function seedDomain(sql: postgres.Sql): Promise<void> {
     INSERT INTO organizations (id, name, type, location, status) VALUES
       ('org-bow', 'BOW Sports Capital', 'BOW', 'Remote', 'active'),
       ('org-school', 'Lincoln High School', 'school', 'Lincoln, NE', 'active'),
-      ('org-youth', 'Eastside Youth Alliance', 'nonprofit', 'Omaha, NE', 'active')
+      ('org-youth', 'Eastside Youth Alliance', 'nonprofit', 'Omaha, NE', 'active'),
+      -- A real relationship where nothing is decided yet: format, sections,
+      -- dates and staffing are all open. Partners has to render this as a
+      -- normal state ("Still deciding"), not as an incomplete record.
+      ('org-ramaz', 'Ramaz School', 'school', 'New York, NY', 'prospect')
     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status
   `;
 
@@ -152,25 +156,30 @@ async function seedDomain(sql: postgres.Sql): Promise<void> {
     VALUES ('dev-curr-101', 'Front Office 101', 'Introduction to basketball operations, scouting and the cap.', 'Grades 6–9', 1, ${day(-120)}, ${NOW})
     ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, updated_at = ${NOW}
   `;
+  // programs.partner_org_id and classes.partner_org_id hold an ORGANIZATIONS id:
+  // that is what /app/programs/new writes and what lib/operations.ts resolves the
+  // partner name from. This seed used to write partner_orgs ids (the branded
+  // marketing pages), so every partner record showed no programs and no classes.
+  // partner_orgs stays a separate thing, reached by slug from the public site.
   await sql`
     INSERT INTO programs (id, name, partner_org_id, location_id, curriculum_id, audience, delivery_format,
                           stage, start_date, end_date, capacity, minimum_enrollment, owner_user_id,
                           partner_confirmed, materials_status, renewal_status, is_public, public_status,
                           short_description, grade_range, created_at, updated_at)
     VALUES
-      ('dev-prog-lincoln-fall', 'Lincoln Fall — Front Office 101', 'dev-partner-lincoln', 'dev-loc-lincoln',
+      ('dev-prog-lincoln-fall', 'Lincoln Fall — Front Office 101', 'org-school', 'dev-loc-lincoln',
        'dev-curr-101', 'Grades 6–9', 'in_person', 'active', ${onDate(-30)}, ${onDate(45)}, 30, 8, 'u-growth',
        1, 'ready', 'not_due', true, 'open', 'Learn how a front office really works.', 'Grades 6–9', ${day(-60)}, ${NOW}),
       -- awaiting a launch decision: no confirmed partner, materials not ready
-      ('dev-prog-omaha-spring', 'Omaha Spring — Front Office 101', 'dev-partner-eastside', 'dev-loc-omaha',
+      ('dev-prog-omaha-spring', 'Omaha Spring — Front Office 101', 'org-youth', 'dev-loc-omaha',
        'dev-curr-101', 'Grades 8–10', 'in_person', 'launching', ${onDate(21)}, ${onDate(90)}, 25, 8, 'u-growth',
        0, 'not_ready', 'not_due', false, NULL, 'Spring cohort pending launch decision.', 'Grades 8–10', ${day(-20)}, ${NOW}),
       -- finished and due for renewal: a founder follow-up
-      ('dev-prog-lincoln-spring', 'Lincoln Spring — Front Office 101', 'dev-partner-lincoln', 'dev-loc-lincoln',
+      ('dev-prog-lincoln-spring', 'Lincoln Spring — Front Office 101', 'org-school', 'dev-loc-lincoln',
        'dev-curr-101', 'Grades 6–9', 'in_person', 'completed', ${onDate(-180)}, ${onDate(-95)}, 30, 8, 'u-growth',
        1, 'ready', 'due', false, NULL, 'Completed cohort awaiting renewal conversation.', 'Grades 6–9', ${day(-200)}, ${NOW})
     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, stage = EXCLUDED.stage,
-      renewal_status = EXCLUDED.renewal_status, updated_at = ${NOW}
+      renewal_status = EXCLUDED.renewal_status, partner_org_id = EXCLUDED.partner_org_id, updated_at = ${NOW}
   `;
 
   // --- instructors --------------------------------------------------------
@@ -238,15 +247,15 @@ async function seedDomain(sql: postgres.Sql): Promise<void> {
                          recurrence, schedule_day, schedule_start_time, schedule_end_time, schedule_timezone,
                          age_range, capacity, minimum_enrollment, lead_instructor_id, status, created_at, updated_at)
     VALUES
-      ('dev-class-lincoln-a', 'Lincoln Fall — Tuesday Squad', 'dev-curr-101', 'dev-partner-lincoln', 'dev-prog-lincoln-fall',
+      ('dev-class-lincoln-a', 'Lincoln Fall — Tuesday Squad', 'dev-curr-101', 'org-school', 'dev-prog-lincoln-fall',
        'dev-loc-lincoln', ${onDate(-30)}, ${onDate(45)}, 'weekly', 2, '16:00', '17:30', 'America/Chicago',
        'Grades 6–9', 15, 8, 'dev-instr-marcus', 'active', ${day(-60)}, ${NOW}),
       -- no lead instructor: the founder's unstaffed-class exception
-      ('dev-class-omaha-a', 'Omaha Spring — Thursday Squad', 'dev-curr-101', 'dev-partner-eastside', 'dev-prog-omaha-spring',
+      ('dev-class-omaha-a', 'Omaha Spring — Thursday Squad', 'dev-curr-101', 'org-youth', 'dev-prog-omaha-spring',
        'dev-loc-omaha', ${onDate(21)}, ${onDate(90)}, 'weekly', 4, '17:00', '18:30', 'America/Chicago',
        'Grades 8–10', 15, 8, NULL, 'planning', ${day(-20)}, ${NOW})
     ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, status = EXCLUDED.status,
-      lead_instructor_id = EXCLUDED.lead_instructor_id, updated_at = ${NOW}
+      lead_instructor_id = EXCLUDED.lead_instructor_id, partner_org_id = EXCLUDED.partner_org_id, updated_at = ${NOW}
   `;
   await sql`
     INSERT INTO class_instructors (id, class_id, instructor_id, role, assigned_by, added_at)
@@ -276,6 +285,18 @@ async function seedDomain(sql: postgres.Sql): Promise<void> {
       ('dev-enr-maya', 'dev-class-lincoln-a', 'dev-stu-maya', 'enrolled', ${day(-45)}, ${day(-45)}),
       ('dev-enr-diego', 'dev-class-lincoln-a', 'dev-stu-diego', 'enrolled', ${day(-18)}, NULL)
     ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status
+  `;
+  // Every session carries a locked roster snapshot, exactly as createClassSession
+  // and the registration engine write one. Without it a seeded session cannot
+  // take attendance at all (recordAttendance refuses an empty roster), so the
+  // "instructor with a session today" case was unreachable in a browser.
+  await sql`
+    INSERT INTO class_session_roster (id, session_id, student_id, enrollment_id, rostered_at)
+    SELECT 'dev-csr-' || cs.id || '-' || ce.student_id, cs.id, ce.student_id, ce.id, ${day(-45)}
+      FROM class_sessions cs
+      JOIN class_enrollments ce ON ce.class_id = cs.class_id AND ce.status = 'enrolled'
+     WHERE cs.class_id = 'dev-class-lincoln-a'
+    ON CONFLICT (id) DO NOTHING
   `;
   await sql`
     INSERT INTO attendance_records (id, session_id, student_id, present, status, recorded_by, recorded_at)
@@ -342,6 +363,101 @@ async function seedDomain(sql: postgres.Sql): Promise<void> {
       ('dev-inq-parent', 'Rob Tanaka', 'rob.tanaka@example.com', 'Family', NULL,
        ${onDate(-1)}, 'Asking whether there is a spring cohort his daughter could join.', 'new', ${day(-1)}, ${day(-1)})
     ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status
+  `;
+
+  // --- an instructor-led course ---------------------------------------------
+  // Front Office 101 is taught live: a numbered lesson list with links to the
+  // Slides, the worksheet and a BOW simulation. No Learn track, and that is a
+  // complete course rather than an unfinished one.
+  await sql`
+    INSERT INTO curriculum_lessons (id, curriculum_id, position, title, teaching_note, created_at, updated_at)
+    VALUES
+      ('dev-cl-1', 'dev-curr-101', 1, 'What a front office actually does',
+       'Open on the roster, not the org chart. Ask who decides, then show how many of those decisions are money.',
+       ${day(-30)}, ${NOW}),
+      ('dev-cl-2', 'dev-curr-101', 2, 'Scarcity and the cap',
+       'The simulation does the work here — budget fifteen minutes for it and leave time to argue about the result.',
+       ${day(-30)}, ${NOW}),
+      ('dev-cl-3', 'dev-curr-101', 3, 'Building a roster on a budget', NULL, ${day(-30)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, teaching_note = EXCLUDED.teaching_note, updated_at = ${NOW}
+  `;
+  await sql`
+    INSERT INTO curriculum_resources (id, curriculum_id, lesson_id, label, url, kind, sort, created_at, updated_at)
+    VALUES
+      ('dev-cr-1', 'dev-curr-101', 'dev-cl-1', 'Front office slides',
+       'https://docs.google.com/presentation/d/example-front-office/edit', 'slides', 1, ${day(-30)}, ${NOW}),
+      ('dev-cr-2', 'dev-curr-101', 'dev-cl-2', 'Salary cap slides',
+       'https://docs.google.com/presentation/d/example-salary-cap/edit', 'slides', 2, ${day(-30)}, ${NOW}),
+      -- The same experience Track 101 runs, pointed at rather than copied.
+      ('dev-cr-3', 'dev-curr-101', 'dev-cl-2', 'Salary cap simulation', '/simulation', 'simulation', 3, ${day(-30)}, ${NOW}),
+      ('dev-cr-4', 'dev-curr-101', 'dev-cl-2', 'Student worksheet',
+       'https://docs.google.com/document/d/example-cap-worksheet/edit', 'document', 4, ${day(-30)}, ${NOW}),
+      ('dev-cr-5', 'dev-curr-101', NULL, 'Instructor guide',
+       'https://drive.google.com/drive/folders/example-guide', 'document', 5, ${day(-30)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET label = EXCLUDED.label, url = EXCLUDED.url, kind = EXCLUDED.kind, updated_at = ${NOW}
+  `;
+  // The Lincoln class runs that course, so its sessions teach those lessons.
+  await sql`
+    UPDATE class_sessions SET lesson_id = 'dev-cl-1', updated_at = ${NOW} WHERE id = 'dev-sess-reported' AND lesson_id IS NULL
+  `;
+  await sql`
+    UPDATE class_sessions SET lesson_id = 'dev-cl-2', updated_at = ${NOW} WHERE id IN ('dev-sess-past', 'dev-sess-today') AND lesson_id IS NULL
+  `;
+  await sql`
+    UPDATE class_sessions SET lesson_id = 'dev-cl-3', updated_at = ${NOW} WHERE id = 'dev-sess-next' AND lesson_id IS NULL
+  `;
+
+  // --- one human wearing two hats ------------------------------------------
+  // Ray Ellis runs athletics at Lincoln and has a child in the Tuesday squad.
+  // He is one `people` row with a Contact facet and a Parent facet — which is
+  // the claim the People directory has to be able to make.
+  await sql`
+    INSERT INTO organization_people (id, organization_id, person_id, relationship_type, is_primary, active, created_at, updated_at)
+    VALUES ('dev-orp-lincoln', 'org-school', 'person-partner-contact', 'contact', 1, 1, ${day(-120)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET active = 1, updated_at = ${NOW}
+  `;
+  await sql`
+    INSERT INTO student_guardians (id, student_id, person_id, relationship, is_primary, can_register, can_view_sensitive, status, created_at, updated_at)
+    VALUES ('dev-sg-jalen', 'dev-stu-jalen', 'person-partner-contact', 'parent', true, true, true, 'active', ${day(-45)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET status = 'active', updated_at = ${NOW}
+  `;
+  await sql`
+    UPDATE students SET guardian_person_id = 'person-partner-contact', updated_at = ${NOW}
+     WHERE id = 'dev-stu-jalen' AND guardian_person_id IS NULL
+  `;
+
+  // --- a partner still being scoped ----------------------------------------
+  // Ramaz: a genuine conversation with a named contact, real history, and an
+  // overdue promise — and nothing scheduled, because nothing has been decided.
+  await sql`
+    INSERT INTO people (id, name, email, phone, created_at, updated_at)
+    VALUES ('dev-person-ramaz', 'Sara Feldman', 'sfeldman@ramaz.example.org', '', ${day(-40)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+  `;
+  await sql`
+    INSERT INTO organization_people (id, organization_id, person_id, relationship_type, is_primary, active, created_at, updated_at)
+    VALUES ('dev-orp-ramaz', 'org-ramaz', 'dev-person-ramaz', 'contact', 1, 1, ${day(-40)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET active = 1, updated_at = ${NOW}
+  `;
+  await sql`
+    INSERT INTO tasks (id, title, owner_user_id, doer_user_id, due_on, status, workflow_state, kind, priority,
+                       context, entity_type, entity_id, handoff_to_founder, created_at, updated_at)
+    VALUES ('dev-task-ramaz', 'Send Ramaz two formats to choose between', 'u-admin', 'u-admin', ${onDate(-4)},
+            'open', 'assigned', 'follow_up', 'normal',
+            'They asked for options before committing to a term. Nothing is booked.',
+            'organization', 'org-ramaz', 0, ${day(-14)}, ${NOW})
+    ON CONFLICT (id) DO UPDATE SET due_on = EXCLUDED.due_on, status = EXCLUDED.status, updated_at = ${NOW}
+  `;
+  await sql`
+    INSERT INTO crm_activity (id, entity_type, entity_id, kind, body, actor_user_id, created_at)
+    VALUES
+      ('dev-act-ramaz-1', 'organization', 'org-ramaz', 'note',
+       'Intro call with Sara Feldman. Interested for next year. Format, number of sections and who teaches it are all open.',
+       'u-admin', ${day(-40)}),
+      ('dev-act-ramaz-2', 'organization', 'org-ramaz', 'note',
+       'Sara asked for two options — an after-school block and a semester elective — before taking it to the head of school.',
+       'u-admin', ${day(-14)})
+    ON CONFLICT (id) DO NOTHING
   `;
 
   // --- activity feed --------------------------------------------------------

@@ -75,7 +75,7 @@ export default function AdminOrganizationsPage() {
           <p className="ops-empty__body">Create the first partner organization to start scheduling cohorts against it.</p>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: 14 }}>
           {orgCards.map((o) => (
             <button type="button" key={o.id} onClick={() => setSelectedOrganizationId(o.id)} className="ops-panel" style={{ width: "100%", textAlign: "left", cursor: "pointer", color: "inherit" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
