@@ -239,6 +239,42 @@ history (`new Date()` on a Postgres bigint-as-string — the same class of bug a
 waitlist deadline, now routed through `coerceEpochMs`), and its form-status buttons overflowed
 390px.
 
+## Curriculum
+
+Build once, run everywhere. A course is a `curricula` row; its lessons live in the authored
+graph (`learn_tracks → learn_modules → learn_lessons`) and are reached through
+`curricula.learn_track_id`. The course record shows the lesson sequence in the one authored order
+— module sort, then lesson sort — which is the same order Studio shows and the same order the
+composer maps onto sessions, so "lesson 3" means one thing to everybody.
+
+**Version complexity stays underneath.** A lesson is published (a class can run it) or a draft
+(it can still be scheduled, it just has not been released). That is the only version fact an
+operator needs; `learn_lesson_versions` remains Studio's business and a student-history
+guarantee. **Studio is not rebuilt** — every lesson links into it.
+
+### Migration 027 — the one automatic course → track link
+
+Migration 026 added `curricula.learn_track_id` and left it null everywhere, which is why the
+composer showed "No lessons yet" against courses that plainly had lessons. 027 fills it in for
+the single pair where the correspondence is a fact rather than a guess:
+
+| written by | value |
+|---|---|
+| `scripts/seed-site-content.ts` | `curricula.public_slug = 'track-<n>'` |
+| `scripts/import-legacy-lessons.ts` | `learn_tracks.id = 'track-legacy-<n>'` |
+
+Both sides are generated from the same track number by code in this repo, so joining them reads
+one identifier two ways — it is not title matching. The migration only fills nulls (an operator's
+explicit link is never overwritten) and only when the track actually exists, so it is safe on a
+database where the legacy import never ran.
+
+Track 101 and Track 201 now carry twelve lessons each. **Track 301 and Front Office 101 stay
+unlinked, truthfully** — no legacy lessons were ever authored for them, and inventing a mapping
+would be worse than the gap. Everything else is linked by a person, explicitly, from **Course
+settings** on the course record (`linkCourseToTrack`), where a track already claimed by another
+course is not offered: two courses claiming the same lessons would make "lesson 3" ambiguous the
+moment either is scheduled.
+
 ## Known seams (deliberately left for V2)
 
 - **`organizations` ↔ `partner_orgs` are joined by name string.** `organizations` is the
@@ -248,6 +284,6 @@ waitlist deadline, now routed through `coerceEpochMs`), and its form-status butt
 - **`applications` and `instructors` are parallel pipelines**, with the invariant
   `applications.id === instructors.id` established by backfill and unenforced by schema. V1's
   People surface reuses both as-is and introduces no third applicant pipeline.
-- Courses seeded before migration 026 have no `learn_track_id`, so the composer shows
-  "No lessons yet" for them and generates plain "Session N" titles. Linking a course to its
-  authored track is a Curriculum-surface job (Checkpoint 8); nothing breaks until then.
+- **Closed by migration 027.** Courses seeded before 026 had no `learn_track_id`, so the
+  composer showed "No lessons yet" and generated plain "Session N" titles. Track 101 and Track
+  201 are now linked automatically; anything else is linked explicitly from the course record.

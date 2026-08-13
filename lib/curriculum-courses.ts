@@ -126,6 +126,58 @@ export async function getCourse(curriculumId: string): Promise<CourseSummary | n
   return courses.find((course) => course.id === curriculumId) ?? null;
 }
 
+export interface AuthoredTrack {
+  id: string;
+  title: string;
+  lessonCount: number;
+  /** The course already pointing at this track, when one does. */
+  claimedByCourseId: string | null;
+  claimedByCourseTitle: string | null;
+}
+
+/**
+ * The authored tracks a course could be linked to.
+ *
+ * Linking is always an explicit choice made by a person from this list. The
+ * one automatic link in the system (migration 027) exists because
+ * `curricula.public_slug = 'track-<n>'` and `learn_tracks.id =
+ * 'track-legacy-<n>'` are the same number written twice by code in this repo —
+ * not because two titles looked alike. Nothing here guesses.
+ */
+export async function listAuthoredTracks(): Promise<AuthoredTrack[]> {
+  const rows = (await sqlLearn`
+    SELECT t.id, t.title,
+           COALESCE(counts.total, 0) AS lesson_count,
+           claim.id AS claimed_by_course_id,
+           claim.title AS claimed_by_course_title
+      FROM learn_tracks t
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS total
+          FROM learn_modules m
+          JOIN learn_lessons l ON l.module_id = m.id
+         WHERE m.track_id = t.id AND l.lifecycle = 'active' AND m.lifecycle = 'active'
+      ) counts ON true
+      LEFT JOIN LATERAL (
+        SELECT c.id, c.title FROM curricula c WHERE c.learn_track_id = t.id ORDER BY c.title LIMIT 1
+      ) claim ON true
+     ORDER BY t.title
+  `) as unknown as {
+    id: string;
+    title: string;
+    lesson_count: string | number;
+    claimed_by_course_id: string | null;
+    claimed_by_course_title: string | null;
+  }[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    lessonCount: Number(row.lesson_count ?? 0),
+    claimedByCourseId: row.claimed_by_course_id ?? null,
+    claimedByCourseTitle: row.claimed_by_course_title ?? null,
+  }));
+}
+
 /**
  * Where a course is running — the visible half of "build once, use everywhere".
  *
