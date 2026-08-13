@@ -78,6 +78,21 @@ async function ensureTracksAndModules(sql: ReturnType<typeof getSqlLearn>, dryRu
         VALUES (${tid}, ${`legacy-${track}`}, ${meta.label}, ${`${meta.grade} — imported from the legacy curriculum.`}, 'active', ${Number(track)}, '{}'::jsonb, ${now}, ${now})
         ON CONFLICT (id) DO NOTHING
       `;
+      // Point the staff course at the track it has just imported.
+      //
+      // Migration 027 does the same join, but on a fresh database it runs
+      // before this importer has created anything to join to — so without this
+      // the link would only ever exist on databases where the import happened
+      // first. Same rule either way: `curricula.public_slug = 'track-<n>'` and
+      // `learn_tracks.id = 'track-legacy-<n>'` are one track number written by
+      // two scripts in this repo, and an operator's own link is never
+      // overwritten.
+      await sql`
+        UPDATE curricula
+           SET learn_track_id = ${tid}, updated_at = ${now}
+         WHERE public_slug = ${`track-${track}`}
+           AND learn_track_id IS NULL
+      `;
     }
     for (const [modNumStr, [title, theme]] of Object.entries(meta.mods)) {
       const modNum = Number(modNumStr);

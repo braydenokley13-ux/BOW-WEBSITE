@@ -100,3 +100,16 @@ test("migration 027 links only the identifier pair this repo generates on both s
   assert.match(sql, /learn_track_id IS NULL/);
   assert.doesNotMatch(sql, /lower\(\s*c\.title\s*\)|c\.title\s*=/i);
 });
+
+test("the legacy importer makes the same link, so ordering cannot lose it", () => {
+  const source = readFileSync(new URL("../scripts/import-legacy-lessons.ts", import.meta.url), "utf8");
+
+  // On a fresh database, migration 027 runs before this importer has created a
+  // track to join to. Without the importer doing it too, the link would only
+  // ever exist where the import happened to run first.
+  assert.match(source, /UPDATE curricula/);
+  assert.match(source, /learn_track_id = \$\{tid\}/);
+  assert.match(source, /public_slug = \$\{`track-\$\{track\}`\}/);
+  // And it must fill nulls only — an operator's explicit link outranks it.
+  assert.match(source, /AND learn_track_id IS NULL/);
+});
