@@ -338,3 +338,61 @@ dbTest("publishing without an instructor record still works", async () => {
   };
   assert.equal(cls.lead_instructor_id, null, "an unstaffed class is a normal state, not a failure");
 });
+
+/* ---------------------------------------------------------------- */
+/* The class record's contextual primary action (pure)               */
+/* ---------------------------------------------------------------- */
+
+function primary(overrides: Record<string, unknown> = {}) {
+  return {
+    classId: "pfx-1",
+    status: "active",
+    isPublic: true,
+    seatsRemaining: 3,
+    todaySessionId: null,
+    nextSessionId: "s2",
+    exceptionCount: 0,
+    publicSlug: "a-class",
+    ended: false,
+    ...overrides,
+  };
+}
+
+test("a session today outranks everything else as the primary action", async () => {
+  const { resolvePrimaryAction } = await import("../lib/class-record");
+  // Even with an unresolved exception and seats to fill, the class is about to
+  // happen — that is what the founder needs the button for.
+  const action = resolvePrimaryAction(primary({ todaySessionId: "s9", exceptionCount: 4 }));
+  assert.equal(action.kind, "open-session");
+  assert.equal(action.href, "/app/session/s9");
+});
+
+test("a blocking exception outranks sharing the link", async () => {
+  const { resolvePrimaryAction } = await import("../lib/class-record");
+  assert.equal(resolvePrimaryAction(primary({ exceptionCount: 1 })).kind, "resolve");
+});
+
+test("sharing is primary only while there are seats to fill", async () => {
+  const { resolvePrimaryAction } = await import("../lib/class-record");
+  assert.equal(resolvePrimaryAction(primary()).kind, "share");
+  // Full: pushing the link harder would be the wrong advice.
+  assert.equal(resolvePrimaryAction(primary({ seatsRemaining: 0 })).kind, "view-waitlist");
+  // Not yet public: there is nothing to share.
+  assert.equal(resolvePrimaryAction(primary({ isPublic: false })).kind, "open-registration");
+  assert.equal(resolvePrimaryAction(primary({ status: "planning" })).kind, "open-registration");
+});
+
+test("a finished term offers closing the class, not sharing it", async () => {
+  const { resolvePrimaryAction } = await import("../lib/class-record");
+  assert.equal(resolvePrimaryAction(primary({ ended: true })).kind, "close");
+});
+
+test("seat labels collapse the engine's states into words an operator uses", async () => {
+  const { seatLabel } = await import("../lib/class-record-shared");
+  const now = 1_000_000_000_000;
+  assert.equal(seatLabel("confirmed", null, now).label, "Confirmed");
+  assert.equal(seatLabel("waitlisted", null, now).label, "Waitlist");
+  assert.equal(seatLabel("under_review", null, now).label, "Needs review");
+  assert.equal(seatLabel("offer_sent", now + 41 * 3600 * 1000, now).label, "Offer · 41h");
+  assert.equal(seatLabel("offer_sent", now + 41 * 3600 * 1000, now).tone, "warning");
+});
