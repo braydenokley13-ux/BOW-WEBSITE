@@ -35,19 +35,19 @@ type Filters = {
 const EMPTY: Filters = { q: "", track: "", grade: "", duration: "", instructor: "", availability: "" };
 
 const TIER_COPY: Record<string, { label: string; blurb: string; color: string; tint: string }> = {
-  FLAGSHIP: {
+  flagship: {
     label: "Flagship",
     blurb: "Start here — the strongest decisions and the clearest payoff.",
     color: "var(--bow-orange-solid)",
     tint: "var(--bow-orange-tint)",
   },
-  RECOMMENDED: {
+  recommended: {
     label: "Recommended",
     blurb: "Solid and classroom-ready.",
     color: "var(--bow-blue)",
     tint: "var(--bow-blue-tint)",
   },
-  EXPERIMENTAL: {
+  experimental: {
     label: "Experimental",
     blurb: "Interesting, but rough in places — try it before you teach it.",
     color: "var(--bow-warning-text)",
@@ -109,7 +109,7 @@ export default function SimulationLibraryView({
 
   const shown = useMemo(() => simulations.filter((s) => matches(s, filters)), [simulations, filters]);
   const flagships = useMemo(
-    () => simulations.filter((s) => s.tier === "FLAGSHIP" && s.availability === "available"),
+    () => simulations.filter((s) => s.tier === "flagship" && s.availability === "available"),
     [simulations],
   );
 

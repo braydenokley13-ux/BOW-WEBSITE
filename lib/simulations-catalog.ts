@@ -15,7 +15,7 @@
  *   - A card either launches or it does not. `available` carries a playUrl;
  *     `in-development` carries none, so a dead Launch button cannot be built.
  *
- * Curation tier (`FLAGSHIP`, `RECOMMENDED`, …) is optional and may be absent
+ * Curation tier (`flagship`, `recommended`, …) is optional and may be absent
  * for a simulation nobody has reviewed yet. It is an editorial opinion about
  * where to start, never a claim of evidence, and the UI labels it that way.
  */
@@ -23,7 +23,13 @@
 import catalog from "@/data/simulations-catalog.json";
 
 export type Availability = "available" | "in-development";
-export type CurationTier = "FLAGSHIP" | "RECOMMENDED" | "EXPERIMENTAL";
+/**
+ * Lowercase on purpose. `EXPERIMENTAL` is also a MATURITY level in the registry,
+ * meaning "may not even run" — the opposite of the tier, which means "runs, but
+ * is rough". The public payload uses a separate lowercase vocabulary so the two
+ * can never be read as the same statement.
+ */
+export type CurationTier = "flagship" | "recommended" | "experimental";
 
 export type NamedRef = { id: string; name: string; note?: string | null };
 
@@ -65,7 +71,7 @@ const data = catalog as unknown as SimulationCatalog;
  * Tier ordering for display. Anything untiered sorts last — an unreviewed
  * simulation is not a bad one, but it is not one we are pointing at either.
  */
-const TIER_RANK: Record<string, number> = { FLAGSHIP: 0, RECOMMENDED: 1, EXPERIMENTAL: 2 };
+const TIER_RANK: Record<string, number> = { flagship: 0, recommended: 1, experimental: 2 };
 
 function rank(sim: SimulationCard): number {
   // Playable work always outranks work that cannot be opened, whatever its tier.
@@ -82,7 +88,7 @@ export function getSimulationCatalog(): SimulationCatalog {
 
 export function getFlagships(): SimulationCard[] {
   return getSimulationCatalog().simulations.filter(
-    (s) => s.tier === "FLAGSHIP" && s.availability === "available",
+    (s) => s.tier === "flagship" && s.availability === "available",
   );
 }
 

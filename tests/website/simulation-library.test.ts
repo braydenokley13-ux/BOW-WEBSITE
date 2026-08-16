@@ -97,7 +97,7 @@ test("flagships are always openable — a shortlist a teacher cannot act on is n
 });
 
 test("curation tier, when present, is a tier the UI knows how to label", () => {
-  const known = new Set(["FLAGSHIP", "RECOMMENDED", "EXPERIMENTAL"]);
+  const known = new Set(["flagship", "recommended", "experimental"]);
   for (const sim of sims) {
     if (sim.tier == null) continue;
     assert.ok(known.has(sim.tier), `${sim.id} carries unknown tier "${sim.tier}"`);
