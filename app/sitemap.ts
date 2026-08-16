@@ -16,7 +16,7 @@ import { teamSlug } from "@/lib/nba-teams";
 export const dynamic = "force-dynamic";
 
 /** Routes that exist as files and always work, independent of content. */
-const ALWAYS = ["/sign-up", "/sign-in", "/analytics", "/analytics/articles", "/analytics/teams", "/analytics/questions", "/analytics/notebook", "/feed"];
+const ALWAYS = ["/simulations", "/sign-up", "/sign-in", "/analytics", "/analytics/articles", "/analytics/teams", "/analytics/questions", "/analytics/notebook", "/feed"];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
