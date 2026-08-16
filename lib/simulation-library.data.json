@@ -68,7 +68,7 @@
       "instructorNeed": "Any instructor can run it",
       "availability": "available",
       "label": "Beta",
-      "playUrl": "https://braydenokley13-ux.github.io/BSC-BUILDANALYTIC/",
+      "playUrl": "https://braydenokley13-ux.github.io/BSC-BUILDANALYTIC/track201/",
       "educatorResources": []
     },
     {
@@ -1598,73 +1598,6 @@
       "educatorResources": []
     },
     {
-      "id": "gauntlet-l2-supply-chain-crisis",
-      "title": "Gauntlet L2: Supply Chain Crisis",
-      "summary": "Six rounds running a store across three products with different elasticities and supply risks.",
-      "whatStudentsDo": "Students order inventory and set prices for basketballs, jerseys and water bottles, each with its own cost, storage footprint, demand elasticity and supply reliability, working inside cash-flow and storage limits as supply becomes unreliable.",
-      "track": {
-        "id": "gauntlet",
-        "name": "The Gauntlet",
-        "note": "Economics challenge ladder"
-      },
-      "subject": {
-        "id": "economics",
-        "name": "Economics"
-      },
-      "concepts": [
-        {
-          "id": "econ.supply-chain",
-          "name": "Supply Chain"
-        },
-        {
-          "id": "econ.price-elasticity",
-          "name": "Price Elasticity"
-        },
-        {
-          "id": "econ.pricing-strategy",
-          "name": "Pricing Strategy"
-        },
-        {
-          "id": "econ.operations-tradeoffs",
-          "name": "Operations Tradeoffs"
-        },
-        {
-          "id": "econ.marginal-value",
-          "name": "Marginal Value"
-        }
-      ],
-      "contexts": [
-        {
-          "id": "business",
-          "name": "Running a business"
-        }
-      ],
-      "gradeBands": [],
-      "gradeLabel": null,
-      "durationBucket": "20-45",
-      "durationLabel": "25 min",
-      "format": {
-        "setting": [
-          {
-            "id": "self-guided",
-            "name": "Students can run it alone"
-          }
-        ],
-        "grouping": [
-          {
-            "id": "individual",
-            "name": "Individually"
-          }
-        ],
-        "devices": "one browser per student"
-      },
-      "instructorNeed": "Any instructor can run it",
-      "availability": "available",
-      "label": "Beta",
-      "playUrl": "https://braydenokley13-ux.github.io/GAUNTLET/GauntletL2/",
-      "educatorResources": []
-    },
-    {
       "id": "gauntlet-l3-economic-policy-simulator",
       "title": "Gauntlet L3: Economic Policy Simulator",
       "summary": "Eight quarters of fiscal, monetary and trade policy for a city in crisis.",
@@ -2820,77 +2753,6 @@
       "educatorResources": []
     },
     {
-      "id": "signal-engine",
-      "title": "Signal Engine — Sports Agent Negotiation Sim",
-      "summary": "Negotiate by managing what the other side believes, not what is true.",
-      "whatStudentsDo": "Students represent a restricted free agent across five negotiation rounds, choosing from twenty-four signals that shift the opposing GM's beliefs about alternatives, urgency and fairness while spending credibility and risking backlash. Contradictory sequences and unsupported bluffs are penalised, and a film review replays every turn.",
-      "track": {
-        "id": "track-301",
-        "name": "Track 301",
-        "note": "Advanced"
-      },
-      "subject": {
-        "id": "economics",
-        "name": "Economics"
-      },
-      "concepts": [
-        {
-          "id": "econ.negotiation",
-          "name": "Negotiation"
-        },
-        {
-          "id": "econ.batna",
-          "name": "BATNA"
-        },
-        {
-          "id": "econ.leverage",
-          "name": "Leverage"
-        },
-        {
-          "id": "econ.reputation-risk",
-          "name": "Reputation Risk"
-        },
-        {
-          "id": "econ.principal-agent",
-          "name": "Principal-Agent"
-        },
-        {
-          "id": "econ.uncertainty",
-          "name": "Uncertainty"
-        }
-      ],
-      "contexts": [
-        {
-          "id": "sports-front-office",
-          "name": "Front office & GM"
-        }
-      ],
-      "gradeBands": [],
-      "gradeLabel": null,
-      "durationBucket": null,
-      "durationLabel": null,
-      "format": {
-        "setting": [
-          {
-            "id": "self-guided",
-            "name": "Students can run it alone"
-          }
-        ],
-        "grouping": [
-          {
-            "id": "individual",
-            "name": "Individually"
-          }
-        ],
-        "devices": "one browser per student"
-      },
-      "instructorNeed": "Any instructor can run it",
-      "availability": "available",
-      "label": "Beta",
-      "playUrl": "https://braydenokley13-ux.github.io/301-M3-L2/",
-      "educatorResources": []
-    },
-    {
       "id": "small-markets-big-money",
       "title": "Small Markets, Big Money",
       "summary": "How market size shapes what a team can spend and earn.",
@@ -3085,7 +2947,7 @@
       "instructorNeed": "Any instructor can run it",
       "availability": "available",
       "label": "Beta",
-      "playUrl": "https://braydenokley13-ux.github.io/BSC-BUILDANALYTIC/",
+      "playUrl": "https://braydenokley13-ux.github.io/BSC-BUILDANALYTIC/track101/",
       "educatorResources": []
     },
     {
@@ -3290,88 +3152,6 @@
       "availability": "in-development",
       "label": "In development",
       "playUrl": null,
-      "educatorResources": []
-    },
-    {
-      "id": "the-front-office",
-      "title": "The Front Office",
-      "summary": "The Track 201 capstone: run a franchise through four decision cycles.",
-      "whatStudentsDo": "Students enter a class code, pick a franchise archetype — contender, young, or rebuilding — and run four cycles of room-based decisions covering trades, the draft lottery, press conferences and random events, moving cap flexibility, roster quality, optionality, trust and tax exposure. They finish by choosing a franchise philosophy and receiving a graded dossier.",
-      "track": {
-        "id": "track-201",
-        "name": "Track 201",
-        "note": "Intermediate"
-      },
-      "subject": {
-        "id": "economics",
-        "name": "Economics"
-      },
-      "concepts": [
-        {
-          "id": "econ.salary-cap",
-          "name": "Salary Cap"
-        },
-        {
-          "id": "econ.luxury-tax",
-          "name": "Luxury Tax"
-        },
-        {
-          "id": "econ.roster-windows",
-          "name": "Roster Windows"
-        },
-        {
-          "id": "econ.optionality",
-          "name": "Optionality"
-        },
-        {
-          "id": "econ.time-horizon",
-          "name": "Time Horizon"
-        },
-        {
-          "id": "econ.stakeholder-management",
-          "name": "Stakeholder Management"
-        },
-        {
-          "id": "econ.asset-valuation",
-          "name": "Asset Valuation"
-        },
-        {
-          "id": "econ.reputation-risk",
-          "name": "Reputation Risk"
-        }
-      ],
-      "contexts": [
-        {
-          "id": "sports-front-office",
-          "name": "Front office & GM"
-        }
-      ],
-      "gradeBands": [
-        "7",
-        "8"
-      ],
-      "gradeLabel": "Grades 7–8",
-      "durationBucket": null,
-      "durationLabel": null,
-      "format": {
-        "setting": [
-          {
-            "id": "facilitator-led",
-            "name": "Led by an instructor"
-          }
-        ],
-        "grouping": [
-          {
-            "id": "individual",
-            "name": "Individually"
-          }
-        ],
-        "devices": "one browser per student"
-      },
-      "instructorNeed": "An instructor runs this one",
-      "availability": "available",
-      "label": "Beta",
-      "playUrl": "https://braydenokley13-ux.github.io/BSC-201-Capstone/",
       "educatorResources": []
     },
     {
@@ -3730,73 +3510,6 @@
       "availability": "available",
       "label": "Beta",
       "playUrl": "https://braydenokley13-ux.github.io/301-M1-ECON/",
-      "educatorResources": []
-    },
-    {
-      "id": "war-room-nba-decision-simulator",
-      "title": "WAR ROOM — NBA Decision Simulator",
-      "summary": "Follow the model, adjust it, or override it — and find out.",
-      "whatStudentsDo": "Students face real analytics scenarios where a confidence-scored projection meets a situation the model cannot see. For each they must flag at least two fragile assumptions, then follow, adjust or override the model with a typed rationale, before the real outcome and their streak are revealed.",
-      "track": {
-        "id": "track-301",
-        "name": "Track 301",
-        "note": "Advanced"
-      },
-      "subject": {
-        "id": "economics",
-        "name": "Economics"
-      },
-      "concepts": [
-        {
-          "id": "econ.model-risk",
-          "name": "Model Risk & False Confidence"
-        },
-        {
-          "id": "econ.expected-value",
-          "name": "Expected Value"
-        },
-        {
-          "id": "econ.uncertainty",
-          "name": "Uncertainty"
-        },
-        {
-          "id": "econ.signal-vs-noise",
-          "name": "Signal vs Noise"
-        },
-        {
-          "id": "econ.analytics-and-war",
-          "name": "Analytics & WAR"
-        }
-      ],
-      "contexts": [
-        {
-          "id": "basketball",
-          "name": "Basketball"
-        }
-      ],
-      "gradeBands": [],
-      "gradeLabel": null,
-      "durationBucket": null,
-      "durationLabel": null,
-      "format": {
-        "setting": [
-          {
-            "id": "self-guided",
-            "name": "Students can run it alone"
-          }
-        ],
-        "grouping": [
-          {
-            "id": "individual",
-            "name": "Individually"
-          }
-        ],
-        "devices": "one browser per student"
-      },
-      "instructorNeed": "Any instructor can run it",
-      "availability": "available",
-      "label": "Beta",
-      "playUrl": "https://braydenokley13-ux.github.io/301-M4-L1/",
       "educatorResources": []
     },
     {
