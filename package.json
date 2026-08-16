@@ -22,7 +22,8 @@
     "content:verify": "tsx scripts/verify-marketing-architecture.ts",
     "db:deploy": "npm run migrate",
     "cleanup:seed": "tsx scripts/cleanup-seed-data.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sync:simulations": "tsx scripts/sync-simulations-catalog.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "6.3.1",
