@@ -509,16 +509,24 @@ function Card({ sim, featured = false }: { sim: SimulationCard; featured?: boole
 
       <div style={{ marginTop: "auto" }}>
         {playable ? (
+          // The title lives in the aria-label, not on the button face. Put it
+          // on the face and a long name wraps the button onto three lines and
+          // shoves the arrow to the far edge; drop it entirely and a screen
+          // reader announces "Play" forty-one times with no way to tell the
+          // links apart. This keeps the row uniform and every link distinct,
+          // and it matches what the standalone library already does.
           <a
             href={sim.playUrl as string}
             target="_blank"
             rel="noopener noreferrer"
+            aria-label={`Play ${sim.title} (opens in a new tab)`}
             style={{
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
+              gap: 8,
               minHeight: 44,
-              padding: "0 22px",
+              padding: "0 24px",
               borderRadius: 8,
               background: "var(--bow-ink)",
               color: "var(--bow-on-ink)",
@@ -527,12 +535,11 @@ function Card({ sim, featured = false }: { sim: SimulationCard; featured?: boole
               letterSpacing: "0.06em",
               textTransform: "uppercase",
               textDecoration: "none",
+              whiteSpace: "nowrap",
             }}
           >
-            Play {sim.title}
-            <span aria-hidden="true" style={{ marginLeft: 8 }}>
-              →
-            </span>
+            Play
+            <span aria-hidden="true">→</span>
           </a>
         ) : (
           <p style={{ margin: 0, fontSize: 13, color: "var(--bow-slate)", fontStyle: "italic" }}>
