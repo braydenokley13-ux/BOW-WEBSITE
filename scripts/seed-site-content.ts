@@ -178,6 +178,19 @@ const SYSTEM_PAGES: SeedPage[] = [
                 { label: "Partners", href: "/get-involved/partners", visible: true },
               ],
             },
+            // The simulations were live and linked from nowhere. Top-level
+            // placement is the fix — burying the library in a submenu would
+            // leave the discovery gap it exists to close.
+            {
+              label: "Simulations",
+              href: "/simulations",
+              visible: true,
+              children: [
+                { label: "All Simulations", href: "/simulations", visible: true },
+                { label: "Concept Map", href: "/concept-map", visible: true },
+                { label: "Glossary", href: "/glossary", visible: true },
+              ],
+            },
             { label: "Teach", href: "/teach", visible: true, children: [] },
           ],
           signInLabel: "Sign In",
@@ -230,6 +243,8 @@ const SYSTEM_PAGES: SeedPage[] = [
               heading: "Learn More",
               links: [
                 { label: "About BOW", href: "/about" },
+                { label: "Simulations", href: "/simulations" },
+                { label: "Concept Map", href: "/concept-map" },
                 { label: "Standards Alignment", href: "/standards" },
                 { label: "Glossary", href: "/glossary" },
                 { label: "Podcast", href: "/podcast" },
