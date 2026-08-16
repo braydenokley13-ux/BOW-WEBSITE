@@ -5,7 +5,7 @@
  * not this one — decides what a stranger is allowed to click. It computes
  * public readiness from observable facts, strips every internal field, and
  * writes the result to `public/simulations.json`. This script copies that
- * published payload into `data/simulations-catalog.json`.
+ * published payload into `data-seeds/simulations-catalog.json`.
  *
  * It is a copy rather than a fetch-at-render for two reasons. The public
  * library exists to close a linking gap, so it must not acquire a new runtime
@@ -24,7 +24,7 @@ const SOURCE =
   process.env.SIM_LIBRARY_PAYLOAD_URL ??
   "https://raw.githubusercontent.com/braydenokley13-ux/sim-library/main/public/simulations.json";
 
-const TARGET = path.join(process.cwd(), "data", "simulations-catalog.json");
+const TARGET = path.join(process.cwd(), "data-seeds", "simulations-catalog.json");
 
 /** Public-safe words only. The registry forbids these; we re-check on the way in. */
 const FORBIDDEN = ["tested", "validated", "proven"];
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   writeFileSync(TARGET, `${JSON.stringify(payload, null, 2)}\n`);
   const available = simulations.filter((s: { availability?: string }) => s.availability === "available").length;
   console.log(
-    `[sync:simulations] wrote ${simulations.length} simulations (${available} playable, ${simulations.length - available} in development) to data/simulations-catalog.json`,
+    `[sync:simulations] wrote ${simulations.length} simulations (${available} playable, ${simulations.length - available} in development) to data-seeds/simulations-catalog.json`,
   );
 }
 

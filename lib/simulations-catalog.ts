@@ -20,7 +20,7 @@
  * where to start, never a claim of evidence, and the UI labels it that way.
  */
 
-import catalog from "@/data/simulations-catalog.json";
+import catalog from "@/data-seeds/simulations-catalog.json";
 
 export type Availability = "available" | "in-development";
 /**
